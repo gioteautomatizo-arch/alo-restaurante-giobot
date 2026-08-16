@@ -1,0 +1,6 @@
+{
+  "name": "¡Aló! Restaurante",
+  "description": "Menú digital interactivo, atención con IA de Giobot, pedidos personalizados y tarjeta de lealtad Aló! VIP para ¡Aló! Restaurante.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
