@@ -25,27 +25,27 @@ export const PersistentCartBar: React.FC<PersistentCartBarProps> = ({
       <div className="max-w-md mx-auto pointer-events-auto">
         <button
           onClick={onOpenCart}
-          className="w-full bg-[#162e1e] hover:bg-[#1f402c] active:scale-98 text-[#fcfaf6] p-3 sm:py-3.5 sm:px-4 rounded-2xl shadow-2xl border border-[#d1a85b]/60 flex items-center justify-between transition-all group cursor-pointer"
+          className="w-full bg-[#14281d] hover:bg-[#1b3a27] active:scale-98 text-[#faf8f5] p-3 sm:py-3.5 sm:px-4 rounded-2xl shadow-2xl border border-[#c4974f]/60 flex items-center justify-between transition-all group cursor-pointer"
         >
           <div className="flex items-center gap-2.5">
-            <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-[#d1a85b] to-[#b48a44] text-[#162e1e] flex items-center justify-center font-black text-xs shadow-xs">
-              <ShoppingBag className="w-5 h-5 text-[#162e1e]" />
-              <span className="absolute -top-1 -right-1 bg-white text-[#162e1e] text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-[#162e1e]">
+            <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-[#c4974f] to-[#a67a35] text-[#14281d] flex items-center justify-center font-black text-xs shadow-xs">
+              <ShoppingBag className="w-5 h-5 text-[#14281d]" />
+              <span className="absolute -top-1 -right-1 bg-white text-[#14281d] text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-[#14281d]">
                 {totalCount}
               </span>
             </div>
             <div className="text-left">
-              <span className="text-xs sm:text-sm font-black block leading-tight text-white">
+              <span className="text-xs sm:text-sm font-bold block leading-tight text-white font-serif">
                 Ver pedido ({totalCount} {totalCount === 1 ? 'producto' : 'productos'})
               </span>
-              <span className="text-[11px] text-[#d1a85b] font-medium block">
+              <span className="text-[11px] text-[#e6caa0] font-medium block">
                 Total est.: <strong>${estimatedTotal.toFixed(0)} MXN</strong>
                 {bringOwnContainer && ' (con 10% eco)'}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-[#234730] px-3 py-1.5 rounded-xl font-bold text-xs text-[#d1a85b] group-hover:bg-[#d1a85b] group-hover:text-[#162e1e] transition-colors">
+          <div className="flex items-center gap-1.5 bg-[#1f3d2b] px-3 py-1.5 rounded-xl font-bold text-xs text-[#c4974f] group-hover:bg-[#c4974f] group-hover:text-[#14281d] transition-colors">
             <span>Revisar</span>
             <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
           </div>

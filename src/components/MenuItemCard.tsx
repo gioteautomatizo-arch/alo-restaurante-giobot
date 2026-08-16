@@ -9,61 +9,61 @@ interface MenuItemCardProps {
 
 export const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, onSelectItem }) => {
   return (
-    <div
+    <article
       onClick={() => onSelectItem(item)}
-      className="group bg-white rounded-2xl border border-stone-200/90 shadow-xs hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between hover:border-[#b48a44]/50 cursor-pointer active:scale-[0.99]"
+      className="group bg-white rounded-2xl border border-[#e8dfd1] shadow-xs hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between hover:border-[#c4974f]/60 cursor-pointer active:scale-[0.99]"
     >
       <div>
-        {/* Photography / Image Header */}
-        <div className="relative h-40 sm:h-44 w-full bg-stone-100 overflow-hidden">
+        {/* Uniform High-End Photography Container */}
+        <div className="relative aspect-[4/3] w-full bg-stone-100 overflow-hidden">
           {item.image ? (
             <img
               src={item.image}
               alt={item.name}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
               loading="lazy"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-emerald-50 text-[#162e1e]">
-              <Utensils className="w-10 h-10 opacity-30" />
+            <div className="w-full h-full flex items-center justify-center bg-[#f4efe6] text-[#14281d]">
+              <Utensils className="w-8 h-8 opacity-25" />
             </div>
           )}
 
-          {/* Badges */}
-          <div className="absolute top-2 left-2 flex flex-wrap gap-1">
+          {/* Editorial Badges Overlay */}
+          <div className="absolute top-2.5 left-2.5 flex flex-wrap gap-1.5 z-10">
             {item.popular && (
-              <span className="px-2 py-0.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider bg-[#d1a85b] text-[#162e1e] rounded-full shadow-xs flex items-center gap-1">
-                <Sparkles className="w-2.5 h-2.5 fill-[#162e1e]" /> Recomendado
+              <span className="px-2 py-0.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider bg-[#c4974f] text-[#14281d] rounded-full shadow-xs flex items-center gap-1 border border-[#a87d37]/40">
+                <Sparkles className="w-2.5 h-2.5 fill-[#14281d]" /> Destacado
               </span>
             )}
             {item.weekendOnly && (
-              <span className="px-2 py-0.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider bg-[#162e1e] text-[#fcfaf6] rounded-full shadow-xs border border-[#d1a85b]/40">
-                Especial {item.weekendOnly}
+              <span className="px-2 py-0.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider bg-[#14281d]/90 backdrop-blur-xs text-[#faf8f5] rounded-full shadow-xs border border-[#c4974f]/40">
+                {item.weekendOnly}
               </span>
             )}
           </div>
 
           {/* Price Tag Overlay */}
-          <div className="absolute bottom-2 right-2 bg-[#162e1e]/95 backdrop-blur-md px-2.5 py-1 rounded-xl font-black text-xs sm:text-sm text-[#d1a85b] shadow-md border border-[#b48a44]/30">
+          <div className="absolute bottom-2.5 right-2.5 bg-[#14281d]/95 backdrop-blur-md px-2.5 py-1 rounded-xl font-serif font-black text-xs sm:text-sm text-[#e6caa0] shadow-sm border border-[#c4974f]/30">
             ${item.price}
             {item.sizes && item.sizes.length > 0 && (
-              <span className="text-[10px] font-normal text-stone-300"> (desde)</span>
+              <span className="text-[10px] font-sans font-normal text-stone-300"> (desde)</span>
             )}
           </div>
         </div>
 
-        {/* Content */}
+        {/* Editorial Content */}
         <div className="p-3.5 sm:p-4">
-          <h3 className="font-serif font-black text-sm sm:text-base text-stone-900 leading-snug group-hover:text-[#162e1e] transition-colors">
+          <h3 className="font-serif font-bold text-sm sm:text-base text-stone-900 leading-snug group-hover:text-[#14281d] transition-colors">
             {item.name}
           </h3>
-          <p className="text-xs text-stone-500 line-clamp-2 mt-1 leading-relaxed">
+          <p className="text-xs text-stone-600 line-clamp-2 mt-1.5 leading-relaxed font-light">
             {item.description}
           </p>
         </div>
       </div>
 
-      {/* Direct Quick Add / Customize Button */}
+      {/* Direct Quick Action Button */}
       <div className="p-3.5 sm:p-4 pt-0">
         <button
           type="button"
@@ -71,12 +71,12 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, onSelectItem }
             e.stopPropagation();
             onSelectItem(item);
           }}
-          className="w-full py-2 sm:py-2.5 px-3 bg-[#fcfaf6] group-hover:bg-[#162e1e] text-[#162e1e] group-hover:text-[#fcfaf6] border border-[#b48a44]/40 group-hover:border-[#162e1e] rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+          className="w-full py-2 px-3 bg-[#faf8f5] group-hover:bg-[#14281d] text-[#14281d] group-hover:text-[#faf8f5] border border-[#c4974f]/40 group-hover:border-[#14281d] rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
         >
-          <Plus className="w-4 h-4 text-[#b48a44] group-hover:text-[#d1a85b]" />
-          <span>Agregar</span>
+          <Plus className="w-3.5 h-3.5 text-[#8f6b2f] group-hover:text-[#c4974f]" />
+          <span>Agregar / Personalizar</span>
         </button>
       </div>
-    </div>
+    </article>
   );
 };

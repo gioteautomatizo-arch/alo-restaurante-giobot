@@ -1,26 +1,49 @@
 import React, { useRef } from 'react';
 import { CategoryId } from '../types';
+import {
+  Sparkles,
+  SunMedium,
+  UtensilsCrossed,
+  Salad,
+  Sandwich,
+  Flame,
+  Wheat,
+  ChefHat,
+  Award,
+  Coffee,
+  GlassWater,
+  CupSoda,
+  Cake,
+  Soup,
+  LucideIcon,
+} from 'lucide-react';
 
 interface CategoryFilterProps {
   activeCategory: CategoryId;
   onSelectCategory: (cat: CategoryId) => void;
 }
 
-const CATEGORIES: { id: CategoryId; label: string; icon: string }[] = [
-  { id: 'all', label: 'Todo', icon: '✨' },
-  { id: 'desayunos', label: 'Desayunos', icon: '🍳' },
-  { id: 'comida-corrida', label: 'Comida Corrida $90', icon: '🍲' },
-  { id: 'ensaladas', label: 'Ensaladas $90', icon: '🥗' },
-  { id: 'chapatas-sandwiches', label: 'Chapatas & Sandwiches', icon: '🥪' },
-  { id: 'hamburguesas', label: 'Hamburguesas', icon: '🍔' },
-  { id: 'tortas-molletes', label: 'Tortas & Molletes', icon: '🥖' },
-  { id: 'antojitos', label: 'Antojitos', icon: '🌮' },
-  { id: 'especialidades', label: 'Especialidades', icon: '🍽️' },
-  { id: 'bebidas', label: 'Café & Infusiones', icon: '☕' },
-  { id: 'frios-frappes', label: 'Fríos & Frappés', icon: '🧊' },
-  { id: 'jugos-licuados', label: 'Jugos Naturales', icon: '🥤' },
-  { id: 'panaderia', label: 'Postres & Pan', icon: '🍰' },
-  { id: 'fin-de-semana', label: 'Fin de Semana', icon: '🍲' },
+interface CategoryDefinition {
+  id: CategoryId;
+  label: string;
+  Icon: LucideIcon;
+}
+
+const CATEGORIES: CategoryDefinition[] = [
+  { id: 'all', label: 'Selección & Todo', Icon: Sparkles },
+  { id: 'desayunos', label: 'Desayunos', Icon: SunMedium },
+  { id: 'comida-corrida', label: 'Comida Corrida $90', Icon: UtensilsCrossed },
+  { id: 'ensaladas', label: 'Ensaladas $90', Icon: Salad },
+  { id: 'chapatas-sandwiches', label: 'Chapatas & Sandwiches', Icon: Sandwich },
+  { id: 'hamburguesas', label: 'Hamburguesas', Icon: Flame },
+  { id: 'tortas-molletes', label: 'Tortas & Molletes', Icon: Wheat },
+  { id: 'antojitos', label: 'Antojitos', Icon: ChefHat },
+  { id: 'especialidades', label: 'Especialidades', Icon: Award },
+  { id: 'bebidas', label: 'Café & Infusiones', Icon: Coffee },
+  { id: 'frios-frappes', label: 'Fríos & Frappés', Icon: GlassWater },
+  { id: 'jugos-licuados', label: 'Jugos Naturales', Icon: CupSoda },
+  { id: 'panaderia', label: 'Postres & Pan', Icon: Cake },
+  { id: 'fin-de-semana', label: 'Fin de Semana', Icon: Soup },
 ];
 
 export const CategoryFilter: React.FC<CategoryFilterProps> = ({
@@ -36,7 +59,7 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
   return (
     <div
       id="menu-categories"
-      className="sticky top-[52px] sm:top-[57px] z-30 bg-[#fcfaf6]/95 backdrop-blur-md border-b border-stone-200/90 py-2.5 px-3 sm:px-6 shadow-xs"
+      className="sticky top-[49px] sm:top-[55px] z-30 bg-[#faf8f5]/95 backdrop-blur-md border-b border-[#e8dfd1] py-2.5 px-3 sm:px-6 shadow-xs"
     >
       <div
         ref={scrollContainerRef}
@@ -44,17 +67,22 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
       >
         {CATEGORIES.map((cat) => {
           const isActive = activeCategory === cat.id;
+          const IconComponent = cat.Icon;
           return (
             <button
               key={cat.id}
               onClick={() => handleCategoryClick(cat.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all duration-150 cursor-pointer shrink-0 ${
+              className={`flex items-center gap-2 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer shrink-0 ${
                 isActive
-                  ? 'bg-[#162e1e] text-[#fcfaf6] shadow-sm ring-1 ring-[#b48a44]'
-                  : 'bg-white hover:bg-stone-100 text-stone-700 border border-stone-200/90'
+                  ? 'bg-[#14281d] text-[#faf8f5] shadow-sm ring-1 ring-[#c4974f]'
+                  : 'bg-white hover:bg-[#f4efe6] text-stone-700 border border-[#e3d8c8]'
               }`}
             >
-              <span className="text-sm sm:text-base">{cat.icon}</span>
+              <IconComponent
+                className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${
+                  isActive ? 'text-[#c4974f]' : 'text-[#8f6b2f]'
+                }`}
+              />
               <span>{cat.label}</span>
             </button>
           );
