@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CartItem, OrderType, VipProfile } from '../types';
 import { getVipProfile, addStampToVip, redeemVipReward } from '../lib/vipStorage';
+import { getRestaurantInfo, ADMIN_DATA_EVENT } from '../lib/adminStorage';
 import { X, Trash2, Plus, Minus, ShoppingBag, Leaf, CheckCircle2, MapPin, Phone, User, CreditCard, Send, Star, Gift, Copy, Check, MessageSquare, Printer, ArrowRight } from 'lucide-react';
 import { Logo } from './Logo';
 
@@ -30,6 +31,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   setBringOwnContainer,
   onOpenVipModal,
 }) => {
+  const [restaurantInfo, setRestaurantInfo] = useState(getRestaurantInfo());
   const [orderType, setOrderType] = useState<OrderType>('delivery');
   const [customerName, setCustomerName] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
@@ -45,6 +47,37 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const [copiedTicket, setCopiedTicket] = useState<boolean>(false);
   const [ticketText, setTicketText] = useState<string>('');
   const [orderDate, setOrderDate] = useState<string>('');
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setRestaurantInfo(getRestaurantInfo());
+    };
+    window.addEventListener(ADMIN_DATA_EVENT, handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener(ADMIN_DATA_EVENT, handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
+
+  // Dynamic values from restaurant_info
+  const ecoPercent = restaurantInfo.ecoDiscountPercent ?? 10;
+  const rawEcoDesc = (restaurantInfo.ecoDiscountDescription || '').trim();
+  const cleanEcoDesc = rawEcoDesc
+    .replace(/^\d+%\s*(?:de\s+descuento\s*)?/i, '')
+    .replace(/\b\d+%\b/g, '')
+    .trim();
+  const ecoDescription = cleanEcoDesc
+    ? cleanEcoDesc.charAt(0).toUpperCase() + cleanEcoDesc.slice(1)
+    : 'Llevo mis propios recipientes / termo';
+  const deliveryFeeRate = restaurantInfo.deliveryFee ?? 25;
+  const vipStampsReq = restaurantInfo.vipStampsRequired ?? 5;
+  const vipRewardDesc =
+    restaurantInfo.vipRewardDescription ||
+    'Al acumular 5 sellos, el cliente obtiene gratis un café americano o postre del día.';
+  const restaurantPhone = restaurantInfo.whatsappRaw || RESTAURANT_PHONE;
+  const restaurantAddress = restaurantInfo.address || RESTAURANT_ADDRESS;
+  const restaurantPhoneDisplay = restaurantInfo.whatsapp || '55 7441 1437';
 
   // Auto-fill from VIP Profile when drawer opens
   useEffect(() => {
@@ -68,18 +101,18 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   // Subtotal
   const rawSubtotal = cartItems.reduce((acc, item) => acc + item.totalPrice, 0);
 
-  // 10% discount for eco-friendly container
-  const discountAmount = bringOwnContainer ? Math.round(rawSubtotal * 0.1) : 0;
+  // Dynamic discount for eco-friendly container
+  const discountAmount = bringOwnContainer ? Math.round(rawSubtotal * (ecoPercent / 100)) : 0;
 
-  // Delivery fee if delivery
-  const deliveryFee = orderType === 'delivery' ? 25 : 0;
+  // Dynamic delivery fee if delivery
+  const deliveryFee = orderType === 'delivery' ? deliveryFeeRate : 0;
 
   const total = Math.max(0, rawSubtotal - discountAmount + deliveryFee);
 
   const formatTicketMessage = (code: string, dateStr: string, currentVipStamps: number) => {
     const modalityName =
       orderType === 'delivery'
-        ? '🚚 ENTREGA A DOMICILIO (+$25)'
+        ? `🚚 ENTREGA A DOMICILIO (+$${deliveryFeeRate})`
         : orderType === 'pickup'
         ? '🛍️ ANTICIPAR ORDEN / PARA LLEVAR'
         : '🍽️ CONSUMO EN SUCURSAL';
@@ -115,8 +148,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
     let msg = `🧾 *TICKET DE COMPRA | ¡ALÓ! RESTAURANTE*\n`;
     msg += `═══════════════════════════════\n`;
-    msg += `📍 *Sucursal:* ${RESTAURANT_ADDRESS}\n`;
-    msg += `📞 *WhatsApp:* 55 7441 1437\n`;
+    msg += `📍 *Sucursal:* ${restaurantAddress}\n`;
+    msg += `📞 *WhatsApp:* ${restaurantPhoneDisplay}\n`;
     msg += `═══════════════════════════════\n`;
     msg += `🎫 *FOLIO:* #${code}\n`;
     msg += `📅 *FECHA Y HORA:* ${dateStr}\n`;
@@ -141,7 +174,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     msg += `💵 *Subtotal:* $${rawSubtotal}.00 MXN\n`;
 
     if (bringOwnContainer && discountAmount > 0) {
-      msg += `🌿 *Descuento Ecológico (10% OFF):* -$${discountAmount}.00 MXN\n`;
+      msg += `🌿 *Descuento Ecológico (${ecoPercent}% OFF):* -$${discountAmount}.00 MXN\n`;
     }
 
     if (orderType === 'delivery') {
@@ -154,10 +187,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     msg += `💳 *MÉTODO DE PAGO:* ${paymentMethod.toUpperCase()}\n`;
 
     if (redeemingReward) {
-      msg += `🎁 *RECOMPENSA VIP:* Canje de Café de Olla o Postre gratis aplicado\n`;
+      msg += `🎁 *RECOMPENSA VIP:* Canje aplicado (${vipRewardDesc})\n`;
     }
 
-    msg += `⭐ *SOCIO ALÓ! VIP:* ${currentVipStamps}/5 Sellos registrados\n`;
+    msg += `⭐ *SOCIO ALÓ! VIP:* ${currentVipStamps}/${vipStampsReq} Sellos registrados\n`;
     msg += `═══════════════════════════════\n`;
     msg += `_¡Muchas gracias por tu compra! Estamos procesando tu orden. Por favor confírmanos por este medio cuando recibas este ticket._ 🍽️✨`;
 
@@ -196,7 +229,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     setOrderConfirmed(true);
 
     // Open WhatsApp directly with the formatted professional purchase ticket
-    const waUrl = `https://wa.me/${RESTAURANT_PHONE}?text=${encodeURIComponent(generated)}`;
+    const waUrl = `https://wa.me/${restaurantPhone}?text=${encodeURIComponent(generated)}`;
     try {
       window.open(waUrl, '_blank');
     } catch {
@@ -211,7 +244,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   };
 
   const handleSendToWhatsApp = () => {
-    const waUrl = `https://wa.me/${RESTAURANT_PHONE}?text=${encodeURIComponent(ticketText)}`;
+    const waUrl = `https://wa.me/${restaurantPhone}?text=${encodeURIComponent(ticketText)}`;
     window.open(waUrl, '_blank');
   };
 
@@ -222,18 +255,18 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[480px] bg-white shadow-2xl border-l border-stone-200 flex flex-col animate-slide-left">
+    <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[480px] bg-[#FFFDF9] shadow-2xl border-l border-[#DEC8AE] flex flex-col animate-slide-left">
       {/* Header */}
-      <div className="bg-[#162e1e] text-stone-100 p-4 flex items-center justify-between border-b border-[#2d563c]">
+      <div className="bg-[#3A2418] text-[#FFF7EA] p-4 flex items-center justify-between border-b border-[#4E3222]">
         <div className="flex items-center gap-2">
-          <ShoppingBag className="w-5 h-5 text-[#d1a85b]" />
-          <h2 className="font-bold text-base text-stone-100 font-serif">
-            {orderConfirmed ? 'Ticket de Compra Digital' : 'Tu Pedido en ¡Aló! Restaurante'}
+          <ShoppingBag className="w-5 h-5 text-[#C9974D]" />
+          <h2 className="font-bold text-base text-[#FFF7EA] font-serif">
+            {orderConfirmed ? 'Ticket de Compra Digital' : 'Tu Pedido en Restaurante Calientito'}
           </h2>
         </div>
         <button
           onClick={onClose}
-          className="p-1.5 rounded-xl bg-[#1f402c] hover:bg-[#285037] text-[#d1a85b] transition-colors cursor-pointer"
+          className="p-1.5 rounded-xl bg-[#4A2E1F] hover:bg-[#5C3825] text-[#C9974D] transition-colors cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
@@ -241,15 +274,15 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
       {orderConfirmed ? (
         /* Order Confirmed Screen with Professional Thermal Ticket */
-        <div className="p-4 sm:p-5 flex-1 overflow-y-auto space-y-4 bg-[#f4f2ea]">
+        <div className="p-4 sm:p-5 flex-1 overflow-y-auto space-y-4 bg-[#FFF7EA]">
           <div className="text-center space-y-1">
-            <div className="inline-flex items-center justify-center w-12 h-12 bg-emerald-100 text-emerald-800 rounded-full mb-1 shadow-xs">
-              <CheckCircle2 className="w-7 h-7" />
+            <div className="inline-flex items-center justify-center w-12 h-12 bg-[#F4E3C8] text-[#3A2418] rounded-full mb-1 shadow-xs border border-[#C9974D]/40">
+              <CheckCircle2 className="w-7 h-7 text-[#A86B3D]" />
             </div>
-            <h3 className="text-xl font-black text-[#162e1e] font-serif">
+            <h3 className="text-xl font-black text-[#3A2418] font-serif">
               ¡Pedido Registrado con Éxito!
             </h3>
-            <p className="text-xs text-stone-600">
+            <p className="text-xs text-[#6B4028]">
               Se ha generado el <strong>Ticket Oficial de Compra</strong> para enviar por WhatsApp al negocio.
             </p>
           </div>
@@ -266,29 +299,29 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
           </button>
 
           {/* Professional Digital Purchase Ticket */}
-          <div className="bg-white rounded-2xl border-2 border-stone-300 shadow-md overflow-hidden font-mono text-xs text-stone-800 relative">
+          <div className="bg-white rounded-2xl border-2 border-[#DEC8AE] shadow-md overflow-hidden font-mono text-xs text-[#2B1B13] relative">
             {/* Ticket Header */}
-            <div className="p-4 bg-[#fcfaf6] border-b border-dashed border-stone-300 text-center space-y-1">
+            <div className="p-4 bg-[#FFF7EA] border-b border-dashed border-[#DEC8AE] text-center space-y-1">
               <div className="flex justify-center mb-1">
-                <Logo variant="compact" size="sm" />
+                <Logo variant="compact" size="xs" />
               </div>
-              <h4 className="font-black text-sm text-[#162e1e] tracking-tight">¡ALÓ! RESTAURANTE</h4>
-              <p className="text-[10px] text-stone-500">{RESTAURANT_ADDRESS}</p>
-              <p className="text-[10px] text-stone-600 font-bold">WhatsApp Pedidos: 55 7441 1437</p>
+              <h4 className="font-black text-sm text-[#3A2418] tracking-tight">RESTAURANTE CALIENTITO</h4>
+              <p className="text-[10px] text-[#6B4028]">{RESTAURANT_ADDRESS}</p>
+              <p className="text-[10px] text-[#3A2418] font-bold">WhatsApp Pedidos: 55 7441 1437</p>
               
-              <div className="pt-2 flex items-center justify-between text-[11px] font-bold text-stone-700 border-t border-stone-200 mt-2">
+              <div className="pt-2 flex items-center justify-between text-[11px] font-bold text-[#6B4028] border-t border-[#DEC8AE] mt-2">
                 <span>FOLIO: #{orderCode}</span>
                 <span>{orderDate}</span>
               </div>
             </div>
 
             {/* Client & Service Information */}
-            <div className="p-3.5 bg-white border-b border-dashed border-stone-300 space-y-1 text-[11px]">
-              <p><span className="text-stone-500 font-bold">CLIENTE:</span> <strong>{customerName}</strong></p>
-              {phone && <p><span className="text-stone-500 font-bold">TELÉFONO:</span> {phone}</p>}
+            <div className="p-3.5 bg-white border-b border-dashed border-[#DEC8AE] space-y-1 text-[11px]">
+              <p><span className="text-[#6B4028] font-bold">CLIENTE:</span> <strong>{customerName}</strong></p>
+              {phone && <p><span className="text-[#6B4028] font-bold">TELÉFONO:</span> {phone}</p>}
               <p>
-                <span className="text-stone-500 font-bold">SERVICIO:</span>{' '}
-                <strong className="text-[#162e1e]">
+                <span className="text-[#6B4028] font-bold">SERVICIO:</span>{' '}
+                <strong className="text-[#3A2418]">
                   {orderType === 'delivery'
                     ? '🚚 Envío a Domicilio'
                     : orderType === 'pickup'
@@ -298,92 +331,92 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               </p>
               {orderType === 'delivery' && (
                 <>
-                  <p><span className="text-stone-500 font-bold">DIRECCIÓN:</span> {address}</p>
-                  {reference && <p><span className="text-stone-500 font-bold">REF:</span> {reference}</p>}
+                  <p><span className="text-[#6B4028] font-bold">DIRECCIÓN:</span> {address}</p>
+                  {reference && <p><span className="text-[#6B4028] font-bold">REF:</span> {reference}</p>}
                 </>
               )}
-              {orderNotes && <p><span className="text-stone-500 font-bold">NOTAS:</span> {orderNotes}</p>}
+              {orderNotes && <p><span className="text-[#6B4028] font-bold">NOTAS:</span> {orderNotes}</p>}
             </div>
 
             {/* Items List */}
-            <div className="p-3.5 space-y-2.5 bg-[#fcfaf6] border-b border-dashed border-stone-300">
-              <div className="text-[10px] font-black uppercase tracking-wider text-stone-400 border-b border-stone-200 pb-1 flex justify-between">
+            <div className="p-3.5 space-y-2.5 bg-[#FFFDF9] border-b border-dashed border-[#DEC8AE]">
+              <div className="text-[10px] font-black uppercase tracking-wider text-[#A86B3D] border-b border-[#DEC8AE] pb-1 flex justify-between">
                 <span>CANT / PLATILLO</span>
                 <span>IMPORTE</span>
               </div>
 
               {cartItems.map((cartItem, idx) => (
                 <div key={idx} className="space-y-0.5 text-[11px]">
-                  <div className="flex justify-between font-bold text-stone-900">
+                  <div className="flex justify-between font-bold text-[#2B1B13]">
                     <span>{cartItem.quantity}x {cartItem.item.name}</span>
                     <span>${cartItem.totalPrice}.00</span>
                   </div>
 
                   {cartItem.selectedSize && (
-                    <p className="text-[10px] text-stone-500 pl-3">▪ Tamaño: {cartItem.selectedSize.name}</p>
+                    <p className="text-[10px] text-[#6B4028] pl-3">▪ Tamaño: {cartItem.selectedSize.name}</p>
                   )}
                   {cartItem.selectedOption && (
-                    <p className="text-[10px] text-stone-500 pl-3">▪ Opción: {cartItem.selectedOption}</p>
+                    <p className="text-[10px] text-[#6B4028] pl-3">▪ Opción: {cartItem.selectedOption}</p>
                   )}
                   {cartItem.selectedExtras && cartItem.selectedExtras.length > 0 && (
-                    <p className="text-[10px] text-stone-500 pl-3">
+                    <p className="text-[10px] text-[#6B4028] pl-3">
                       ▪ Extras: {cartItem.selectedExtras.map((e) => e.name).join(', ')}
                     </p>
                   )}
                   {cartItem.customComidaCorrida && (
-                    <div className="text-[10px] text-stone-600 pl-3">
+                    <div className="text-[10px] text-[#6B4028] pl-3">
                       <p>▪ Sopa: {cartItem.customComidaCorrida.primerTiempo}</p>
                       <p>▪ Arroz/Pasta: {cartItem.customComidaCorrida.segundoTiempo} {cartItem.customComidaCorrida.extraAgrega ? `(${cartItem.customComidaCorrida.extraAgrega})` : ''}</p>
                       <p>▪ Guisado: {cartItem.customComidaCorrida.tercerTiempo}</p>
                     </div>
                   )}
                   {cartItem.customSalad && (
-                    <div className="text-[10px] text-stone-600 pl-3">
+                    <div className="text-[10px] text-[#6B4028] pl-3">
                       <p>▪ {cartItem.customSalad.proteina} • {cartItem.customSalad.fruta} • {cartItem.customSalad.topping} • {cartItem.customSalad.aderezo}</p>
                     </div>
                   )}
                   {cartItem.specialInstructions && (
-                    <p className="text-[10px] text-stone-500 italic pl-3">▪ "{cartItem.specialInstructions}"</p>
+                    <p className="text-[10px] text-[#6B4028] italic pl-3">▪ "{cartItem.specialInstructions}"</p>
                   )}
                 </div>
               ))}
             </div>
 
             {/* Calculations & Total */}
-            <div className="p-3.5 bg-white space-y-1.5 text-[11px] border-b border-dashed border-stone-300">
-              <div className="flex justify-between text-stone-600">
+            <div className="p-3.5 bg-white space-y-1.5 text-[11px] border-b border-dashed border-[#DEC8AE]">
+              <div className="flex justify-between text-[#6B4028]">
                 <span>Subtotal platillos:</span>
                 <span>${rawSubtotal}.00</span>
               </div>
               {bringOwnContainer && discountAmount > 0 && (
-                <div className="flex justify-between text-emerald-700 font-bold">
-                  <span>🌿 Descuento Eco (10%):</span>
+                <div className="flex justify-between text-[#A86B3D] font-bold">
+                  <span>🌿 Descuento Eco ({ecoPercent}%):</span>
                   <span>-${discountAmount}.00</span>
                 </div>
               )}
               {orderType === 'delivery' && (
-                <div className="flex justify-between text-stone-600">
+                <div className="flex justify-between text-[#6B4028]">
                   <span>🚚 Envío a domicilio:</span>
                   <span>+${deliveryFee}.00</span>
                 </div>
               )}
-              <div className="flex justify-between text-sm font-black text-[#162e1e] pt-1.5 border-t border-stone-300">
+              <div className="flex justify-between text-sm font-black text-[#3A2418] pt-1.5 border-t border-[#DEC8AE]">
                 <span>TOTAL A PAGAR:</span>
-                <span className="text-base">${total}.00 MXN</span>
+                <span className="text-base font-serif">${total}.00 MXN</span>
               </div>
-              <div className="flex justify-between text-[11px] text-stone-700 pt-1">
+              <div className="flex justify-between text-[11px] text-[#6B4028] pt-1">
                 <span>MÉTODO DE PAGO:</span>
-                <strong className="uppercase">{paymentMethod}</strong>
+                <strong className="uppercase text-[#2B1B13]">{paymentMethod}</strong>
               </div>
             </div>
 
             {/* VIP Status */}
-            <div className="p-3 bg-[#162e1e] text-[#fcfaf6] text-center space-y-1">
-              <p className="text-[10px] text-[#d1a85b] font-bold flex items-center justify-center gap-1">
-                <Star className="w-3.5 h-3.5 fill-[#d1a85b]" />
-                TARJETA ALÓ! VIP: {updatedVipResult?.stamps || 1}/5 SELLOS
+            <div className="p-3 bg-[#3A2418] text-[#FFF7EA] text-center space-y-1">
+              <p className="text-[10px] text-[#C9974D] font-bold flex items-center justify-center gap-1">
+                <Star className="w-3.5 h-3.5 fill-[#C9974D]" />
+                TARJETA ALÓ! VIP: {updatedVipResult?.stamps || 1}/{vipStampsReq} SELLOS
               </p>
-              <p className="text-[9px] text-stone-300">
+              <p className="text-[9px] text-[#EAD9C4]">
                 ¡Gracias por tu compra! Conserva tu folio #{orderCode}.
               </p>
             </div>
@@ -394,7 +427,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             <button
               type="button"
               onClick={handleCopyTicket}
-              className="flex-1 py-2.5 px-3 rounded-xl border border-stone-300 bg-white hover:bg-stone-100 text-stone-800 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              className="flex-1 py-2.5 px-3 rounded-xl border border-[#DEC8AE] bg-[#FFFDF9] hover:bg-[#F4E3C8] text-[#6B4028] font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
               {copiedTicket ? (
                 <>
@@ -403,7 +436,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 </>
               ) : (
                 <>
-                  <Copy className="w-4 h-4 text-stone-600" />
+                  <Copy className="w-4 h-4 text-[#6B4028]" />
                   <span>Copiar Ticket</span>
                 </>
               )}
@@ -412,7 +445,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             <button
               type="button"
               onClick={() => window.print()}
-              className="py-2.5 px-3 rounded-xl border border-stone-300 bg-white hover:bg-stone-100 text-stone-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="py-2.5 px-3 rounded-xl border border-[#DEC8AE] bg-[#FFFDF9] hover:bg-[#F4E3C8] text-[#6B4028] font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
               title="Imprimir ticket"
             >
               <Printer className="w-4 h-4" />
@@ -421,24 +454,24 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
           <button
             onClick={handleResetAndClose}
-            className="w-full py-3 bg-[#162e1e] hover:bg-[#20402b] text-[#fcfaf6] font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+            className="w-full py-3 bg-[#3A2418] hover:bg-[#4A2E1F] text-[#FFF7EA] font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
           >
             Listo / Volver al Menú
           </button>
         </div>
       ) : cartItems.length === 0 ? (
         /* Empty Cart Screen */
-        <div className="flex-1 p-8 flex flex-col items-center justify-center text-center space-y-3 text-stone-500">
-          <div className="w-16 h-16 rounded-3xl bg-emerald-50 text-[#162e1e] flex items-center justify-center text-3xl">
+        <div className="flex-1 p-8 flex flex-col items-center justify-center text-center space-y-3 text-[#6B4028]">
+          <div className="w-16 h-16 rounded-3xl bg-[#F4E3C8] text-[#3A2418] flex items-center justify-center text-3xl border border-[#DEC8AE]">
             🍽️
           </div>
-          <h3 className="font-bold text-base text-stone-800">Tu pedido está vacío</h3>
-          <p className="text-xs text-stone-500 max-w-xs">
-            Explora nuestro menú casero en Tlalpan o habla con <strong>Giobot</strong> para recibir sugerencias a tu medida.
+          <h3 className="font-bold text-base text-[#2B1B13] font-serif">Tu pedido está vacío</h3>
+          <p className="text-xs text-[#6B4028] max-w-xs">
+            Explora nuestro menú casero en Tlalpan o habla con <strong>Tita</strong> para recibir sugerencias a tu medida.
           </p>
           <button
             onClick={onClose}
-            className="px-5 py-2.5 bg-[#162e1e] text-stone-100 rounded-xl text-xs font-bold shadow-xs hover:bg-[#20402b] transition-colors cursor-pointer"
+            className="px-5 py-2.5 bg-[#3A2418] text-[#FFF7EA] rounded-xl text-xs font-bold shadow-xs hover:bg-[#4A2E1F] transition-colors cursor-pointer"
           >
             Ver Menú Digital
           </button>
@@ -447,22 +480,22 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
         /* Cart List & Checkout Form */
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {/* Restaurant Location Header Banner */}
-          <div className="bg-[#f7f5ef] border border-stone-200 p-2.5 rounded-2xl flex items-center gap-2 text-xs text-stone-700">
-            <MapPin className="w-4 h-4 text-[#b48a44] shrink-0" />
+          <div className="bg-[#FFF7EA] border border-[#DEC8AE] p-2.5 rounded-2xl flex items-center gap-2 text-xs text-[#6B4028]">
+            <MapPin className="w-4 h-4 text-[#A86B3D] shrink-0" />
             <div>
-              <span className="font-bold text-[#162e1e]">Sucursal Tlalpan:</span> Calle la Fama 12, CDMX
-              <span className="block text-[10px] text-stone-500">WhatsApp: 55 7441 1437 • Sucursal, Domicilio y Anticipar orden</span>
+              <span className="font-bold text-[#3A2418]">Sucursal Tlalpan:</span> Calle la Fama 12, CDMX
+              <span className="block text-[10px] text-[#6B4028]/80">WhatsApp: 55 7441 1437 • Sucursal, Domicilio y Anticipar orden</span>
             </div>
           </div>
 
           {/* VIP AUTO-FILL BANNER */}
           {vipProfile ? (
-            <div className="bg-gradient-to-r from-[#162e1e] to-[#1f402c] text-stone-100 p-3 rounded-2xl border border-[#b48a44]/50 shadow-xs flex items-center justify-between text-xs">
+            <div className="bg-gradient-to-r from-[#3A2418] to-[#4A2E1F] text-[#FFF7EA] p-3 rounded-2xl border border-[#C9974D]/50 shadow-xs flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
-                <Star className="w-4 h-4 text-[#d1a85b] fill-[#d1a85b] shrink-0" />
+                <Star className="w-4 h-4 text-[#C9974D] fill-[#C9974D] shrink-0" />
                 <div>
-                  <strong className="block text-stone-50">Socio Aló! VIP: {vipProfile.customerName}</strong>
-                  <span className="text-[11px] text-emerald-200">
+                  <strong className="block text-[#FFF7EA] font-serif">Socio VIP: {vipProfile.customerName}</strong>
+                  <span className="text-[11px] text-[#F4E3C8]">
                     Tus datos fueron cargados automáticamente. Acumularás +1 sello.
                   </span>
                 </div>
@@ -470,17 +503,17 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               <button
                 type="button"
                 onClick={onOpenVipModal}
-                className="text-[11px] font-bold text-[#d1a85b] hover:text-white underline shrink-0 ml-2 cursor-pointer"
+                className="text-[11px] font-bold text-[#C9974D] hover:text-white underline shrink-0 ml-2 cursor-pointer"
               >
                 Mi Tarjeta
               </button>
             </div>
           ) : (
-            <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl text-xs flex items-center justify-between text-[#162e1e]">
+            <div className="bg-[#F4E3C8]/60 border border-[#DEC8AE] p-3 rounded-2xl text-xs flex items-center justify-between text-[#3A2418]">
               <div className="flex items-center gap-2">
-                <Star className="w-4 h-4 text-[#b48a44] shrink-0" />
+                <Star className="w-4 h-4 text-[#A86B3D] shrink-0" />
                 <span>
-                  <strong>Tarjeta Aló! VIP:</strong> Al enviar tu pedido tus datos quedarán guardados para tus próximas compras.
+                  <strong>Tarjeta VIP:</strong> Al enviar tu pedido tus datos quedarán guardados para tus próximas compras.
                 </span>
               </div>
             </div>
@@ -488,30 +521,30 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
           {/* Sustainability Promo Banner */}
           <div className={`p-3 rounded-2xl border text-xs flex items-center justify-between gap-2 transition-all ${
-            bringOwnContainer ? 'bg-emerald-100 border-emerald-400 text-emerald-950 font-medium' : 'bg-stone-100 border-stone-200 text-stone-700'
+            bringOwnContainer ? 'bg-[#F4E3C8] border-[#DEC8AE] text-[#3A2418] font-medium' : 'bg-[#FFF7EA] border-[#DEC8AE] text-[#6B4028]'
           }`}>
             <div className="flex items-center gap-2">
-              <Leaf className={`w-4 h-4 ${bringOwnContainer ? 'text-emerald-700' : 'text-stone-500'}`} />
+              <Leaf className={`w-4 h-4 ${bringOwnContainer ? 'text-[#A86B3D]' : 'text-[#6B4028]'}`} />
               <div>
-                <strong className="block">Descuento Ecológico (10% OFF)</strong>
-                <span className="text-[11px] text-stone-600">Llevo mis propios recipientes / termo</span>
+                <strong className="block font-serif">Descuento Ecológico ({ecoPercent}% OFF)</strong>
+                <span className="text-[11px] text-[#6B4028]">{ecoDescription}</span>
               </div>
             </div>
             <input
               type="checkbox"
               checked={bringOwnContainer}
               onChange={(e) => setBringOwnContainer(e.target.checked)}
-              className="w-5 h-5 accent-emerald-700 rounded-md cursor-pointer"
+              className="w-5 h-5 accent-[#A86B3D] rounded-md cursor-pointer"
             />
           </div>
 
           {/* Cart Item List */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between text-xs text-stone-500 font-bold uppercase tracking-wider">
+            <div className="flex items-center justify-between text-xs text-[#6B4028] font-bold uppercase tracking-wider font-serif">
               <span>Platillos seleccionados</span>
               <button
                 onClick={onClearCart}
-                className="text-[#162e1e] hover:underline text-[11px] font-semibold cursor-pointer"
+                className="text-[#A86B3D] hover:underline text-[11px] font-semibold cursor-pointer"
               >
                 Vaciar carrito
               </button>
@@ -520,38 +553,38 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             {cartItems.map((cartItem) => (
               <div
                 key={cartItem.cartId}
-                className="bg-stone-50 border border-stone-200 rounded-2xl p-3 flex flex-col gap-2 relative shadow-2xs"
+                className="bg-[#FFF7EA]/70 border border-[#DEC8AE] rounded-2xl p-3 flex flex-col gap-2 relative shadow-2xs"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <h4 className="font-bold text-xs text-stone-900">{cartItem.item.name}</h4>
+                    <h4 className="font-bold text-xs text-[#2B1B13] font-serif">{cartItem.item.name}</h4>
                     {cartItem.selectedSize && (
-                      <span className="text-[10px] text-[#162e1e] font-bold bg-emerald-100 px-1.5 py-0.5 rounded-md mr-1">
+                      <span className="text-[10px] text-[#3A2418] font-bold bg-[#F4E3C8] px-1.5 py-0.5 rounded-md mr-1 border border-[#DEC8AE]">
                         {cartItem.selectedSize.name}
                       </span>
                     )}
                     {cartItem.selectedOption && (
-                      <span className="text-[10px] text-stone-600 block">
+                      <span className="text-[10px] text-[#6B4028] block">
                         • {cartItem.selectedOption}
                       </span>
                     )}
                     {cartItem.selectedExtras && cartItem.selectedExtras.length > 0 && (
-                      <span className="text-[10px] text-emerald-800 block">
+                      <span className="text-[10px] text-[#A86B3D] block font-medium">
                         • Extras: {cartItem.selectedExtras.map((e) => e.name).join(', ')}
                       </span>
                     )}
                     {cartItem.customComidaCorrida && (
-                      <span className="text-[10px] text-stone-600 block">
+                      <span className="text-[10px] text-[#6B4028] block">
                         • Sopa: {cartItem.customComidaCorrida.primerTiempo} | Arroz/Pasta: {cartItem.customComidaCorrida.segundoTiempo} | Plato: {cartItem.customComidaCorrida.tercerTiempo}
                       </span>
                     )}
                     {cartItem.customSalad && (
-                      <span className="text-[10px] text-stone-600 block">
+                      <span className="text-[10px] text-[#6B4028] block">
                         • {cartItem.customSalad.proteina}, {cartItem.customSalad.fruta}, {cartItem.customSalad.topping}, {cartItem.customSalad.aderezo}
                       </span>
                     )}
                     {cartItem.specialInstructions && (
-                      <span className="text-[10px] text-stone-600 italic block">
+                      <span className="text-[10px] text-[#6B4028] italic block">
                         " {cartItem.specialInstructions} "
                       </span>
                     )}
@@ -559,45 +592,45 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
                   <button
                     onClick={() => onRemoveItem(cartItem.cartId)}
-                    className="text-stone-400 hover:text-red-600 p-1 transition-colors cursor-pointer"
+                    className="text-[#A86B3D] hover:text-red-600 p-1 transition-colors cursor-pointer"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between pt-1 border-t border-stone-200/60 mt-1">
-                  <div className="flex items-center border border-stone-300 rounded-lg bg-white p-0.5">
+                <div className="flex items-center justify-between pt-1 border-t border-[#DEC8AE]/60 mt-1">
+                  <div className="flex items-center border border-[#DEC8AE] rounded-lg bg-[#FFFDF9] p-0.5">
                     <button
                       onClick={() => onUpdateQuantity(cartItem.cartId, cartItem.quantity - 1)}
-                      className="p-1 text-stone-600 hover:bg-stone-100 rounded-md cursor-pointer"
+                      className="p-1 text-[#6B4028] hover:bg-[#F4E3C8] rounded-md cursor-pointer"
                     >
                       <Minus className="w-3 h-3" />
                     </button>
-                    <span className="w-6 text-center font-bold text-xs">{cartItem.quantity}</span>
+                    <span className="w-6 text-center font-bold text-xs text-[#2B1B13]">{cartItem.quantity}</span>
                     <button
                       onClick={() => onUpdateQuantity(cartItem.cartId, cartItem.quantity + 1)}
-                      className="p-1 text-stone-600 hover:bg-stone-100 rounded-md cursor-pointer"
+                      className="p-1 text-[#6B4028] hover:bg-[#F4E3C8] rounded-md cursor-pointer"
                     >
                       <Plus className="w-3 h-3" />
                     </button>
                   </div>
 
-                  <span className="font-black text-xs text-stone-900">${cartItem.totalPrice}.00</span>
+                  <span className="font-black text-xs text-[#2B1B13] font-serif">${cartItem.totalPrice}.00</span>
                 </div>
               </div>
             ))}
           </div>
 
           {/* Checkout Form */}
-          <form onSubmit={handleCompleteOrder} className="space-y-4 pt-3 border-t border-stone-200">
+          <form onSubmit={handleCompleteOrder} className="space-y-4 pt-3 border-t border-[#DEC8AE]">
             {/* Modalidad de Entrega */}
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-2 font-serif">
                 Tipo de Servicio
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { id: 'delivery', label: '🚚 A Domicilio (+$25)' },
+                  { id: 'delivery', label: `🚚 A Domicilio (+$${deliveryFeeRate})` },
                   { id: 'pickup', label: '🛍️ Anticipar / Llevar' },
                   { id: 'dine_in', label: '🍽️ En Sucursal' },
                 ].map((type) => (
@@ -607,8 +640,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                     onClick={() => setOrderType(type.id as OrderType)}
                     className={`py-2 px-1.5 rounded-xl border text-[11px] font-bold text-center transition-all cursor-pointer ${
                       orderType === type.id
-                        ? 'bg-[#162e1e] text-[#fcfaf6] border-[#162e1e] shadow-xs'
-                        : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
+                        ? 'bg-[#3A2418] text-[#FFF7EA] border-[#3A2418] shadow-xs'
+                        : 'bg-[#FFFDF9] border-[#DEC8AE] text-[#6B4028] hover:bg-[#F4E3C8]'
                     }`}
                   >
                     {type.label}
@@ -620,8 +653,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             {/* Customer Information */}
             <div className="space-y-2">
               <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-0.5 flex items-center gap-1">
-                  <User className="w-3.5 h-3.5 text-[#162e1e]" /> Tu Nombre completo *
+                <label className="block text-[11px] font-bold text-[#6B4028] mb-0.5 flex items-center gap-1">
+                  <User className="w-3.5 h-3.5 text-[#A86B3D]" /> Tu Nombre completo *
                 </label>
                 <input
                   type="text"
@@ -629,13 +662,13 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   placeholder="Ej: María González"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#162e1e]"
+                  className="w-full px-3 py-1.5 text-xs bg-[#FFFDF9] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-0.5 flex items-center gap-1">
-                  <Phone className="w-3.5 h-3.5 text-[#162e1e]" /> Teléfono / WhatsApp de contacto *
+                <label className="block text-[11px] font-bold text-[#6B4028] mb-0.5 flex items-center gap-1">
+                  <Phone className="w-3.5 h-3.5 text-[#A86B3D]" /> Teléfono / WhatsApp de contacto *
                 </label>
                 <input
                   type="tel"
@@ -643,15 +676,15 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   placeholder="Ej: 55 1234 5678"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#162e1e]"
+                  className="w-full px-3 py-1.5 text-xs bg-[#FFFDF9] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]"
                 />
               </div>
 
               {orderType === 'delivery' && (
                 <>
                   <div>
-                    <label className="block text-[11px] font-bold text-stone-700 mb-0.5 flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-[#162e1e]" /> Dirección de Entrega (Tlalpan y alrededores) *
+                    <label className="block text-[11px] font-bold text-[#6B4028] mb-0.5 flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5 text-[#A86B3D]" /> Dirección de Entrega (Tlalpan y alrededores) *
                     </label>
                     <input
                       type="text"
@@ -659,11 +692,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       placeholder="Calle, número exterior/interior, colonia, C.P."
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#162e1e]"
+                      className="w-full px-3 py-1.5 text-xs bg-[#FFFDF9] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-stone-700 mb-0.5">
+                    <label className="block text-[11px] font-bold text-[#6B4028] mb-0.5">
                       Referencia o Entre calles
                     </label>
                     <input
@@ -671,14 +704,14 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       placeholder="Ej: Portón café frente al parque, timbre 2"
                       value={reference}
                       onChange={(e) => setReference(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#162e1e]"
+                      className="w-full px-3 py-1.5 text-xs bg-[#FFFDF9] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]"
                     />
                   </div>
                 </>
               )}
 
               <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-0.5">
+                <label className="block text-[11px] font-bold text-[#6B4028] mb-0.5">
                   Instrucciones o comentarios para cocina
                 </label>
                 <input
@@ -686,20 +719,20 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   placeholder="Ej: Sin cebolla, salsa aparte, etc."
                   value={orderNotes}
                   onChange={(e) => setOrderNotes(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#162e1e]"
+                  className="w-full px-3 py-1.5 text-xs bg-[#FFFDF9] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]"
                 />
               </div>
             </div>
 
             {/* Reward Redemption box if reward available */}
             {vipProfile?.rewardAvailable && (
-              <div className="bg-emerald-100/90 border border-emerald-400 p-3 rounded-2xl text-xs flex items-center justify-between gap-2 text-emerald-950">
+              <div className="bg-[#F4E3C8] border border-[#DEC8AE] p-3 rounded-2xl text-xs flex items-center justify-between gap-2 text-[#3A2418]">
                 <div className="flex items-center gap-2">
-                  <Gift className="w-5 h-5 text-emerald-700 shrink-0" />
+                  <Gift className="w-5 h-5 text-[#A86B3D] shrink-0" />
                   <div>
-                    <strong className="block">¡Tienes 1 Recompensa Aló! VIP disponible!</strong>
-                    <span className="text-[11px] text-emerald-800">
-                      Incluye un Café de Olla o Postre gratis en tu pedido.
+                    <strong className="block font-serif">¡Tienes 1 Recompensa VIP disponible!</strong>
+                    <span className="text-[11px] text-[#6B4028]">
+                      {vipRewardDesc}
                     </span>
                   </div>
                 </div>
@@ -707,15 +740,15 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   type="checkbox"
                   checked={redeemingReward}
                   onChange={(e) => setRedeemingReward(e.target.checked)}
-                  className="w-5 h-5 accent-emerald-700 rounded-md cursor-pointer shrink-0"
+                  className="w-5 h-5 accent-[#A86B3D] rounded-md cursor-pointer shrink-0"
                 />
               </div>
             )}
 
             {/* Payment Method */}
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5 flex items-center gap-1">
-                <CreditCard className="w-3.5 h-3.5 text-[#162e1e]" /> Método de Pago
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-1.5 flex items-center gap-1 font-serif">
+                <CreditCard className="w-3.5 h-3.5 text-[#A86B3D]" /> Método de Pago
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {[
@@ -729,8 +762,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                     onClick={() => setPaymentMethod(pm.id as any)}
                     className={`py-1.5 px-2 rounded-xl border text-xs font-bold text-center transition-all cursor-pointer ${
                       paymentMethod === pm.id
-                        ? 'bg-[#162e1e] text-[#fcfaf6] border-[#162e1e]'
-                        : 'bg-stone-50 border-stone-200 text-stone-700'
+                        ? 'bg-[#3A2418] text-[#FFF7EA] border-[#3A2418]'
+                        : 'bg-[#FFFDF9] border-[#DEC8AE] text-[#6B4028]'
                     }`}
                   >
                     {pm.label}
@@ -740,24 +773,24 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             </div>
 
             {/* Price Breakdown */}
-            <div className="bg-[#fcfaf6] border border-stone-200 rounded-2xl p-3.5 text-xs space-y-1.5 text-stone-700">
+            <div className="bg-[#FFF7EA] border border-[#DEC8AE] rounded-2xl p-3.5 text-xs space-y-1.5 text-[#6B4028]">
               <div className="flex justify-between">
                 <span>Subtotal platillos:</span>
-                <span className="font-bold">${rawSubtotal}.00</span>
+                <span className="font-bold text-[#2B1B13]">${rawSubtotal}.00</span>
               </div>
               {bringOwnContainer && (
-                <div className="flex justify-between text-emerald-800 font-bold">
-                  <span>Descuento Eco (10% OFF):</span>
+                <div className="flex justify-between text-[#A86B3D] font-bold">
+                  <span>Descuento Eco ({ecoPercent}% OFF):</span>
                   <span>-${discountAmount}.00</span>
                 </div>
               )}
               {orderType === 'delivery' && (
                 <div className="flex justify-between">
                   <span>Envío a domicilio:</span>
-                  <span>+$25.00</span>
+                  <span>+${deliveryFee}.00</span>
                 </div>
               )}
-              <div className="flex justify-between text-sm font-black text-[#162e1e] pt-2 border-t border-stone-200">
+              <div className="flex justify-between text-sm font-black text-[#3A2418] pt-2 border-t border-[#DEC8AE]">
                 <span>TOTAL A PAGAR:</span>
                 <span className="text-base font-serif font-black">${total}.00 MXN</span>
               </div>
@@ -765,9 +798,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
             <button
               type="submit"
-              className="w-full py-3.5 px-4 bg-gradient-to-r from-[#162e1e] to-[#20402b] hover:from-[#1b3824] hover:to-[#285037] text-white rounded-xl font-bold text-sm shadow-md transition-all active:scale-98 flex items-center justify-center gap-2 cursor-pointer border border-[#b48a44]/30"
+              className="w-full py-3.5 px-4 bg-gradient-to-r from-[#3A2418] to-[#4A2E1F] hover:from-[#4A2E1F] hover:to-[#5C3825] text-white rounded-xl font-bold text-sm shadow-md transition-all active:scale-98 flex items-center justify-center gap-2 cursor-pointer border border-[#C9974D]/30"
             >
-              <Send className="w-4 h-4 text-[#d1a85b]" />
+              <Send className="w-4 h-4 text-[#C9974D]" />
               <span>Generar Ticket y Enviar a WhatsApp (${total})</span>
             </button>
           </form>

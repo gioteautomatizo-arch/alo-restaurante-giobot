@@ -53,29 +53,29 @@ export const EnsaladaBuilder: React.FC<EnsaladaBuilderProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/70 backdrop-blur-xs animate-fade-in">
-      <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden border border-stone-200 flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#2B1B13]/70 backdrop-blur-xs animate-fade-in">
+      <div className="bg-[#FFF7EA] w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden border border-[#F4E3C8] flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#162e1e] to-[#0f1f14] text-stone-100 p-5 flex items-start justify-between">
+        <div className="bg-gradient-to-r from-[#3A2418] to-[#2B1B13] text-[#FFF7EA] p-5 flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-[#d1a85b]/20 border border-[#d1a85b]/40 flex items-center justify-center text-[#d1a85b] text-2xl font-bold">
+            <div className="w-12 h-12 rounded-2xl bg-[#C9974D]/20 border border-[#C9974D]/40 flex items-center justify-center text-[#C9974D] text-2xl font-bold">
               🥗
             </div>
             <div>
-              <span className="text-[10px] uppercase font-black tracking-widest text-[#d1a85b] bg-[#1a3824] px-2.5 py-0.5 rounded-full border border-[#b48a44]/50">
+              <span className="text-[10px] uppercase font-black tracking-widest text-[#C9974D] bg-[#4A2E1F] px-2.5 py-0.5 rounded-full border border-[#C9974D]/50 font-serif">
                 Línea Fresca & Saludable
               </span>
-              <h2 className="text-xl sm:text-2xl font-black font-serif text-[#fcfaf6] mt-0.5">
+              <h2 className="text-xl sm:text-2xl font-black font-serif text-[#FFF7EA] mt-0.5">
                 Arma Tu Ensalada ($90)
               </h2>
-              <p className="text-xs text-stone-300">
+              <p className="text-xs text-[#F4E3C8]">
                 Incluye base de lechuga italiana, pasta, pepino, jitomate y zanahoria.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full bg-[#1f402c] hover:bg-[#2b593d] text-stone-200 transition-colors"
+            className="p-1.5 rounded-full bg-[#4A2E1F] hover:bg-[#5C3825] text-[#FFF7EA] transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -85,8 +85,8 @@ export const EnsaladaBuilder: React.FC<EnsaladaBuilderProps> = ({
         <div className="p-5 space-y-6 overflow-y-auto flex-1">
           {/* Step 1: Proteína */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-emerald-900 mb-2 flex items-center gap-1.5">
-              <span className="w-5 h-5 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[10px] font-black">1</span>
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#3A2418] mb-2 flex items-center gap-1.5 font-serif">
+              <span className="w-5 h-5 rounded-full bg-[#C77B4A] text-white flex items-center justify-center text-[10px] font-black">1</span>
               Elige 1 Proteína
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -95,14 +95,14 @@ export const EnsaladaBuilder: React.FC<EnsaladaBuilderProps> = ({
                   key={p}
                   type="button"
                   onClick={() => setProteina(p)}
-                  className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all flex items-center justify-between ${
+                  className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all flex items-center justify-between cursor-pointer ${
                     proteina === p
-                      ? 'bg-emerald-100 border-emerald-600 text-emerald-950 shadow-xs'
-                      : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
+                      ? 'bg-[#C77B4A]/15 border-[#A86B3D] text-[#3A2418] shadow-xs ring-1 ring-[#A86B3D]'
+                      : 'bg-[#FFF7EA] border-[#F4E3C8] text-[#3A2418] hover:bg-[#F4E3C8]/50'
                   }`}
                 >
                   <span>{p}</span>
-                  {proteina === p && <Check className="w-4 h-4 text-emerald-700 shrink-0" />}
+                  {proteina === p && <Check className="w-4 h-4 text-[#A86B3D] shrink-0" />}
                 </button>
               ))}
             </div>
@@ -110,8 +110,8 @@ export const EnsaladaBuilder: React.FC<EnsaladaBuilderProps> = ({
 
           {/* Step 2: Fruta */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-emerald-900 mb-2 flex items-center gap-1.5">
-              <span className="w-5 h-5 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[10px] font-black">2</span>
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#3A2418] mb-2 flex items-center gap-1.5 font-serif">
+              <span className="w-5 h-5 rounded-full bg-[#C77B4A] text-white flex items-center justify-center text-[10px] font-black">2</span>
               Elige 1 Fruta
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -120,14 +120,14 @@ export const EnsaladaBuilder: React.FC<EnsaladaBuilderProps> = ({
                   key={f}
                   type="button"
                   onClick={() => setFruta(f)}
-                  className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all flex items-center justify-between ${
+                  className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all flex items-center justify-between cursor-pointer ${
                     fruta === f
-                      ? 'bg-emerald-100 border-emerald-600 text-emerald-950 shadow-xs'
-                      : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
+                      ? 'bg-[#C77B4A]/15 border-[#A86B3D] text-[#3A2418] shadow-xs ring-1 ring-[#A86B3D]'
+                      : 'bg-[#FFF7EA] border-[#F4E3C8] text-[#3A2418] hover:bg-[#F4E3C8]/50'
                   }`}
                 >
                   <span>{f}</span>
-                  {fruta === f && <Check className="w-4 h-4 text-emerald-700 shrink-0" />}
+                  {fruta === f && <Check className="w-4 h-4 text-[#A86B3D] shrink-0" />}
                 </button>
               ))}
             </div>
@@ -135,8 +135,8 @@ export const EnsaladaBuilder: React.FC<EnsaladaBuilderProps> = ({
 
           {/* Step 3: Topping */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-emerald-900 mb-2 flex items-center gap-1.5">
-              <span className="w-5 h-5 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[10px] font-black">3</span>
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#3A2418] mb-2 flex items-center gap-1.5 font-serif">
+              <span className="w-5 h-5 rounded-full bg-[#C77B4A] text-white flex items-center justify-center text-[10px] font-black">3</span>
               Elige 1 Topping
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -145,14 +145,14 @@ export const EnsaladaBuilder: React.FC<EnsaladaBuilderProps> = ({
                   key={t}
                   type="button"
                   onClick={() => setTopping(t)}
-                  className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all flex items-center justify-between ${
+                  className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all flex items-center justify-between cursor-pointer ${
                     topping === t
-                      ? 'bg-emerald-100 border-emerald-600 text-emerald-950 shadow-xs'
-                      : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
+                      ? 'bg-[#C77B4A]/15 border-[#A86B3D] text-[#3A2418] shadow-xs ring-1 ring-[#A86B3D]'
+                      : 'bg-[#FFF7EA] border-[#F4E3C8] text-[#3A2418] hover:bg-[#F4E3C8]/50'
                   }`}
                 >
                   <span>{t}</span>
-                  {topping === t && <Check className="w-4 h-4 text-emerald-700 shrink-0" />}
+                  {topping === t && <Check className="w-4 h-4 text-[#A86B3D] shrink-0" />}
                 </button>
               ))}
             </div>
@@ -160,8 +160,8 @@ export const EnsaladaBuilder: React.FC<EnsaladaBuilderProps> = ({
 
           {/* Step 4: Aderezo */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-emerald-900 mb-2 flex items-center gap-1.5">
-              <span className="w-5 h-5 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[10px] font-black">4</span>
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#3A2418] mb-2 flex items-center gap-1.5 font-serif">
+              <span className="w-5 h-5 rounded-full bg-[#C77B4A] text-white flex items-center justify-center text-[10px] font-black">4</span>
               Elige 1 Aderezo
             </label>
             <div className="grid grid-cols-3 gap-2">
@@ -170,25 +170,25 @@ export const EnsaladaBuilder: React.FC<EnsaladaBuilderProps> = ({
                   key={a}
                   type="button"
                   onClick={() => setAderezo(a)}
-                  className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all flex items-center justify-between ${
+                  className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all flex items-center justify-between cursor-pointer ${
                     aderezo === a
-                      ? 'bg-emerald-100 border-emerald-600 text-emerald-950 shadow-xs'
-                      : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
+                      ? 'bg-[#C77B4A]/15 border-[#A86B3D] text-[#3A2418] shadow-xs ring-1 ring-[#A86B3D]'
+                      : 'bg-[#FFF7EA] border-[#F4E3C8] text-[#3A2418] hover:bg-[#F4E3C8]/50'
                   }`}
                 >
                   <span>{a}</span>
-                  {aderezo === a && <Check className="w-4 h-4 text-emerald-700 shrink-0" />}
+                  {aderezo === a && <Check className="w-4 h-4 text-[#A86B3D] shrink-0" />}
                 </button>
               ))}
             </div>
           </div>
 
           {/* Selection Summary Box */}
-          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
-            <h4 className="text-xs font-black uppercase tracking-wider text-emerald-900 mb-2 flex items-center gap-1">
-              <ChefHat className="w-4 h-4 text-emerald-700" /> Resumen de Tu Ensalada:
+          <div className="bg-[#F4E3C8]/60 border border-[#C9974D]/40 rounded-2xl p-4">
+            <h4 className="text-xs font-black uppercase tracking-wider text-[#3A2418] mb-2 flex items-center gap-1 font-serif">
+              <ChefHat className="w-4 h-4 text-[#A86B3D]" /> Resumen de Tu Ensalada:
             </h4>
-            <div className="text-xs text-emerald-950 font-medium space-y-1">
+            <div className="text-xs text-[#2B1B13] font-medium space-y-1">
               <p>• <strong>Base:</strong> Lechuga italiana, pasta, pepino, jitomate y zanahoria</p>
               <p>• <strong>Proteína:</strong> {proteina}</p>
               <p>• <strong>Fruta:</strong> {fruta}</p>
@@ -199,17 +199,17 @@ export const EnsaladaBuilder: React.FC<EnsaladaBuilderProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="bg-stone-50 p-4 border-t border-stone-200 flex items-center justify-between gap-4">
+        <div className="bg-[#FFF7EA] p-4 border-t border-[#F4E3C8] flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-stone-500 font-bold uppercase">Precio:</span>
-            <span className="text-xl font-black text-[#162e1e]">${90 * quantity}</span>
+            <span className="text-xs text-[#6B4028] font-bold uppercase">Precio:</span>
+            <span className="text-xl font-black text-[#3A2418] font-serif">${90 * quantity}</span>
           </div>
 
           <button
             onClick={handleAdd}
-            className="py-3 px-6 bg-[#162e1e] hover:bg-[#1f402c] text-[#fcfaf6] rounded-xl font-bold text-sm shadow-md transition-all active:scale-98 flex items-center gap-2 cursor-pointer border border-[#b48a44]/30"
+            className="py-3 px-6 bg-gradient-to-r from-[#C77B4A] to-[#A86B3D] hover:from-[#d68a57] hover:to-[#b77848] text-white rounded-xl font-bold text-sm shadow-md transition-all active:scale-98 flex items-center gap-2 cursor-pointer border border-[#C9974D]/30"
           >
-            <Sparkles className="w-4 h-4 text-[#d1a85b]" />
+            <Sparkles className="w-4 h-4 text-[#FFF7EA]" />
             <span>Agregar Ensalada ($90)</span>
           </button>
         </div>

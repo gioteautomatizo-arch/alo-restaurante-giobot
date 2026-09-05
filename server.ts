@@ -71,14 +71,89 @@ REGLAS DE ORO:
 // API endpoint for Giobot Chat
 app.post('/api/chat', async (req, res) => {
   try {
-    const { messages, userPrompt } = req.body;
+    const { messages, userPrompt, dailyMenu, restaurantInfo } = req.body;
 
     if (!ai) {
       // Fallback if no API key is set yet
-      return res.json({
-        text: '¡Hola! 👋 Bienvenido a ¡Aló! Restaurante. Soy Giobot. ¿Qué se te antoja hoy? Te puedo recomendar un rico café de olla, unos chilaquiles o nuestra Comida Corrida del día. 😊',
-      });
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      if (dailyMenu && dailyMenu.isAvailable === false) {
+        return res.send('¡Hola! 👋 Bienvenido a ¡Aló! Restaurante. Soy Tita. Por el momento la comida corrida no está disponible hoy, pero tenemos ricos chilaquiles, hamburguesas, tortas y bebidas. ¿Qué se te antoja hoy? 😊');
+      }
+      return res.send('¡Hola! 👋 Bienvenido a ¡Aló! Restaurante. Soy Tita. ¿Qué se te antoja hoy? Te puedo recomendar un rico café de olla, unos chilaquiles o nuestra Comida Corrida del día. 😊');
     }
+
+    // Información dinámica y oficial del restaurante (Firestore / fuente única de verdad)
+    const effectiveAddress = (restaurantInfo?.address || 'Calle la Fama 12, 14260 Tlalpan CDMX, México').trim();
+    const effectiveWhatsapp = (restaurantInfo?.whatsapp || '55 7441 1437').trim();
+    const effectiveHours = (restaurantInfo?.openingHours || 'Abiertos de 9:00 am a 5:30 pm').trim();
+    const effectiveEcoDiscountPercent = restaurantInfo?.ecoDiscountPercent ?? 10;
+    const effectiveEcoDiscountDesc = (restaurantInfo?.ecoDiscountDescription || '10% de descuento si el cliente trae sus propios recipientes o termo.').trim();
+    const effectiveDeliveryFee = restaurantInfo?.deliveryFee ?? 25;
+    const effectiveVipStamps = restaurantInfo?.vipStampsRequired ?? 5;
+    const effectiveVipReward = (restaurantInfo?.vipRewardDescription || 'Al acumular 5 sellos, el cliente obtiene gratis un café americano o postre del día.').trim();
+    const effectiveServicePolicies = (restaurantInfo?.servicePolicies || 'Servicio en comedor, para llevar y a domicilio. Formas de pago: efectivo, transferencia y tarjeta.').trim();
+    const effectiveActivePromotions = (restaurantInfo?.activePromotions || '10% de descuento por traer recipientes propios.').trim();
+
+    const dynamicRestaurantInfoInstruction = `
+DATOS OFICIALES Y VIGENTES DEL RESTAURANTE (INFORMACIÓN DINÁMICA DE FIRESTORE):
+- Horario de servicio: ${effectiveHours}
+- Ubicación / Dirección: ${effectiveAddress}
+- WhatsApp de Pedidos / Atención: ${effectiveWhatsapp}
+- Costo de envío a domicilio: $${effectiveDeliveryFee} MXN
+- Descuento ecológico: ${effectiveEcoDiscountPercent}% (${effectiveEcoDiscountDesc})
+- Programa Calientito VIP: Acumular ${effectiveVipStamps} sellos para obtener recompensa ("${effectiveVipReward}")
+- Políticas de servicio y formas de pago: ${effectiveServicePolicies}
+- Promociones vigentes: ${effectiveActivePromotions}
+
+REGLAS ESTRICTAS DE INFORMACIÓN DEL RESTAURANTE (PRIORIDAD TOTAL):
+1. Estos datos tienen PRIORIDAD TOTAL Y ABSOLUTA sobre cualquier valor anterior, instrucción previa o regla estática.
+2. Si el cliente pregunta dónde están ubicados, cuál es la dirección, cómo llegar, cuál es su horario, a qué hora abren o cierran, o cuál es su WhatsApp:
+   * Dirección: "${effectiveAddress}"
+   * Horario: "${effectiveHours}"
+   * WhatsApp: "${effectiveWhatsapp}"
+3. Si el cliente pregunta por promociones, descuentos, descuento ecológico o recipientes propios:
+   * Descuento ecológico: ${effectiveEcoDiscountPercent}% (${effectiveEcoDiscountDesc}).
+   * Promociones activas: "${effectiveActivePromotions}".
+4. Si el cliente pregunta por servicio a domicilio o costo de entrega:
+   * Costo de envío: $${effectiveDeliveryFee} MXN.
+5. Si el cliente pregunta sobre la tarjeta o programa "Calientito VIP", sellos necesarios o recompensas:
+   * Se acumulan sellos con cada compra registrada.
+   * Se requieren exactamente ${effectiveVipStamps} sellos.
+   * Recompensa: "${effectiveVipReward}".
+6. Si el cliente pregunta por formas de pago (efectivo, transferencia, tarjeta) o formas de consumo (comedor, para llevar, a domicilio):
+   * Políticas y pagos: "${effectiveServicePolicies}".
+`.trim();
+
+    // Contexto dinámico del Menú del Día en tiempo real (Firestore)
+    let dynamicMenuInstruction = '';
+    if (dailyMenu && typeof dailyMenu === 'object') {
+      const isAvailable = dailyMenu.isAvailable !== false;
+      const guarniciones = Array.isArray(dailyMenu.guarniciones) && dailyMenu.guarniciones.length > 0
+        ? dailyMenu.guarniciones.filter(Boolean).join(', ')
+        : [dailyMenu.guarnicion1, dailyMenu.guarnicion2].filter(Boolean).join(', ');
+
+      dynamicMenuInstruction = `
+MENÚ DEL DÍA ACTUAL (DATOS REALES EN VIVO DE FIRESTORE):
+Precio: $${dailyMenu.price ?? 90}
+Entrada: ${dailyMenu.entrada || 'No especificada'}
+Guisados: ${dailyMenu.platoFuerte || 'No especificado'}
+Guarniciones: ${guarniciones || 'No especificadas'}
+Agua: ${dailyMenu.aguaDelDia || 'Agua fresca del día'}
+Postre: ${dailyMenu.postreDelDia || 'Postre del día'}
+Disponible: ${isAvailable ? 'Sí' : 'No'}
+
+REGLAS DE PRIORIDAD DEL MENÚ DEL DÍA:
+1. Estos datos dinámicos tienen PRIORIDAD TOTAL sobre cualquier ejemplo genérico de comida corrida o menú del día mencionado arriba.
+2. Si el cliente pregunta qué hay de comer hoy, cuál es el menú del día, qué guisados tienen, qué agua hay hoy, qué postre tienen o qué incluye la comida corrida, responde usando ÚNICAMENTE estos datos reales.
+3. Si "Disponible" es "No": indica de manera muy amable que la comida corrida no está disponible actualmente o se encuentra agotada por hoy, y sugiere amablemente otras opciones de nuestra carta (chilaquiles, tortas, hamburguesas, molletes, ensaladas, etc.).
+`.trim();
+    }
+
+    const effectiveSystemInstruction = [
+      GIOBOT_SYSTEM_INSTRUCTION,
+      dynamicRestaurantInfoInstruction,
+      dynamicMenuInstruction,
+    ].filter(Boolean).join('\n\n');
 
     // Build chat conversation context
     const conversationHistory = (messages || []).map((msg: any) => ({
@@ -86,27 +161,92 @@ app.post('/api/chat', async (req, res) => {
       parts: [{ text: msg.text }],
     }));
 
-    // Generate response using Gemini 3.6 Flash
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+    const PRIMARY_MODEL = 'gemini-3.8-flash';
+    const FALLBACK_MODEL = 'gemini-3.5-flash';
+
+    const streamConfig = {
       contents: [
         ...conversationHistory,
         { role: 'user', parts: [{ text: userPrompt }] },
       ],
       config: {
-        systemInstruction: GIOBOT_SYSTEM_INSTRUCTION,
+        systemInstruction: effectiveSystemInstruction,
         temperature: 0.7,
         topP: 0.9,
       },
-    });
+    };
 
-    const text = response.text || '¡Con gusto te ayudo! ¿En qué más puedo apoyarte? 😊';
-    return res.json({ text });
+    const isTemporaryError = (err: any) => {
+      const status = err?.status || err?.code;
+      const msg = (err?.message || String(err)).toLowerCase();
+      return (
+        status === 503 ||
+        msg.includes('503') ||
+        msg.includes('unavailable') ||
+        msg.includes('high demand') ||
+        msg.includes('service unavailable') ||
+        msg.includes('temporarily')
+      );
+    };
+
+    let responseStream: any = null;
+
+    // 1. Intento inicial con modelo principal (gemini-3.8-flash)
+    try {
+      responseStream = await ai.models.generateContentStream({
+        model: PRIMARY_MODEL,
+        ...streamConfig,
+      });
+    } catch (primaryErr: any) {
+      if (isTemporaryError(primaryErr)) {
+        console.warn(`[Tita Chat] Aviso 503/UNAVAILABLE en ${PRIMARY_MODEL}. Reintentando en 1.5s...`);
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        // 2. UN reintento automático con el modelo principal
+        try {
+          responseStream = await ai.models.generateContentStream({
+            model: PRIMARY_MODEL,
+            ...streamConfig,
+          });
+        } catch (retryErr: any) {
+          console.warn(`[Tita Chat] Reintento en ${PRIMARY_MODEL} falló. Activando fallback a ${FALLBACK_MODEL}...`);
+          // 3. Fallback al modelo verificado y disponible (gemini-3.5-flash)
+          responseStream = await ai.models.generateContentStream({
+            model: FALLBACK_MODEL,
+            ...streamConfig,
+          });
+        }
+      } else {
+        // En caso de otro error no temporal, intentar fallback a modelo estable
+        try {
+          responseStream = await ai.models.generateContentStream({
+            model: FALLBACK_MODEL,
+            ...streamConfig,
+          });
+        } catch {
+          throw primaryErr;
+        }
+      }
+    }
+
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Transfer-Encoding', 'chunked');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.flushHeaders?.();
+
+    for await (const chunk of responseStream) {
+      if (chunk.text) {
+        res.write(chunk.text);
+      }
+    }
+    res.end();
   } catch (err: any) {
     console.error('Error in Giobot chat API:', err);
-    return res.json({
-      text: '¡Uy, disculpa la molestia! Tuve un pequeño inconveniente técnico. Pero con gusto te puedo mostrar nuestro menú o tomar tu pedido. 😊',
-    });
+    if (!res.headersSent) {
+      res.status(500).setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.send('¡Uy, disculpa la molestia! Tuve un pequeño inconveniente técnico. Pero con gusto te puedo mostrar nuestro menú o tomar tu pedido. 😊');
+    } else {
+      res.end();
+    }
   }
 });
 

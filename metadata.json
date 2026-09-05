@@ -1,6 +1,6 @@
 {
-  "name": "¡Aló! Restaurante",
-  "description": "Menú digital interactivo, atención con IA de Giobot, pedidos personalizados y tarjeta de lealtad Aló! VIP para ¡Aló! Restaurante.",
+  "name": "Restaurante Calientito",
+  "description": "Menú digital oficial, atención con Tita, pedidos y servicio de cafetería y comida casera para Restaurante Calientito.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

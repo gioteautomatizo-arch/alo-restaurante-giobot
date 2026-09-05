@@ -80,22 +80,22 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/70 backdrop-blur-xs animate-fade-in">
-      <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-stone-200 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#2B1B13]/70 backdrop-blur-xs animate-fade-in">
+      <div className="bg-[#FFFDF9] w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-[#DEC8AE] flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="relative bg-[#162e1e] text-stone-50 p-5 flex items-start justify-between border-b border-[#2d563c]">
+        <div className="relative bg-[#3A2418] text-[#FFF7EA] p-5 flex items-start justify-between border-b border-[#4E3222]">
           <div>
-            <span className="text-[10px] uppercase font-black tracking-widest text-[#d1a85b] bg-[#1f402c] px-2.5 py-0.5 rounded-full border border-[#b48a44]/40">
+            <span className="text-[10px] uppercase font-black tracking-widest text-[#C9974D] bg-[#4A2E1F] px-2.5 py-0.5 rounded-full border border-[#C9974D]/40">
               Personaliza tu orden
             </span>
-            <h2 className="text-xl sm:text-2xl font-black font-serif text-stone-100 mt-1">
+            <h2 className="text-xl sm:text-2xl font-black font-serif text-[#FFF7EA] mt-1">
               {item.name}
             </h2>
-            <p className="text-xs text-stone-300 mt-0.5">{item.description}</p>
+            <p className="text-xs text-[#EAD9C4] mt-0.5">{item.description}</p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full bg-[#1f402c] hover:bg-[#285037] text-[#d1a85b] transition-colors cursor-pointer"
+            className="p-1.5 rounded-full bg-[#4A2E1F] hover:bg-[#5C3825] text-[#C9974D] transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -106,7 +106,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
           {/* Sizes Selection if available */}
           {item.sizes && item.sizes.length > 0 && (
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-2 font-serif">
                 Selecciona el Tamaño
               </label>
               <div className="grid grid-cols-3 gap-2">
@@ -117,8 +117,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
                     onClick={() => setSelectedSize(s)}
                     className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
                       selectedSize?.name === s.name
-                        ? 'bg-[#162e1e] text-[#fcfaf6] border-[#162e1e] shadow-sm'
-                        : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
+                        ? 'bg-[#3A2418] text-[#FFF7EA] border-[#3A2418] shadow-sm'
+                        : 'bg-[#FFF7EA] border-[#DEC8AE] text-[#6B4028] hover:bg-[#F4E3C8]'
                     }`}
                   >
                     <span>{s.name}</span>
@@ -132,10 +132,10 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
           {/* Option Choices if available */}
           {item.options && item.options.length > 0 && (
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-2 font-serif">
                 Elige tu Sabor / Guisado / Opción
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1 border border-stone-100 rounded-xl">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1 border border-[#DEC8AE] rounded-xl bg-[#FFF7EA]/30">
                 {item.options.map((opt) => (
                   <button
                     key={opt}
@@ -143,12 +143,12 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
                     onClick={() => setSelectedOption(opt)}
                     className={`p-2.5 rounded-xl border text-xs font-semibold text-left flex items-center justify-between transition-all cursor-pointer ${
                       selectedOption === opt
-                        ? 'bg-emerald-50 border-[#162e1e] text-[#162e1e] font-bold'
-                        : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
+                        ? 'bg-[#F4E3C8]/70 border-[#A86B3D] text-[#3A2418] font-bold'
+                        : 'bg-[#FFF7EA] border-[#DEC8AE] text-[#6B4028] hover:bg-[#F4E3C8]'
                     }`}
                   >
                     <span>{opt}</span>
-                    {selectedOption === opt && <Check className="w-4 h-4 text-[#162e1e] shrink-0" />}
+                    {selectedOption === opt && <Check className="w-4 h-4 text-[#A86B3D] shrink-0" />}
                   </button>
                 ))}
               </div>
@@ -158,7 +158,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
           {/* Extras checklist if available */}
           {item.extras && item.extras.length > 0 && (
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-2 font-serif">
                 Agrega Extras Deliciosos
               </label>
               <div className="space-y-2">
@@ -171,21 +171,21 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
                       onClick={() => toggleExtra(extra)}
                       className={`w-full p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
                         isChecked
-                          ? 'bg-emerald-50 border-[#162e1e] text-[#162e1e]'
-                          : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
+                          ? 'bg-[#F4E3C8]/70 border-[#A86B3D] text-[#3A2418]'
+                          : 'bg-[#FFF7EA] border-[#DEC8AE] text-[#6B4028] hover:bg-[#F4E3C8]'
                       }`}
                     >
                       <div className="flex items-center gap-2">
                         <div
                           className={`w-4 h-4 rounded-md border flex items-center justify-center ${
-                            isChecked ? 'bg-[#162e1e] border-[#162e1e] text-[#d1a85b]' : 'border-stone-400 bg-white'
+                            isChecked ? 'bg-[#3A2418] border-[#3A2418] text-[#C9974D]' : 'border-[#DEC8AE] bg-white'
                           }`}
                         >
                           {isChecked && <Check className="w-3 h-3" />}
                         </div>
                         <span>{extra.name}</span>
                       </div>
-                      <span className="font-bold text-[#162e1e]">+${extra.price}</span>
+                      <span className="font-bold text-[#A86B3D]">+${extra.price}</span>
                     </button>
                   );
                 })}
@@ -195,16 +195,16 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
 
           {/* Combo / Paquete Upgrade */}
           {item.isComboAvailable && item.comboPrice && (
-            <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+            <div className="bg-[#F4E3C8]/50 border border-[#DEC8AE] rounded-2xl p-3.5 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-[#162e1e] text-[#d1a85b] rounded-xl">
+                <div className="p-2 bg-[#3A2418] text-[#C9974D] rounded-xl">
                   <PackageCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-[#162e1e]">
+                  <h4 className="text-xs font-bold text-[#3A2418] font-serif">
                     ¡Hazlo Paquete Especial!
                   </h4>
-                  <p className="text-[11px] text-stone-600">
+                  <p className="text-[11px] text-[#6B4028]">
                     {item.category === 'desayunos'
                       ? 'Incluye Jugo/Fruta + Café de Olla o Té (+ $20)'
                       : item.category === 'hamburguesas'
@@ -218,8 +218,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
                 onClick={() => setMakeCombo(!makeCombo)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   makeCombo
-                    ? 'bg-[#162e1e] text-[#fcfaf6] shadow-sm'
-                    : 'bg-white text-[#162e1e] border border-stone-300 hover:bg-emerald-100'
+                    ? 'bg-[#3A2418] text-[#FFF7EA] shadow-sm'
+                    : 'bg-[#FFFDF9] text-[#3A2418] border border-[#DEC8AE] hover:bg-[#F4E3C8]'
                 }`}
               >
                 {makeCombo ? '✓ Agregado' : `+ $${item.comboPrice}`}
@@ -229,8 +229,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
 
           {/* Special Instructions */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1 flex items-center gap-1">
-              <MessageSquare className="w-3.5 h-3.5 text-[#162e1e]" />
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-1 flex items-center gap-1 font-serif">
+              <MessageSquare className="w-3.5 h-3.5 text-[#A86B3D]" />
               Instrucciones Especiales (Opcional)
             </label>
             <input
@@ -238,24 +238,24 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
               placeholder="Ej: Sin cebolla, extra salsa verde, con poca sal..."
               value={specialInstructions}
               onChange={(e) => setSpecialInstructions(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#162e1e] text-stone-800"
+              className="w-full px-3 py-2 text-xs bg-[#FFF7EA] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]"
             />
           </div>
         </div>
 
         {/* Footer with Quantity & Price */}
-        <div className="bg-[#fcfaf6] p-4 border-t border-stone-200 flex items-center justify-between gap-4">
-          <div className="flex items-center border border-stone-300 rounded-xl bg-white p-1">
+        <div className="bg-[#FFF7EA] p-4 border-t border-[#DEC8AE] flex items-center justify-between gap-4">
+          <div className="flex items-center border border-[#DEC8AE] rounded-xl bg-[#FFFDF9] p-1">
             <button
               onClick={() => setQuantity(Math.max(1, quantity - 1))}
-              className="p-1.5 text-stone-600 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
+              className="p-1.5 text-[#6B4028] hover:bg-[#F4E3C8] rounded-lg transition-colors cursor-pointer"
             >
               <Minus className="w-4 h-4" />
             </button>
-            <span className="w-8 text-center font-black text-sm text-stone-900">{quantity}</span>
+            <span className="w-8 text-center font-black text-sm text-[#2B1B13]">{quantity}</span>
             <button
               onClick={() => setQuantity(quantity + 1)}
-              className="p-1.5 text-stone-600 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
+              className="p-1.5 text-[#6B4028] hover:bg-[#F4E3C8] rounded-lg transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
             </button>
@@ -263,10 +263,10 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
 
           <button
             onClick={handleAdd}
-            className="flex-1 py-3 px-4 bg-[#162e1e] hover:bg-[#20402b] text-[#fcfaf6] rounded-xl font-bold text-sm shadow-md transition-all active:scale-98 flex items-center justify-between cursor-pointer border border-[#b48a44]/30"
+            className="flex-1 py-3 px-4 bg-[#3A2418] hover:bg-[#4A2E1F] text-[#FFF7EA] rounded-xl font-bold text-sm shadow-md transition-all active:scale-98 flex items-center justify-between cursor-pointer border border-[#C9974D]/30"
           >
             <span>Agregar a mi orden</span>
-            <span className="font-black text-base font-serif text-[#d1a85b]">${totalPrice}</span>
+            <span className="font-black text-base font-serif text-[#C9974D]">${totalPrice}</span>
           </button>
         </div>
       </div>

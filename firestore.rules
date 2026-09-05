@@ -1,0 +1,169 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Identificador único y estable de la instalación del restaurante
+    function isValidRestaurant(data) {
+      return data.restaurantId == 'alo-restaurante';
+    }
+
+    // Validación de usuario autenticado en Firebase Auth
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // 1. Staff Users: Personal del restaurante y roles
+    match /staff_users/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn()
+        && isValidRestaurant(request.resource.data) 
+        && request.resource.data.name is string 
+        && request.resource.data.role in ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'EMPLEADO'];
+      allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
+    }
+
+    // 2. Shifts: Control de turnos y arqueos de caja
+    match /shifts/{shiftId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn()
+        && isValidRestaurant(request.resource.data)
+        && request.resource.data.status in ['abierto', 'cerrado']
+        && request.resource.data.initialCashFund is number;
+      allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
+    }
+
+    // 3. Expenses: Registro de gastos operativos
+    match /expenses/{expenseId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn()
+        && isValidRestaurant(request.resource.data)
+        && request.resource.data.concept is string
+        && request.resource.data.amount is number
+        && request.resource.data.amount >= 0;
+      allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
+    }
+
+    // 4. CXC: Cuentas por cobrar
+    match /cxc_records/{cxcId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn()
+        && isValidRestaurant(request.resource.data)
+        && request.resource.data.person is string
+        && request.resource.data.amount is number
+        && request.resource.data.status in ['Pendiente', 'Pagado', 'Anulado'];
+      allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
+    }
+
+    // 5. Inventory: Artículos y consumos de inventario
+    match /inventory_items/{itemId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn()
+        && isValidRestaurant(request.resource.data)
+        && request.resource.data.name is string;
+      allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
+    }
+
+    // 6. Sobre: Movimientos de resguardo seguro
+    match /sobre_movements/{movementId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn()
+        && isValidRestaurant(request.resource.data)
+        && request.resource.data.amount is number;
+      allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
+    }
+
+    // 7. Daily Menu: Menú del día (lectura pública para comensales, gestión administrativa autenticada)
+    match /daily_menu/{menuDoc} {
+      allow read: if true;
+      allow create, update: if isSignedIn() && isValidRestaurant(request.resource.data);
+      allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
+    }
+
+    // 8. Activity Logs: Bitácora inmutable de auditoría
+    match /activity_logs/{logId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidRestaurant(request.resource.data)
+        && request.resource.data.action is string;
+      allow update, delete: if false; // Inmutabilidad de auditoría
+    }
+
+    // 9. VIP Profiles: Perfiles de clientes VIP Calientito
+    match /vip_profiles/{profileId} {
+      // 1. Lectura individual pública únicamente (conociendo el ID determinístico).
+      // 2. Prohibido listar (list) para usuarios públicos (previene enumeración y descarga masiva).
+      allow get: if true;
+      allow list: if isSignedIn();
+
+      // Creación: Administración autenticada O cliente público bajo validación estricta (stamps: 0, totalOrders: 0, rewardAvailable: false)
+      allow create: if (
+        isSignedIn() && isValidRestaurant(request.resource.data)
+      ) || (
+        isValidRestaurant(request.resource.data)
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() == 10
+        && request.resource.data.customerName is string
+        && request.resource.data.stamps == 0
+        && request.resource.data.totalOrders == 0
+        && request.resource.data.rewardAvailable == false
+        && request.resource.data.pinHash is string
+      );
+
+      // Actualización: Administración autenticada (sellos, órdenes, recompensas)
+      // O cliente público (únicamente datos personales; PROHIBIDO modificar sellos, órdenes, recompensas o identidad)
+      allow update: if (
+        isSignedIn() && isValidRestaurant(request.resource.data)
+      ) || (
+        isValidRestaurant(request.resource.data)
+        && request.resource.data.stamps == resource.data.stamps
+        && request.resource.data.totalOrders == resource.data.totalOrders
+        && request.resource.data.rewardAvailable == resource.data.rewardAvailable
+        && request.resource.data.memberId == resource.data.memberId
+        && request.resource.data.restaurantId == resource.data.restaurantId
+        && request.resource.data.phone == resource.data.phone
+        && request.resource.data.pinHash == resource.data.pinHash
+        && request.resource.data.customerName is string
+      );
+
+      // Eliminación únicamente por administración
+      allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
+    }
+
+    // 10. Tables: Gestión operativa de mesas en tiempo real (exclusivo personal autenticado)
+    match /tables/{tableId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn()
+        && isValidRestaurant(request.resource.data)
+        && request.resource.data.status in ['LIBRE', 'OCUPADA', 'CUENTA', 'LIMPIEZA'];
+      allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
+    }
+
+    // 11. Table Service Requests: Solicitudes de comensales desde su mesa vía código QR
+    match /table_service_requests/{requestId} {
+      // Cliente público: CREATE únicamente bajo validación estricta
+      allow create: if (
+        request.auth == null
+        && isValidRestaurant(request.resource.data)
+        && request.resource.data.status == 'PENDIENTE'
+        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && request.resource.data.requestType in ['LLAMAR_MESERO', 'TORTILLAS', 'BEBIDAS', 'SEGUNDO_TIEMPO', 'TERCER_TIEMPO', 'PEDIR_CUENTA']
+        && request.resource.data.createdAt is string
+        && request.resource.data.keys().hasOnly(['tableNumber', 'requestType', 'status', 'restaurantId', 'createdAt'])
+      ) || (
+        isSignedIn()
+        && isValidRestaurant(request.resource.data)
+      );
+
+      // Lectura: Personal autenticado O comensal en mesa de restaurante en tiempo real
+      allow read: if true;
+
+      // Personal autenticado: actualización y eliminación para atender solicitudes
+      allow update, delete: if isSignedIn();
+    }
+
+    // Denegación por defecto para cualquier otra ruta
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

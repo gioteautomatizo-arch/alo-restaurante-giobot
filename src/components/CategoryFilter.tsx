@@ -59,7 +59,7 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
   return (
     <div
       id="menu-categories"
-      className="sticky top-[49px] sm:top-[55px] z-30 bg-[#faf8f5]/95 backdrop-blur-md border-b border-[#e8dfd1] py-2.5 px-3 sm:px-6 shadow-xs"
+      className="sticky top-[49px] sm:top-[55px] z-30 bg-[#FFF7EA]/95 backdrop-blur-md border-b border-[#DEC8AE] py-2.5 px-3 sm:px-6 shadow-xs"
     >
       <div
         ref={scrollContainerRef}
@@ -74,13 +74,13 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
               onClick={() => handleCategoryClick(cat.id)}
               className={`flex items-center gap-2 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer shrink-0 ${
                 isActive
-                  ? 'bg-[#14281d] text-[#faf8f5] shadow-sm ring-1 ring-[#c4974f]'
-                  : 'bg-white hover:bg-[#f4efe6] text-stone-700 border border-[#e3d8c8]'
+                  ? 'bg-[#3A2418] text-[#FFF7EA] shadow-sm ring-1 ring-[#C9974D]'
+                  : 'bg-[#FFFDF9] hover:bg-[#F4E3C8] text-[#6B4028] border border-[#DEC8AE]'
               }`}
             >
               <IconComponent
                 className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${
-                  isActive ? 'text-[#c4974f]' : 'text-[#8f6b2f]'
+                  isActive ? 'text-[#C9974D]' : 'text-[#A86B3D]'
                 }`}
               />
               <span>{cat.label}</span>
