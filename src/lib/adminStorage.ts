@@ -323,9 +323,13 @@ export function getStaffUsers(): StaffUser[] {
 }
 
 export async function saveStaffUsers(users: StaffUser[]): Promise<void> {
-  // Sincronizar en Firestore
+  // Firestore confirma primero. Después actualizamos tanto el espejo local
+  // como la caché en memoria para que la UI no vuelva a una lista vieja.
   await Promise.all(users.map((u) => saveStaffUserFirestore(u)));
-  localStorage.setItem(STORAGE_KEYS.STAFF_USERS, JSON.stringify(users));
+
+  const cache = getMemoryCache();
+  cache.staffUsers = [...users].sort((a, b) => a.name.localeCompare(b.name));
+  localStorage.setItem(STORAGE_KEYS.STAFF_USERS, JSON.stringify(cache.staffUsers));
   notifyDataChanged();
 }
 
