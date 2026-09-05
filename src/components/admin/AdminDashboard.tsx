@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StaffUser } from '../../types';
 import {
   getAuthSession,
@@ -39,6 +39,17 @@ import { RestaurantInfoEditorView } from './RestaurantInfoEditorView';
 import { VipClientsAdminView } from './VipClientsAdminView';
 import { LocalDataMigrationModal } from './LocalDataMigrationModal';
 import { TablesView } from './TablesView';
+import { OrdersView } from './OrdersView';
+import { subscribeToPendingTableRequests } from '../../lib/tableRequestsService';
+import { subscribeToRestaurantOrders } from '../../lib/ordersService';
+import {
+  isOperationalSoundEnabled,
+  playOperationalAlert,
+  requestBrowserNotificationPermission,
+  setOperationalSoundEnabled,
+  showOperationalNotification,
+  unlockOperationalSound,
+} from '../../lib/operationalAlerts';
 import {
   LayoutDashboard,
   Clock,
@@ -67,6 +78,9 @@ import {
   CloudUpload,
   Lock,
   Grid3X3,
+  ChefHat,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -78,6 +92,7 @@ interface AdminDashboardProps {
 type AdminTab =
   | 'resumen'
   | 'mesas'
+  | 'comandas'
   | 'turno'
   | 'gastos'
   | 'sobre'
@@ -102,6 +117,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [googleUser, setGoogleUser] = useState<FirebaseUser | null>(getCurrentAuthUser());
   const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
   const [authErrorMessage, setAuthErrorMessage] = useState<string | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(isOperationalSoundEnabled());
+  const knownRequestIdsRef = useRef<Set<string> | null>(null);
+  const knownNewOrderIdsRef = useRef<Set<string> | null>(null);
+  const knownReadyOrderIdsRef = useRef<Set<string> | null>(null);
 
   const device = getDeviceIdentifier();
 
@@ -131,6 +150,88 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       window.removeEventListener('storage', handleDataChange);
     };
   }, []);
+
+  // Los navegadores móviles bloquean audio automático hasta el primer toque.
+  // Desbloqueamos el contexto de audio con la primera interacción del empleado.
+  useEffect(() => {
+    if (!soundEnabled) return;
+    const unlockOnFirstTouch = () => {
+      unlockOperationalSound();
+    };
+    window.addEventListener('pointerdown', unlockOnFirstTouch, { once: true });
+    return () => window.removeEventListener('pointerdown', unlockOnFirstTouch);
+  }, [soundEnabled]);
+
+  // V3: alertas operativas sonoras para solicitudes de mesa y comandas nuevas.
+  // El primer snapshot sólo establece la línea base para evitar sonidos al abrir el panel.
+  useEffect(() => {
+    const unsubRequests = subscribeToPendingTableRequests((requests) => {
+      const ids = new Set(requests.map((r) => r.id || `${r.tableNumber}_${r.requestType}`));
+      const previous = knownRequestIdsRef.current;
+      if (previous) {
+        const fresh = requests.filter((r) => !previous.has(r.id || `${r.tableNumber}_${r.requestType}`));
+        if (fresh.length > 0 && soundEnabled) {
+          playOperationalAlert('request');
+          const first = fresh[0];
+          showOperationalNotification(
+            `Mesa ${first.tableNumber} necesita atención`,
+            `${first.requestType.replaceAll('_', ' ')}${fresh.length > 1 ? ` y ${fresh.length - 1} solicitud(es) más` : ''}`
+          );
+        }
+      }
+      knownRequestIdsRef.current = ids;
+    });
+
+    const unsubOrders = subscribeToRestaurantOrders((orders) => {
+      const newOrders = orders.filter((order) => order.status === 'NUEVO');
+      const ids = new Set(newOrders.map((o) => o.id || o.code));
+      const previous = knownNewOrderIdsRef.current;
+      if (previous) {
+        const fresh = newOrders.filter((o) => !previous.has(o.id || o.code));
+        if (fresh.length > 0 && soundEnabled) {
+          playOperationalAlert('order');
+          const first = fresh[0];
+          showOperationalNotification(
+            first.tableNumber ? `Nueva comanda · Mesa ${first.tableNumber}` : 'Nueva comanda',
+            `${first.items.length} producto(s) · $${first.total}`
+          );
+        }
+      }
+      knownNewOrderIdsRef.current = ids;
+
+      const readyOrders = orders.filter((order) => order.status === 'LISTO');
+      const readyIds = new Set(readyOrders.map((o) => o.id || o.code));
+      const previousReady = knownReadyOrderIdsRef.current;
+      if (previousReady && currentUser.role !== 'COCINA') {
+        const freshReady = readyOrders.filter((o) => !previousReady.has(o.id || o.code));
+        if (freshReady.length > 0 && soundEnabled) {
+          playOperationalAlert('ready');
+          const firstReady = freshReady[0];
+          showOperationalNotification(
+            firstReady.tableNumber ? `Pedido listo · Mesa ${firstReady.tableNumber}` : 'Pedido listo',
+            `Comanda ${firstReady.code} lista para entregar`
+          );
+        }
+      }
+      knownReadyOrderIdsRef.current = readyIds;
+    });
+
+    return () => {
+      unsubRequests();
+      unsubOrders();
+    };
+  }, [soundEnabled, currentUser.role]);
+
+  const handleToggleSound = async () => {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    await setOperationalSoundEnabled(next);
+    if (next) {
+      await unlockOperationalSound();
+      await requestBrowserNotificationPermission();
+      await playOperationalAlert('request');
+    }
+  };
 
   const handleRefreshStats = () => {
     setRefreshTrigger((prev) => prev + 1);
@@ -165,26 +266,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const inventoryList = getInventory();
   const totalConsumptionItems = inventoryList.reduce((sum, i) => sum + i.consumption, 0);
 
-  // Tabs de navegación según rol
+  // V3: permisos de navegación por rol operativo.
   const tabs = [
-    { id: 'resumen', label: 'Resumen', icon: LayoutDashboard, roleMin: 'EMPLEADO' },
-    { id: 'mesas', label: 'Mesas', icon: Grid3X3, roleMin: 'EMPLEADO' },
-    { id: 'turno', label: 'Control de Turno', icon: Clock, roleMin: 'EMPLEADO' },
-    { id: 'gastos', label: 'Gastos & Comprobantes', icon: Receipt, roleMin: 'EMPLEADO' },
-    { id: 'sobre', label: 'Sobre / Resguardo', icon: Mail, roleMin: 'EMPLEADO' },
-    { id: 'cxc', label: 'CXC', icon: CreditCard, roleMin: 'EMPLEADO' },
-    { id: 'vip_clients', label: 'Clientes VIP', icon: Star, roleMin: 'EMPLEADO' },
-    { id: 'inventario', label: 'Inventario de Papel', icon: Package, roleMin: 'EMPLEADO' },
-    { id: 'menu_dia', label: 'Menú del Día', icon: Utensils, roleMin: 'ENCARGADO' },
-    { id: 'info_restaurante', label: 'Info Restaurante', icon: Store, roleMin: 'ENCARGADO' },
-    { id: 'historial', label: 'Historial de Cortes', icon: History, roleMin: 'ENCARGADO' },
-    { id: 'bitacora', label: 'Bitácora & Auditoría', icon: Shield, roleMin: 'ENCARGADO' },
-    { id: 'usuarios', label: 'Colaboradores & PINs', icon: Users, roleMin: 'ADMINISTRADOR' },
-  ].filter((t) => {
-    if (t.roleMin === 'ADMINISTRADOR') return currentUser.role === 'DUEÑA' || currentUser.role === 'ADMINISTRADOR';
-    if (t.roleMin === 'ENCARGADO') return currentUser.role === 'DUEÑA' || currentUser.role === 'ADMINISTRADOR' || currentUser.role === 'ENCARGADO';
-    return true;
-  });
+    { id: 'resumen', label: 'Resumen', icon: LayoutDashboard, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'COCINA', 'EMPLEADO'] },
+    { id: 'mesas', label: 'Mesas', icon: Grid3X3, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'EMPLEADO'] },
+    { id: 'comandas', label: 'Comandas', icon: ChefHat, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'COCINA', 'EMPLEADO'] },
+    { id: 'turno', label: 'Control de Turno', icon: Clock, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
+    { id: 'gastos', label: 'Gastos & Comprobantes', icon: Receipt, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
+    { id: 'sobre', label: 'Sobre / Resguardo', icon: Mail, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'] },
+    { id: 'cxc', label: 'CXC', icon: CreditCard, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
+    { id: 'vip_clients', label: 'Clientes VIP', icon: Star, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
+    { id: 'inventario', label: 'Inventario de Papel', icon: Package, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'] },
+    { id: 'menu_dia', label: 'Menú del Día', icon: Utensils, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'] },
+    { id: 'info_restaurante', label: 'Info Restaurante', icon: Store, allowed: ['DUEÑA', 'ADMINISTRADOR'] },
+    { id: 'historial', label: 'Historial de Cortes', icon: History, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
+    { id: 'bitacora', label: 'Bitácora & Auditoría', icon: Shield, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'] },
+    { id: 'usuarios', label: 'Colaboradores & Accesos', icon: Users, allowed: ['DUEÑA', 'ADMINISTRADOR'] },
+  ].filter((tab) => tab.allowed.includes(currentUser.role));
 
   const canMigrate = currentUser.role === 'DUEÑA' || currentUser.role === 'ADMINISTRADOR';
 
@@ -314,6 +412,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </span>
             )}
           </div>
+
+          {/* V3: activar/desactivar sonido de alertas operativas */}
+          <button
+            onClick={handleToggleSound}
+            className={`p-2 sm:px-3 sm:py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              soundEnabled
+                ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-300'
+                : 'bg-[#4A2E1F] border-[#C9974D]/30 text-[#F4E3C8]'
+            }`}
+            title={soundEnabled ? 'Alertas sonoras activas. Toca para silenciar.' : 'Toca para activar sonido y vibración.'}
+          >
+            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            <span className="hidden md:inline">{soundEnabled ? 'Sonido activo' : 'Activar sonido'}</span>
+          </button>
 
           {/* Información de Cuenta Google Conectada */}
           {googleUser && (
@@ -664,6 +776,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {activeTab === 'mesas' && (
           <TablesView currentUser={currentUser} />
+        )}
+
+        {activeTab === 'comandas' && (
+          <OrdersView currentUser={currentUser} />
         )}
 
         {activeTab === 'turno' && (

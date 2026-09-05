@@ -66,7 +66,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
     setName(user.name);
     setUsername(user.username);
     setRole(user.role);
-    setPin(user.pin);
+    setPin(user.pin || '');
     setPhone(user.phone || '');
     setIsModalOpen(true);
   };
@@ -180,7 +180,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
             Equipo & Colaboradores del Restaurante
           </h2>
           <p className="text-xs text-[#6B4028] mt-0.5">
-            Administra los roles, PINs de acceso para iPad/Móviles y niveles de seguridad del personal.
+            Cada colaborador entra desde su celular con usuario + PIN/contraseña y ve únicamente las funciones de su rol.
           </p>
         </div>
 
@@ -253,7 +253,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                 <div className="mt-4 space-y-1.5 text-xs text-[#6B4028] bg-[#FFF7EA] p-3 rounded-2xl border border-[#F4E3C8]">
                   <div className="flex items-center justify-between">
                     <span className="text-[#6B4028]">PIN de acceso:</span>
-                    <span className="font-mono font-bold text-[#2B1B13]">•••• ({u.pin})</span>
+                    <span className="font-mono font-bold text-[#2B1B13]">••••</span>
                   </div>
                   {u.phone && (
                     <div className="flex items-center justify-between">
@@ -360,10 +360,13 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                   onChange={(e) => setRole(e.target.value as UserRole)}
                   className="w-full px-3 py-2.5 bg-white rounded-xl border border-[#F4E3C8] text-xs font-bold text-[#2B1B13] focus:border-[#C9974D] focus:outline-hidden"
                 >
-                  <option value="DUEÑA">👑 DUEÑA (Máxima autoridad & Acceso total)</option>
+                  <option value="DUEÑA">👑 DUEÑA (Acceso total)</option>
                   <option value="ADMINISTRADOR">🛡️ ADMINISTRADOR (Acceso total & Auditoría)</option>
-                  <option value="ENCARGADO">⭐ ENCARGADO (Caja, Cortes, Menú & Gastos)</option>
-                  <option value="EMPLEADO">👤 EMPLEADO (Operación, Comandas & Gastos turno)</option>
+                  <option value="ENCARGADO">⭐ ENCARGADO (Operación, Caja y Gestión)</option>
+                  <option value="CAJA">💵 CAJA (Mesas, comandas, cobros y turno)</option>
+                  <option value="MESERO">🍽️ MESERO (Mesas, solicitudes y comandas)</option>
+                  <option value="COCINA">👨‍🍳 COCINA (Comandas)</option>
+                  <option value="EMPLEADO">👤 EMPLEADO (Mesas y comandas)</option>
                 </select>
               </div>
 
