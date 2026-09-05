@@ -104,7 +104,13 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         return u;
       });
 
-      await saveStaffUsers(updatedList);
+      try {
+        await saveStaffUsers(updatedList);
+        setSuccessMsg(`Colaborador ${name} actualizado y sincronizado.`);
+      } catch (error) {
+        console.error('No se pudo confirmar colaborador en Firestore:', error);
+        setSuccessMsg(`Colaborador ${name} guardado en este dispositivo; Firebase aún no confirmó la sincronización.`);
+      }
       addActivityLog({
         userName: currentUser.name,
         userId: currentUser.id,
@@ -112,7 +118,6 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         action: `${currentUser.name} actualizó datos del colaborador ${name} (${role})`,
         category: 'usuario',
       });
-      setSuccessMsg(`Colaborador ${name} actualizado.`);
     } else {
       // Create
       const newUser: StaffUser = {
@@ -126,7 +131,13 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         createdAt: formatLocalDate(new Date()),
       };
 
-      await saveStaffUsers([...currentList, newUser]);
+      try {
+        await saveStaffUsers([...currentList, newUser]);
+        setSuccessMsg(`Nuevo colaborador ${name} creado y sincronizado.`);
+      } catch (error) {
+        console.error('No se pudo confirmar colaborador en Firestore:', error);
+        setSuccessMsg(`Nuevo colaborador ${name} guardado en este dispositivo; Firebase aún no confirmó la sincronización.`);
+      }
       addActivityLog({
         userName: currentUser.name,
         userId: currentUser.id,
@@ -134,7 +145,6 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         action: `${currentUser.name} dio de alta a un nuevo colaborador: ${name} (${role})`,
         category: 'usuario',
       });
-      setSuccessMsg(`Nuevo colaborador ${name} creado con éxito.`);
     }
 
     setTimeout(() => setSuccessMsg(null), 3000);
