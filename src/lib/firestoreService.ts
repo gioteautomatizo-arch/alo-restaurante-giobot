@@ -328,10 +328,52 @@ export function initFirestoreRealtimeSync(): () => void {
       onSnapshot(
         staffQuery,
         (snapshot) => {
-          const users: StaffUser[] = [];
+          const remoteUsers: StaffUser[] = [];
           snapshot.forEach((d) => {
-            users.push(d.data() as StaffUser);
+            remoteUsers.push(d.data() as StaffUser);
           });
+
+          // V3.7: evitar que un snapshot atrasado borre de la UI a un
+          // colaborador recién creado. Mientras exista una escritura local
+          // pendiente, esa versión tiene prioridad hasta que Firestore la
+          // confirme explícitamente.
+          let users = remoteUsers;
+          try {
+            const pendingRaw = localStorage.getItem('alo_admin_staff_pending_sync_v1');
+            if (pendingRaw) {
+              const pendingPayload = JSON.parse(pendingRaw);
+              const pendingUsers: StaffUser[] = Array.isArray(pendingPayload?.users)
+                ? pendingPayload.users
+                : [];
+
+              const sameStaff = (a: StaffUser | undefined, b: StaffUser) =>
+                !!a &&
+                a.id === b.id &&
+                a.name === b.name &&
+                a.username === b.username &&
+                a.role === b.role &&
+                a.active === b.active &&
+                (a.phone || '') === (b.phone || '') &&
+                (a.pin || '') === (b.pin || '');
+
+              const remoteById = new Map(remoteUsers.map((u) => [u.id, u]));
+              const allConfirmed =
+                pendingUsers.length > 0 &&
+                pendingUsers.every((pendingUser) => sameStaff(remoteById.get(pendingUser.id), pendingUser));
+
+              if (allConfirmed) {
+                localStorage.removeItem('alo_admin_staff_pending_sync_v1');
+              } else if (pendingUsers.length > 0) {
+                const merged = new Map<string, StaffUser>();
+                remoteUsers.forEach((u) => merged.set(u.id, u));
+                pendingUsers.forEach((u) => merged.set(u.id, u));
+                users = Array.from(merged.values());
+              }
+            }
+          } catch (error) {
+            console.warn('No se pudo reconciliar personal pendiente:', error);
+          }
+
           if (users.length > 0) {
             memoryCache.staffUsers = users.sort((a, b) => a.name.localeCompare(b.name));
           }

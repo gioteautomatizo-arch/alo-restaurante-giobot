@@ -302,10 +302,31 @@ export function getLocalShiftType(d = new Date()): 'AM' | 'PM' {
 // -------------------------------------------------------------
 // SERVICIO DE GESTIÓN DE USUARIOS Y ROLES
 // -------------------------------------------------------------
+const PENDING_STAFF_SYNC_KEY = 'alo_admin_staff_pending_sync_v1';
+
+function readPendingStaffUsers(): StaffUser[] {
+  try {
+    const raw = localStorage.getItem(PENDING_STAFF_SYNC_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed?.users) ? parsed.users : [];
+  } catch {
+    return [];
+  }
+}
+
+function mergeStaffLists(base: StaffUser[], overlay: StaffUser[]): StaffUser[] {
+  const map = new Map<string, StaffUser>();
+  base.forEach((u) => map.set(u.id, u));
+  overlay.forEach((u) => map.set(u.id, u));
+  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export function getStaffUsers(): StaffUser[] {
+  const pending = readPendingStaffUsers();
   const cache = getMemoryCache();
   if (cache.staffUsers && cache.staffUsers.length > 0) {
-    return cache.staffUsers;
+    return mergeStaffLists(cache.staffUsers, pending);
   }
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.STAFF_USERS);
@@ -313,24 +334,33 @@ export function getStaffUsers(): StaffUser[] {
       localStorage.setItem(STORAGE_KEYS.STAFF_USERS, JSON.stringify(INITIAL_STAFF));
       // Auto-sembrar a Firestore en background
       INITIAL_STAFF.forEach((u) => saveStaffUserFirestore(u).catch(() => {}));
-      return INITIAL_STAFF;
+      return mergeStaffLists(INITIAL_STAFF, pending);
     }
     const users: StaffUser[] = JSON.parse(raw);
-    return users;
+    return mergeStaffLists(users, pending);
   } catch {
-    return INITIAL_STAFF;
+    return mergeStaffLists(INITIAL_STAFF, pending);
   }
 }
 
 export async function saveStaffUsers(users: StaffUser[]): Promise<void> {
-  // Firestore confirma primero. Después actualizamos tanto el espejo local
-  // como la caché en memoria para que la UI no vuelva a una lista vieja.
-  await Promise.all(users.map((u) => saveStaffUserFirestore(u)));
-
+  // V3.7: primero persistimos localmente y marcamos la lista como pendiente.
+  // Así un snapshot viejo de Firestore no puede hacer desaparecer al colaborador
+  // recién creado mientras la nube termina de confirmar el cambio.
+  const normalized = [...users].sort((a, b) => a.name.localeCompare(b.name));
   const cache = getMemoryCache();
-  cache.staffUsers = [...users].sort((a, b) => a.name.localeCompare(b.name));
-  localStorage.setItem(STORAGE_KEYS.STAFF_USERS, JSON.stringify(cache.staffUsers));
+  cache.staffUsers = normalized;
+  localStorage.setItem(STORAGE_KEYS.STAFF_USERS, JSON.stringify(normalized));
+  localStorage.setItem(
+    PENDING_STAFF_SYNC_KEY,
+    JSON.stringify({ savedAt: Date.now(), users: normalized })
+  );
   notifyDataChanged();
+
+  // La confirmación en nube sigue siendo obligatoria para que el usuario
+  // aparezca en otros dispositivos. El marcador pendiente se elimina desde
+  // el listener de Firestore cuando el snapshot ya contiene la misma lista.
+  await Promise.all(normalized.map((u) => saveStaffUserFirestore(u)));
 }
 
 // -------------------------------------------------------------
