@@ -109,12 +109,27 @@ type AdminTab =
   | 'bitacora'
   | 'usuarios';
 
+const getDefaultTabForRole = (role: StaffUser['role']): AdminTab => {
+  if (role === 'COCINA') return 'comandas';
+  if (role === 'MESERO' || role === 'EMPLEADO') return 'mesas';
+  return 'resumen';
+};
+
+const getWorkspaceLabelForRole = (role: StaffUser['role']): string => {
+  if (role === 'DUEÑA' || role === 'ADMINISTRADOR') return 'Administración';
+  if (role === 'ENCARGADO') return 'Operación · Encargado';
+  if (role === 'CAJA') return 'Operación · Caja';
+  if (role === 'COCINA') return 'Operación · Cocina';
+  if (role === 'MESERO') return 'Operación · Mesero';
+  return 'Operación · Empleado';
+};
+
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   currentUser,
   onLogout,
   onExitToStore,
 }) => {
-  const [activeTab, setActiveTab] = useState<AdminTab>('resumen');
+  const [activeTab, setActiveTab] = useState<AdminTab>(() => getDefaultTabForRole(currentUser.role));
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
   const [isMigrationModalOpen, setIsMigrationModalOpen] = useState<boolean>(false);
   const [syncState, setSyncState] = useState<SyncState>(getSyncState());
@@ -175,7 +190,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const previous = knownRequestIdsRef.current;
       if (previous) {
         const fresh = requests.filter((r) => !previous.has(r.id || `${r.tableNumber}_${r.requestType}`));
-        if (fresh.length > 0 && soundEnabled) {
+        if (fresh.length > 0 && soundEnabled && currentUser.role !== 'COCINA') {
           playOperationalAlert('request');
           const first = fresh[0];
           showOperationalNotification(
@@ -193,7 +208,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const previous = knownNewOrderIdsRef.current;
       if (previous) {
         const fresh = newOrders.filter((o) => !previous.has(o.id || o.code));
-        if (fresh.length > 0 && soundEnabled) {
+        if (
+          fresh.length > 0 &&
+          soundEnabled &&
+          ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'COCINA'].includes(currentUser.role)
+        ) {
           playOperationalAlert('order');
           const first = fresh[0];
           showOperationalNotification(
@@ -207,7 +226,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const readyOrders = orders.filter((order) => order.status === 'LISTO');
       const readyIds = new Set(readyOrders.map((o) => o.id || o.code));
       const previousReady = knownReadyOrderIdsRef.current;
-      if (previousReady && currentUser.role !== 'COCINA') {
+      if (
+        previousReady &&
+        ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'EMPLEADO'].includes(currentUser.role)
+      ) {
         const freshReady = readyOrders.filter((o) => !previousReady.has(o.id || o.code));
         if (freshReady.length > 0 && soundEnabled) {
           playOperationalAlert('ready');
@@ -284,7 +306,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // V3: permisos de navegación por rol operativo.
   const tabs = [
-    { id: 'resumen', label: 'Resumen', icon: LayoutDashboard, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'COCINA', 'EMPLEADO'] },
+    { id: 'resumen', label: 'Resumen', icon: LayoutDashboard, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
     { id: 'mesas', label: 'Mesas', icon: Grid3X3, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'EMPLEADO'] },
     { id: 'comandas', label: 'Comandas', icon: ChefHat, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'COCINA', 'EMPLEADO'] },
     { id: 'turno', label: 'Control de Turno', icon: Clock, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
@@ -299,6 +321,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     { id: 'bitacora', label: 'Bitácora & Auditoría', icon: Shield, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'] },
     { id: 'usuarios', label: 'Colaboradores & Accesos', icon: Users, allowed: ['DUEÑA', 'ADMINISTRADOR'] },
   ].filter((tab) => tab.allowed.includes(currentUser.role));
+
+  // Defensa de interfaz: aunque un botón viejo intente abrir una sección fuera del rol,
+  // nunca se renderiza contenido no autorizado.
+  const allowedTabIds = new Set(tabs.map((tab) => tab.id as AdminTab));
+  const safeActiveTab: AdminTab = allowedTabIds.has(activeTab)
+    ? activeTab
+    : getDefaultTabForRole(currentUser.role);
+  const workspaceLabel = getWorkspaceLabelForRole(currentUser.role);
 
   const canMigrate = currentUser.role === 'DUEÑA' || currentUser.role === 'ADMINISTRADOR';
 
@@ -330,7 +360,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           <div className="flex items-center gap-2">
             <span className="font-serif font-bold text-lg sm:text-xl tracking-tight text-[#FFF7EA]">
-              Restaurante Calientito <span className="text-[#C9974D] font-normal text-sm sm:text-base font-sans">| Administración</span>
+              Restaurante Calientito <span className="text-[#C9974D] font-normal text-sm sm:text-base font-sans">| {workspaceLabel}</span>
             </span>
 
             {/* Pill de Estado de Turno */}
@@ -526,7 +556,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="flex items-center gap-1.5 max-w-7xl mx-auto min-w-max">
           {tabs.map((tab) => {
             const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
+            const isActive = safeActiveTab === tab.id;
             return (
               <button
                 key={tab.id}
@@ -616,7 +646,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
 
-        {activeTab === 'resumen' && (
+        {safeActiveTab === 'resumen' && (
           <div className="space-y-6">
             {/* Banner de Bienvenida y Estado Rápido */}
             <div className="bg-[#3A2418] text-[#FFF7EA] rounded-3xl p-6 sm:p-8 border border-[#4E3222] shadow-md relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -819,51 +849,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
 
-        {activeTab === 'mesas' && (
+        {safeActiveTab === 'mesas' && (
           <TablesView currentUser={currentUser} />
         )}
 
-        {activeTab === 'comandas' && (
+        {safeActiveTab === 'comandas' && (
           <OrdersView currentUser={currentUser} />
         )}
 
-        {activeTab === 'turno' && (
+        {safeActiveTab === 'turno' && (
           <ShiftControlView currentUser={currentUser} onRefreshStats={handleRefreshStats} />
         )}
 
-        {activeTab === 'gastos' && (
+        {safeActiveTab === 'gastos' && (
           <ExpensesView currentUser={currentUser} onRefreshStats={handleRefreshStats} />
         )}
 
-        {activeTab === 'sobre' && (
+        {safeActiveTab === 'sobre' && (
           <SobreView currentUser={currentUser} onRefreshStats={handleRefreshStats} />
         )}
 
-        {activeTab === 'cxc' && (
+        {safeActiveTab === 'cxc' && (
           <CxcView currentUser={currentUser} onRefreshStats={handleRefreshStats} />
         )}
 
-        {activeTab === 'vip_clients' && (
+        {safeActiveTab === 'vip_clients' && (
           <VipClientsAdminView currentUser={currentUser} onRefreshStats={handleRefreshStats} />
         )}
 
-        {activeTab === 'inventario' && (
+        {safeActiveTab === 'inventario' && (
           <InventoryView currentUser={currentUser} onRefreshStats={handleRefreshStats} />
         )}
 
-        {activeTab === 'menu_dia' && (
+        {safeActiveTab === 'menu_dia' && (
           <DailyMenuEditorView currentUser={currentUser} onRefreshStats={handleRefreshStats} />
         )}
 
-        {activeTab === 'info_restaurante' && (
+        {safeActiveTab === 'info_restaurante' && (
           <RestaurantInfoEditorView currentUser={currentUser} onRefreshStats={handleRefreshStats} />
         )}
 
-        {activeTab === 'historial' && <ShiftHistoryView />}
+        {safeActiveTab === 'historial' && <ShiftHistoryView />}
 
-        {activeTab === 'bitacora' && <ActivityLogsView currentUser={currentUser} />}
+        {safeActiveTab === 'bitacora' && <ActivityLogsView currentUser={currentUser} />}
 
-        {activeTab === 'usuarios' && (
+        {safeActiveTab === 'usuarios' && (
           <StaffManagementView currentUser={currentUser} onRefreshStats={handleRefreshStats} />
         )}
       </main>
