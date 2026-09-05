@@ -431,6 +431,8 @@ export interface RestaurantOrderItem {
   customizationSummary?: string;
 }
 
+export type RestaurantOrderBillingStatus = 'PENDIENTE' | 'PAGADO';
+
 export interface RestaurantOrder {
   id?: string;
   code: string;
@@ -450,6 +452,9 @@ export interface RestaurantOrder {
   deliveryFee: number;
   total: number;
   status: RestaurantOrderStatus;
+  billingStatus?: RestaurantOrderBillingStatus;
+  paidAt?: string;
+  paymentId?: string;
   createdAt: string;
   updatedAt: string;
   claimedById?: string;
@@ -459,3 +464,32 @@ export interface RestaurantOrder {
   cancelledAt?: string;
   cancelledBy?: string;
 }
+
+// -------------------------------------------------------------
+// V4 - CUENTAS POR MESA / CAJA / COBROS
+// -------------------------------------------------------------
+export type TablePaymentMethod =
+  | 'EFECTIVO'
+  | 'TARJETA'
+  | 'TRANSFERENCIA'
+  | 'MERCADO_PAGO';
+
+export interface TablePayment {
+  id?: string;
+  code: string;
+  restaurantId: 'alo-restaurante';
+  tableNumber: number;
+  orderIds: string[];
+  subtotal: number;
+  discountAmount: number;
+  tipAmount: number;
+  total: number;
+  paymentMethod: TablePaymentMethod;
+  cashReceived?: number;
+  changeDue: number;
+  status: 'PAGADO' | 'ANULADO';
+  createdAt: string;
+  chargedById: string;
+  chargedByName: string;
+}
+
