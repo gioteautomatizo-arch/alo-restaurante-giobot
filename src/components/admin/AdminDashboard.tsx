@@ -43,12 +43,16 @@ import { OrdersView } from './OrdersView';
 import { subscribeToPendingTableRequests } from '../../lib/tableRequestsService';
 import { subscribeToRestaurantOrders } from '../../lib/ordersService';
 import {
+  getOperationalSoundProfile,
+  getOperationalSoundProfileLabel,
   isOperationalSoundEnabled,
   playOperationalAlert,
   requestBrowserNotificationPermission,
+  setOperationalSoundProfile,
   setOperationalSoundEnabled,
   showOperationalNotification,
   unlockOperationalSound,
+  OperationalSoundProfile,
 } from '../../lib/operationalAlerts';
 import {
   LayoutDashboard,
@@ -118,6 +122,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
   const [authErrorMessage, setAuthErrorMessage] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(isOperationalSoundEnabled());
+  const [soundProfile, setSoundProfile] = useState<OperationalSoundProfile>(getOperationalSoundProfile());
   const knownRequestIdsRef = useRef<Set<string> | null>(null);
   const knownNewOrderIdsRef = useRef<Set<string> | null>(null);
   const knownReadyOrderIdsRef = useRef<Set<string> | null>(null);
@@ -231,6 +236,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       await requestBrowserNotificationPermission();
       await playOperationalAlert('request');
     }
+  };
+
+  const handleSoundProfileChange = async (profile: OperationalSoundProfile) => {
+    setSoundProfile(profile);
+    setOperationalSoundProfile(profile);
+    if (!soundEnabled) {
+      setSoundEnabled(true);
+      await setOperationalSoundEnabled(true);
+    }
+    await unlockOperationalSound();
+    await playOperationalAlert('request');
   };
 
   const handleRefreshStats = () => {
@@ -413,19 +429,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             )}
           </div>
 
-          {/* V3: activar/desactivar sonido de alertas operativas */}
-          <button
-            onClick={handleToggleSound}
-            className={`p-2 sm:px-3 sm:py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              soundEnabled
-                ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-300'
-                : 'bg-[#4A2E1F] border-[#C9974D]/30 text-[#F4E3C8]'
-            }`}
-            title={soundEnabled ? 'Alertas sonoras activas. Toca para silenciar.' : 'Toca para activar sonido y vibración.'}
-          >
-            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-            <span className="hidden md:inline">{soundEnabled ? 'Sonido activo' : 'Activar sonido'}</span>
-          </button>
+          {/* V3.2: sonido operativo + perfil de volumen por dispositivo */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleToggleSound}
+              className={`p-2 sm:px-3 sm:py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                soundEnabled
+                  ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-300'
+                  : 'bg-[#4A2E1F] border-[#C9974D]/30 text-[#F4E3C8]'
+              }`}
+              title={soundEnabled ? 'Alertas sonoras activas. Toca para silenciar.' : 'Toca para activar sonido y vibración.'}
+            >
+              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              <span className="hidden md:inline">{soundEnabled ? 'Sonido activo' : 'Activar sonido'}</span>
+            </button>
+
+            <label className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-xl bg-[#4A2E1F] border border-[#C9974D]/30" title="Nivel de alerta de este celular">
+              <span className="text-[10px] text-[#C9974D] font-bold hidden lg:inline">Volumen</span>
+              <select
+                value={soundProfile}
+                onChange={(e) => handleSoundProfileChange(e.target.value as OperationalSoundProfile)}
+                className="bg-transparent text-[#F4E3C8] text-xs font-bold outline-none cursor-pointer"
+                aria-label="Volumen de alertas"
+              >
+                <option value="low">Bajo</option>
+                <option value="normal">Normal</option>
+                <option value="high">Alto</option>
+                <option value="kitchen">Cocina</option>
+              </select>
+            </label>
+
+            <button
+              onClick={() => {
+                const order: OperationalSoundProfile[] = ['low', 'normal', 'high', 'kitchen'];
+                const next = order[(order.indexOf(soundProfile) + 1) % order.length];
+                void handleSoundProfileChange(next);
+              }}
+              className="sm:hidden px-2 py-1.5 rounded-xl bg-[#4A2E1F] border border-[#C9974D]/30 text-[#F4E3C8] text-[10px] font-bold"
+              title="Toca para cambiar el volumen de alertas"
+            >
+              {getOperationalSoundProfileLabel(soundProfile)}
+            </button>
+          </div>
 
           {/* Información de Cuenta Google Conectada */}
           {googleUser && (
