@@ -5,266 +5,761 @@
       "description": "Usuarios del personal con roles y PINs de ¡Aló! Restaurante",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "restaurantId": { "type": "string" },
-        "name": { "type": "string" },
-        "username": { "type": "string" },
-        "role": { "type": "string", "enum": ["DUEÑA", "ADMINISTRADOR", "ENCARGADO", "EMPLEADO"] },
-        "pin": { "type": "string" },
-        "active": { "type": "boolean" },
-        "phone": { "type": "string" },
-        "avatarColor": { "type": "string" },
-        "createdAt": { "type": "string" },
-        "updatedAt": { "type": "string" }
+        "id": {
+          "type": "string"
+        },
+        "restaurantId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "DUEÑA",
+            "ADMINISTRADOR",
+            "ENCARGADO",
+            "CAJA",
+            "MESERO",
+            "COCINA",
+            "EMPLEADO"
+          ]
+        },
+        "pin": {
+          "type": "string"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "avatarColor": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
       },
-      "required": ["id", "restaurantId", "name", "username", "role", "pin", "active"]
+      "required": [
+        "id",
+        "restaurantId",
+        "name",
+        "username",
+        "role",
+        "pin",
+        "active"
+      ]
     },
     "ShiftRecord": {
       "title": "ShiftRecord",
       "description": "Turnos de caja del restaurante",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "restaurantId": { "type": "string" },
-        "date": { "type": "string" },
-        "shiftType": { "type": "string", "enum": ["AM", "PM"] },
-        "openedAt": { "type": "string" },
-        "openedAtTimestamp": { "type": "string" },
-        "openedByUserId": { "type": "string" },
-        "openedByName": { "type": "string" },
-        "closedAt": { "type": "string" },
-        "closedAtTimestamp": { "type": "string" },
-        "closedByUserId": { "type": "string" },
-        "closedByName": { "type": "string" },
-        "closedByReason": { "type": "string" },
-        "responsibleUser": { "type": "string" },
-        "responsibleUserId": { "type": "string" },
-        "status": { "type": "string", "enum": ["abierto", "cerrado"] },
-        "initialCashFund": { "type": "number" },
-        "salesCash": { "type": "number" },
-        "salesCard": { "type": "number" },
-        "salesPlatforms": { "type": "number" },
-        "totalSales": { "type": "number" },
-        "cashExpenses": { "type": "number" },
-        "expectedCash": { "type": "number" },
-        "countedCashAtClose": { "type": "number" },
-        "cashDifference": { "type": "number" },
-        "notes": { "type": "string" },
-        "createdAt": { "type": "string" },
-        "updatedAt": { "type": "string" }
+        "id": {
+          "type": "string"
+        },
+        "restaurantId": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "shiftType": {
+          "type": "string",
+          "enum": [
+            "AM",
+            "PM"
+          ]
+        },
+        "openedAt": {
+          "type": "string"
+        },
+        "openedAtTimestamp": {
+          "type": "string"
+        },
+        "openedByUserId": {
+          "type": "string"
+        },
+        "openedByName": {
+          "type": "string"
+        },
+        "closedAt": {
+          "type": "string"
+        },
+        "closedAtTimestamp": {
+          "type": "string"
+        },
+        "closedByUserId": {
+          "type": "string"
+        },
+        "closedByName": {
+          "type": "string"
+        },
+        "closedByReason": {
+          "type": "string"
+        },
+        "responsibleUser": {
+          "type": "string"
+        },
+        "responsibleUserId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "abierto",
+            "cerrado"
+          ]
+        },
+        "initialCashFund": {
+          "type": "number"
+        },
+        "salesCash": {
+          "type": "number"
+        },
+        "salesCard": {
+          "type": "number"
+        },
+        "salesPlatforms": {
+          "type": "number"
+        },
+        "totalSales": {
+          "type": "number"
+        },
+        "cashExpenses": {
+          "type": "number"
+        },
+        "expectedCash": {
+          "type": "number"
+        },
+        "countedCashAtClose": {
+          "type": "number"
+        },
+        "cashDifference": {
+          "type": "number"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
       },
-      "required": ["id", "restaurantId", "date", "shiftType", "status", "initialCashFund"]
+      "required": [
+        "id",
+        "restaurantId",
+        "date",
+        "shiftType",
+        "status",
+        "initialCashFund"
+      ]
     },
     "ExpenseRecord": {
       "title": "ExpenseRecord",
       "description": "Gastos registrados durante el turno",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "restaurantId": { "type": "string" },
-        "shiftId": { "type": "string" },
-        "concept": { "type": "string" },
-        "category": { "type": "string" },
-        "amount": { "type": "number" },
-        "registeredBy": { "type": "string" },
-        "registeredById": { "type": "string" },
-        "date": { "type": "string" },
-        "time": { "type": "string" },
-        "paidWith": { "type": "string" },
-        "note": { "type": "string" },
-        "createdAt": { "type": "string" },
-        "updatedAt": { "type": "string" },
-        "deviceId": { "type": "string" }
+        "id": {
+          "type": "string"
+        },
+        "restaurantId": {
+          "type": "string"
+        },
+        "shiftId": {
+          "type": "string"
+        },
+        "concept": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "number"
+        },
+        "registeredBy": {
+          "type": "string"
+        },
+        "registeredById": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "time": {
+          "type": "string"
+        },
+        "paidWith": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "deviceId": {
+          "type": "string"
+        }
       },
-      "required": ["id", "restaurantId", "shiftId", "concept", "category", "amount", "registeredBy", "registeredById"]
+      "required": [
+        "id",
+        "restaurantId",
+        "shiftId",
+        "concept",
+        "category",
+        "amount",
+        "registeredBy",
+        "registeredById"
+      ]
     },
     "CxcRecord": {
       "title": "CxcRecord",
       "description": "Cuentas por cobrar",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "restaurantId": { "type": "string" },
-        "person": { "type": "string" },
-        "amount": { "type": "number" },
-        "concept": { "type": "string" },
-        "date": { "type": "string" },
-        "status": { "type": "string", "enum": ["Pendiente", "Pagado", "Anulado"] },
-        "registeredBy": { "type": "string" },
-        "registeredById": { "type": "string" },
-        "paidAt": { "type": "string" },
-        "cancelledAt": { "type": "string" },
-        "cancelledBy": { "type": "string" },
-        "cancelledById": { "type": "string" },
-        "cancellationReason": { "type": "string" },
-        "notes": { "type": "string" },
-        "createdAt": { "type": "string" },
-        "updatedAt": { "type": "string" }
+        "id": {
+          "type": "string"
+        },
+        "restaurantId": {
+          "type": "string"
+        },
+        "person": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "number"
+        },
+        "concept": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "Pendiente",
+            "Pagado",
+            "Anulado"
+          ]
+        },
+        "registeredBy": {
+          "type": "string"
+        },
+        "registeredById": {
+          "type": "string"
+        },
+        "paidAt": {
+          "type": "string"
+        },
+        "cancelledAt": {
+          "type": "string"
+        },
+        "cancelledBy": {
+          "type": "string"
+        },
+        "cancelledById": {
+          "type": "string"
+        },
+        "cancellationReason": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
       },
-      "required": ["id", "restaurantId", "person", "amount", "concept", "date", "status"]
+      "required": [
+        "id",
+        "restaurantId",
+        "person",
+        "amount",
+        "concept",
+        "date",
+        "status"
+      ]
     },
     "InventoryItem": {
       "title": "InventoryItem",
       "description": "Artículos de inventario de papel y operación",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "restaurantId": { "type": "string" },
-        "name": { "type": "string" },
-        "category": { "type": "string" },
-        "unit": { "type": "string" },
-        "tipoControl": { "type": "string" },
-        "initialQty": { "type": "number" },
-        "entriesQty": { "type": "number" },
-        "finalQty": { "type": "number" },
-        "consumption": { "type": "number" },
-        "folioInicial": { "type": "number" },
-        "folioFinal": { "type": "number" },
-        "notes": { "type": "string" },
-        "lastUpdated": { "type": "string" },
-        "updatedBy": { "type": "string" },
-        "updatedAt": { "type": "string" }
+        "id": {
+          "type": "string"
+        },
+        "restaurantId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "tipoControl": {
+          "type": "string"
+        },
+        "initialQty": {
+          "type": "number"
+        },
+        "entriesQty": {
+          "type": "number"
+        },
+        "finalQty": {
+          "type": "number"
+        },
+        "consumption": {
+          "type": "number"
+        },
+        "folioInicial": {
+          "type": "number"
+        },
+        "folioFinal": {
+          "type": "number"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "lastUpdated": {
+          "type": "string"
+        },
+        "updatedBy": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
       },
-      "required": ["id", "restaurantId", "name", "category", "unit"]
+      "required": [
+        "id",
+        "restaurantId",
+        "name",
+        "category",
+        "unit"
+      ]
     },
     "SobreMovement": {
       "title": "SobreMovement",
       "description": "Movimientos de resguardo del Sobre",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "restaurantId": { "type": "string" },
-        "type": { "type": "string" },
-        "amount": { "type": "number" },
-        "concept": { "type": "string" },
-        "category": { "type": "string" },
-        "personOrVendor": { "type": "string" },
-        "notes": { "type": "string" },
-        "date": { "type": "string" },
-        "time": { "type": "string" },
-        "timestamp": { "type": "string" },
-        "userId": { "type": "string" },
-        "userName": { "type": "string" },
-        "userRole": { "type": "string" },
-        "resultingBalance": { "type": "number" },
-        "theoreticalBalanceAtCount": { "type": "number" },
-        "physicalCountedAmount": { "type": "number" },
-        "countDifference": { "type": "number" },
-        "isDifferencePending": { "type": "boolean" },
-        "reconciledAt": { "type": "string" },
-        "reconciledBy": { "type": "string" },
-        "isCancelled": { "type": "boolean" },
-        "cancelledAt": { "type": "string" },
-        "cancelledBy": { "type": "string" },
-        "cancelledById": { "type": "string" },
-        "cancelReason": { "type": "string" },
-        "createdAt": { "type": "string" },
-        "updatedAt": { "type": "string" }
+        "id": {
+          "type": "string"
+        },
+        "restaurantId": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "number"
+        },
+        "concept": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "personOrVendor": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "time": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "userName": {
+          "type": "string"
+        },
+        "userRole": {
+          "type": "string"
+        },
+        "resultingBalance": {
+          "type": "number"
+        },
+        "theoreticalBalanceAtCount": {
+          "type": "number"
+        },
+        "physicalCountedAmount": {
+          "type": "number"
+        },
+        "countDifference": {
+          "type": "number"
+        },
+        "isDifferencePending": {
+          "type": "boolean"
+        },
+        "reconciledAt": {
+          "type": "string"
+        },
+        "reconciledBy": {
+          "type": "string"
+        },
+        "isCancelled": {
+          "type": "boolean"
+        },
+        "cancelledAt": {
+          "type": "string"
+        },
+        "cancelledBy": {
+          "type": "string"
+        },
+        "cancelledById": {
+          "type": "string"
+        },
+        "cancelReason": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
       },
-      "required": ["id", "restaurantId", "type", "amount", "concept", "date", "time", "userId", "userName", "userRole"]
+      "required": [
+        "id",
+        "restaurantId",
+        "type",
+        "amount",
+        "concept",
+        "date",
+        "time",
+        "userId",
+        "userName",
+        "userRole"
+      ]
     },
     "DailyMenu": {
       "title": "DailyMenu",
       "description": "Configuración del Menú del Día",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "restaurantId": { "type": "string" },
-        "isAvailable": { "type": "boolean" },
-        "price": { "type": "number" },
-        "entrada": { "type": "string" },
-        "platoFuerte": { "type": "string" },
-        "guarniciones": { "type": "array", "items": { "type": "string" } },
-        "aguaDelDia": { "type": "string" },
-        "postreDelDia": { "type": "string" },
-        "opcionesAlternativas": { "type": "array", "items": { "type": "string" } },
-        "updatedAt": { "type": "string" },
-        "updatedBy": { "type": "string" }
+        "id": {
+          "type": "string"
+        },
+        "restaurantId": {
+          "type": "string"
+        },
+        "isAvailable": {
+          "type": "boolean"
+        },
+        "price": {
+          "type": "number"
+        },
+        "entrada": {
+          "type": "string"
+        },
+        "platoFuerte": {
+          "type": "string"
+        },
+        "guarniciones": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "aguaDelDia": {
+          "type": "string"
+        },
+        "postreDelDia": {
+          "type": "string"
+        },
+        "opcionesAlternativas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "updatedBy": {
+          "type": "string"
+        }
       },
-      "required": ["id", "restaurantId", "isAvailable", "price"]
+      "required": [
+        "id",
+        "restaurantId",
+        "isAvailable",
+        "price"
+      ]
     },
     "ActivityLog": {
       "title": "ActivityLog",
       "description": "Registro central de auditoría y bitácora",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "restaurantId": { "type": "string" },
-        "timestamp": { "type": "string" },
-        "dateFormatted": { "type": "string" },
-        "timeFormatted": { "type": "string" },
-        "userName": { "type": "string" },
-        "userId": { "type": "string" },
-        "userRole": { "type": "string" },
-        "action": { "type": "string" },
-        "category": { "type": "string" },
-        "details": { "type": "string" },
-        "previousValue": { "type": "string" },
-        "newValue": { "type": "string" },
-        "deviceId": { "type": "string" },
-        "createdAt": { "type": "string" }
+        "id": {
+          "type": "string"
+        },
+        "restaurantId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string"
+        },
+        "dateFormatted": {
+          "type": "string"
+        },
+        "timeFormatted": {
+          "type": "string"
+        },
+        "userName": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "userRole": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "details": {
+          "type": "string"
+        },
+        "previousValue": {
+          "type": "string"
+        },
+        "newValue": {
+          "type": "string"
+        },
+        "deviceId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        }
       },
-      "required": ["id", "restaurantId", "timestamp", "userName", "userId", "userRole", "action", "category"]
+      "required": [
+        "id",
+        "restaurantId",
+        "timestamp",
+        "userName",
+        "userId",
+        "userRole",
+        "action",
+        "category"
+      ]
     },
     "VipProfile": {
       "title": "VipProfile",
       "description": "Perfil de cliente VIP Calientito con sellos y datos personales",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "restaurantId": { "type": "string" },
-        "memberId": { "type": "string" },
-        "customerName": { "type": "string" },
-        "phone": { "type": "string" },
-        "pinHash": { "type": "string" },
-        "address": { "type": "string" },
-        "reference": { "type": "string" },
-        "preferredPayment": { "type": "string" },
-        "preferredOrderType": { "type": "string" },
-        "stamps": { "type": "number" },
-        "totalOrders": { "type": "number" },
-        "rewardAvailable": { "type": "boolean" },
-        "pendingStampsToValidate": { "type": "number" },
-        "createdAt": { "type": "string" },
-        "updatedAt": { "type": "string" }
+        "id": {
+          "type": "string"
+        },
+        "restaurantId": {
+          "type": "string"
+        },
+        "memberId": {
+          "type": "string"
+        },
+        "customerName": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "pinHash": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "reference": {
+          "type": "string"
+        },
+        "preferredPayment": {
+          "type": "string"
+        },
+        "preferredOrderType": {
+          "type": "string"
+        },
+        "stamps": {
+          "type": "number"
+        },
+        "totalOrders": {
+          "type": "number"
+        },
+        "rewardAvailable": {
+          "type": "boolean"
+        },
+        "pendingStampsToValidate": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
       },
-      "required": ["id", "restaurantId", "memberId", "customerName", "phone", "stamps", "totalOrders", "rewardAvailable"]
+      "required": [
+        "id",
+        "restaurantId",
+        "memberId",
+        "customerName",
+        "phone",
+        "stamps",
+        "totalOrders",
+        "rewardAvailable"
+      ]
     },
     "TableRecord": {
       "title": "TableRecord",
       "description": "Estado y control operativo en tiempo real de las mesas del restaurante",
       "type": "object",
       "properties": {
-        "tableId": { "type": "string" },
-        "tableNumber": { "type": "number" },
-        "label": { "type": "string" },
-        "status": { "type": "string", "enum": ["LIBRE", "OCUPADA", "CUENTA", "LIMPIEZA"] },
-        "guestCount": { "type": "number" },
-        "waiterId": { "type": "string" },
-        "waiterName": { "type": "string" },
-        "currentCourse": { "type": "string", "enum": ["1ER_TIEMPO", "2DO_TIEMPO", "3ER_TIEMPO", "FINALIZADO"] },
-        "needsTortillas": { "type": "boolean" },
-        "needsDrinks": { "type": "boolean" },
-        "needsSecondCourse": { "type": "boolean" },
-        "needsThirdCourse": { "type": "boolean" },
-        "needsBill": { "type": "boolean" },
-        "notes": { "type": "string" },
-        "openedAt": { "type": "string" },
-        "updatedAt": { "type": "string" },
-        "updatedBy": { "type": "string" },
-        "updatedByName": { "type": "string" },
-        "restaurantId": { "type": "string" },
-        "capacity": { "type": "number" },
-        "location": { "type": "string", "enum": ["salon", "terraza", "barra"] }
+        "tableId": {
+          "type": "string"
+        },
+        "tableNumber": {
+          "type": "number"
+        },
+        "label": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "LIBRE",
+            "OCUPADA",
+            "CUENTA",
+            "LIMPIEZA"
+          ]
+        },
+        "guestCount": {
+          "type": "number"
+        },
+        "waiterId": {
+          "type": "string"
+        },
+        "waiterName": {
+          "type": "string"
+        },
+        "currentCourse": {
+          "type": "string",
+          "enum": [
+            "1ER_TIEMPO",
+            "2DO_TIEMPO",
+            "3ER_TIEMPO",
+            "FINALIZADO"
+          ]
+        },
+        "needsTortillas": {
+          "type": "boolean"
+        },
+        "needsDrinks": {
+          "type": "boolean"
+        },
+        "needsSecondCourse": {
+          "type": "boolean"
+        },
+        "needsThirdCourse": {
+          "type": "boolean"
+        },
+        "needsBill": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "openedAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "updatedBy": {
+          "type": "string"
+        },
+        "updatedByName": {
+          "type": "string"
+        },
+        "restaurantId": {
+          "type": "string"
+        },
+        "capacity": {
+          "type": "number"
+        },
+        "location": {
+          "type": "string",
+          "enum": [
+            "salon",
+            "terraza",
+            "barra"
+          ]
+        }
       },
-      "required": ["tableId", "tableNumber", "status", "guestCount", "restaurantId", "updatedAt", "updatedBy"]
+      "required": [
+        "tableId",
+        "tableNumber",
+        "status",
+        "guestCount",
+        "restaurantId",
+        "updatedAt",
+        "updatedBy"
+      ]
     },
     "TableServiceRequest": {
       "title": "TableServiceRequest",
       "description": "Solicitudes públicas de comensales desde su mesa vía código QR",
       "type": "object",
       "properties": {
-        "tableNumber": { "type": "number", "enum": [1, 2, 4, 5, 6, 7, 8, 9] },
+        "tableNumber": {
+          "type": "number",
+          "enum": [
+            1,
+            2,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9
+          ]
+        },
         "requestType": {
           "type": "string",
           "enum": [
@@ -276,11 +771,137 @@
             "PEDIR_CUENTA"
           ]
         },
-        "status": { "type": "string", "enum": ["PENDIENTE"] },
-        "restaurantId": { "type": "string" },
-        "createdAt": { "type": "string" }
+        "status": {
+          "type": "string",
+          "enum": [
+            "PENDIENTE"
+          ]
+        },
+        "restaurantId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        }
       },
-      "required": ["tableNumber", "requestType", "status", "restaurantId", "createdAt"]
+      "required": [
+        "tableNumber",
+        "requestType",
+        "status",
+        "restaurantId",
+        "createdAt"
+      ]
+    },
+    "RestaurantOrder": {
+      "title": "RestaurantOrder",
+      "description": "Comandas y pedidos en tiempo real desde mesas, para llevar y domicilio",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "restaurantId": {
+          "type": "string"
+        },
+        "orderType": {
+          "type": "string",
+          "enum": [
+            "dine_in",
+            "pickup",
+            "delivery"
+          ]
+        },
+        "tableNumber": {
+          "type": "number"
+        },
+        "customerName": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "addressReference": {
+          "type": "string"
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": [
+            "efectivo",
+            "transferencia",
+            "tarjeta"
+          ]
+        },
+        "bringOwnContainer": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "subtotal": {
+          "type": "number"
+        },
+        "discountAmount": {
+          "type": "number"
+        },
+        "deliveryFee": {
+          "type": "number"
+        },
+        "total": {
+          "type": "number"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "NUEVO",
+            "PREPARANDO",
+            "LISTO",
+            "ENTREGADO",
+            "CANCELADO"
+          ]
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "claimedById": {
+          "type": "string"
+        },
+        "claimedByName": {
+          "type": "string"
+        },
+        "readyAt": {
+          "type": "string"
+        },
+        "deliveredAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "restaurantId",
+        "orderType",
+        "customerName",
+        "items",
+        "subtotal",
+        "total",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   }
 }

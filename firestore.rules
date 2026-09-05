@@ -18,7 +18,7 @@ service cloud.firestore {
       allow create, update: if isSignedIn()
         && isValidRestaurant(request.resource.data) 
         && request.resource.data.name is string 
-        && request.resource.data.role in ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'EMPLEADO'];
+        && request.resource.data.role in ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'COCINA', 'EMPLEADO'];
       allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
     }
 
@@ -159,6 +159,34 @@ service cloud.firestore {
 
       // Personal autenticado: actualización y eliminación para atender solicitudes
       allow update, delete: if isSignedIn();
+    }
+
+
+    // 12. Restaurant Orders / Comandas: pedidos desde menú digital
+    match /restaurant_orders/{orderId} {
+      // Cliente público puede crear una comanda con validación básica.
+      allow create: if (
+        isValidRestaurant(request.resource.data)
+        && request.resource.data.status == 'NUEVO'
+        && request.resource.data.orderType in ['dine_in', 'pickup', 'delivery']
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.total is number
+        && request.resource.data.total >= 0
+        && request.resource.data.code is string
+        && request.resource.data.createdAt is string
+      );
+
+      // Las comandas completas sólo las ve el personal autenticado.
+      allow read: if isSignedIn();
+
+      // Personal autenticado puede avanzar estados / corregir operación.
+      allow update: if isSignedIn()
+        && resource.data.restaurantId == 'alo-restaurante'
+        && request.resource.data.restaurantId == 'alo-restaurante'
+        && request.resource.data.status in ['NUEVO', 'PREPARANDO', 'LISTO', 'ENTREGADO', 'CANCELADO'];
+
+      allow delete: if false;
     }
 
     // Denegación por defecto para cualquier otra ruta
