@@ -312,10 +312,9 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
             <span>{isSubmitting ? 'Verificando...' : 'Entrar a Administración'}</span>
           </button>
 
-          {/* Info sutil de credenciales demo para uso inmediato */}
           <div className="text-center pt-1 border-t border-[#F4E3C8]">
             <p className="text-[10px] text-[#6B4028]">
-              PINs predeterminados de prueba: <strong>Gio (1234)</strong> • <strong>Alondra (2345)</strong> • <strong>Carlos (3456)</strong>
+              Por seguridad, las credenciales nunca se muestran en pantalla.
             </p>
           </div>
         </form>
