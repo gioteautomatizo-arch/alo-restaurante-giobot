@@ -36,6 +36,7 @@ export async function createRestaurantOrder(
     code: buildOrderCode(),
     restaurantId: RESTAURANT_ID,
     status: 'NUEVO' as RestaurantOrderStatus,
+    billingStatus: 'PENDIENTE',
     createdAt: now,
     updatedAt: now,
   }) as Omit<RestaurantOrder, 'id'>;
