@@ -304,20 +304,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const inventoryList = getInventory();
   const totalConsumptionItems = inventoryList.reduce((sum, i) => sum + i.consumption, 0);
 
-  // V3: permisos de navegación por rol operativo.
+  // V3.5: permisos de navegación por rol operativo.
+  // Caja ve únicamente su operación de turno, mesas y comandas; no accede a módulos administrativos o históricos.
   const tabs = [
     { id: 'resumen', label: 'Resumen', icon: LayoutDashboard, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
     { id: 'mesas', label: 'Mesas', icon: Grid3X3, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'EMPLEADO'] },
     { id: 'comandas', label: 'Comandas', icon: ChefHat, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'COCINA', 'EMPLEADO'] },
     { id: 'turno', label: 'Control de Turno', icon: Clock, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
-    { id: 'gastos', label: 'Gastos & Comprobantes', icon: Receipt, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
+    { id: 'gastos', label: 'Gastos & Comprobantes', icon: Receipt, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'] },
     { id: 'sobre', label: 'Sobre / Resguardo', icon: Mail, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'] },
-    { id: 'cxc', label: 'CXC', icon: CreditCard, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
-    { id: 'vip_clients', label: 'Clientes VIP', icon: Star, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
+    { id: 'cxc', label: 'CXC', icon: CreditCard, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'] },
+    { id: 'vip_clients', label: 'Clientes VIP', icon: Star, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'] },
     { id: 'inventario', label: 'Inventario de Papel', icon: Package, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'] },
     { id: 'menu_dia', label: 'Menú del Día', icon: Utensils, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'] },
     { id: 'info_restaurante', label: 'Info Restaurante', icon: Store, allowed: ['DUEÑA', 'ADMINISTRADOR'] },
-    { id: 'historial', label: 'Historial de Cortes', icon: History, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
+    { id: 'historial', label: 'Historial de Cortes', icon: History, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'] },
     { id: 'bitacora', label: 'Bitácora & Auditoría', icon: Shield, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'] },
     { id: 'usuarios', label: 'Colaboradores & Accesos', icon: Users, allowed: ['DUEÑA', 'ADMINISTRADOR'] },
   ].filter((tab) => tab.allowed.includes(currentUser.role));
