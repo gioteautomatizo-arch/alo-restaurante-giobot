@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { CartItem, OrderType, VipProfile } from '../types';
+import { CartItem, OrderType, VipProfile, RestaurantOrderItem } from '../types';
 import { getVipProfile, addStampToVip, redeemVipReward } from '../lib/vipStorage';
 import { getRestaurantInfo, ADMIN_DATA_EVENT } from '../lib/adminStorage';
+import { createRestaurantOrder } from '../lib/ordersService';
 import { X, Trash2, Plus, Minus, ShoppingBag, Leaf, CheckCircle2, MapPin, Phone, User, CreditCard, Send, Star, Gift, Copy, Check, MessageSquare, Printer, ArrowRight } from 'lucide-react';
 import { Logo } from './Logo';
 
@@ -15,6 +16,7 @@ interface CartDrawerProps {
   bringOwnContainer: boolean;
   setBringOwnContainer: (value: boolean) => void;
   onOpenVipModal: () => void;
+  tableNumber?: number | null;
 }
 
 const RESTAURANT_PHONE = '525574411437'; // 55 7441 1437
@@ -30,6 +32,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   bringOwnContainer,
   setBringOwnContainer,
   onOpenVipModal,
+  tableNumber = null,
 }) => {
   const [restaurantInfo, setRestaurantInfo] = useState(getRestaurantInfo());
   const [orderType, setOrderType] = useState<OrderType>('delivery');
@@ -47,6 +50,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const [copiedTicket, setCopiedTicket] = useState<boolean>(false);
   const [ticketText, setTicketText] = useState<string>('');
   const [orderDate, setOrderDate] = useState<string>('');
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false);
+  const [orderSubmitError, setOrderSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     const handleUpdate = () => {
@@ -95,6 +100,14 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
       }
     }
   }, [isOpen]);
+
+  // V3: si el cliente llegó por QR de mesa, el carrito inicia como consumo en sucursal.
+  useEffect(() => {
+    if (isOpen && tableNumber) {
+      setOrderType('dine_in');
+      if (!customerName.trim()) setCustomerName(`Mesa ${tableNumber}`);
+    }
+  }, [isOpen, tableNumber]);
 
   if (!isOpen) return null;
 
@@ -197,43 +210,93 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     return msg;
   };
 
-  const handleCompleteOrder = (e: React.FormEvent) => {
+  const handleCompleteOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customerName.trim() || (orderType === 'delivery' && !address.trim())) return;
+    const effectiveCustomerName = customerName.trim() || (tableNumber ? `Mesa ${tableNumber}` : 'Cliente');
+    if (orderType === 'delivery' && !address.trim()) return;
+    if (cartItems.length === 0) return;
 
-    // Award stamp & save/update VIP profile
-    const newVip = addStampToVip({
-      customerName,
-      phone,
-      address,
-      reference,
-      paymentMethod,
-      orderType,
-    });
+    setIsSubmittingOrder(true);
+    setOrderSubmitError(null);
 
-    if (redeemingReward) {
-      redeemVipReward();
-    }
-
-    setUpdatedVipResult(newVip);
-    const newCode = `ALO-${Math.floor(1000 + Math.random() * 9000)}`;
-    const nowStr = new Date().toLocaleString('es-MX', {
-      dateStyle: 'short',
-      timeStyle: 'short',
-    });
-    setOrderDate(nowStr);
-    setOrderCode(newCode);
-
-    const generated = formatTicketMessage(newCode, nowStr, newVip.stamps);
-    setTicketText(generated);
-    setOrderConfirmed(true);
-
-    // Open WhatsApp directly with the formatted professional purchase ticket
-    const waUrl = `https://wa.me/${restaurantPhone}?text=${encodeURIComponent(generated)}`;
     try {
-      window.open(waUrl, '_blank');
-    } catch {
-      // ignore popup blocker if any, user can still click the button
+      const normalizedItems: RestaurantOrderItem[] = cartItems.map((cartItem) => {
+        const customParts: string[] = [];
+        if (cartItem.customComidaCorrida) {
+          customParts.push(`1er tiempo: ${cartItem.customComidaCorrida.primerTiempo}`);
+          customParts.push(`2do tiempo: ${cartItem.customComidaCorrida.segundoTiempo}`);
+          customParts.push(`3er tiempo: ${cartItem.customComidaCorrida.tercerTiempo}`);
+          if (cartItem.customComidaCorrida.extraAgrega) customParts.push(cartItem.customComidaCorrida.extraAgrega);
+        }
+        if (cartItem.customSalad) {
+          customParts.push(
+            `Ensalada: ${cartItem.customSalad.proteina}, ${cartItem.customSalad.fruta}, ${cartItem.customSalad.topping}, ${cartItem.customSalad.aderezo}`
+          );
+        }
+
+        return {
+          productId: cartItem.item.id,
+          name: cartItem.item.name,
+          quantity: cartItem.quantity,
+          unitPrice: cartItem.unitPrice,
+          totalPrice: cartItem.totalPrice,
+          selectedSize: cartItem.selectedSize?.name,
+          selectedOption: cartItem.selectedOption,
+          extras: cartItem.selectedExtras?.map((extra) => extra.name),
+          specialInstructions: cartItem.specialInstructions,
+          customizationSummary: customParts.length > 0 ? customParts.join(' · ') : undefined,
+        };
+      });
+
+      // La comanda se guarda primero en Firestore. WhatsApp queda como copia opcional.
+      const order = await createRestaurantOrder({
+        orderType,
+        tableNumber: orderType === 'dine_in' && tableNumber ? tableNumber : undefined,
+        customerName: effectiveCustomerName,
+        phone: phone.trim() || undefined,
+        address: orderType === 'delivery' ? address.trim() : undefined,
+        addressReference: orderType === 'delivery' ? reference.trim() || undefined : undefined,
+        paymentMethod,
+        bringOwnContainer,
+        notes: orderNotes.trim() || undefined,
+        items: normalizedItems,
+        subtotal: rawSubtotal,
+        discountAmount,
+        deliveryFee,
+        total,
+      });
+
+      // Fidelidad se actualiza únicamente después de que Firestore confirma la comanda.
+      const newVip = addStampToVip({
+        customerName: effectiveCustomerName,
+        phone,
+        address,
+        reference,
+        paymentMethod,
+        orderType,
+      });
+
+      if (redeemingReward) redeemVipReward();
+
+      setCustomerName(effectiveCustomerName);
+      setUpdatedVipResult(newVip);
+      const nowStr = new Date(order.createdAt).toLocaleString('es-MX', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      });
+      setOrderDate(nowStr);
+      setOrderCode(order.code);
+
+      const generated = formatTicketMessage(order.code, nowStr, newVip.stamps);
+      setTicketText(generated);
+      setOrderConfirmed(true);
+    } catch (err: any) {
+      console.error('Error creando comanda:', err);
+      setOrderSubmitError(
+        err?.message || 'No pudimos enviar tu pedido a cocina. Revisa tu conexión e intenta de nuevo.'
+      );
+    } finally {
+      setIsSubmittingOrder(false);
     }
   };
 
@@ -283,7 +346,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               ¡Pedido Registrado con Éxito!
             </h3>
             <p className="text-xs text-[#6B4028]">
-              Se ha generado el <strong>Ticket Oficial de Compra</strong> para enviar por WhatsApp al negocio.
+              Tu pedido ya entró al <strong>sistema de comandas del restaurante</strong>. WhatsApp queda como copia opcional.
             </p>
           </div>
 
@@ -294,7 +357,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             className="w-full py-3.5 px-4 bg-[#25D366] hover:bg-[#20bd5a] text-white rounded-2xl font-bold text-sm shadow-lg flex items-center justify-center gap-2.5 transition-all transform hover:scale-101 active:scale-98 cursor-pointer border border-emerald-600"
           >
             <MessageSquare className="w-5 h-5 fill-white text-[#25D366]" />
-            <span>Enviar Ticket por WhatsApp al Negocio</span>
+            <span>Enviar copia por WhatsApp</span>
             <ArrowRight className="w-4 h-4" />
           </button>
 
@@ -484,7 +547,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             <MapPin className="w-4 h-4 text-[#A86B3D] shrink-0" />
             <div>
               <span className="font-bold text-[#3A2418]">Sucursal Tlalpan:</span> Calle la Fama 12, CDMX
-              <span className="block text-[10px] text-[#6B4028]/80">WhatsApp: 55 7441 1437 • Sucursal, Domicilio y Anticipar orden</span>
+              <span className="block text-[10px] text-[#6B4028]/80">Pedido directo a cocina • WhatsApp disponible como respaldo</span>
             </div>
           </div>
 
@@ -668,11 +731,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
               <div>
                 <label className="block text-[11px] font-bold text-[#6B4028] mb-0.5 flex items-center gap-1">
-                  <Phone className="w-3.5 h-3.5 text-[#A86B3D]" /> Teléfono / WhatsApp de contacto *
+                  <Phone className="w-3.5 h-3.5 text-[#A86B3D]" /> Teléfono / WhatsApp de contacto {orderType === 'dine_in' ? '(opcional)' : '*'}
                 </label>
                 <input
                   type="tel"
-                  required
+                  required={orderType !== 'dine_in'}
                   placeholder="Ej: 55 1234 5678"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
@@ -796,12 +859,19 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               </div>
             </div>
 
+            {orderSubmitError && (
+              <div className="rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 px-3.5 py-2.5 text-xs font-medium">
+                {orderSubmitError}
+              </div>
+            )}
+
             <button
               type="submit"
-              className="w-full py-3.5 px-4 bg-gradient-to-r from-[#3A2418] to-[#4A2E1F] hover:from-[#4A2E1F] hover:to-[#5C3825] text-white rounded-xl font-bold text-sm shadow-md transition-all active:scale-98 flex items-center justify-center gap-2 cursor-pointer border border-[#C9974D]/30"
+              disabled={isSubmittingOrder}
+              className="w-full py-3.5 px-4 bg-gradient-to-r from-[#3A2418] to-[#4A2E1F] hover:from-[#4A2E1F] hover:to-[#5C3825] text-white rounded-xl font-bold text-sm shadow-md transition-all active:scale-98 flex items-center justify-center gap-2 cursor-pointer border border-[#C9974D]/30 disabled:opacity-60 disabled:cursor-wait"
             >
               <Send className="w-4 h-4 text-[#C9974D]" />
-              <span>Generar Ticket y Enviar a WhatsApp (${total})</span>
+              <span>{isSubmittingOrder ? 'Enviando a cocina…' : `Enviar pedido a cocina ($${total})`}</span>
             </button>
           </form>
         </div>
