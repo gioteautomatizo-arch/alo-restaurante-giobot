@@ -189,6 +189,33 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+
+
+    // 13. Table Payments / Caja: cobros cerrados por mesa
+    match /table_payments/{paymentId} {
+      // Sólo el personal autenticado puede consultar o registrar cobros.
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidRestaurant(request.resource.data)
+        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && request.resource.data.orderIds is list
+        && request.resource.data.orderIds.size() > 0
+        && request.resource.data.subtotal is number
+        && request.resource.data.discountAmount is number
+        && request.resource.data.tipAmount is number
+        && request.resource.data.total is number
+        && request.resource.data.total >= 0
+        && request.resource.data.paymentMethod in ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'MERCADO_PAGO']
+        && request.resource.data.status == 'PAGADO'
+        && request.resource.data.createdAt is string
+        && request.resource.data.chargedById is string
+        && request.resource.data.chargedByName is string;
+
+      // En V4 los pagos son inmutables desde la app. Las anulaciones se implementarán
+      // como movimiento compensatorio para conservar trazabilidad.
+      allow update, delete: if false;
+    }
+
     // Denegación por defecto para cualquier otra ruta
     match /{document=**} {
       allow read, write: if false;
