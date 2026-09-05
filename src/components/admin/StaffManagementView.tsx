@@ -66,15 +66,23 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
     setName(user.name);
     setUsername(user.username);
     setRole(user.role);
-    setPin(user.pin || '');
+    // Nunca cargar ni revelar el PIN guardado al editar.
+    setPin('');
     setPhone(user.phone || '');
     setIsModalOpen(true);
   };
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !username.trim() || pin.length < 4) {
-      alert('Por favor completa todos los campos requeridos y un PIN de al menos 4 dígitos.');
+    const trimmedPin = pin.trim();
+    const pinIsValid = trimmedPin.length === 0 || (trimmedPin.length >= 4 && trimmedPin.length <= 6);
+
+    if (!name.trim() || !username.trim() || !pinIsValid || (!editingUser && trimmedPin.length < 4)) {
+      alert(
+        editingUser
+          ? 'Completa los campos requeridos. Si deseas cambiar el PIN, usa entre 4 y 6 dígitos.'
+          : 'Completa los campos requeridos y crea un PIN de 4 a 6 dígitos.'
+      );
       return;
     }
 
@@ -89,7 +97,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
             name: name.trim(),
             username: username.trim().toLowerCase(),
             role,
-            pin: pin.trim(),
+            ...(trimmedPin ? { pin: trimmedPin } : {}),
             phone: phone.trim(),
           };
         }
@@ -112,7 +120,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         name: name.trim(),
         username: username.trim().toLowerCase(),
         role,
-        pin: pin.trim(),
+        pin: trimmedPin,
         phone: phone.trim(),
         active: true,
         createdAt: formatLocalDate(new Date()),
@@ -252,8 +260,10 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
 
                 <div className="mt-4 space-y-1.5 text-xs text-[#6B4028] bg-[#FFF7EA] p-3 rounded-2xl border border-[#F4E3C8]">
                   <div className="flex items-center justify-between">
-                    <span className="text-[#6B4028]">PIN de acceso:</span>
-                    <span className="font-mono font-bold text-[#2B1B13]">••••</span>
+                    <span className="text-[#6B4028]">Acceso:</span>
+                    <span className="font-bold text-emerald-700 flex items-center gap-1">
+                      <Lock className="w-3.5 h-3.5" /> Protegido
+                    </span>
                   </div>
                   {u.phone && (
                     <div className="flex items-center justify-between">
@@ -337,17 +347,24 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-[#2B1B13] uppercase tracking-wider mb-1 font-serif">
-                    PIN Numérico (4-6 dígitos) *
+                    {editingUser ? 'Nuevo PIN (opcional)' : 'PIN Numérico (4-6 dígitos) *'}
                   </label>
                   <input
                     type="password"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     maxLength={6}
-                    required
+                    required={!editingUser}
                     value={pin}
                     onChange={(e) => setPin(e.target.value)}
                     placeholder="••••"
                     className="w-full px-4 py-2.5 bg-white rounded-xl border border-[#F4E3C8] text-[#2B1B13] font-mono font-bold text-sm focus:border-[#C9974D] focus:outline-hidden"
                   />
+                  {editingUser && (
+                    <p className="text-[10px] text-[#8A5A3B] mt-1">
+                      Déjalo vacío para conservar el PIN actual. El sistema nunca muestra el PIN guardado.
+                    </p>
+                  )}
                 </div>
               </div>
 
