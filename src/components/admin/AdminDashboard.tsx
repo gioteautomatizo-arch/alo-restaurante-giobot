@@ -40,6 +40,7 @@ import { VipClientsAdminView } from './VipClientsAdminView';
 import { LocalDataMigrationModal } from './LocalDataMigrationModal';
 import { TablesView } from './TablesView';
 import { OrdersView } from './OrdersView';
+import { TableAccountsView } from './TableAccountsView';
 import { subscribeToPendingTableRequests } from '../../lib/tableRequestsService';
 import { subscribeToRestaurantOrders } from '../../lib/ordersService';
 import {
@@ -96,6 +97,7 @@ interface AdminDashboardProps {
 type AdminTab =
   | 'resumen'
   | 'mesas'
+  | 'caja'
   | 'comandas'
   | 'turno'
   | 'gastos'
@@ -111,6 +113,7 @@ type AdminTab =
 
 const getDefaultTabForRole = (role: StaffUser['role']): AdminTab => {
   if (role === 'COCINA') return 'comandas';
+  if (role === 'CAJA') return 'caja';
   if (role === 'MESERO' || role === 'EMPLEADO') return 'mesas';
   return 'resumen';
 };
@@ -307,8 +310,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // V3.5: permisos de navegación por rol operativo.
   // Caja ve únicamente su operación de turno, mesas y comandas; no accede a módulos administrativos o históricos.
   const tabs = [
-    { id: 'resumen', label: 'Resumen', icon: LayoutDashboard, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
+    { id: 'resumen', label: 'Resumen', icon: LayoutDashboard, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'] },
     { id: 'mesas', label: 'Mesas', icon: Grid3X3, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'EMPLEADO'] },
+    { id: 'caja', label: 'Caja & Cobro', icon: Wallet, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
     { id: 'comandas', label: 'Comandas', icon: ChefHat, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'COCINA', 'EMPLEADO'] },
     { id: 'turno', label: 'Control de Turno', icon: Clock, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
     { id: 'gastos', label: 'Gastos & Comprobantes', icon: Receipt, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'] },
@@ -852,6 +856,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {safeActiveTab === 'mesas' && (
           <TablesView currentUser={currentUser} />
+        )}
+
+        {safeActiveTab === 'caja' && (
+          <TableAccountsView currentUser={currentUser} />
         )}
 
         {safeActiveTab === 'comandas' && (
