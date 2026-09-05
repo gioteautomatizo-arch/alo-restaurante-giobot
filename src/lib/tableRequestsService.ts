@@ -175,18 +175,10 @@ export async function createPublicServiceRequest(
     createdAt: new Date().toISOString(),
   };
 
-  // Actualizar memoria local para feedback inmediato
-  const existingIndex = inMemoryPendingRequests.findIndex((r) => r.id === docId);
-  if (existingIndex >= 0) {
-    inMemoryPendingRequests[existingIndex] = newRequest;
-  } else {
-    inMemoryPendingRequests.push(newRequest);
-  }
-  saveLocalRequests([...inMemoryPendingRequests]);
-
-  // 3. Escribir en Firestore (público: sólo CREATE con campos exactos)
+  // 3. Escribir en Firestore. Firestore es la única fuente de verdad.
+  // No marcamos la solicitud como pendiente localmente hasta que la escritura
+  // haya sido confirmada; así evitamos estados fantasma de "Avisado".
   try {
-    // SOLO los 5 campos autorizados por las reglas de seguridad
     await setDoc(docRef, {
       tableNumber: newRequest.tableNumber,
       requestType: newRequest.requestType,
@@ -195,18 +187,31 @@ export async function createPublicServiceRequest(
       createdAt: newRequest.createdAt,
     });
 
+    // Mantener la caché sólo como espejo de una escritura confirmada.
+    const existingIndex = inMemoryPendingRequests.findIndex((r) => r.id === docId);
+    if (existingIndex >= 0) {
+      inMemoryPendingRequests[existingIndex] = newRequest;
+    } else {
+      inMemoryPendingRequests.push(newRequest);
+    }
+    saveLocalRequests([...inMemoryPendingRequests]);
+
     return {
       success: true,
       alreadyPending: false,
       message: 'Solicitud enviada ✓',
     };
   } catch (error) {
-    console.warn('[tableRequestsService] Error al escribir en Firestore, guardado local:', error);
-    // Aún si falla la red, el comensal recibe confirmación local
+    console.warn('[tableRequestsService] Error al escribir en Firestore:', error);
+
+    // Eliminar cualquier resto local de intentos anteriores.
+    inMemoryPendingRequests = inMemoryPendingRequests.filter((r) => r.id !== docId);
+    saveLocalRequests([...inMemoryPendingRequests]);
+
     return {
-      success: true,
+      success: false,
       alreadyPending: false,
-      message: 'Solicitud enviada ✓',
+      message: 'No pudimos enviar la solicitud. Intenta de nuevo.',
     };
   }
 }
@@ -255,17 +260,26 @@ export function subscribeToTableRequestsForTable(
           }
         });
 
+        // Sincronizar también la caché local con el estado real de esta mesa.
+        const otherTables = inMemoryPendingRequests.filter(
+          (request) => request.tableNumber !== tableNumber
+        );
+        inMemoryPendingRequests = [...otherTables, ...list];
+        saveLocalRequests([...inMemoryPendingRequests]);
+
         callback(list);
       },
       (error) => {
         console.warn('[tableRequestsService] listener público de mesa falló:', error);
-        // Fallback local: mantiene la interfaz utilizable si temporalmente no hay red.
-        callback(getPendingRequestsForTable(tableNumber));
+        // Nunca reconstruir "Avisado" desde localStorage/cache. Si Firestore no
+        // puede leerse, es preferible mostrar el botón libre a mostrar un pendiente
+        // fantasma que Caja no tiene.
+        callback([]);
       }
     );
   } catch (error) {
     console.warn('[tableRequestsService] no se pudo iniciar listener público:', error);
-    callback(getPendingRequestsForTable(tableNumber));
+    callback([]);
     return () => {};
   }
 }
@@ -347,35 +361,49 @@ export async function markTableRequestAttended(
 ): Promise<void> {
   const docId = getTableRequestDocId(tableNumber, requestType);
 
-  // 1. Quitar de la memoria local inmediatamente
+  // Resolver una solicitud es una operación administrativa. El PIN del panel
+  // identifica al colaborador dentro de la app, pero Firestore exige además una
+  // sesión Firebase Auth activa para permitir DELETE. Si no existe, no debemos
+  // fingir que la solicitud se resolvió sólo en memoria local.
+  if (!isUserAuthenticated()) {
+    throw new Error(
+      'Inicia sesión con Google en el Panel Caja para marcar solicitudes QR como atendidas.'
+    );
+  }
+
+  // Firestore es la fuente de verdad: primero confirmamos el borrado remoto.
+  // Sólo después limpiamos la caché local. Así evitamos que el panel muestre
+  // “Atendido” mientras el comensal sigue viendo “Avisado” en otro dispositivo.
+  try {
+    const docRef = doc(db, 'table_service_requests', docId);
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.warn('[tableRequestsService] Error eliminando solicitud en Firestore:', error);
+    throw new Error(
+      'No se pudo sincronizar la solicitud con Firestore. Revisa la sesión de Google y la conexión.'
+    );
+  }
+
   inMemoryPendingRequests = inMemoryPendingRequests.filter((r) => r.id !== docId);
   saveLocalRequests([...inMemoryPendingRequests]);
 
-  // Limpiar cooldown del comensal para permitir solicitar de nuevo
+  // Limpiar restos de versiones anteriores que usaban localStorage por botón.
   try {
     localStorage.removeItem(`alo_qr_req_${tableNumber}_${requestType}`);
   } catch {
     // ignore
   }
 
-  // 2. Eliminar de Firestore
-  try {
-    const docRef = doc(db, 'table_service_requests', docId);
-    await deleteDoc(docRef);
-
-    // 3. Registrar auditoría si está disponible
-    if (user) {
-      await logActivityFirestore({
-        userId: user.id,
-        userName: user.name,
-        userRole: 'EMPLEADO',
-        action: 'Mesa: Solicitud QR Atendida',
-        category: 'sistema',
-        details: `Mesa ${tableNumber}: Solicitud ${requestType} marcada como atendida/resuelta.`,
-      }).catch(() => {});
-    }
-  } catch (error) {
-    console.warn('[tableRequestsService] Error eliminando solicitud en Firestore:', error);
+  // Registrar auditoría sin bloquear la resolución si la bitácora falla.
+  if (user) {
+    await logActivityFirestore({
+      userId: user.id,
+      userName: user.name,
+      userRole: 'EMPLEADO',
+      action: 'Mesa: Solicitud QR Atendida',
+      category: 'sistema',
+      details: `Mesa ${tableNumber}: Solicitud ${requestType} marcada como atendida/resuelta.`,
+    }).catch(() => {});
   }
 }
 
