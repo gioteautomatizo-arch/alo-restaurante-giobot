@@ -94,7 +94,8 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
 
     return () => {
       unsubscribe();
-      Object.values(attendedTimersRef.current).forEach((timer) => {
+      TABLE_SERVICE_REQUEST_TYPES.forEach(({ type }) => {
+        const timer = attendedTimersRef.current[type];
         if (timer) clearTimeout(timer);
       });
       attendedTimersRef.current = {};
@@ -116,8 +117,19 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
     try {
       const res = await createPublicServiceRequest(tableNumber, requestType);
 
-      // Feedback inmediato. El listener de Firestore confirmará y mantendrá
-      // este estado sincronizado con todos los dispositivos de la misma mesa.
+      if (!res.success) {
+        // Firestore no confirmó la solicitud: no mostrar un "Avisado" fantasma.
+        setPendingTypes((current) => {
+          const updated = new Set(current);
+          updated.delete(requestType);
+          return updated;
+        });
+        setFeedbackMessage(res.message || 'No pudimos enviar la solicitud. Intenta de nuevo.');
+        return;
+      }
+
+      // Feedback inmediato únicamente después de una escritura confirmada.
+      // El listener de Firestore conservará el estado sincronizado entre dispositivos.
       setPendingTypes((current) => {
         const updated = new Set(current);
         updated.add(requestType);
