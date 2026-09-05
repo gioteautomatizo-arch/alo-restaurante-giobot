@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   TABLE_SERVICE_REQUEST_TYPES,
   createPublicServiceRequest,
+  subscribeToTableRequestsForTable,
 } from '../../lib/tableRequestsService';
 import { TableServiceRequestType } from '../../types';
-import { Check, Clock, Utensils, Bell } from 'lucide-react';
+import { Check, Utensils } from 'lucide-react';
 
 interface TableCustomerViewProps {
   tableNumber: number;
@@ -16,43 +17,112 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
   onExploreMenu,
 }) => {
   const [submittingType, setSubmittingType] = useState<TableServiceRequestType | null>(null);
-  const [recentRequests, setRecentRequests] = useState<Record<string, number>>({});
+  const [pendingTypes, setPendingTypes] = useState<Set<TableServiceRequestType>>(new Set());
+  const [attendedTypes, setAttendedTypes] = useState<Set<TableServiceRequestType>>(new Set());
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
-  // Cargar estado de solicitudes recientes de localStorage para persistir entre recargas
+  const previousPendingRef = useRef<Set<TableServiceRequestType>>(new Set());
+  const listenerReadyRef = useRef(false);
+  const attendedTimersRef = useRef<Partial<Record<TableServiceRequestType, ReturnType<typeof setTimeout>>>>({});
+
+  // Firestore es la fuente de verdad. Esta suscripción mantiene la vista del
+  // comensal sincronizada con Panel Caja incluso en dispositivos diferentes.
   useEffect(() => {
-    try {
-      const state: Record<string, number> = {};
-      TABLE_SERVICE_REQUEST_TYPES.forEach(({ type }) => {
-        const val = localStorage.getItem(`alo_qr_req_${tableNumber}_${type}`);
-        if (val) {
-          state[type] = parseInt(val, 10);
+    listenerReadyRef.current = false;
+    previousPendingRef.current = new Set();
+    setPendingTypes(new Set());
+    setAttendedTypes(new Set());
+
+    const unsubscribe = subscribeToTableRequestsForTable(tableNumber, (requests) => {
+      const nextPending = new Set<TableServiceRequestType>(
+        requests.map((request) => request.requestType)
+      );
+
+      if (listenerReadyRef.current) {
+        // Si una solicitud que estaba pendiente ya no aparece en Firestore,
+        // significa que el personal la atendió/resolvió.
+        const resolvedNow = [...previousPendingRef.current].filter(
+          (type) => !nextPending.has(type)
+        );
+
+        if (resolvedNow.length > 0) {
+          setAttendedTypes((current) => {
+            const updated = new Set(current);
+            resolvedNow.forEach((type) => updated.add(type));
+            return updated;
+          });
+
+          resolvedNow.forEach((type) => {
+            // Eliminar cualquier marca antigua de versiones previas que usaban localStorage.
+            try {
+              localStorage.removeItem(`alo_qr_req_${tableNumber}_${type}`);
+            } catch {
+              // ignore
+            }
+
+            const previousTimer = attendedTimersRef.current[type];
+            if (previousTimer) clearTimeout(previousTimer);
+
+            attendedTimersRef.current[type] = setTimeout(() => {
+              setAttendedTypes((current) => {
+                const updated = new Set(current);
+                updated.delete(type);
+                return updated;
+              });
+              delete attendedTimersRef.current[type];
+            }, 1500);
+          });
         }
+      } else {
+        listenerReadyRef.current = true;
+
+        // Limpiar estados locales obsoletos dejados por la versión anterior.
+        TABLE_SERVICE_REQUEST_TYPES.forEach(({ type }) => {
+          if (!nextPending.has(type)) {
+            try {
+              localStorage.removeItem(`alo_qr_req_${tableNumber}_${type}`);
+            } catch {
+              // ignore
+            }
+          }
+        });
+      }
+
+      previousPendingRef.current = nextPending;
+      setPendingTypes(nextPending);
+    });
+
+    return () => {
+      unsubscribe();
+      Object.values(attendedTimersRef.current).forEach((timer) => {
+        if (timer) clearTimeout(timer);
       });
-      setRecentRequests(state);
-    } catch {
-      // ignore
-    }
+      attendedTimersRef.current = {};
+    };
   }, [tableNumber]);
 
   const handleRequestClick = async (requestType: TableServiceRequestType) => {
-    // Si ya fue solicitada hace menos de 60 segundos
-    const lastSent = recentRequests[requestType];
-    const now = Date.now();
-    if (lastSent && now - lastSent < 60000) {
+    if (pendingTypes.has(requestType)) {
       setFeedbackMessage('Ya avisamos al equipo ✓');
       setTimeout(() => setFeedbackMessage(null), 3500);
+      return;
+    }
+
+    if (attendedTypes.has(requestType)) {
       return;
     }
 
     setSubmittingType(requestType);
     try {
       const res = await createPublicServiceRequest(tableNumber, requestType);
-      const updatedTimestamp = Date.now();
-      setRecentRequests((prev) => ({
-        ...prev,
-        [requestType]: updatedTimestamp,
-      }));
+
+      // Feedback inmediato. El listener de Firestore confirmará y mantendrá
+      // este estado sincronizado con todos los dispositivos de la misma mesa.
+      setPendingTypes((current) => {
+        const updated = new Set(current);
+        updated.add(requestType);
+        return updated;
+      });
 
       if (res.alreadyPending) {
         setFeedbackMessage('Ya avisamos al equipo ✓');
@@ -60,17 +130,11 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
         setFeedbackMessage('Solicitud enviada ✓');
       }
     } catch {
-      setFeedbackMessage('Solicitud enviada ✓');
+      setFeedbackMessage('No pudimos enviar la solicitud. Intenta de nuevo.');
     } finally {
       setSubmittingType(null);
       setTimeout(() => setFeedbackMessage(null), 4000);
     }
-  };
-
-  const isRecentlySent = (type: TableServiceRequestType) => {
-    const last = recentRequests[type];
-    if (!last) return false;
-    return Date.now() - last < 60000;
   };
 
   return (
@@ -105,27 +169,29 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
         {/* Cuadrícula de botones grandes de atención */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
           {TABLE_SERVICE_REQUEST_TYPES.map(({ type, label, icon, shortDesc }) => {
-            const sent = isRecentlySent(type);
+            const sent = pendingTypes.has(type);
+            const attended = attendedTypes.has(type);
             const isSubmitting = submittingType === type;
+            const activeState = sent || attended;
 
             return (
               <button
                 key={type}
                 id={`btn-qr-${type.toLowerCase()}`}
                 type="button"
-                disabled={isSubmitting}
+                disabled={isSubmitting || attended}
                 onClick={() => handleRequestClick(type)}
                 className={`relative p-3.5 sm:p-4 rounded-2xl border-2 flex flex-col items-center justify-center text-center transition-all cursor-pointer select-none active:scale-95 shadow-xs ${
-                  sent
+                  activeState
                     ? 'bg-emerald-50/80 border-emerald-500/80 text-emerald-950'
                     : 'bg-white hover:bg-[#FFF7EA] border-[#DEC8AE] hover:border-[#C9974D] text-[#2B1B13]'
                 }`}
               >
-                {/* Badge de estado enviado */}
-                {sent && (
+                {/* Badge de estado sincronizado */}
+                {activeState && (
                   <span className="absolute top-2 right-2 bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
                     <Check className="w-2.5 h-2.5" />
-                    <span>Avisado</span>
+                    <span>{attended ? 'Atendido' : 'Avisado'}</span>
                   </span>
                 )}
 
@@ -138,7 +204,11 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
                 </span>
 
                 <span className="text-[10px] text-[#6B4028] mt-1 line-clamp-1 block">
-                  {sent ? 'Ya avisamos al equipo ✓' : shortDesc}
+                  {attended
+                    ? 'Solicitud atendida ✓'
+                    : sent
+                      ? 'Ya avisamos al equipo ✓'
+                      : shortDesc}
                 </span>
 
                 {isSubmitting && (
