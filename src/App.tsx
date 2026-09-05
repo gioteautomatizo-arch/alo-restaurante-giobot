@@ -514,6 +514,7 @@ export default function App() {
         bringOwnContainer={bringOwnContainer}
         setBringOwnContainer={setBringOwnContainer}
         onOpenVipModal={() => setIsVipModalOpen(true)}
+        tableNumber={customerTableNumber}
       />
 
       <VipCardModal

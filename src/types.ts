@@ -120,14 +120,23 @@ export interface OrderDetails {
 // SISTEMA ADMINISTRATIVO - ¡ALÓ! RESTAURANTE
 // -------------------------------------------------------------
 
-export type UserRole = 'DUEÑA' | 'ADMINISTRADOR' | 'ENCARGADO' | 'EMPLEADO';
+export type UserRole =
+  | 'DUEÑA'
+  | 'ADMINISTRADOR'
+  | 'ENCARGADO'
+  | 'CAJA'
+  | 'MESERO'
+  | 'COCINA'
+  | 'EMPLEADO';
 
 export interface StaffUser {
   id: string;
   name: string;
   username: string;
   role: UserRole;
-  pin: string; // PIN de acceso (4-6 dígitos)
+  pin?: string; // PIN local legado (4-6 dígitos). V3 prefiere correo + contraseña Firebase.
+  email?: string; // Correo de acceso individual
+  firebaseUid?: string; // UID de Firebase Auth cuando la cuenta ya fue migrada
   active: boolean;
   phone?: string;
   avatarColor?: string;
@@ -397,3 +406,56 @@ export interface TableServiceRequest {
   createdAt: string;
 }
 
+
+
+// -------------------------------------------------------------
+// V3 - COMANDAS / PEDIDOS EN TIEMPO REAL
+// -------------------------------------------------------------
+export type RestaurantOrderStatus =
+  | 'NUEVO'
+  | 'PREPARANDO'
+  | 'LISTO'
+  | 'ENTREGADO'
+  | 'CANCELADO';
+
+export interface RestaurantOrderItem {
+  productId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  selectedSize?: string;
+  selectedOption?: string;
+  extras?: string[];
+  specialInstructions?: string;
+  customizationSummary?: string;
+}
+
+export interface RestaurantOrder {
+  id?: string;
+  code: string;
+  restaurantId: 'alo-restaurante';
+  orderType: OrderType;
+  tableNumber?: number;
+  customerName: string;
+  phone?: string;
+  address?: string;
+  addressReference?: string;
+  paymentMethod: 'efectivo' | 'transferencia' | 'tarjeta';
+  bringOwnContainer: boolean;
+  notes?: string;
+  items: RestaurantOrderItem[];
+  subtotal: number;
+  discountAmount: number;
+  deliveryFee: number;
+  total: number;
+  status: RestaurantOrderStatus;
+  createdAt: string;
+  updatedAt: string;
+  claimedById?: string;
+  claimedByName?: string;
+  readyAt?: string;
+  deliveredAt?: string;
+  cancelledAt?: string;
+  cancelledBy?: string;
+}
