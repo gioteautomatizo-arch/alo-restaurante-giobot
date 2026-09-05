@@ -315,7 +315,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveUser} className="p-6 space-y-4">
+            <form onSubmit={handleSaveUser} autoComplete="off" className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-[#2B1B13] uppercase tracking-wider mb-1 font-serif">
                   Nombre Completo *
@@ -341,6 +341,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="alondra"
+                    autoComplete="off"
                     className="w-full px-4 py-2.5 bg-white rounded-xl border border-[#F4E3C8] text-[#2B1B13] text-xs font-medium focus:border-[#C9974D] focus:outline-hidden"
                   />
                 </div>
@@ -358,6 +359,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                     value={pin}
                     onChange={(e) => setPin(e.target.value)}
                     placeholder="••••"
+                    autoComplete="one-time-code"
                     className="w-full px-4 py-2.5 bg-white rounded-xl border border-[#F4E3C8] text-[#2B1B13] font-mono font-bold text-sm focus:border-[#C9974D] focus:outline-hidden"
                   />
                   {editingUser && (
