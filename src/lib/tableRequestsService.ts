@@ -3,6 +3,7 @@ import {
   doc,
   setDoc,
   deleteDoc,
+  getDoc,
   query,
   where,
   onSnapshot,
@@ -146,24 +147,25 @@ export async function createPublicServiceRequest(
     };
   }
 
-  // 2. Verificar duplicado en cliente / memoria reciente
-  const clientStorageKey = `alo_qr_req_${tableNumber}_${requestType}`;
-  const lastSent = localStorage.getItem(clientStorageKey);
-  const now = Date.now();
-  const COOLDOWN_MS = 60 * 1000; // 60 segundos de protección contra toques repetidos
+  // 2. Verificar en Firestore si ya existe una solicitud activa de ese tipo.
+  // El documento usa un ID determinístico, así que una sola solicitud puede estar
+  // pendiente por mesa/tipo al mismo tiempo. Firestore es la fuente de verdad.
+  const docId = getTableRequestDocId(tableNumber, requestType);
+  const docRef = doc(db, 'table_service_requests', docId);
 
-  if (lastSent) {
-    const sentTime = parseInt(lastSent, 10);
-    if (now - sentTime < COOLDOWN_MS) {
+  try {
+    const existing = await getDoc(docRef);
+    if (existing.exists() && existing.data()?.status === 'PENDIENTE') {
       return {
         success: true,
         alreadyPending: true,
         message: 'Ya avisamos al equipo ✓',
       };
     }
+  } catch (error) {
+    // Si la lectura falla por red, intentamos crear la solicitud de todos modos.
+    console.warn('[tableRequestsService] No se pudo verificar solicitud existente:', error);
   }
-
-  const docId = getTableRequestDocId(tableNumber, requestType);
   const newRequest: TableServiceRequest = {
     id: docId,
     tableNumber,
@@ -181,11 +183,9 @@ export async function createPublicServiceRequest(
     inMemoryPendingRequests.push(newRequest);
   }
   saveLocalRequests([...inMemoryPendingRequests]);
-  localStorage.setItem(clientStorageKey, now.toString());
 
   // 3. Escribir en Firestore (público: sólo CREATE con campos exactos)
   try {
-    const docRef = doc(db, 'table_service_requests', docId);
     // SOLO los 5 campos autorizados por las reglas de seguridad
     await setDoc(docRef, {
       tableNumber: newRequest.tableNumber,
@@ -208,6 +208,65 @@ export async function createPublicServiceRequest(
       alreadyPending: false,
       message: 'Solicitud enviada ✓',
     };
+  }
+}
+
+/**
+ * SUSCRIPCIÓN PÚBLICA EN TIEMPO REAL: vista del comensal de una mesa específica.
+ * Escucha Firestore directamente para que el estado "Avisado" desaparezca en
+ * cuanto el personal elimine/marque como atendida la solicitud desde Panel Caja.
+ */
+export function subscribeToTableRequestsForTable(
+  tableNumber: number,
+  callback: (requests: TableServiceRequest[]) => void
+): () => void {
+  if (!isValidTableNumber(tableNumber)) {
+    callback([]);
+    return () => {};
+  }
+
+  try {
+    // Un solo filtro evita índices compuestos innecesarios. El resto se valida
+    // en cliente porque las reglas actuales permiten lectura pública de esta colección.
+    const q = query(
+      collection(db, 'table_service_requests'),
+      where('tableNumber', '==', tableNumber)
+    );
+
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const list: TableServiceRequest[] = [];
+
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (
+            data.status === 'PENDIENTE' &&
+            data.restaurantId === RESTAURANT_ID
+          ) {
+            list.push({
+              id: docSnap.id,
+              tableNumber: data.tableNumber,
+              requestType: data.requestType,
+              status: 'PENDIENTE',
+              restaurantId: RESTAURANT_ID,
+              createdAt: data.createdAt,
+            });
+          }
+        });
+
+        callback(list);
+      },
+      (error) => {
+        console.warn('[tableRequestsService] listener público de mesa falló:', error);
+        // Fallback local: mantiene la interfaz utilizable si temporalmente no hay red.
+        callback(getPendingRequestsForTable(tableNumber));
+      }
+    );
+  } catch (error) {
+    console.warn('[tableRequestsService] no se pudo iniciar listener público:', error);
+    callback(getPendingRequestsForTable(tableNumber));
+    return () => {};
   }
 }
 
