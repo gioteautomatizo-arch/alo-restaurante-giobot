@@ -184,6 +184,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
                           <span className="text-xs font-bold text-[#2B1B13]">{item.quantity}× {item.name}</span>
                           <span className="text-[11px] font-semibold text-[#6B4028]">${item.totalPrice}</span>
                         </div>
+                        {item.personLabel && (
+                          <p className="text-[10px] font-black text-emerald-700 mt-1">👤 {item.personLabel}</p>
+                        )}
                         {item.selectedSize && <p className="text-[10px] text-[#6B4028] mt-1">Tamaño: {item.selectedSize}</p>}
                         {item.selectedOption && <p className="text-[10px] text-[#6B4028]">Opción: {item.selectedOption}</p>}
                         {item.extras && item.extras.length > 0 && <p className="text-[10px] text-[#A86B3D]">Extras: {item.extras.join(', ')}</p>}
