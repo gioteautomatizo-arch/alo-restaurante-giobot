@@ -433,12 +433,20 @@ export interface RestaurantOrderItem {
 
 export type RestaurantOrderBillingStatus = 'PENDIENTE' | 'PAGADO';
 
+export type RestaurantOrderSource = 'CLIENTE_QR' | 'MESERO' | 'CAJA';
+
 export interface RestaurantOrder {
   id?: string;
   code: string;
   restaurantId: 'alo-restaurante';
   orderType: OrderType;
   tableNumber?: number;
+  tableSessionId?: string;
+  accountId?: string;
+  accountLabel?: string;
+  orderSource?: RestaurantOrderSource;
+  capturedById?: string;
+  capturedByName?: string;
   customerName: string;
   phone?: string;
   address?: string;
@@ -466,6 +474,35 @@ export interface RestaurantOrder {
 }
 
 // -------------------------------------------------------------
+// V4.1 - SESIÓN DE MESA / CUENTAS OPCIONALES
+// -------------------------------------------------------------
+export type TableAccountMode = 'GENERAL' | 'SEPARADAS';
+export type TableSessionStatus = 'ACTIVA' | 'CUENTA' | 'CERRADA';
+export type TableSessionOpenedBy = 'QR' | 'MESERO';
+
+export interface TableSessionAccount {
+  id: string;
+  label: string;
+  customerName?: string;
+  createdAt: string;
+}
+
+export interface TableSession {
+  id?: string;
+  restaurantId: 'alo-restaurante';
+  tableNumber: number;
+  guestCount: number;
+  accountMode: TableAccountMode;
+  accounts: TableSessionAccount[];
+  status: TableSessionStatus;
+  openedBy: TableSessionOpenedBy;
+  openedAt: string;
+  updatedAt: string;
+  updatedById?: string;
+  updatedByName?: string;
+}
+
+// -------------------------------------------------------------
 // V4 - CUENTAS POR MESA / CAJA / COBROS
 // -------------------------------------------------------------
 export type TablePaymentMethod =
@@ -479,6 +516,9 @@ export interface TablePayment {
   code: string;
   restaurantId: 'alo-restaurante';
   tableNumber: number;
+  tableSessionId?: string;
+  accountId?: string;
+  accountLabel?: string;
   orderIds: string[];
   subtotal: number;
   discountAmount: number;
