@@ -3,6 +3,7 @@ import { ExternalLink, ReceiptText, Users } from 'lucide-react';
 import { StaffUser, TableRecord, TableSession } from '../../types';
 import {
   ensureStaffTableSession,
+  getSessionPersons,
   setTableSessionAccountModeByStaff,
   subscribeToTableSession,
 } from '../../lib/tableSessionsService';
@@ -113,6 +114,31 @@ export const TableSessionAccountsPanel: React.FC<TableSessionAccountsPanelProps>
           Cuentas separadas
         </button>
       </div>
+
+      {session && (
+        <div className="rounded-2xl bg-[#FFF7EA] border border-[#F4E3C8] p-3">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#6B4028] mb-2">
+            <Users className="w-3.5 h-3.5 text-[#C9974D]" />
+            Personas de la mesa
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {getSessionPersons(session).map((person) => (
+              <span
+                key={person.id}
+                className="px-2.5 py-1 rounded-lg bg-white border border-[#DEC8AE] text-[10px] font-bold text-[#5C3825]"
+              >
+                {person.label}
+                {session.accountMode === 'SEPARADAS' && (
+                  <span className="text-[#A86B3D]"> · {session.accounts.find((a) => a.id === person.accountId)?.label || 'Cuenta'}</span>
+                )}
+              </span>
+            ))}
+          </div>
+          <p className="text-[10px] text-[#8A624C] mt-2">
+            Los platillos se identifican por persona aunque la mesa use Cuenta general.
+          </p>
+        </div>
+      )}
 
       {session?.accountMode === 'SEPARADAS' && (
         <div className="rounded-2xl bg-[#FFF7EA] border border-[#F4E3C8] p-3">
