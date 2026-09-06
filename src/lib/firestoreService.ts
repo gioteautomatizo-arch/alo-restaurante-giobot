@@ -78,22 +78,40 @@ export function setCustomDeviceName(name: string): void {
  * - Procesa recursivamente objetos anidados
  * - Garantiza que el SDK de Firestore nunca reciba datos incompatibles
  */
-export function sanitizeFirestorePayload<T extends Record<string, any>>(data: T): Record<string, any> {
-  const clean: Record<string, any> = {};
-  for (const [key, val] of Object.entries(data)) {
-    if (val === undefined) {
-      continue;
-    }
-    if (typeof val === 'number' && Number.isNaN(val)) {
-      continue;
-    }
-    if (val !== null && typeof val === 'object' && !Array.isArray(val) && !(val instanceof Date)) {
-      clean[key] = sanitizeFirestorePayload(val);
-    } else {
-      clean[key] = val;
+function sanitizeFirestoreValue(value: any): any {
+  if (value === undefined) return undefined;
+  if (typeof value === 'number' && Number.isNaN(value)) return undefined;
+
+  // Firestore no admite undefined dentro de arrays.
+  // Limpiamos también cada objeto anidado dentro de ellos.
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => sanitizeFirestoreValue(item))
+      .filter((item) => item !== undefined);
+  }
+
+  if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+    // Solo recorrer objetos planos. Objetos especiales de Firebase/Firestore
+    // (Timestamp, FieldValue, GeoPoint, etc.) deben conservarse intactos.
+    const proto = Object.getPrototypeOf(value);
+    if (proto === Object.prototype || proto === null) {
+      const clean: Record<string, any> = {};
+      for (const [key, nestedValue] of Object.entries(value)) {
+        const sanitized = sanitizeFirestoreValue(nestedValue);
+        if (sanitized !== undefined) clean[key] = sanitized;
+      }
+      return clean;
     }
   }
-  return clean;
+
+  return value;
+}
+
+export function sanitizeFirestorePayload<T extends Record<string, any>>(data: T): Record<string, any> {
+  const sanitized = sanitizeFirestoreValue(data);
+  return sanitized && typeof sanitized === 'object' && !Array.isArray(sanitized)
+    ? sanitized
+    : {};
 }
 
 // -------------------------------------------------------------
