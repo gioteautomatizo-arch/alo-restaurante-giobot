@@ -45,6 +45,7 @@ import {
   clearAllPendingRequestsForTable,
 } from '../../lib/tableRequestsService';
 import { getStaffUsers } from '../../lib/adminStorage';
+import { TableSessionAccountsPanel } from './TableSessionAccountsPanel';
 
 interface TablesViewProps {
   currentUser: StaffUser;
@@ -222,9 +223,11 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
         name: currentUser.name,
       });
 
-      // Si se estaba resolviendo (marcando como listo/atendido), borrar también la solicitud QR de ese tipo
+      // Sólo cuando el pendiente pasa de ACTIVO -> RESUELTO se debe borrar
+      // la solicitud QR correspondiente. Al activarlo manualmente desde el panel
+      // no debemos eliminar una solicitud real del comensal.
       const table = tables.find((t) => t.tableId === tableId);
-      if (table) {
+      if (table && currentVal) {
         const typeMap: Record<string, TableServiceRequestType> = {
           needsTortillas: 'TORTILLAS',
           needsDrinks: 'BEBIDAS',
@@ -1927,6 +1930,11 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
                       />
                     </div>
                   </div>
+
+                  <TableSessionAccountsPanel
+                    table={selectedTable}
+                    currentUser={currentUser}
+                  />
                 </>
               )}
 

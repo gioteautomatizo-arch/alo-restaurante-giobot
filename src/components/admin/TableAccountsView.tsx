@@ -78,12 +78,22 @@ function getUnpaidOrdersForTable(orders: RestaurantOrder[], tableNumber: number)
   );
 }
 
+function orderAccountId(order: RestaurantOrder): string {
+  return order.accountId || 'general';
+}
+
+function orderAccountLabel(order: RestaurantOrder): string {
+  if (order.accountLabel) return order.accountLabel;
+  return orderAccountId(order) === 'general' ? 'Cuenta general' : orderAccountId(order);
+}
+
 export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUser }) => {
   const [orders, setOrders] = useState<RestaurantOrder[]>([]);
   const [tables, setTables] = useState<TableRecord[]>([]);
   const [payments, setPayments] = useState<TablePayment[]>([]);
   const [requests, setRequests] = useState<TableServiceRequest[]>([]);
   const [selectedTable, setSelectedTable] = useState<TableRecord | null>(null);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
   const [paymentMethod, setPaymentMethod] = useState<TablePaymentMethod>('EFECTIVO');
   const [discountAmount, setDiscountAmount] = useState('0');
   const [tipAmount, setTipAmount] = useState('0');
@@ -121,9 +131,27 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     .filter((p) => p.paymentMethod === 'TRANSFERENCIA' || p.paymentMethod === 'MERCADO_PAGO')
     .reduce((sum, p) => sum + p.total, 0);
 
-  const selectedOrders = selectedTable
+  const selectedAllOrders = selectedTable
     ? getUnpaidOrdersForTable(orders, selectedTable.tableNumber)
     : [];
+  const selectedAccountGroups = Array.from(
+    selectedAllOrders.reduce((map, order) => {
+      const id = orderAccountId(order);
+      if (!map.has(id)) {
+        map.set(id, { id, label: orderAccountLabel(order), total: 0, count: 0 });
+      }
+      const group = map.get(id)!;
+      group.total += Number(order.total || 0);
+      group.count += 1;
+      return map;
+    }, new Map<string, { id: string; label: string; total: number; count: number }>()).values()
+  );
+  const selectedOrders = selectedAccountId === 'ALL'
+    ? selectedAllOrders
+    : selectedAllOrders.filter((order) => orderAccountId(order) === selectedAccountId);
+  const selectedAccountLabel = selectedAccountId === 'ALL'
+    ? 'Mesa completa'
+    : selectedAccountGroups.find((group) => group.id === selectedAccountId)?.label || 'Cuenta';
   const selectedSubtotal = selectedOrders.reduce((sum, order) => sum + Number(order.total || 0), 0);
   const selectedDiscount = Math.max(0, Math.min(Number(discountAmount || 0), selectedSubtotal));
   const selectedTip = Math.max(0, Number(tipAmount || 0));
@@ -133,7 +161,11 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     : 0;
 
   const openCheckout = (table: TableRecord) => {
+    const tableOrders = getUnpaidOrdersForTable(orders, table.tableNumber);
+    const accountIds = Array.from(new Set(tableOrders.map(orderAccountId)));
     setSelectedTable(table);
+    // Si hay cuentas separadas, abrir por defecto la primera cuenta para evitar cobrar toda la mesa por accidente.
+    setSelectedAccountId(accountIds.length > 1 ? accountIds[0] : 'ALL');
     setPaymentMethod('EFECTIVO');
     setDiscountAmount('0');
     setTipAmount('0');
@@ -145,6 +177,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
   const closeCheckout = () => {
     if (busy) return;
     setSelectedTable(null);
+    setSelectedAccountId('ALL');
     setError(null);
   };
 
@@ -171,6 +204,9 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     try {
       const payment = await settleTableAccount({
         tableNumber: selectedTable.tableNumber,
+        tableSessionId: selectedOrders[0]?.tableSessionId,
+        accountId: selectedAccountId === 'ALL' ? undefined : selectedAccountId,
+        accountLabel: selectedAccountId === 'ALL' ? undefined : selectedAccountLabel,
         orders: selectedOrders,
         paymentMethod,
         discountAmount: selectedDiscount,
@@ -179,16 +215,26 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
         user: currentUser,
       });
 
-      // La venta queda registrada primero. Después movemos la mesa a Limpieza.
+      // Si aún quedan cuentas por cobrar, la mesa continúa activa. Sólo pasa a LIMPIEZA
+      // cuando ya no queda ninguna comanda pendiente.
+      const paidIds = new Set(selectedOrders.map((order) => order.id).filter(Boolean));
+      const remainingOrders = selectedAllOrders.filter((order) => !order.id || !paidIds.has(order.id));
       try {
-        await setTableStatus(selectedTable.tableId, 'LIMPIEZA', {
-          id: currentUser.id,
-          name: currentUser.name,
-        });
-        await clearAllPendingRequestsForTable(selectedTable.tableNumber, {
-          id: currentUser.id,
-          name: currentUser.name,
-        });
+        if (remainingOrders.length === 0) {
+          await setTableStatus(selectedTable.tableId, 'LIMPIEZA', {
+            id: currentUser.id,
+            name: currentUser.name,
+          });
+          await clearAllPendingRequestsForTable(selectedTable.tableNumber, {
+            id: currentUser.id,
+            name: currentUser.name,
+          });
+        } else {
+          await setTableStatus(selectedTable.tableId, 'OCUPADA', {
+            id: currentUser.id,
+            name: currentUser.name,
+          });
+        }
       } catch (tableErr) {
         console.warn('[TableAccountsView] pago guardado, no se pudo cambiar estado de mesa:', tableErr);
       }
@@ -197,19 +243,20 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
         userName: currentUser.name,
         userId: currentUser.id,
         userRole: currentUser.role,
-        action: `${currentUser.name} cobró Mesa ${selectedTable.tableNumber}: ${money(payment.total)} (${payment.paymentMethod})`,
+        action: `${currentUser.name} cobró Mesa ${selectedTable.tableNumber} · ${selectedAccountLabel}: ${money(payment.total)} (${payment.paymentMethod})`,
         category: 'turno',
         details: `Folio ${payment.code}. Subtotal ${money(payment.subtotal)} · Descuento ${money(payment.discountAmount)} · Propina ${money(payment.tipAmount)}`,
       });
 
       setSuccess(
         payment.paymentMethod === 'EFECTIVO'
-          ? `Pago registrado · Cambio: ${money(payment.changeDue)}`
-          : `Pago registrado · ${payment.code}`
+          ? `Pago registrado · ${selectedAccountLabel} · Cambio: ${money(payment.changeDue)}`
+          : `Pago registrado · ${selectedAccountLabel} · ${payment.code}`
       );
 
       window.setTimeout(() => {
         setSelectedTable(null);
+        setSelectedAccountId('ALL');
         setSuccess(null);
       }, 1600);
     } catch (err: any) {
@@ -343,6 +390,40 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
             </div>
 
             <div className="p-5 space-y-5">
+              {selectedAccountGroups.length > 1 && (
+                <div className="rounded-2xl bg-white border border-[#F4E3C8] p-3">
+                  <span className="text-[10px] uppercase tracking-wider text-[#A86B3D] font-bold">¿Qué cuenta vas a cobrar?</span>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAccountId('ALL')}
+                      className={`px-3 py-2 rounded-xl border text-[11px] font-bold ${
+                        selectedAccountId === 'ALL'
+                          ? 'bg-[#3A2418] border-[#3A2418] text-[#FFF7EA]'
+                          : 'bg-[#FFF7EA] border-[#DEC8AE] text-[#5C3825]'
+                      }`}
+                    >
+                      Mesa completa · {money(selectedAllOrders.reduce((sum, order) => sum + Number(order.total || 0), 0))}
+                    </button>
+                    {selectedAccountGroups.map((group) => (
+                      <button
+                        key={group.id}
+                        type="button"
+                        onClick={() => setSelectedAccountId(group.id)}
+                        className={`px-3 py-2 rounded-xl border text-[11px] font-bold ${
+                          selectedAccountId === group.id
+                            ? 'bg-[#3A2418] border-[#3A2418] text-[#FFF7EA]'
+                            : 'bg-[#FFF7EA] border-[#DEC8AE] text-[#5C3825]'
+                        }`}
+                      >
+                        {group.label} · {money(group.total)}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-[#8A624C] mt-2">Cobrar una cuenta no cierra la mesa mientras existan otras cuentas pendientes.</p>
+                </div>
+              )}
+
               <div className="space-y-3">
                 {selectedOrders.map((order) => (
                   <div key={order.id || order.code} className="bg-white rounded-2xl border border-[#F4E3C8] p-4">
@@ -350,6 +431,9 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
                       <div>
                         <span className="text-[10px] text-[#A86B3D] font-bold">{order.code}</span>
                         <div className="text-xs font-bold text-[#2B1B13]">{order.customerName}</div>
+                        {order.accountLabel && (
+                          <div className="text-[10px] font-bold text-[#A86B3D]">{order.accountLabel}</div>
+                        )}
                       </div>
                       <strong className="font-serif text-[#2B1B13]">{money(order.total)}</strong>
                     </div>
@@ -462,7 +546,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
               </button>
 
               <p className="text-[10px] text-center text-[#8A624C]">
-                Al cobrar, las comandas quedan marcadas como pagadas y la mesa pasa a LIMPIEZA.
+                Las comandas cobradas quedan marcadas como pagadas. La mesa pasa a LIMPIEZA sólo al terminar todas sus cuentas.
               </p>
             </div>
           </div>
