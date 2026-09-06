@@ -12,6 +12,7 @@ import {
   TableAccountMode,
   TableSession,
   TableSessionAccount,
+  TableSessionPerson,
   TableSessionStatus,
 } from '../types';
 import { sanitizeFirestorePayload } from './firestoreService';
@@ -22,6 +23,7 @@ export const RESTAURANT_ID = 'alo-restaurante' as const;
 
 const VALID_TABLES = new Set([1, 2, 4, 5, 6, 7, 8, 9]);
 const ACCOUNT_SELECTION_KEY_PREFIX = 'alo_table_account_selection_v1';
+const PERSON_SELECTION_KEY_PREFIX = 'alo_table_person_selection_v1';
 
 export function isValidOperationalTableNumber(tableNumber: number): boolean {
   return Number.isInteger(tableNumber) && VALID_TABLES.has(tableNumber);
@@ -49,6 +51,33 @@ function buildSeparateAccounts(guestCount: number, createdAt = nowIso()): TableS
     label: `Cuenta ${index + 1}`,
     createdAt,
   }));
+}
+
+
+/**
+ * V4.3A - Las personas se derivan de guestCount en vez de guardarse como una
+ * segunda fuente de verdad en Firestore. El id person-N es estable durante la
+ * sesión y la cuenta sigue siendo un concepto independiente.
+ */
+export function getSessionPersons(
+  session: Pick<TableSession, 'guestCount' | 'accountMode' | 'accounts'>
+): TableSessionPerson[] {
+  const count = Math.max(1, Math.min(20, Math.round(Number(session.guestCount || 1))));
+  const generalAccountId = session.accounts[0]?.id || 'general';
+
+  return Array.from({ length: count }, (_, index) => {
+    const number = index + 1;
+    const mappedAccountId = session.accountMode === 'SEPARADAS'
+      ? (session.accounts[index]?.id || generalAccountId)
+      : generalAccountId;
+
+    return {
+      id: `person-${number}`,
+      index: number,
+      label: `Persona ${number}`,
+      accountId: mappedAccountId,
+    };
+  });
 }
 
 function normalizeSession(id: string, data: Partial<TableSession>): TableSession | null {
@@ -262,6 +291,7 @@ export async function deleteTableSessionByStaff(tableNumber: number): Promise<vo
   if (!isValidOperationalTableNumber(tableNumber)) return;
   await deleteDoc(doc(db, TABLE_SESSIONS_COLLECTION, tableSessionDocId(tableNumber)));
   clearTableAccountSelection(tableNumber);
+  clearTablePersonSelection(tableNumber);
 }
 
 function selectionKey(tableNumber: number): string {
@@ -292,15 +322,52 @@ export function clearTableAccountSelection(tableNumber: number): void {
   }
 }
 
+
+function personSelectionKey(tableNumber: number): string {
+  return `${PERSON_SELECTION_KEY_PREFIX}_${tableNumber}`;
+}
+
+export function setTablePersonSelection(tableNumber: number, personId: string): void {
+  try {
+    localStorage.setItem(personSelectionKey(tableNumber), personId);
+  } catch {
+    // ignore
+  }
+}
+
+export function getTablePersonSelection(tableNumber: number): string | null {
+  try {
+    return localStorage.getItem(personSelectionKey(tableNumber));
+  } catch {
+    return null;
+  }
+}
+
+export function clearTablePersonSelection(tableNumber: number): void {
+  try {
+    localStorage.removeItem(personSelectionKey(tableNumber));
+  } catch {
+    // ignore
+  }
+}
+
 export async function getTableOrderContext(tableNumber: number): Promise<{
   tableSessionId: string;
   accountId: string;
   accountLabel: string;
+  personId: string;
+  personIndex: number;
+  personLabel: string;
 }> {
   const session = await getTableSession(tableNumber);
   if (!session || session.status === 'CERRADA') {
     throw new Error('La sesión de esta mesa ya no está activa.');
   }
+
+  const persons = getSessionPersons(session);
+  const storedPersonId = getTablePersonSelection(tableNumber);
+  const selectedPerson = persons.find((person) => person.id === storedPersonId) || persons[0];
+  setTablePersonSelection(tableNumber, selectedPerson.id);
 
   if (session.accountMode === 'GENERAL') {
     const account = session.accounts[0] || buildGeneralAccount(session.openedAt);
@@ -308,18 +375,29 @@ export async function getTableOrderContext(tableNumber: number): Promise<{
       tableSessionId: session.id || tableSessionDocId(tableNumber),
       accountId: account.id,
       accountLabel: account.label,
+      personId: selectedPerson.id,
+      personIndex: selectedPerson.index,
+      personLabel: selectedPerson.label,
     };
   }
 
   const selectedId = getTableAccountSelection(tableNumber);
-  const selectedAccount = session.accounts.find((account) => account.id === selectedId);
+  const selectedAccount = session.accounts.find((account) => account.id === selectedId)
+    || session.accounts.find((account) => account.id === selectedPerson.accountId);
+
   if (!selectedAccount) {
     throw new Error('Selecciona tu cuenta antes de enviar el pedido.');
   }
+
+  setTableAccountSelection(tableNumber, selectedAccount.id);
 
   return {
     tableSessionId: session.id || tableSessionDocId(tableNumber),
     accountId: selectedAccount.id,
     accountLabel: selectedAccount.label,
+    personId: selectedPerson.id,
+    personIndex: selectedPerson.index,
+    personLabel: selectedPerson.label,
   };
 }
+
