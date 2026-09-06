@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MENU_ITEMS } from './data/menu';
-import { MenuItem, CategoryId, CartItem, VipProfile, StaffUser } from './types';
+import { MenuItem, CategoryId, CartItem, VipProfile, StaffUser, TableSessionPerson } from './types';
 import { getVipProfile, refreshCloudVipProfile, VIP_DATA_EVENT } from './lib/vipStorage';
 import { getAuthSession, logoutStaff } from './lib/adminStorage';
 import { Header } from './components/Header';
@@ -41,6 +41,7 @@ export default function App() {
   const [vipProfile, setVipProfile] = useState<VipProfile | null>(null);
   const [isContactVisible, setIsContactVisible] = useState<boolean>(false);
   const [customerTableNumber, setCustomerTableNumber] = useState<number | null>(null);
+  const [selectedTablePerson, setSelectedTablePerson] = useState<TableSessionPerson | null>(null);
 
   // Administrative State
   const [adminUser, setAdminUser] = useState<StaffUser | null>(null);
@@ -152,7 +153,22 @@ export default function App() {
 
   // Cart operations
   const handleAddToCart = (item: CartItem) => {
-    setCartItems((prev) => [...prev, item]);
+    // V4.3A: en modo mesa, cada platillo conserva la persona elegida al momento de agregarlo.
+    // Persona 1 funciona como fallback seguro mientras la sesión termina de sincronizar.
+    const person = customerTableNumber
+      ? (selectedTablePerson || { id: 'person-1', index: 1, label: 'Persona 1', accountId: 'general' })
+      : null;
+
+    const itemWithPerson = person
+      ? {
+          ...item,
+          personId: person.id,
+          personIndex: person.index,
+          personLabel: person.label,
+        }
+      : item;
+
+    setCartItems((prev) => [...prev, itemWithPerson]);
   };
 
   const handleUpdateQuantity = (cartId: string, newQty: number) => {
@@ -237,48 +253,74 @@ export default function App() {
         <TableCustomerView
           tableNumber={customerTableNumber}
           onExploreMenu={scrollToMenu}
+          onSelectCategory={(cat) => {
+            setActiveCategory(cat);
+            setShowAllCatalog(true);
+            scrollToMenu();
+          }}
+          onOpenComidaCorrida={() => {
+            setIsComidaCorridaBuilderOpen(true);
+          }}
+          onPersonSelectionChange={setSelectedTablePerson}
         />
       )}
 
-      {/* 2. Hero Banner Bistró Mexicano Contemporáneo */}
-      <Banner
-        onOpenGiobot={() => setIsGiobotOpen(true)}
-        onOpenComidaCorrida={() => setIsComidaCorridaBuilderOpen(true)}
-        onOpenEnsalada={() => setIsSaladBuilderOpen(true)}
-        onScrollToMenu={scrollToMenu}
-      />
-
-      {/* Top Application Flow Area (Mobile First Hub) */}
-      <div className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 py-3.5 sm:py-5 w-full space-y-3 sm:space-y-4">
-        {/* 2. Search Bar */}
-        <SearchBar
-          searchTerm={searchTerm}
-          setSearchTerm={(term) => {
-            setSearchTerm(term);
-            if (term) setShowAllCatalog(true);
-          }}
-        />
-
-        {/* 3. Primary Actions (3 tactile buttons: Ver menú, Pedir a domicilio, Preguntar a Giobot) */}
-        <QuickActions
-          onScrollToMenu={scrollToMenu}
-          onOpenDeliveryOrder={() => setIsCartOpen(true)}
+      {/* 2. Hero Banner Bistró Mexicano Contemporáneo - Oculto en modo mesa para no interponerse */}
+      {!customerTableNumber && (
+        <Banner
           onOpenGiobot={() => setIsGiobotOpen(true)}
-        />
-
-        {/* 4. Daily Highlights */}
-        <DailyHighlights
           onOpenComidaCorrida={() => setIsComidaCorridaBuilderOpen(true)}
-          onOpenSaladBuilder={() => setIsSaladBuilderOpen(true)}
-          onSelectCategory={handleCategorySelect}
+          onOpenEnsalada={() => setIsSaladBuilderOpen(true)}
+          onScrollToMenu={scrollToMenu}
         />
+      )}
 
-        {/* 9. Eco Promotion Banner */}
-        <EcoPromoCard
-          bringOwnContainer={bringOwnContainer}
-          setBringOwnContainer={setBringOwnContainer}
-        />
-      </div>
+      {/* Top Application Flow Area (Mobile First Hub) - Solo para vista pública general */}
+      {!customerTableNumber && (
+        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 py-3.5 sm:py-5 w-full space-y-3 sm:space-y-4">
+          {/* 2. Search Bar */}
+          <SearchBar
+            searchTerm={searchTerm}
+            setSearchTerm={(term) => {
+              setSearchTerm(term);
+              if (term) setShowAllCatalog(true);
+            }}
+          />
+
+          {/* 3. Primary Actions (3 tactile buttons: Ver menú, Pedir a domicilio, Preguntar a Giobot) */}
+          <QuickActions
+            onScrollToMenu={scrollToMenu}
+            onOpenDeliveryOrder={() => setIsCartOpen(true)}
+            onOpenGiobot={() => setIsGiobotOpen(true)}
+          />
+
+          {/* 4. Daily Highlights */}
+          <DailyHighlights
+            onOpenComidaCorrida={() => setIsComidaCorridaBuilderOpen(true)}
+            onOpenSaladBuilder={() => setIsSaladBuilderOpen(true)}
+            onSelectCategory={handleCategorySelect}
+          />
+
+          {/* 9. Eco Promotion Banner */}
+          <EcoPromoCard
+            bringOwnContainer={bringOwnContainer}
+            setBringOwnContainer={setBringOwnContainer}
+          />
+        </div>
+      )}
+
+      {/* En modo mesa QR (?table=N), buscador limpio directo sobre el menú */}
+      {customerTableNumber && (
+        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 pt-1 pb-1 w-full">
+          <SearchBar
+            searchTerm={searchTerm}
+            setSearchTerm={(term) => {
+              setSearchTerm(term);
+              if (term) setShowAllCatalog(true);
+            }}
+          />
+        </div>
+      )}
 
       {/* 5. Sticky Category Navigation Bar */}
       <CategoryFilter
