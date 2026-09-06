@@ -46,7 +46,7 @@ import {
 } from '../../lib/tableRequestsService';
 import { getStaffUsers } from '../../lib/adminStorage';
 import { TableSessionAccountsPanel } from './TableSessionAccountsPanel';
-import { subscribeToTableSession } from '../../lib/tableSessionsService';
+import { subscribeToTableSession, setTableSessionStatusByStaff } from '../../lib/tableSessionsService';
 import { subscribeToRestaurantOrders } from '../../lib/ordersService';
 
 interface TablesViewProps {
@@ -153,7 +153,13 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
 
   const operationalTables = baseOperationalTables.map((table) => {
     const session = tableSessionsByNumber[table.tableNumber];
-    const activeOrders = activeOrdersByTable[table.tableNumber] || [];
+    const tableUpdatedAtMs = Date.parse(table.updatedAt || '') || 0;
+    const activeOrders = (activeOrdersByTable[table.tableNumber] || []).filter((order) => {
+      // Si la mesa fue liberada manualmente, freeTable actualiza table.updatedAt.
+      // Una comanda anterior a ese corte es histórica y no debe volver a ocuparla.
+      const orderCreatedAtMs = Date.parse(order.createdAt || '') || 0;
+      return orderCreatedAtMs >= tableUpdatedAtMs;
+    });
     const hasActiveOrders = activeOrders.length > 0;
 
     let effectiveStatus: TableStatus = table.status;
@@ -281,7 +287,20 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
     if (window.confirm('¿Liberar esta mesa y dejarla lista para nuevos clientes?')) {
       try {
         const table = tables.find((t) => t.tableId === tableId);
+
+        // V4.3A FIX V3: liberar una mesa debe cerrar también su sesión digital.
+        // Si dejamos table_sessions ACTIVA, el listener QR la vuelve a pintar como OCUPADA.
+        if (table) {
+          await setTableSessionStatusByStaff(table.tableNumber, 'CERRADA', {
+            id: currentUser.id,
+            name: currentUser.name,
+          });
+        }
+
+        // freeTable actualiza updatedAt; ese timestamp también funciona como corte para
+        // ignorar comandas históricas en el fallback visual del croquis.
         await freeTable(tableId, { id: currentUser.id, name: currentUser.name });
+
         if (table) {
           await clearAllPendingRequestsForTable(table.tableNumber, {
             id: currentUser.id,
