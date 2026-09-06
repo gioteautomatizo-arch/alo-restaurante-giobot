@@ -440,7 +440,10 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
                     <div className="space-y-1">
                       {order.items.map((item, idx) => (
                         <div key={`${order.id}-${item.productId}-${idx}`} className="flex justify-between gap-3 text-[11px] text-[#6B4028]">
-                          <span>{item.quantity}× {item.name}</span>
+                          <span>
+                            {item.quantity}× {item.name}
+                            {item.personLabel && <span className="block text-[10px] font-bold text-emerald-700">👤 {item.personLabel}</span>}
+                          </span>
                           <span>{money(item.totalPrice)}</span>
                         </div>
                       ))}
