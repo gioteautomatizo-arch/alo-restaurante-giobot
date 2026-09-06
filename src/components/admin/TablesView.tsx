@@ -24,7 +24,7 @@ import {
   QrCode,
   ExternalLink,
 } from 'lucide-react';
-import { TableRecord, TableStatus, TableCourse, StaffUser, TableServiceRequest, TableServiceRequestType } from '../../types';
+import { TableRecord, TableStatus, TableCourse, StaffUser, TableServiceRequest, TableServiceRequestType, TableSession } from '../../types';
 import {
   subscribeToTables,
   occupyTable,
@@ -46,6 +46,7 @@ import {
 } from '../../lib/tableRequestsService';
 import { getStaffUsers } from '../../lib/adminStorage';
 import { TableSessionAccountsPanel } from './TableSessionAccountsPanel';
+import { subscribeToTableSession } from '../../lib/tableSessionsService';
 
 interface TablesViewProps {
   currentUser: StaffUser;
@@ -61,6 +62,7 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
   const [staffList, setStaffList] = useState<StaffUser[]>([]);
   const [qrRequests, setQrRequests] = useState<TableServiceRequest[]>([]);
   const [copiedTableQr, setCopiedTableQr] = useState<number | null>(null);
+  const [tableSessionsByNumber, setTableSessionsByNumber] = useState<Record<number, TableSession | null>>({});
 
   // Datos para modal de ocupación rápida
   const [occupyGuests, setOccupyGuests] = useState(2);
@@ -79,17 +81,20 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
     const unsubFirestore = initTablesRealtimeSync();
     const unsubTables = subscribeToTables((updatedTables) => {
       setTables(updatedTables);
-      // Mantener actualizada la mesa seleccionada si está abierta
-      setSelectedTable((prev) => {
-        if (!prev) return null;
-        const current = updatedTables.find((t) => t.tableId === prev.tableId);
-        return current || null;
-      });
     });
 
     const unsubQr = subscribeToPendingTableRequests((requests) => {
       setQrRequests(requests);
     });
+
+    // Escuchar también las sesiones QR. Una sesión ACTIVA debe reflejar la mesa como
+    // ocupada en el panel aunque el registro operativo de `tables` siga en LIBRE.
+    // Usamos listeners por documento (8 mesas) para no depender de permisos de listado.
+    const sessionUnsubs = [1, 2, 4, 5, 6, 7, 8, 9].map((tableNumber) =>
+      subscribeToTableSession(tableNumber, (session) => {
+        setTableSessionsByNumber((prev) => ({ ...prev, [tableNumber]: session }));
+      })
+    );
 
     setStaffList(getStaffUsers().filter((u) => u.active));
 
@@ -97,12 +102,55 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
       unsubFirestore();
       unsubTables();
       unsubQr();
+      sessionUnsubs.forEach((unsub) => unsub());
     };
   }, []);
 
   // Regla: Las mesas operativas son exactamente 8 (Mesa 1, 2, 4, 5, 6, 7, 8 y 9)
   // Mesa 3 físicamente corresponde al área de Pantalla (no operativa)
-  const operationalTables = tables.filter((t) => t.tableId !== 'table-3' && t.tableNumber !== 3);
+  const baseOperationalTables = tables.filter((t) => t.tableId !== 'table-3' && t.tableNumber !== 3);
+
+  // Estado efectivo para el panel:
+  // - una sesión QR ACTIVA convierte una mesa LIBRE en OCUPADA;
+  // - una sesión en CUENTA se refleja como CUENTA;
+  // - LIMPIEZA siempre tiene prioridad para no reabrir visualmente una mesa ya cobrada;
+  // - el número de personas viene de la sesión digital mientras siga activa.
+  const operationalTables = baseOperationalTables.map((table) => {
+    const session = tableSessionsByNumber[table.tableNumber];
+    if (!session || session.status === 'CERRADA') return table;
+
+    let effectiveStatus: TableStatus = table.status;
+    if (table.status !== 'LIMPIEZA') {
+      if (session.status === 'CUENTA') effectiveStatus = 'CUENTA';
+      else if (session.status === 'ACTIVA' && table.status === 'LIBRE') effectiveStatus = 'OCUPADA';
+    }
+
+    return {
+      ...table,
+      status: effectiveStatus,
+      guestCount: table.status === 'LIMPIEZA' ? table.guestCount : session.guestCount,
+      openedAt: table.openedAt || session.openedAt,
+    };
+  });
+
+  // Si el panel de una mesa está abierto, mantenerlo sincronizado con el estado efectivo
+  // calculado arriba (por ejemplo, LIBRE -> OCUPADA al entrar clientes por QR).
+  useEffect(() => {
+    setSelectedTable((prev) => {
+      if (!prev) return null;
+      const effective = operationalTables.find((t) => t.tableId === prev.tableId);
+      if (!effective) return null;
+      if (
+        effective.status === prev.status &&
+        effective.guestCount === prev.guestCount &&
+        effective.openedAt === prev.openedAt &&
+        effective.updatedAt === prev.updatedAt
+      ) {
+        return prev;
+      }
+      return effective;
+    });
+  }, [tables, tableSessionsByNumber]);
 
   // Helper para verificar si una mesa tiene algún pendiente interno o por QR
   const checkTableHasPending = (t: TableRecord) => {
