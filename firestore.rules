@@ -191,7 +191,52 @@ service cloud.firestore {
 
 
 
-    // 13. Table Payments / Caja: cobros cerrados por mesa
+    // 13. Table Sessions: sesión digital de una mesa y cuentas opcionales
+    match /table_sessions/{sessionId} {
+      // El QR consulta únicamente la sesión de su mesa; el personal puede listar todas.
+      allow get: if true;
+      allow list: if isSignedIn();
+
+      // Primer escaneo público: sólo puede CREAR una sesión general y válida.
+      allow create: if (
+        request.auth == null
+        && isValidRestaurant(request.resource.data)
+        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && request.resource.data.guestCount is int
+        && request.resource.data.guestCount >= 1
+        && request.resource.data.guestCount <= 20
+        && request.resource.data.accountMode == 'GENERAL'
+        && request.resource.data.accounts is list
+        && request.resource.data.accounts.size() == 1
+        && request.resource.data.accounts[0].id == 'general'
+        && request.resource.data.accounts[0].label is string
+        && request.resource.data.status == 'ACTIVA'
+        && request.resource.data.openedBy == 'QR'
+        && request.resource.data.openedAt is string
+        && request.resource.data.updatedAt is string
+        && request.resource.data.keys().hasOnly([
+          'restaurantId', 'tableNumber', 'guestCount', 'accountMode', 'accounts',
+          'status', 'openedBy', 'openedAt', 'updatedAt'
+        ])
+      ) || (
+        isSignedIn()
+        && isValidRestaurant(request.resource.data)
+        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && request.resource.data.status in ['ACTIVA', 'CUENTA', 'CERRADA']
+        && request.resource.data.accountMode in ['GENERAL', 'SEPARADAS']
+      );
+
+      // Sólo el personal puede cambiar comensales, separar cuentas o cerrar sesión.
+      allow update: if isSignedIn()
+        && isValidRestaurant(request.resource.data)
+        && request.resource.data.tableNumber == resource.data.tableNumber
+        && request.resource.data.status in ['ACTIVA', 'CUENTA', 'CERRADA']
+        && request.resource.data.accountMode in ['GENERAL', 'SEPARADAS'];
+
+      allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
+    }
+
+    // 14. Table Payments / Caja: cobros cerrados por mesa
     match /table_payments/{paymentId} {
       // Sólo el personal autenticado puede consultar o registrar cobros.
       allow read: if isSignedIn();
