@@ -1,11 +1,10 @@
 export type CategoryId = 
   | 'all'
-  | 'desayunos'
   | 'bebidas'
-  | 'frios-frappes'
-  | 'jugos-licuados'
+  | 'licuados-agua-fruta-jugos'
   | 'panaderia'
-  | 'tortas-molletes'
+  | 'molletes-sincronizadas-tortas'
+  | 'desayunos'
   | 'chapatas-sandwiches'
   | 'hamburguesas'
   | 'comida-corrida'
@@ -54,6 +53,10 @@ export interface CartItem {
   // Specific customizers
   customSalad?: SaladCustomization;
   customComidaCorrida?: ComidaCorridaCustomization;
+  // V4.3A - Persona asignada dentro de la mesa
+  personId?: string;
+  personIndex?: number;
+  personLabel?: string;
 }
 
 export interface SaladCustomization {
@@ -231,6 +234,9 @@ export interface ActivityLog {
   newValue?: string;
 }
 
+export type ServiceMode = 'AUTO' | 'DESAYUNO' | 'COMIDA';
+export type EffectiveService = 'DESAYUNO' | 'COMIDA';
+
 export interface DailyMenuConfig {
   isAvailable: boolean;
   price: number;
@@ -240,6 +246,7 @@ export interface DailyMenuConfig {
   aguaDelDia: string;
   postreDelDia: string;
   opcionesAlternativas: string[];
+  serviceMode?: ServiceMode;
   updatedAt: string;
   updatedBy: string;
 }
@@ -429,6 +436,10 @@ export interface RestaurantOrderItem {
   extras?: string[];
   specialInstructions?: string;
   customizationSummary?: string;
+  // V4.3A - Persona/comensal dentro de la sesión de mesa
+  personId?: string;
+  personIndex?: number;
+  personLabel?: string;
 }
 
 export type RestaurantOrderBillingStatus = 'PENDIENTE' | 'PAGADO';
@@ -485,6 +496,13 @@ export interface TableSessionAccount {
   label: string;
   customerName?: string;
   createdAt: string;
+}
+
+export interface TableSessionPerson {
+  id: string;
+  index: number;
+  label: string;
+  accountId: string;
 }
 
 export interface TableSession {
