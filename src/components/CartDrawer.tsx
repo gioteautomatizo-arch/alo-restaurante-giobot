@@ -134,6 +134,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     let itemsList = '';
     cartItems.forEach((cartItem, idx) => {
       itemsList += `\n*${cartItem.quantity}x ${cartItem.item.name}* — $${cartItem.totalPrice} MXN`;
+      if (cartItem.personLabel) {
+        itemsList += `\n  👤 Para: ${cartItem.personLabel}`;
+      }
       if (cartItem.selectedSize) {
         itemsList += `\n  ▫️ Tamaño: ${cartItem.selectedSize.name} ($${cartItem.selectedSize.price})`;
       }
@@ -261,6 +264,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
           extras: cartItem.selectedExtras?.map((extra) => extra.name),
           specialInstructions: cartItem.specialInstructions,
           customizationSummary: customParts.length > 0 ? customParts.join(' · ') : undefined,
+          personId: cartItem.personId || tableContext?.personId,
+          personIndex: cartItem.personIndex || tableContext?.personIndex,
+          personLabel: cartItem.personLabel || tableContext?.personLabel,
         };
       });
 
@@ -436,6 +442,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                     <span>{cartItem.quantity}x {cartItem.item.name}</span>
                     <span>${cartItem.totalPrice}.00</span>
                   </div>
+                  {cartItem.personLabel && (
+                    <p className="text-[10px] font-bold text-emerald-700 pl-3">👤 {cartItem.personLabel}</p>
+                  )}
 
                   {cartItem.selectedSize && (
                     <p className="text-[10px] text-[#6B4028] pl-3">▪ Tamaño: {cartItem.selectedSize.name}</p>
@@ -643,6 +652,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <h4 className="font-bold text-xs text-[#2B1B13] font-serif">{cartItem.item.name}</h4>
+                    {cartItem.personLabel && (
+                      <span className="inline-block text-[10px] text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md mb-1">
+                        👤 {cartItem.personLabel}
+                      </span>
+                    )}
                     {cartItem.selectedSize && (
                       <span className="text-[10px] text-[#3A2418] font-bold bg-[#F4E3C8] px-1.5 py-0.5 rounded-md mr-1 border border-[#DEC8AE]">
                         {cartItem.selectedSize.name}
