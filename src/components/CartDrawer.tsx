@@ -3,6 +3,7 @@ import { CartItem, OrderType, VipProfile, RestaurantOrderItem } from '../types';
 import { getVipProfile, addStampToVip, redeemVipReward } from '../lib/vipStorage';
 import { getRestaurantInfo, ADMIN_DATA_EVENT } from '../lib/adminStorage';
 import { createRestaurantOrder } from '../lib/ordersService';
+import { getTableOrderContext } from '../lib/tableSessionsService';
 import { X, Trash2, Plus, Minus, ShoppingBag, Leaf, CheckCircle2, MapPin, Phone, User, CreditCard, Send, Star, Gift, Copy, Check, MessageSquare, Printer, ArrowRight } from 'lucide-react';
 import { Logo } from './Logo';
 
@@ -169,6 +170,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     msg += `👤 *CLIENTE:* ${customerName.trim()}\n`;
     if (phone.trim()) msg += `📱 *TELÉFONO:* ${phone.trim()}\n`;
     msg += `🛎️ *TIPO DE SERVICIO:* ${modalityName}\n`;
+    if (orderType === 'dine_in' && tableNumber) {
+      msg += `🪑 *MESA:* ${tableNumber}\n`;
+    }
 
     if (orderType === 'delivery') {
       msg += `📍 *DIRECCIÓN DE ENTREGA:* ${address.trim()}\n`;
@@ -220,6 +224,18 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     setOrderSubmitError(null);
 
     try {
+      const isStaffOrder = (() => {
+        try {
+          return new URLSearchParams(window.location.search).get('staffOrder') === '1';
+        } catch {
+          return false;
+        }
+      })();
+
+      const tableContext = orderType === 'dine_in' && tableNumber
+        ? await getTableOrderContext(tableNumber)
+        : null;
+
       const normalizedItems: RestaurantOrderItem[] = cartItems.map((cartItem) => {
         const customParts: string[] = [];
         if (cartItem.customComidaCorrida) {
@@ -252,6 +268,12 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
       const order = await createRestaurantOrder({
         orderType,
         tableNumber: orderType === 'dine_in' && tableNumber ? tableNumber : undefined,
+        tableSessionId: tableContext?.tableSessionId,
+        accountId: tableContext?.accountId,
+        accountLabel: tableContext?.accountLabel,
+        orderSource: orderType === 'dine_in' && tableNumber
+          ? (isStaffOrder ? 'MESERO' : 'CLIENTE_QR')
+          : undefined,
         customerName: effectiveCustomerName,
         phone: phone.trim() || undefined,
         address: orderType === 'delivery' ? address.trim() : undefined,
