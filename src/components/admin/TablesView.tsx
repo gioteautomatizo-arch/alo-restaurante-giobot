@@ -24,7 +24,7 @@ import {
   QrCode,
   ExternalLink,
 } from 'lucide-react';
-import { TableRecord, TableStatus, TableCourse, StaffUser, TableServiceRequest, TableServiceRequestType, TableSession } from '../../types';
+import { TableRecord, TableStatus, TableCourse, StaffUser, TableServiceRequest, TableServiceRequestType, TableSession, RestaurantOrder } from '../../types';
 import {
   subscribeToTables,
   occupyTable,
@@ -47,6 +47,7 @@ import {
 import { getStaffUsers } from '../../lib/adminStorage';
 import { TableSessionAccountsPanel } from './TableSessionAccountsPanel';
 import { subscribeToTableSession } from '../../lib/tableSessionsService';
+import { subscribeToRestaurantOrders } from '../../lib/ordersService';
 
 interface TablesViewProps {
   currentUser: StaffUser;
@@ -63,6 +64,7 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
   const [qrRequests, setQrRequests] = useState<TableServiceRequest[]>([]);
   const [copiedTableQr, setCopiedTableQr] = useState<number | null>(null);
   const [tableSessionsByNumber, setTableSessionsByNumber] = useState<Record<number, TableSession | null>>({});
+  const [restaurantOrders, setRestaurantOrders] = useState<RestaurantOrder[]>([]);
 
   // Datos para modal de ocupación rápida
   const [occupyGuests, setOccupyGuests] = useState(2);
@@ -87,6 +89,12 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
       setQrRequests(requests);
     });
 
+    // Respaldo operacional: las comandas activas también prueban que una mesa está en servicio.
+    // Esto evita que el croquis muestre LIBRE si por cualquier motivo la sesión QR no llegó al listener.
+    const unsubOrders = subscribeToRestaurantOrders((orders) => {
+      setRestaurantOrders(orders);
+    });
+
     // Escuchar también las sesiones QR. Una sesión ACTIVA debe reflejar la mesa como
     // ocupada en el panel aunque el registro operativo de `tables` siga en LIBRE.
     // Usamos listeners por documento (8 mesas) para no depender de permisos de listado.
@@ -102,6 +110,7 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
       unsubFirestore();
       unsubTables();
       unsubQr();
+      unsubOrders();
       sessionUnsubs.forEach((unsub) => unsub());
     };
   }, []);
@@ -115,21 +124,68 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
   // - una sesión en CUENTA se refleja como CUENTA;
   // - LIMPIEZA siempre tiene prioridad para no reabrir visualmente una mesa ya cobrada;
   // - el número de personas viene de la sesión digital mientras siga activa.
+  const activeDineInOrders = restaurantOrders.filter(
+    (order) =>
+      order.orderType === 'dine_in' &&
+      typeof order.tableNumber === 'number' &&
+      order.status !== 'CANCELADO' &&
+      order.billingStatus !== 'PAGADO'
+  );
+
+  const activeOrdersByTable = activeDineInOrders.reduce<Record<number, RestaurantOrder[]>>((acc, order) => {
+    const tableNumber = Number(order.tableNumber);
+    if (!Number.isInteger(tableNumber)) return acc;
+    if (!acc[tableNumber]) acc[tableNumber] = [];
+    acc[tableNumber].push(order);
+    return acc;
+  }, {});
+
+  const inferGuestCountFromOrders = (orders: RestaurantOrder[]): number => {
+    const personKeys = new Set<string>();
+    orders.forEach((order) => {
+      order.items?.forEach((item: any) => {
+        const key = item.personId || item.personLabel;
+        if (key) personKeys.add(String(key));
+      });
+    });
+    return Math.max(1, personKeys.size || 1);
+  };
+
   const operationalTables = baseOperationalTables.map((table) => {
     const session = tableSessionsByNumber[table.tableNumber];
-    if (!session || session.status === 'CERRADA') return table;
+    const activeOrders = activeOrdersByTable[table.tableNumber] || [];
+    const hasActiveOrders = activeOrders.length > 0;
 
     let effectiveStatus: TableStatus = table.status;
+    let effectiveGuestCount = table.guestCount;
+    let effectiveOpenedAt = table.openedAt;
+
+    // LIMPIEZA es el único estado que no debe reabrirse visualmente por una sesión/comanda vieja.
     if (table.status !== 'LIMPIEZA') {
-      if (session.status === 'CUENTA') effectiveStatus = 'CUENTA';
-      else if (session.status === 'ACTIVA' && table.status === 'LIBRE') effectiveStatus = 'OCUPADA';
+      if (session && session.status !== 'CERRADA') {
+        if (session.status === 'CUENTA') effectiveStatus = 'CUENTA';
+        else if (session.status === 'ACTIVA' && table.status === 'LIBRE') effectiveStatus = 'OCUPADA';
+
+        effectiveGuestCount = session.guestCount;
+        effectiveOpenedAt = table.openedAt || session.openedAt;
+      }
+
+      // Fallback fuerte: una mesa con comandas activas/no pagadas no puede verse LIBRE.
+      // Las comandas ya están demostrando actividad real aunque table_sessions no haya sincronizado.
+      if (hasActiveOrders && effectiveStatus === 'LIBRE') {
+        effectiveStatus = 'OCUPADA';
+        effectiveGuestCount = session?.guestCount || inferGuestCountFromOrders(activeOrders);
+        const oldest = [...activeOrders]
+          .sort((a, b) => (Date.parse(a.createdAt || '') || 0) - (Date.parse(b.createdAt || '') || 0))[0];
+        effectiveOpenedAt = effectiveOpenedAt || oldest?.createdAt;
+      }
     }
 
     return {
       ...table,
       status: effectiveStatus,
-      guestCount: table.status === 'LIMPIEZA' ? table.guestCount : session.guestCount,
-      openedAt: table.openedAt || session.openedAt,
+      guestCount: effectiveGuestCount,
+      openedAt: effectiveOpenedAt,
     };
   });
 
@@ -150,7 +206,7 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
       }
       return effective;
     });
-  }, [tables, tableSessionsByNumber]);
+  }, [tables, tableSessionsByNumber, restaurantOrders]);
 
   // Helper para verificar si una mesa tiene algún pendiente interno o por QR
   const checkTableHasPending = (t: TableRecord) => {
