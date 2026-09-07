@@ -178,7 +178,11 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
 
       // Fallback fuerte: una mesa con comandas activas/no pagadas no puede verse LIBRE.
       // Las comandas ya están demostrando actividad real aunque table_sessions no haya sincronizado.
-      if (hasActiveOrders && effectiveStatus === 'LIBRE') {
+      if (
+  hasActiveOrders &&
+  effectiveStatus === 'LIBRE' &&
+  session?.status !== 'CERRADA'
+) {
         effectiveStatus = 'OCUPADA';
         effectiveGuestCount = session?.guestCount || inferGuestCountFromOrders(activeOrders);
         const oldest = [...activeOrders]
