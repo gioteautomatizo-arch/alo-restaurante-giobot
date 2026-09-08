@@ -48,6 +48,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
   const [orders, setOrders] = useState<RestaurantOrder[]>([]);
   const [filter, setFilter] = useState<Filter>('ACTIVAS');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [, setClockTick] = useState(0);
 
@@ -73,9 +74,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
     LISTO: orders.filter((o) => o.status === 'LISTO').length,
   }), [orders]);
 
-  const canKitchen = ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'COCINA', 'EMPLEADO'].includes(currentUser.role);
-  const canDeliver = ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'EMPLEADO'].includes(currentUser.role);
-  const canCancel = ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'].includes(currentUser.role);
+  const normalizedRole = String(currentUser.role || '').trim().toUpperCase();
+  const canKitchen = ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'COCINA', 'EMPLEADO'].includes(normalizedRole);
+  const canDeliver = ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'EMPLEADO'].includes(normalizedRole);
+  const canCancel = ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'].includes(normalizedRole);
 
   const changeStatus = async (order: RestaurantOrder, status: RestaurantOrderStatus) => {
     if (!order.id) return;
@@ -83,6 +85,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
     setError(null);
     try {
       await updateRestaurantOrderStatus(order.id, status, currentUser);
+      if (status === 'CANCELADO') {
+        setCancelConfirmId(null);
+      }
     } catch (err: any) {
       setError(err?.message || 'No se pudo actualizar la comanda. Revisa la conexión a Firebase.');
     } finally {
@@ -133,6 +138,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
           ['PREPARANDO', 'Preparando'],
           ['LISTO', 'Listas'],
           ['ENTREGADO', 'Entregadas'],
+          ['CANCELADO', 'Canceladas'],
         ] as [Filter, string][]).map(([id, label]) => (
           <button
             key={id}
@@ -159,6 +165,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
           {visibleOrders.map((order) => {
             const meta = statusMeta[order.status];
             const busy = busyId === order.id;
+            const confirmingCancel = cancelConfirmId === order.id;
             return (
               <article key={order.id} className="bg-white border border-[#E8D4BE] rounded-3xl shadow-xs overflow-hidden">
                 <div className="p-4 border-b border-[#F4E3C8] flex items-start justify-between gap-3">
@@ -245,16 +252,41 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
                       </div>
                     )}
 
-                    {canCancel && !['ENTREGADO', 'CANCELADO'].includes(order.status) && (
+                    {canCancel && !['ENTREGADO', 'CANCELADO'].includes(order.status) && !confirmingCancel && (
                       <button
                         disabled={busy}
-                        onClick={() => {
-                          if (window.confirm(`¿Cancelar la comanda ${order.code}?`)) changeStatus(order, 'CANCELADO');
-                        }}
+                        onClick={() => setCancelConfirmId(order.id || null)}
                         className="col-span-2 py-2 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 text-[11px] font-bold flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
                       >
                         <XCircle className="w-3.5 h-3.5" /> Cancelar comanda
                       </button>
+                    )}
+
+                    {canCancel && !['ENTREGADO', 'CANCELADO'].includes(order.status) && confirmingCancel && (
+                      <div className="col-span-2 rounded-xl border border-rose-200 bg-rose-50 p-2.5 space-y-2">
+                        <p className="text-[11px] font-bold text-rose-800 text-center">
+                          ¿Confirmas cancelar la comanda #{order.code}?
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => setCancelConfirmId(null)}
+                            className="py-2 rounded-lg border border-rose-200 bg-white text-rose-700 text-[11px] font-bold disabled:opacity-50 cursor-pointer"
+                          >
+                            No cancelar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => changeStatus(order, 'CANCELADO')}
+                            className="py-2 rounded-lg bg-rose-700 hover:bg-rose-800 text-white text-[11px] font-bold disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1"
+                          >
+                            {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+                            Sí, cancelar
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
