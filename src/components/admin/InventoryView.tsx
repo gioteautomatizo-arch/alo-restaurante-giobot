@@ -34,7 +34,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<InventoryItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
   // New product form
   const [newProductName, setNewProductName] = useState<string>('');
@@ -211,24 +212,21 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    // Evitamos window.confirm porque el Preview de AI Studio puede bloquearlo.
-    // Primer toque: pedir confirmación. Segundo toque sobre el mismo bote: eliminar.
-    if (deleteConfirmId !== id) {
-      setDeleteConfirmId(id);
-      showNotification(`Toca de nuevo el icono de eliminar para confirmar "${name}".`);
-      return;
-    }
+  const confirmDelete = async () => {
+    if (!deleteTarget || isDeleting) return;
 
+    const { id, name } = deleteTarget;
+    setIsDeleting(true);
     try {
       await deleteInventoryProduct(id, currentUser);
       setInventory((current) => current.filter((item) => item.id !== id));
-      setDeleteConfirmId(null);
+      setDeleteTarget(null);
       onRefreshStats();
       showNotification(`Producto "${name}" eliminado.`);
     } catch (err: any) {
-      setDeleteConfirmId(null);
       alert(err.message || 'Error al eliminar.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -493,9 +491,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
 
                     {currentUser.role !== 'EMPLEADO' && (
                       <button
-                        onClick={() => handleDelete(item.id, item.name)}
+                        onClick={() => setDeleteTarget(item)}
                         className="p-1.5 text-stone-400 hover:text-rose-600 rounded-lg lg:opacity-0 hover:opacity-100 transition-opacity cursor-pointer shrink-0"
-                        title={deleteConfirmId === item.id ? 'Toca otra vez para confirmar eliminación' : 'Eliminar producto'}
+                        title="Eliminar producto"
                         aria-label="Eliminar producto de inventario"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -647,6 +645,57 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Modal: Confirmar eliminación de insumo */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-[#2B1B13]/80 backdrop-blur-md animate-in fade-in">
+          <div className="w-full max-w-md bg-[#FFF7EA] text-[#2B1B13] rounded-3xl shadow-2xl border border-[#F4E3C8] overflow-hidden">
+            <div className="bg-[#3A2418] text-[#FFF7EA] p-5 flex items-center gap-3 border-b border-[#4E3222]">
+              <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-serif font-bold text-lg">Eliminar insumo</h3>
+                <p className="text-xs text-[#F4E3C8]">Esta acción quitará el producto del inventario.</p>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="flex items-start gap-3 rounded-2xl bg-rose-50 border border-rose-200 p-4">
+                <AlertTriangle className="w-5 h-5 text-rose-700 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-serif font-bold text-[#2B1B13]">
+                    ¿Estás seguro de que deseas eliminar este insumo?
+                  </p>
+                  <p className="text-sm text-[#6B4028] mt-1">
+                    Se eliminará: <strong>{deleteTarget.name}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => setDeleteTarget(null)}
+                  className="py-3 rounded-xl border border-[#DEC8AE] bg-white text-[#6B4028] font-serif font-bold text-xs hover:bg-[#FAF5ED] disabled:opacity-50 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={confirmDelete}
+                  className="py-3 rounded-xl bg-rose-700 hover:bg-rose-800 text-white font-serif font-bold text-xs shadow-md disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {isDeleting ? 'Eliminando...' : 'Sí, eliminar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Agregar Insumo con Selección de Tipo de Control */}
       {isAddModalOpen && (
