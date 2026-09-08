@@ -518,6 +518,8 @@ export interface TableSession {
   updatedAt: string;
   updatedById?: string;
   updatedByName?: string;
+  waiterId?: string;
+  waiterName?: string;
 }
 
 // -------------------------------------------------------------

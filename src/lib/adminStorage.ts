@@ -15,6 +15,8 @@ import {
   SobreSummary,
   SobreOutflowCategory,
   SobreInflowCategory,
+  ServiceMode,
+  EffectiveService,
 } from '../types';
 import {
   initFirestoreRealtimeSync,
@@ -195,12 +197,13 @@ const INITIAL_INVENTORY_ITEMS: Omit<InventoryItem, 'id' | 'lastUpdated'>[] = [
 const INITIAL_DAILY_MENU: DailyMenuConfig = {
   isAvailable: true,
   price: 90,
-  entrada: 'Sopa de fideo casera o Consomé de pollo con verduras',
-  platoFuerte: 'Guisado del día: Pechuga a la plancha / Enchiladas verdes con queso gratinado / Milanesa de pollo',
-  guarniciones: ['Arroz a la mexicana con chícharos', 'Pasta a la mantequilla'],
-  aguaDelDia: 'Agua fresca de Jamaica con toque de canela y limón',
-  postreDelDia: 'Flan napolitano o arroz con leche tradicional',
-  opcionesAlternativas: ['Enchiladas suizas (+$10)', 'Bistec encebollado (+$5)', 'Tacos dorados de pollo (3 pz)'],
+  entrada: 'Consomé de pollo con menudencias o verduras / Sopa de verduras / Crema o sopa aguada del día',
+  platoFuerte: 'Pechuga a la plancha / Enchiladas verdes con queso gratinado / Milanesa de pollo',
+  guarniciones: ['Arroz rojo', 'Pasta o espagueti'],
+  aguaDelDia: 'Agua fresca de Jamaica o Frutas de temporada',
+  postreDelDia: 'Postre casero del día (Flan o Arroz con leche)',
+  opcionesAlternativas: ['Enchiladas Suizas (+$10)', 'Bistec encebollado (+$5)', 'Tacos dorados de pollo (3 pz)'],
+  serviceMode: 'AUTO',
   updatedAt: new Date().toISOString(),
   updatedBy: 'Gio (Admin)',
 };
@@ -297,6 +300,98 @@ export function getLocalShiftType(d = new Date()): 'AM' | 'PM' {
   } catch {
     return d.getHours() < 14 ? 'AM' : 'PM';
   }
+}
+
+/**
+ * Obtiene la hora y minuto actuales calculados EXCLUSIVAMENTE usando la zona horaria: America/Mexico_City.
+ */
+export function getMexicoCityHourAndMinute(d: Date = new Date()): { hour: number; minute: number } {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: RESTAURANT_TIMEZONE,
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false,
+    }).formatToParts(d);
+    const hourStr = parts.find((p) => p.type === 'hour')?.value ?? '0';
+    const minStr = parts.find((p) => p.type === 'minute')?.value ?? '0';
+    const rawHour = parseInt(hourStr, 10);
+    const hour = rawHour === 24 ? 0 : rawHour;
+    const minute = parseInt(minStr, 10);
+    return { hour, minute };
+  } catch {
+    return { hour: d.getHours(), minute: d.getMinutes() };
+  }
+}
+
+/**
+ * AUTO debe calcular la hora usando EXCLUSIVAMENTE la zona horaria: America/Mexico_City
+ * - Si la hora de Ciudad de México es antes de las 12:00: servicio efectivo = DESAYUNO
+ * - Si son las 12:00 o después: servicio efectivo = COMIDA
+ * Corte exacto a las 12:00 (12h 00m).
+ */
+export function getAutoEffectiveService(d: Date = new Date()): EffectiveService {
+  const { hour } = getMexicoCityHourAndMinute(d);
+  return hour < 12 ? 'DESAYUNO' : 'COMIDA';
+}
+
+/**
+ * Obtiene el modo de selector de servicio guardado: AUTO | DESAYUNO | COMIDA.
+ * Por defecto es 'AUTO'.
+ */
+export function getServiceMode(): ServiceMode {
+  const menuConfig = getDailyMenuConfig();
+  if (menuConfig.serviceMode === 'DESAYUNO' || menuConfig.serviceMode === 'COMIDA') {
+    return menuConfig.serviceMode;
+  }
+  return 'AUTO';
+}
+
+/**
+ * Obtiene el servicio efectivo ('DESAYUNO' | 'COMIDA'):
+ * - DESAYUNO y COMIDA son overrides manuales y deben ignorar la hora.
+ * - AUTO calcula la hora usando EXCLUSIVAMENTE la zona horaria America/Mexico_City:
+ *   antes de las 12:00 -> DESAYUNO; 12:00 o después -> COMIDA.
+ */
+export function getEffectiveService(d: Date = new Date()): EffectiveService {
+  const mode = getServiceMode();
+  if (mode === 'DESAYUNO') return 'DESAYUNO';
+  if (mode === 'COMIDA') return 'COMIDA';
+  return getAutoEffectiveService(d);
+}
+
+/**
+ * Actualiza el selector de servicio: AUTO | DESAYUNO | COMIDA.
+ * Reutiliza la configuración existente de DailyMenuConfig (localStorage y Firestore).
+ */
+export async function setServiceMode(mode: ServiceMode, user?: StaffUser): Promise<DailyMenuConfig> {
+  const current = getDailyMenuConfig();
+  const session = getAuthSession();
+  const actingUser: StaffUser = user || (session ? session.user : {
+    id: 'admin_sys',
+    name: 'Administración',
+    username: 'admin',
+    role: 'ADMINISTRADOR',
+    active: true,
+    createdAt: new Date().toISOString(),
+  });
+
+  const updated: DailyMenuConfig = {
+    ...current,
+    serviceMode: mode,
+    updatedAt: new Date().toISOString(),
+    updatedBy: actingUser.name,
+  };
+
+  try {
+    await saveDailyMenuFirestore(updated, actingUser);
+  } catch (err) {
+    console.warn('No se pudo sincronizar modo de servicio con Firestore:', err);
+  }
+
+  localStorage.setItem(STORAGE_KEYS.DAILY_MENU, JSON.stringify(updated));
+  notifyDataChanged();
+  return updated;
 }
 
 // -------------------------------------------------------------
@@ -1128,7 +1223,11 @@ export function addActivityLog(data: {
 export function getDailyMenuConfig(): DailyMenuConfig {
   const cache = getMemoryCache();
   if (cache.dailyMenu) {
-    return cache.dailyMenu;
+    return {
+      ...INITIAL_DAILY_MENU,
+      ...cache.dailyMenu,
+      serviceMode: cache.dailyMenu.serviceMode || 'AUTO',
+    };
   }
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.DAILY_MENU);
@@ -1136,7 +1235,12 @@ export function getDailyMenuConfig(): DailyMenuConfig {
       localStorage.setItem(STORAGE_KEYS.DAILY_MENU, JSON.stringify(INITIAL_DAILY_MENU));
       return INITIAL_DAILY_MENU;
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return {
+      ...INITIAL_DAILY_MENU,
+      ...parsed,
+      serviceMode: parsed.serviceMode || 'AUTO',
+    };
   } catch {
     return INITIAL_DAILY_MENU;
   }

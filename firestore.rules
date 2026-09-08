@@ -129,12 +129,24 @@ service cloud.firestore {
       allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
     }
 
-    // 10. Tables: Gestión operativa de mesas en tiempo real (exclusivo personal autenticado)
+    // 10. Tables: Gestión operativa de mesas en tiempo real (exclusivo personal autenticado, actualización de ocupación por QR)
     match /tables/{tableId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn()
+      allow get: if true;
+      allow list: if isSignedIn();
+      allow create: if isSignedIn()
         && isValidRestaurant(request.resource.data)
         && request.resource.data.status in ['LIBRE', 'OCUPADA', 'CUENTA', 'LIMPIEZA'];
+      allow update: if (
+        request.auth == null
+        && isValidRestaurant(request.resource.data)
+        && request.resource.data.status == 'OCUPADA'
+        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && request.resource.data.tableId == resource.data.tableId
+      ) || (
+        isSignedIn()
+        && isValidRestaurant(request.resource.data)
+        && request.resource.data.status in ['LIBRE', 'OCUPADA', 'CUENTA', 'LIMPIEZA']
+      );
       allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
     }
 
@@ -197,12 +209,12 @@ service cloud.firestore {
       allow get: if true;
       allow list: if isSignedIn();
 
-      // Primer escaneo público: sólo puede CREAR una sesión general y válida.
+      // Primer escaneo público: sólo puede CREAR una sesión general y válida si no existía el documento.
       allow create: if (
         request.auth == null
         && isValidRestaurant(request.resource.data)
         && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
-        && request.resource.data.guestCount is int
+        && (request.resource.data.guestCount is int || request.resource.data.guestCount is number)
         && request.resource.data.guestCount >= 1
         && request.resource.data.guestCount <= 20
         && request.resource.data.accountMode == 'GENERAL'
@@ -226,12 +238,38 @@ service cloud.firestore {
         && request.resource.data.accountMode in ['GENERAL', 'SEPARADAS']
       );
 
-      // Sólo el personal puede cambiar comensales, separar cuentas o cerrar sesión.
-      allow update: if isSignedIn()
+      // Actualización de sesión:
+      // 1. Cliente público: reactivar una sesión que estaba CERRADA a ACTIVA por QR
+      // 2. Personal autenticado: cambiar comensales, separar cuentas, pedir cuenta o cerrar sesión
+      allow update: if (
+        request.auth == null
+        && resource.data.status == 'CERRADA'
+        && isValidRestaurant(request.resource.data)
+        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && request.resource.data.tableNumber == resource.data.tableNumber
+        && (request.resource.data.guestCount is int || request.resource.data.guestCount is number)
+        && request.resource.data.guestCount >= 1
+        && request.resource.data.guestCount <= 20
+        && request.resource.data.accountMode == 'GENERAL'
+        && request.resource.data.accounts is list
+        && request.resource.data.accounts.size() == 1
+        && request.resource.data.accounts[0].id == 'general'
+        && request.resource.data.accounts[0].label is string
+        && request.resource.data.status == 'ACTIVA'
+        && request.resource.data.openedBy == 'QR'
+        && request.resource.data.openedAt is string
+        && request.resource.data.updatedAt is string
+        && request.resource.data.keys().hasOnly([
+          'restaurantId', 'tableNumber', 'guestCount', 'accountMode', 'accounts',
+          'status', 'openedBy', 'openedAt', 'updatedAt'
+        ])
+      ) || (
+        isSignedIn()
         && isValidRestaurant(request.resource.data)
         && request.resource.data.tableNumber == resource.data.tableNumber
         && request.resource.data.status in ['ACTIVA', 'CUENTA', 'CERRADA']
-        && request.resource.data.accountMode in ['GENERAL', 'SEPARADAS'];
+        && request.resource.data.accountMode in ['GENERAL', 'SEPARADAS']
+      );
 
       allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
     }

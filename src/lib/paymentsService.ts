@@ -64,6 +64,9 @@ export function subscribeToTablePayments(
 
 export interface SettleTableAccountInput {
   tableNumber: number;
+  tableSessionId?: string;
+  accountId?: string;
+  accountLabel?: string;
   orders: RestaurantOrder[];
   paymentMethod: TablePaymentMethod;
   discountAmount?: number;
@@ -138,6 +141,9 @@ export async function settleTableAccount(
       code: buildPaymentCode(),
       restaurantId: RESTAURANT_ID,
       tableNumber: input.tableNumber,
+      tableSessionId: input.tableSessionId,
+      accountId: input.accountId,
+      accountLabel: input.accountLabel,
       orderIds: freshOrders.map((o) => o.id as string),
       subtotal,
       discountAmount,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StaffUser } from '../../types';
+import { StaffUser, ServiceMode, EffectiveService } from '../../types';
 import {
   getAuthSession,
   logoutStaff,
@@ -10,6 +10,9 @@ import {
   getActivityLogs,
   getShiftDisplayTime,
   ADMIN_DATA_EVENT,
+  getServiceMode,
+  getEffectiveService,
+  setServiceMode,
 } from '../../lib/adminStorage';
 import {
   subscribeToSyncState,
@@ -141,6 +144,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [authErrorMessage, setAuthErrorMessage] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(isOperationalSoundEnabled());
   const [soundProfile, setSoundProfile] = useState<OperationalSoundProfile>(getOperationalSoundProfile());
+  const [serviceMode, setLocalServiceMode] = useState<ServiceMode>(() => getServiceMode());
+  const [effectiveService, setLocalEffectiveService] = useState<EffectiveService>(() => getEffectiveService());
   const knownRequestIdsRef = useRef<Set<string> | null>(null);
   const knownNewOrderIdsRef = useRef<Set<string> | null>(null);
   const knownReadyOrderIdsRef = useRef<Set<string> | null>(null);
@@ -161,16 +166,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     const handleDataChange = () => {
       setRefreshTrigger((prev) => prev + 1);
+      setLocalServiceMode(getServiceMode());
+      setLocalEffectiveService(getEffectiveService());
     };
 
     window.addEventListener(ADMIN_DATA_EVENT, handleDataChange);
     window.addEventListener('storage', handleDataChange);
+
+    const serviceTimer = setInterval(() => {
+      setLocalServiceMode(getServiceMode());
+      setLocalEffectiveService(getEffectiveService());
+    }, 15000);
 
     return () => {
       unsubSync();
       unsubAuth();
       window.removeEventListener(ADMIN_DATA_EVENT, handleDataChange);
       window.removeEventListener('storage', handleDataChange);
+      clearInterval(serviceTimer);
     };
   }, []);
 
@@ -299,6 +312,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } catch (err: any) {
       console.error('Error al desconectar Google:', err);
     }
+  };
+
+  const handleServiceModeChange = async (mode: ServiceMode) => {
+    setLocalServiceMode(mode);
+    try {
+      await setServiceMode(mode, currentUser);
+    } catch (err) {
+      console.warn('Error guardando modo de servicio:', err);
+    }
+    setLocalEffectiveService(getEffectiveService());
   };
 
   const currentShift = getCurrentShift();
@@ -579,6 +602,89 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           })}
         </div>
       </nav>
+
+      {/* Selector de Servicio: AUTO | DESAYUNO | COMIDA */}
+      <section
+        id="admin-service-selector-bar"
+        aria-label="Selector de Servicio"
+        className="bg-[#FFFDF9] border-b border-[#F4E3C8] px-4 sm:px-8 py-2.5 shadow-2xs"
+      >
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="text-xs font-serif font-bold text-[#6B4028] uppercase tracking-wider flex items-center gap-1.5">
+              <Utensils className="w-3.5 h-3.5 text-[#C9974D]" />
+              <span>Selector de Servicio:</span>
+            </span>
+
+            <div className="inline-flex p-1 bg-[#FFF7EA] rounded-2xl border border-[#DEC8AE] shadow-2xs gap-1">
+              <button
+                id="btn-service-auto"
+                type="button"
+                onClick={() => handleServiceModeChange('AUTO')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  serviceMode === 'AUTO'
+                    ? 'bg-[#3A2418] text-[#FFF7EA] shadow-xs ring-1 ring-[#C9974D]/50'
+                    : 'text-[#6B4028] hover:text-[#2B1B13] hover:bg-white/80'
+                }`}
+                title="Modo automático: antes de las 12:00 CDMX es DESAYUNO, a las 12:00 o después es COMIDA"
+              >
+                <span>
+                  {serviceMode === 'AUTO'
+                    ? `AUTO · Ahora: ${effectiveService}`
+                    : 'AUTO'}
+                </span>
+              </button>
+
+              <button
+                id="btn-service-desayuno"
+                type="button"
+                onClick={() => handleServiceModeChange('DESAYUNO')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  serviceMode === 'DESAYUNO'
+                    ? 'bg-[#3A2418] text-[#FFF7EA] shadow-xs ring-1 ring-[#C9974D]/50'
+                    : 'text-[#6B4028] hover:text-[#2B1B13] hover:bg-white/80'
+                }`}
+                title="Override manual: Forzar servicio de DESAYUNO"
+              >
+                DESAYUNO
+              </button>
+
+              <button
+                id="btn-service-comida"
+                type="button"
+                onClick={() => handleServiceModeChange('COMIDA')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  serviceMode === 'COMIDA'
+                    ? 'bg-[#3A2418] text-[#FFF7EA] shadow-xs ring-1 ring-[#C9974D]/50'
+                    : 'text-[#6B4028] hover:text-[#2B1B13] hover:bg-white/80'
+                }`}
+                title="Override manual: Forzar servicio de COMIDA"
+              >
+                COMIDA
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-[#6B4028]">
+            <span className="text-[11px] text-[#8C5E3C]">Servicio activo en mesas:</span>
+            <span
+              id="admin-effective-service-badge"
+              className="font-serif font-bold px-2.5 py-0.5 rounded-lg bg-[#3A2418] text-[#FFF7EA] border border-[#C9974D]/40 text-xs"
+            >
+              {effectiveService}
+            </span>
+            {serviceMode === 'AUTO' ? (
+              <span className="text-[11px] text-[#8C5E3C] hidden sm:inline">
+                (AUTO · Ahora: {effectiveService} · Hora CDMX)
+              </span>
+            ) : (
+              <span className="text-[11px] text-amber-700 font-semibold hidden sm:inline">
+                (Override manual activo)
+              </span>
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* Contenido Principal */}
       <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full">

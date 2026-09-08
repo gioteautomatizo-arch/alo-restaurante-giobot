@@ -11,6 +11,18 @@ interface ComidaCorridaBuilderProps {
   onAddToCart: (cartItem: CartItem) => void;
 }
 
+// Helper para normalizar nombres de platillos y evitar duplicados (ej: mayúsculas, acentos, tags de recargo)
+const normalizeDishKey = (name: string): string => {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s*\(\+?\$?\d+\)\s*/g, '')
+    .replace(/[^a-z0-9]/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+};
+
 export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
   isOpen,
   onClose,
@@ -51,10 +63,14 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
     };
   }, []);
 
-  // Parsear opciones de Entrada / Sopa
+  // Parsear opciones de Entrada / Sopa (1er Tiempo)
   const primerTiempoOptions = useMemo<string[]>(() => {
     if (!dailyMenu.entrada || !dailyMenu.entrada.trim()) {
-      return ['Consomé del día', 'Sopa del día'];
+      return [
+        'Consomé de pollo con menudencias o verduras',
+        'Sopa de verduras',
+        'Crema o sopa aguada del día',
+      ];
     }
     const parts = dailyMenu.entrada
       .split(/\s*(?:\/|\n|,| o | O | u | U )\s*/)
@@ -63,13 +79,13 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
     return parts.length > 0 ? parts : [dailyMenu.entrada.trim()];
   }, [dailyMenu.entrada]);
 
-  // Parsear opciones de Guarnición (Arroz / Pasta / Guarnición 1 & 2)
+  // Parsear opciones de Guarnición / Arroz / Pasta (2do Tiempo)
   const segundoTiempoOptions = useMemo<string[]>(() => {
     if (!dailyMenu.guarniciones || dailyMenu.guarniciones.length === 0) {
-      return ['Arroz del día', 'Pasta del día'];
+      return ['Arroz rojo', 'Pasta o espagueti'];
     }
     const clean = dailyMenu.guarniciones.map((g) => g.trim()).filter(Boolean);
-    return clean.length > 0 ? clean : ['Arroz del día', 'Pasta del día'];
+    return clean.length > 0 ? clean : ['Arroz rojo', 'Pasta o espagueti'];
   }, [dailyMenu.guarniciones]);
 
   // Parsear guisados del día publicados desde Administración
@@ -77,31 +93,72 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
     if (!dailyMenu.platoFuerte || !dailyMenu.platoFuerte.trim()) {
       return ['Guisado del día'];
     }
-    const parts = dailyMenu.platoFuerte
+    const cleanPlato = dailyMenu.platoFuerte.replace(/^guisados?\s*del\s*d[ií]a\s*:\s*/i, '');
+    const parts = cleanPlato
       .split(/\s*(?:\/|\n)\s*/)
       .map((s) => s.trim())
       .filter(Boolean);
-    return parts.length > 0 ? parts : [dailyMenu.platoFuerte.trim()];
+
+    const seen = new Set<string>();
+    const result: string[] = [];
+    parts.forEach((p) => {
+      const key = normalizeDishKey(p);
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        result.push(p);
+      }
+    });
+
+    return result.length > 0 ? result : [cleanPlato.trim()];
   }, [dailyMenu.platoFuerte]);
 
-  // Opciones alternativas clásicas de la cocina
+  // Opciones alternativas clásicas de la cocina (sanitizadas y deduplicadas contra guisados del día)
   const alternativeOptions = useMemo<string[]>(() => {
-    const defaults = [
+    const rawList =
+      dailyMenu.opcionesAlternativas && dailyMenu.opcionesAlternativas.length > 0
+        ? dailyMenu.opcionesAlternativas
+        : [
+            'Enchiladas Suizas (+$10)',
+            'Bistec Asado (+$5)',
+            'Pechuga Asada (+$5)',
+            'Enchiladas Verdes',
+            'Enchiladas Rojas',
+            'Milanesa de Res',
+            'Milanesa de Pollo',
+            'Tacos Dorados',
+          ];
+
+    const fallbackDefaults = [
+      'Enchiladas Suizas (+$10)',
+      'Bistec Asado (+$5)',
+      'Pechuga Asada (+$5)',
       'Enchiladas Verdes',
       'Enchiladas Rojas',
       'Milanesa de Res',
       'Milanesa de Pollo',
       'Tacos Dorados',
-      'Bistec Asado (+$5)',
-      'Pechuga Asada (+$5)',
-      'Enchiladas Suizas (+$10)',
     ];
-    if (dailyMenu.opcionesAlternativas && dailyMenu.opcionesAlternativas.length > 0) {
-      const custom = dailyMenu.opcionesAlternativas.map((o) => o.trim()).filter(Boolean);
-      return Array.from(new Set([...custom, ...defaults]));
-    }
-    return defaults;
-  }, [dailyMenu.opcionesAlternativas]);
+
+    const combined = [...rawList, ...fallbackDefaults];
+    const seen = new Set<string>();
+    const result: string[] = [];
+    const dailyKeys = new Set(dailyGuisadoOptions.map(normalizeDishKey));
+
+    combined.forEach((opt) => {
+      const trimmed = opt.trim();
+      if (!trimmed) return;
+      const key = normalizeDishKey(trimmed);
+      if (!key) return;
+
+      // Si ya está en los guisados del día o ya se agregó, ignorar para evitar duplicados
+      if (!seen.has(key) && !dailyKeys.has(key)) {
+        seen.add(key);
+        result.push(trimmed);
+      }
+    });
+
+    return result;
+  }, [dailyMenu.opcionesAlternativas, dailyGuisadoOptions]);
 
   // Sincronizar selección activa cuando cambia el menú
   useEffect(() => {
@@ -322,14 +379,13 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
             </div>
 
             {/* Alternativas y Especialidades Clásicas */}
-            <div>
-              <span className="text-[11px] font-semibold text-[#6B4028] uppercase tracking-wider block mb-1.5 font-serif">
-                Otras Especialidades y Clásicos
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {alternativeOptions
-                  .filter((opt) => !dailyGuisadoOptions.includes(opt))
-                  .map((opt) => (
+            {alternativeOptions.length > 0 && (
+              <div>
+                <span className="text-[11px] font-semibold text-[#6B4028] uppercase tracking-wider block mb-1.5 font-serif">
+                  Otras Especialidades y Clásicos
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {alternativeOptions.map((opt) => (
                     <button
                       key={opt}
                       type="button"
@@ -344,8 +400,9 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
                       {tercerTiempo === opt && <Check className="w-4 h-4 text-[#A86B3D] shrink-0 ml-2" />}
                     </button>
                   ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Extra Addon (Huevo / Plátano) */}

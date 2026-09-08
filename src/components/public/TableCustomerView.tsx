@@ -25,11 +25,14 @@ import {
 import {
   Bell,
   Check,
+  Loader2,
   ReceiptText,
   Sparkles,
   Utensils,
   X,
 } from 'lucide-react';
+import { occupyTableFromPublicQR, subscribeToTables } from '../../lib/tablesService';
+import { TableRecord } from '../../types';
 
 interface TableCustomerViewProps {
   tableNumber: number;
@@ -97,7 +100,6 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
 }) => {
   const [session, setSession] = useState<TableSession | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
-  const [sessionBusy, setSessionBusy] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
 
@@ -120,7 +122,25 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
   const previousPendingRef = useRef<Set<TableServiceRequestType>>(new Set());
   const listenerReadyRef = useRef(false);
   const attendedTimersRef = useRef<Partial<Record<TableServiceRequestType, ReturnType<typeof setTimeout>>>>({});
-  const autoStartedRef = useRef(false);
+
+  // Selección de comensales antes de iniciar servicio por QR
+  const [selectedGuestCount, setSelectedGuestCount] = useState<number | null>(null);
+  const [isStartingSession, setIsStartingSession] = useState(false);
+  const [tableRecord, setTableRecord] = useState<TableRecord | null>(null);
+
+  // Escuchar registro operativo de la mesa en tiempo real
+  useEffect(() => {
+    const unsub = subscribeToTables((allTables) => {
+      const found = allTables.find((t) => t.tableNumber === tableNumber);
+      if (found) setTableRecord(found);
+    });
+    return unsub;
+  }, [tableNumber]);
+
+  const effectiveWaiterName =
+    session?.waiterName ||
+    (session && session.status !== 'CERRADA' && tableRecord?.waiterName ? tableRecord.waiterName : '') ||
+    '';
 
   // Escuchar configuración del servicio y evaluar cambios (por ej. corte exacto a las 12:00)
   useEffect(() => {
@@ -143,31 +163,20 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
   // Escuchar sesión de mesa en tiempo real
   useEffect(() => {
     setSessionLoaded(false);
-    autoStartedRef.current = false;
 
     const unsubscribe = subscribeToTableSession(tableNumber, (nextSession) => {
       setSession(nextSession);
       setSessionLoaded(true);
 
-      if (!nextSession) {
+      // Si Firestore confirma la sesión ACTIVA o CUENTA, limpiar estado de inicio
+      if (nextSession && (nextSession.status === 'ACTIVA' || nextSession.status === 'CUENTA')) {
+        setIsStartingSession(false);
+      }
+
+      if (!nextSession || nextSession.status === 'CERRADA') {
         setSelectedAccountId(null);
         setSelectedPersonId(null);
         onPersonSelectionChange?.(null);
-        // Autoiniciar la sesión si no existe aún
-        if (!autoStartedRef.current) {
-          autoStartedRef.current = true;
-          setSessionBusy(true);
-          activatePublicTableSession(tableNumber, 2)
-            .then((result) => {
-              setSession(result.session);
-            })
-            .catch((err) => {
-              console.warn('[TableCustomerView] auto-start session error:', err);
-            })
-            .finally(() => {
-              setSessionBusy(false);
-            });
-        }
         return;
       }
 
@@ -200,10 +209,13 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
 
   // Escuchar pedidos de la mesa para detectar Comida Corrida activa
   useEffect(() => {
+    setTableOrders([]);
     const unsubscribe = subscribeToTableOrders(tableNumber, (orders) => {
       setTableOrders(orders);
     });
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+    };
   }, [tableNumber]);
 
   // Verificar si la persona/cuenta actual tiene Comida Corrida activa
@@ -362,7 +374,7 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
     return BASE_OPERATIONAL_REQUESTS;
   }, [hasActiveComidaCorrida]);
 
-  if (!sessionLoaded && sessionBusy) {
+  if (!sessionLoaded) {
     return (
       <section className="w-full max-w-3xl mx-auto my-2 px-3 sm:px-4">
         <div className="bg-[#FFFDF9] rounded-2xl p-5 border border-[#E6CCA8] shadow-sm text-center">
@@ -371,22 +383,155 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
             Mesa {tableNumber}
           </div>
           <p className="text-xs sm:text-sm text-[#5C3825] mt-2 font-medium">
-            Iniciando tu servicio en Mesa {tableNumber}…
+            Cargando servicio de Mesa {tableNumber}…
           </p>
         </div>
       </section>
     );
   }
 
-  if (session && session.status === 'CERRADA') {
+  // Transición: Iniciando tu servicio mientras se confirma la TableSession
+  if (isStartingSession) {
     return (
-      <section className="w-full max-w-3xl mx-auto my-2 px-3 sm:px-4">
-        <div className="bg-[#FFFDF9] rounded-2xl p-5 border border-emerald-300 shadow-sm text-center space-y-1.5">
-          <Check className="w-7 h-7 text-emerald-600 mx-auto" />
-          <h2 className="font-serif font-bold text-base sm:text-lg text-[#2B1B13]">
-            Servicio finalizado · Mesa {tableNumber}
-          </h2>
-          <p className="text-xs text-[#5C3825]">Gracias por visitarnos. ¡Buen provecho y vuelve pronto!</p>
+      <section className="w-full max-w-xl mx-auto my-4 px-3 sm:px-4">
+        <div className="bg-[#FFFDF9] rounded-3xl p-6 sm:p-8 border border-[#DEC8AE] shadow-md text-center space-y-5">
+          <div className="w-14 h-14 rounded-2xl bg-[#FFF7EA] border border-[#DEC8AE] flex items-center justify-center mx-auto text-[#3A2418] shadow-2xs">
+            <Loader2 className="w-7 h-7 animate-spin text-[#3A2418]" />
+          </div>
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#3A2418] text-[#FFF7EA] text-xs font-serif font-bold tracking-wide shadow-2xs mb-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Mesa {tableNumber}</span>
+            </div>
+            <h2 className="font-serif font-black text-xl sm:text-2xl text-[#2B1B13]">
+              Iniciando tu servicio…
+            </h2>
+            <p className="text-xs sm:text-sm text-[#6B4028] mt-1.5 max-w-md mx-auto">
+              {selectedGuestCount
+                ? `Configurando tu mesa para ${selectedGuestCount} ${selectedGuestCount === 1 ? 'persona' : 'personas'}`
+                : 'Configurando tu mesa en tiempo real…'}
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // REGLA DE FUENTE DE VERDAD:
+  // Si existe una TableSession con status === 'ACTIVA' o status === 'CUENTA',
+  // la vista del cliente NUNCA debe mostrar el selector de personas.
+  // El selector de personas se muestra SOLAMENTE cuando no existe sesión activa
+  // (es decir, !session || session.status === 'CERRADA').
+  if (!session || session.status === 'CERRADA') {
+    return (
+      <section className="w-full max-w-xl mx-auto my-4 px-3 sm:px-4">
+        <div className="bg-[#FFFDF9] rounded-3xl p-6 sm:p-8 border border-[#DEC8AE] shadow-md text-center space-y-5">
+          <div className="w-14 h-14 rounded-2xl bg-[#FFF7EA] border border-[#DEC8AE] flex items-center justify-center mx-auto text-emerald-600 shadow-2xs">
+            <Check className="w-7 h-7" />
+          </div>
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#3A2418] text-[#FFF7EA] text-xs font-serif font-bold tracking-wide shadow-2xs mb-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Mesa {tableNumber} disponible</span>
+            </div>
+            <h2 className="font-serif font-black text-xl sm:text-2xl text-[#2B1B13]">
+              ¿Cuántas personas son?
+            </h2>
+            <p className="text-xs sm:text-sm text-[#6B4028] mt-1">
+              Selecciona el número de personas en tu mesa para comenzar
+            </p>
+          </div>
+
+          {/* Selector de 1 a 10 personas */}
+          <div className="space-y-3 max-w-sm mx-auto">
+            {/* Controles + y - */}
+            <div className="flex items-center justify-center gap-4 py-1">
+              <button
+                type="button"
+                onClick={() => setSelectedGuestCount((prev) => Math.max(1, (prev || 1) - 1))}
+                disabled={!selectedGuestCount || selectedGuestCount <= 1 || isStartingSession}
+                className="w-11 h-11 rounded-xl bg-white border border-[#DEC8AE] text-lg font-bold text-[#2B1B13] flex items-center justify-center hover:bg-[#FFF7EA] active:scale-90 transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer shadow-2xs"
+                title="Menos comensales"
+              >
+                -
+              </button>
+              <div className="min-w-[90px] py-1.5 px-3 bg-[#FFF7EA] rounded-xl border border-[#DEC8AE] text-center">
+                <span className="text-2xl font-black font-serif text-[#2B1B13]">
+                  {selectedGuestCount !== null ? selectedGuestCount : '—'}
+                </span>
+                <span className="text-[10px] text-[#8A624C] block font-medium">
+                  {selectedGuestCount === 1 ? 'persona' : 'personas'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedGuestCount((prev) => Math.min(10, (prev || 0) + 1))}
+                disabled={(selectedGuestCount !== null && selectedGuestCount >= 10) || isStartingSession}
+                className="w-11 h-11 rounded-xl bg-white border border-[#DEC8AE] text-lg font-bold text-[#2B1B13] flex items-center justify-center hover:bg-[#FFF7EA] active:scale-90 transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer shadow-2xs"
+                title="Más comensales"
+              >
+                +
+              </button>
+            </div>
+
+            {/* Botones rápidos 1 a 10 */}
+            <div className="grid grid-cols-5 gap-2 pt-1">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => {
+                const isSelected = selectedGuestCount === num;
+                return (
+                  <button
+                    key={num}
+                    type="button"
+                    disabled={isStartingSession}
+                    onClick={() => setSelectedGuestCount(num)}
+                    className={`h-12 rounded-xl text-base font-bold transition-all cursor-pointer flex items-center justify-center active:scale-95 disabled:opacity-40 disabled:pointer-events-none ${
+                      isSelected
+                        ? 'bg-[#3A2418] text-[#FFF7EA] border-2 border-[#3A2418] shadow-md scale-105'
+                        : 'bg-white text-[#2B1B13] border border-[#DEC8AE] hover:bg-[#FFF7EA]'
+                    }`}
+                  >
+                    {num}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Confirmar inicio de servicio */}
+          <div className="pt-2 space-y-2 max-w-sm mx-auto">
+            <button
+              id="btn-confirmar-servicio"
+              type="button"
+              disabled={!selectedGuestCount || selectedGuestCount < 1 || isStartingSession}
+              onClick={async () => {
+                if (!selectedGuestCount || selectedGuestCount < 1 || isStartingSession) return;
+                setIsStartingSession(true);
+                try {
+                  const result = await activatePublicTableSession(tableNumber, selectedGuestCount);
+                  // Establecer mesa OCUPADA como refuerzo
+                  await occupyTableFromPublicQR(tableNumber, selectedGuestCount);
+                  if (result.session && (result.session.status === 'ACTIVA' || result.session.status === 'CUENTA')) {
+                    setSession(result.session);
+                  }
+                } catch (err) {
+                  console.error('[TableCustomerView] error al activar sesión:', err);
+                  setIsStartingSession(false);
+                }
+              }}
+              className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-[#3A2418] text-[#FFF7EA] text-sm font-bold uppercase tracking-wider hover:bg-[#2B1B13] active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {isStartingSession ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Iniciando tu servicio…
+                </>
+              ) : selectedGuestCount ? (
+                `Comenzar servicio para ${selectedGuestCount} ${selectedGuestCount === 1 ? 'persona' : 'personas'}`
+              ) : (
+                'Selecciona cuántas personas son'
+              )}
+            </button>
+          </div>
         </div>
       </section>
     );
@@ -397,12 +542,25 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
       {/* Contenedor Principal: Enfoque 100% en Ordenar */}
       <div className="bg-gradient-to-b from-[#FFFDF9] to-[#FFF7EA] rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-[#E6CCA8] shadow-sm space-y-4">
         
-        {/* Encabezado Directo y Claro */}
+        {/* Encabezado Directo y Claro con indicador de mesero */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-1 border-b border-[#E6CCA8]/50">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#3A2418] text-[#FFF7EA] text-xs font-serif font-bold tracking-wide shadow-2xs mb-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Mesa {tableNumber}</span>
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#3A2418] text-[#FFF7EA] text-xs font-serif font-bold tracking-wide shadow-2xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Mesa {tableNumber}</span>
+              </div>
+              {/* Indicador discreto de mesero en tiempo real */}
+              {effectiveWaiterName ? (
+                <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-[#6B4028] border border-[#DEC8AE] text-xs font-medium shadow-2xs">
+                  <span>Te atiende:</span>
+                  <strong className="font-semibold text-[#2B1B13]">{effectiveWaiterName}</strong>
+                </div>
+              ) : (
+                <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-stone-100 text-stone-500 border border-stone-200 text-xs font-medium shadow-2xs">
+                  <span>Mesero por asignar</span>
+                </div>
+              )}
             </div>
             <h1 className="text-lg sm:text-xl font-serif font-black text-[#2B1B13] tracking-tight">
               Tu servicio ha comenzado

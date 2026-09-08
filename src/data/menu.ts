@@ -141,11 +141,11 @@ export const MENU_ITEMS: MenuItem[] = [
     image: 'https://images.unsplash.com/photo-1597481499750-3e6b22637e12?auto=format&fit=crop&q=80&w=600',
   },
 
-  // --- FRÍOS Y FRAPPÉS ---
+  // --- BEBIDAS FRÍAS Y FRAPPÉS ---
   {
     id: 'ice-coffee',
     name: 'Ice Coffee',
-    category: 'frios-frappes',
+    category: 'bebidas',
     description: 'Café concentrado servido bien frío con hielo.',
     price: 50,
     image: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?auto=format&fit=crop&q=80&w=600',
@@ -153,7 +153,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: 'ice-coffee-leche',
     name: 'Ice Coffee con Leche',
-    category: 'frios-frappes',
+    category: 'bebidas',
     description: 'Refrescante café frío con leche de tu elección y hielo.',
     price: 60,
     image: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?auto=format&fit=crop&q=80&w=600',
@@ -162,7 +162,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: 'naranjada-mineral',
     name: 'Naranjada Mineral',
-    category: 'frios-frappes',
+    category: 'bebidas',
     description: 'Jugo natural de naranja fresca con agua mineral fría.',
     price: 55,
     image: 'https://images.unsplash.com/photo-1613478223719-2ab802602423?auto=format&fit=crop&q=80&w=600',
@@ -170,7 +170,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: 'limonada-mineral',
     name: 'Limonada Mineral',
-    category: 'frios-frappes',
+    category: 'bebidas',
     description: 'Limonada preparada al momento con agua mineral y hielo.',
     price: 55,
     image: 'https://images.unsplash.com/photo-1523371054106-bbf80586c38c?auto=format&fit=crop&q=80&w=600',
@@ -178,7 +178,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: 'te-frio',
     name: 'Té Frío',
-    category: 'frios-frappes',
+    category: 'bebidas',
     description: 'Té helado aromatizado, ligero y refrescante.',
     price: 30,
     image: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?auto=format&fit=crop&q=80&w=600',
@@ -186,7 +186,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: 'frappe-mocca',
     name: 'Frappé Mocca',
-    category: 'frios-frappes',
+    category: 'bebidas',
     description: 'Bebida helada frapeada de café con chocolate, crema batida opcional.',
     price: 60,
     image: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?auto=format&fit=crop&q=80&w=600',
@@ -195,7 +195,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: 'frappe-cookies',
     name: 'Frappé Cookies & Cream',
-    category: 'frios-frappes',
+    category: 'bebidas',
     description: 'Frappé ultra cremoso con galletas crujientes tipo Oreo.',
     price: 65,
     image: 'https://images.unsplash.com/photo-1579954115545-a95591f28bfc?auto=format&fit=crop&q=80&w=600',
@@ -204,7 +204,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: 'frappuccino',
     name: 'Frapuccino',
-    category: 'frios-frappes',
+    category: 'bebidas',
     description: 'El clásico café frappé helado con toque dulce.',
     price: 60,
     image: 'https://images.unsplash.com/photo-1589396575653-c09c794ff6a6?auto=format&fit=crop&q=80&w=600',
@@ -212,18 +212,18 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: 'refresco',
     name: 'Refresco en lata / botella',
-    category: 'frios-frappes',
+    category: 'bebidas',
     description: 'Sabor a elegir (Coca Cola, Sprite, Sidral, Fanta).',
     price: 25,
     options: ['Coca Cola Original', 'Coca Cola Zero', 'Sprite', 'Mundial / Sidral'],
     image: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&q=80&w=600',
   },
 
-  // --- LICUADOS, AGUAS Y JUGOS ---
+  // --- LICUADOS, AGUA Y FRUTA, JUGOS ---
   {
     id: 'licuado-1-ing',
     name: 'Licuado de 1 Fruta',
-    category: 'jugos-licuados',
+    category: 'licuados-agua-fruta-jugos',
     description: 'Elige tu fruta favorita preparada con leche bien fría.',
     price: 40,
     sizes: [
@@ -241,7 +241,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: 'licuado-combinado',
     name: 'Licuado Combinado (2 Frutas)',
-    category: 'jugos-licuados',
+    category: 'licuados-agua-fruta-jugos',
     description: 'Combina 2 frutas a tu gusto para un licuado delicioso.',
     price: 45,
     sizes: [
@@ -257,7 +257,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: 'agua-fresca',
     name: 'Agua Fresca del Día',
-    category: 'jugos-licuados',
+    category: 'licuados-agua-fruta-jugos',
     description: '100% fruta natural de temporada sin saborizantes artificiales.',
     price: 30,
     sizes: [
@@ -269,7 +269,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: 'cocktail-frutas',
     name: 'Cocktail de Frutas Frescas',
-    category: 'jugos-licuados',
+    category: 'licuados-agua-fruta-jugos',
     description: 'Tazón de fruta de temporada. Servido con miel y granola o miel y crema batida.',
     price: 50,
     options: ['Con Miel y Granola', 'Con Miel y Crema Batida'],
@@ -282,7 +282,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: 'jugo-natural',
     name: 'Jugo Natural (1 Ingrediente)',
-    category: 'jugos-licuados',
+    category: 'licuados-agua-fruta-jugos',
     description: 'Jugo 100% natural exprimidito al momento.',
     price: 40,
     sizes: [
@@ -295,7 +295,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: 'jugo-combinado',
     name: 'Jugo Especial / Combinado',
-    category: 'jugos-licuados',
+    category: 'licuados-agua-fruta-jugos',
     description: 'Especialidades nutritivas para darte energía.',
     price: 45,
     sizes: [
@@ -425,11 +425,11 @@ export const MENU_ITEMS: MenuItem[] = [
     popular: true,
   },
 
-  // --- MOLLETES, SINCRO Y TORTAS ---
+  // --- MOLLETES, SINCRONIZADAS Y TORTAS ---
   {
     id: 'molletes',
     name: 'Molletes Tradicionales',
-    category: 'tortas-molletes',
+    category: 'molletes-sincronizadas-tortas',
     description: 'Bolillo crujiente untado con frijoles refritos y queso manchego derretido, con pico de gallo fresco.',
     price: 60,
     extras: [
@@ -443,7 +443,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: 'sincronizadas',
     name: 'Sincronizadas (6pz)',
-    category: 'tortas-molletes',
+    category: 'molletes-sincronizadas-tortas',
     description: 'Tortillas de harina con jamón de pierna, queso manchego fundido, frijoles y jitomate.',
     price: 50,
     image: 'https://images.unsplash.com/photo-1618040996337-56904b7850b9?auto=format&fit=crop&q=80&w=600',
@@ -451,7 +451,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: 'tortas',
     name: 'Torta Tradicional con Papas',
-    category: 'tortas-molletes',
+    category: 'molletes-sincronizadas-tortas',
     description: 'Preparada con frijoles refritos, queso, jitomate, aguacate y lechuga. Acompañada de papas a la francesa.',
     price: 75,
     options: ['Pollo', 'Bistec', 'Jamón', 'Huevo', 'Salchicha'],
@@ -461,7 +461,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: 'papas-francesa',
     name: 'Papas a la Francesa',
-    category: 'tortas-molletes',
+    category: 'molletes-sincronizadas-tortas',
     description: 'Papas doradas y crujientes.',
     price: 60,
     extras: [
@@ -473,7 +473,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: 'totopos',
     name: 'Orden de Totopos',
-    category: 'tortas-molletes',
+    category: 'molletes-sincronizadas-tortas',
     description: 'Totopos crujientes de maíz para acompañar.',
     price: 20,
     image: 'https://images.unsplash.com/photo-1513456852971-30c0b8199d4d?auto=format&fit=crop&q=80&w=600',

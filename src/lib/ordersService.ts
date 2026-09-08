@@ -79,10 +79,20 @@ export function subscribeToRestaurantOrders(
   );
 }
 
+/**
+ * Suscripción en tiempo real filtrada exclusivamente para una mesa específica.
+ * Consulta Firestore limitando por restaurantId y tableNumber.
+ * Un comensal de Mesa 1 no descarga ni procesa comandas de otras mesas.
+ */
 export function subscribeToTableOrders(
   tableNumber: number,
   callback: (orders: RestaurantOrder[]) => void
 ): () => void {
+  if (!tableNumber || isNaN(tableNumber)) {
+    callback([]);
+    return () => {};
+  }
+
   const q = query(
     collection(db, ORDERS_COLLECTION),
     where('restaurantId', '==', RESTAURANT_ID),
@@ -103,10 +113,11 @@ export function subscribeToTableOrders(
         const bTime = Date.parse(b.createdAt || '') || 0;
         return bTime - aTime;
       });
+
       callback(orders);
     },
     (error) => {
-      console.warn(`[ordersService] table ${tableNumber} listener error:`, error);
+      console.warn(`[ordersService] listener error para mesa ${tableNumber}:`, error);
       callback([]);
     }
   );

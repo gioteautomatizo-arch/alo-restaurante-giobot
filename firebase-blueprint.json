@@ -902,6 +902,77 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "TableSession": {
+      "title": "TableSession",
+      "description": "Sesión de comensales y cuentas activas por mesa",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "restaurantId": { "type": "string" },
+        "tableNumber": { "type": "number" },
+        "guestCount": { "type": "number" },
+        "accountMode": { "type": "string", "enum": ["GENERAL", "SEPARADAS"] },
+        "accounts": { "type": "array" },
+        "status": { "type": "string", "enum": ["ACTIVA", "CUENTA", "CERRADA"] },
+        "openedBy": { "type": "string", "enum": ["QR", "MESERO"] },
+        "openedAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "updatedById": { "type": "string" },
+        "updatedByName": { "type": "string" }
+      },
+      "required": [
+        "restaurantId",
+        "tableNumber",
+        "guestCount",
+        "accountMode",
+        "accounts",
+        "status",
+        "openedBy",
+        "openedAt",
+        "updatedAt"
+      ]
+    },
+    "TablePayment": {
+      "title": "TablePayment",
+      "description": "Registros de pagos y cobros de mesas/cuentas en caja",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "restaurantId": { "type": "string" },
+        "tableNumber": { "type": "number" },
+        "tableSessionId": { "type": "string" },
+        "accountId": { "type": "string" },
+        "accountLabel": { "type": "string" },
+        "orderIds": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "tipAmount": { "type": "number" },
+        "total": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["EFECTIVO", "TARJETA", "TRANSFERENCIA", "MERCADO_PAGO"] },
+        "cashReceived": { "type": "number" },
+        "changeDue": { "type": "number" },
+        "status": { "type": "string", "enum": ["PAGADO", "ANULADO"] },
+        "createdAt": { "type": "string" },
+        "chargedById": { "type": "string" },
+        "chargedByName": { "type": "string" }
+      },
+      "required": [
+        "code",
+        "restaurantId",
+        "tableNumber",
+        "orderIds",
+        "subtotal",
+        "discountAmount",
+        "tipAmount",
+        "total",
+        "paymentMethod",
+        "status",
+        "createdAt",
+        "chargedById",
+        "chargedByName"
+      ]
     }
   }
 }

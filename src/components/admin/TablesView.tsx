@@ -23,6 +23,8 @@ import {
   Tv,
   QrCode,
   ExternalLink,
+  Check,
+  ShieldAlert,
 } from 'lucide-react';
 import { TableRecord, TableStatus, TableCourse, StaffUser, TableServiceRequest, TableServiceRequestType, TableSession, RestaurantOrder } from '../../types';
 import {
@@ -34,6 +36,7 @@ import {
   toggleTablePending,
   updateTableNotes,
   updateTableGuestCount,
+  assignWaiterToTable,
   addTable,
   deleteTable,
   initTablesRealtimeSync,
@@ -46,7 +49,11 @@ import {
 } from '../../lib/tableRequestsService';
 import { getStaffUsers } from '../../lib/adminStorage';
 import { TableSessionAccountsPanel } from './TableSessionAccountsPanel';
-import { subscribeToRestaurantTableSessions, setTableSessionStatusByStaff } from '../../lib/tableSessionsService';
+import {
+  subscribeToTableSession,
+  setTableSessionStatusByStaff,
+  assignWaiterToTableSession,
+} from '../../lib/tableSessionsService';
 import { subscribeToRestaurantOrders } from '../../lib/ordersService';
 
 interface TablesViewProps {
@@ -56,14 +63,14 @@ interface TablesViewProps {
 export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
   const [tables, setTables] = useState<TableRecord[]>([]);
   const [selectedTable, setSelectedTable] = useState<TableRecord | null>(null);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'occupied' | 'free' | 'bill'>('all');
+  const [filter, setFilter] = useState<'all' | 'my_tables' | 'pending' | 'occupied' | 'free' | 'bill'>('all');
   const [viewMode, setViewMode] = useState<'croquis' | 'lista'>('croquis');
   const [isOccupyModalOpen, setIsOccupyModalOpen] = useState(false);
   const [isAddTableModalOpen, setIsAddTableModalOpen] = useState(false);
   const [staffList, setStaffList] = useState<StaffUser[]>([]);
   const [qrRequests, setQrRequests] = useState<TableServiceRequest[]>([]);
   const [copiedTableQr, setCopiedTableQr] = useState<number | null>(null);
-  const [tableSessionsByNumber, setTableSessionsByNumber] = useState<Record<number, TableSession>>({});
+  const [tableSessionsByNumber, setTableSessionsByNumber] = useState<Record<number, TableSession | null>>({});
   const [restaurantOrders, setRestaurantOrders] = useState<RestaurantOrder[]>([]);
 
   // Datos para modal de ocupación rápida
@@ -95,10 +102,14 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
       setRestaurantOrders(orders);
     });
 
-    // Escuchar todas las sesiones del restaurante con un único snapshot.
-    const unsubSessions = subscribeToRestaurantTableSessions((sessionsByNumber) => {
-      setTableSessionsByNumber(sessionsByNumber);
-    });
+    // Escuchar también las sesiones QR. Una sesión ACTIVA debe reflejar la mesa como
+    // ocupada en el panel aunque el registro operativo de `tables` siga en LIBRE.
+    // Usamos listeners por documento (8 mesas) para no depender de permisos de listado.
+    const sessionUnsubs = [1, 2, 4, 5, 6, 7, 8, 9].map((tableNumber) =>
+      subscribeToTableSession(tableNumber, (session) => {
+        setTableSessionsByNumber((prev) => ({ ...prev, [tableNumber]: session }));
+      })
+    );
 
     setStaffList(getStaffUsers().filter((u) => u.active));
 
@@ -107,7 +118,7 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
       unsubTables();
       unsubQr();
       unsubOrders();
-      unsubSessions();
+      sessionUnsubs.forEach((unsub) => unsub());
     };
   }, []);
 
@@ -119,72 +130,52 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
   // - una sesión QR ACTIVA convierte una mesa LIBRE en OCUPADA;
   // - una sesión en CUENTA se refleja como CUENTA;
   // - LIMPIEZA siempre tiene prioridad para no reabrir visualmente una mesa ya cobrada;
+  // - si la sesión está CERRADA o no existe sesión, la mesa permanece LIBRE;
   // - el número de personas viene de la sesión digital mientras siga activa.
-  const activeDineInOrders = restaurantOrders.filter(
-    (order) =>
-      order.orderType === 'dine_in' &&
-      typeof order.tableNumber === 'number' &&
-      order.status !== 'CANCELADO' &&
-      order.billingStatus !== 'PAGADO'
-  );
-
-  const activeOrdersByTable = activeDineInOrders.reduce<Record<number, RestaurantOrder[]>>((acc, order) => {
-    const tableNumber = Number(order.tableNumber);
-    if (!Number.isInteger(tableNumber)) return acc;
-    if (!acc[tableNumber]) acc[tableNumber] = [];
-    acc[tableNumber].push(order);
-    return acc;
-  }, {});
-
-  const inferGuestCountFromOrders = (orders: RestaurantOrder[]): number => {
-    const personKeys = new Set<string>();
-    orders.forEach((order) => {
-      order.items?.forEach((item: any) => {
-        const key = item.personId || item.personLabel;
-        if (key) personKeys.add(String(key));
-      });
-    });
-    return Math.max(1, personKeys.size || 1);
-  };
-
   const operationalTables = baseOperationalTables.map((table) => {
     const session = tableSessionsByNumber[table.tableNumber];
-    const tableUpdatedAtMs = Date.parse(table.updatedAt || '') || 0;
-    const activeOrders = (activeOrdersByTable[table.tableNumber] || []).filter((order) => {
-      // Si la mesa fue liberada manualmente, freeTable actualiza table.updatedAt.
-      // Una comanda anterior a ese corte es histórica y no debe volver a ocuparla.
-      const orderCreatedAtMs = Date.parse(order.createdAt || '') || 0;
-      return orderCreatedAtMs >= tableUpdatedAtMs;
-    });
-    const hasActiveOrders = activeOrders.length > 0;
 
     let effectiveStatus: TableStatus = table.status;
     let effectiveGuestCount = table.guestCount;
     let effectiveOpenedAt = table.openedAt;
+    let effectiveWaiterId = table.waiterId;
+    let effectiveWaiterName = table.waiterName;
 
-    // LIMPIEZA es el único estado que no debe reabrirse visualmente por una sesión/comanda vieja.
+    // REGLA FUNDAMENTAL DE ESTADOS:
+    // 1. LIMPIEZA no debe ser alterada visualmente por sesiones o comandas previas.
+    // 2. Si la mesa está en estado LIBRE:
+    //    - Solamente pasa a OCUPADA si existe una sesión explícitamente ACTIVA (ej. cliente abrió por QR).
+    //    - Solamente pasa a CUENTA si la sesión explícita está en CUENTA.
+    //    - Si la sesión está CERRADA o no existe sesión, la mesa permanece LIBRE.
+    //    - Una comanda antigua o no pagada de una sesión ya CERRADA NUNCA debe reabrir visualmente la mesa.
+    // 3. Si la mesa está en estado OCUPADA o CUENTA:
+    //    - Si la sesión está en CUENTA, el estado efectivo pasa a CUENTA.
+    //    - Refleja los comensales y hora de apertura de la sesión activa.
     if (table.status !== 'LIMPIEZA') {
       if (session && session.status !== 'CERRADA') {
-        if (session.status === 'CUENTA') effectiveStatus = 'CUENTA';
-        else if (session.status === 'ACTIVA' && table.status === 'LIBRE') effectiveStatus = 'OCUPADA';
+        if (session.status === 'CUENTA') {
+          effectiveStatus = 'CUENTA';
+        } else if (session.status === 'ACTIVA') {
+          if (table.status === 'LIBRE') {
+            effectiveStatus = 'OCUPADA';
+          }
+        }
 
         effectiveGuestCount = session.guestCount;
         effectiveOpenedAt = table.openedAt || session.openedAt;
+        if (session.waiterId) {
+          effectiveWaiterId = session.waiterId;
+          effectiveWaiterName = session.waiterName || table.waiterName || '';
+        } else if (table.waiterId) {
+          effectiveWaiterId = table.waiterId;
+          effectiveWaiterName = table.waiterName || '';
+        }
       }
+    }
 
-      // Fallback fuerte: una mesa con comandas activas/no pagadas no puede verse LIBRE.
-      // Las comandas ya están demostrando actividad real aunque table_sessions no haya sincronizado.
-      if (
-  hasActiveOrders &&
-  effectiveStatus === 'LIBRE' &&
-  session?.status !== 'CERRADA'
-) {
-        effectiveStatus = 'OCUPADA';
-        effectiveGuestCount = session?.guestCount || inferGuestCountFromOrders(activeOrders);
-        const oldest = [...activeOrders]
-          .sort((a, b) => (Date.parse(a.createdAt || '') || 0) - (Date.parse(b.createdAt || '') || 0))[0];
-        effectiveOpenedAt = effectiveOpenedAt || oldest?.createdAt;
-      }
+    if (effectiveStatus === 'LIBRE' || effectiveStatus === 'LIMPIEZA') {
+      effectiveWaiterId = '';
+      effectiveWaiterName = '';
     }
 
     return {
@@ -192,6 +183,8 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
       status: effectiveStatus,
       guestCount: effectiveGuestCount,
       openedAt: effectiveOpenedAt,
+      waiterId: effectiveWaiterId,
+      waiterName: effectiveWaiterName,
     };
   });
 
@@ -206,7 +199,9 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
         effective.status === prev.status &&
         effective.guestCount === prev.guestCount &&
         effective.openedAt === prev.openedAt &&
-        effective.updatedAt === prev.updatedAt
+        effective.updatedAt === prev.updatedAt &&
+        effective.waiterId === prev.waiterId &&
+        effective.waiterName === prev.waiterName
       ) {
         return prev;
       }
@@ -229,18 +224,31 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
     );
   };
 
+  // Helper para verificar si una mesa está asignada a un usuario específico
+  const isTableAssignedToUser = (t: TableRecord, userId: string): boolean => {
+    if (t.status === 'LIBRE' || t.status === 'LIMPIEZA') return false;
+    if (t.waiterId && t.waiterId === userId) return true;
+    const session = tableSessionsByNumber[t.tableNumber];
+    if (session && session.status !== 'CERRADA' && session.waiterId === userId) return true;
+    return false;
+  };
+
   // Calcular estadísticas rápidas basadas exclusivamente en mesas operativas
   const totalTables = operationalTables.length;
   const occupiedCount = operationalTables.filter((t) => t.status === 'OCUPADA').length;
   const freeCount = operationalTables.filter((t) => t.status === 'LIBRE').length;
   const billCount = operationalTables.filter((t) => t.status === 'CUENTA').length;
   const cleaningCount = operationalTables.filter((t) => t.status === 'LIMPIEZA').length;
+  const myTablesCount = operationalTables.filter((t) => isTableAssignedToUser(t, currentUser.id)).length;
 
   const tablesWithPending = operationalTables.filter(checkTableHasPending);
   const totalPendingCount = tablesWithPending.length;
 
   // Filtrado de mesas (únicamente sobre mesas operativas)
   const filteredTables = operationalTables.filter((t) => {
+    if (filter === 'my_tables') {
+      return isTableAssignedToUser(t, currentUser.id);
+    }
     if (filter === 'pending') {
       return checkTableHasPending(t);
     }
@@ -281,35 +289,89 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
     }
   };
 
+  // Asignar mesero a una mesa ocupada
+  const handleAssignSelfToTable = async (table: TableRecord) => {
+    try {
+      const waiter = { id: currentUser.id, name: currentUser.name };
+      await assignWaiterToTable(table.tableId, waiter, waiter);
+      await assignWaiterToTableSession(table.tableNumber, waiter, waiter);
+
+      setSelectedTable((prev) =>
+        prev && prev.tableId === table.tableId
+          ? {
+              ...prev,
+              waiterId: waiter.id,
+              waiterName: waiter.name,
+            }
+          : prev
+      );
+
+      setTableSessionsByNumber((prev) => {
+        const s = prev[table.tableNumber];
+        return s ? { ...prev, [table.tableNumber]: { ...s, waiterId: waiter.id, waiterName: waiter.name } } : prev;
+      });
+    } catch (err: any) {
+      console.error('Error al asignarse la mesa:', err);
+      alert('Error al asignarse la mesa: ' + (err.message || 'Intente nuevamente'));
+    }
+  };
+
+  const handleAssignWaiterToTable = async (table: TableRecord, staff: StaffUser) => {
+    try {
+      const waiter = { id: staff.id, name: staff.name };
+      const actor = { id: currentUser.id, name: currentUser.name };
+      await assignWaiterToTable(table.tableId, waiter, actor);
+      await assignWaiterToTableSession(table.tableNumber, waiter, actor);
+
+      setSelectedTable((prev) =>
+        prev && prev.tableId === table.tableId
+          ? {
+              ...prev,
+              waiterId: waiter.id,
+              waiterName: waiter.name,
+            }
+          : prev
+      );
+
+      setTableSessionsByNumber((prev) => {
+        const s = prev[table.tableNumber];
+        return s ? { ...prev, [table.tableNumber]: { ...s, waiterId: waiter.id, waiterName: waiter.name } } : prev;
+      });
+    } catch (err: any) {
+      console.error('Error al cambiar mesero:', err);
+      alert('Error al cambiar mesero: ' + (err.message || 'Intente nuevamente'));
+    }
+  };
+
   // Liberar mesa
   const handleFreeTable = async (tableId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (window.confirm('¿Liberar esta mesa y dejarla lista para nuevos clientes?')) {
-      try {
-        const table = tables.find((t) => t.tableId === tableId);
+    try {
+      const table = tables.find((t) => t.tableId === tableId);
 
-        // V4.3A FIX V3: liberar una mesa debe cerrar también su sesión digital.
-        // Si dejamos table_sessions ACTIVA, el listener QR la vuelve a pintar como OCUPADA.
-        if (table) {
-          await setTableSessionStatusByStaff(table.tableNumber, 'CERRADA', {
-            id: currentUser.id,
-            name: currentUser.name,
-          });
-        }
+      if (table) {
+        // 1. Cerrar y archivar la sesión en table_sessions y en historial
+        await setTableSessionStatusByStaff(table.tableNumber, 'CERRADA', {
+          id: currentUser.id,
+          name: currentUser.name,
+        });
 
-        // freeTable actualiza updatedAt; ese timestamp también funciona como corte para
-        // ignorar comandas históricas en el fallback visual del croquis.
-        await freeTable(tableId, { id: currentUser.id, name: currentUser.name });
-
-        if (table) {
-          await clearAllPendingRequestsForTable(table.tableNumber, {
-            id: currentUser.id,
-            name: currentUser.name,
-          });
-        }
-      } catch (err: any) {
-        alert(err.message || 'Error al liberar mesa');
+        // Optimista en memoria para que no haya retraso visual
+        setTableSessionsByNumber((prev) => ({ ...prev, [table.tableNumber]: null }));
       }
+
+      // 2. Liberar mesa (pone status: 'LIBRE', guestCount: 0, limpia openedAt, currentCourse, mesero)
+      await freeTable(tableId, { id: currentUser.id, name: currentUser.name });
+
+      if (table) {
+        // 3. Limpiar pendientes de la mesa
+        await clearAllPendingRequestsForTable(table.tableNumber, {
+          id: currentUser.id,
+          name: currentUser.name,
+        });
+      }
+    } catch (err: any) {
+      console.error('Error al liberar mesa:', err);
     }
   };
 
@@ -564,6 +626,7 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
       {/* Barra de Filtros Rápidos (Muy cómoda para Celulares y Tablets) */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
         <button
+          id="filter-all"
           onClick={() => setFilter('all')}
           className={`px-3.5 py-2 rounded-xl font-bold transition-all whitespace-nowrap cursor-pointer ${
             filter === 'all'
@@ -572,6 +635,18 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
           }`}
         >
           Todas ({totalTables})
+        </button>
+
+        <button
+          id="filter-my-tables"
+          onClick={() => setFilter('my_tables')}
+          className={`px-3.5 py-2 rounded-xl font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+            filter === 'my_tables'
+              ? 'bg-[#3A2418] text-[#FFF7EA] shadow-sm ring-2 ring-[#C9974D]'
+              : 'bg-white border border-[#DEC8AE] text-[#4A2E1F] hover:bg-[#FFF7EA]'
+          }`}
+        >
+          <span>Mis mesas ({myTablesCount})</span>
         </button>
 
         <button
@@ -634,6 +709,22 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
         /* VISTA CROQUIS: PLANO SENCILLO Y VISUAL DEL RESTAURANTE         */
         /* ============================================================== */
         <div className="bg-[#FAF4E8] p-3 sm:p-5 md:p-6 rounded-3xl border-2 border-[#E8D4BE] shadow-xs space-y-4 sm:space-y-6">
+          {/* Mensaje informativo cuando el filtro 'Mis mesas' no tiene mesas asignadas */}
+          {filter === 'my_tables' && myTablesCount === 0 && (
+            <div className="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-2.5 rounded-2xl text-xs flex items-center justify-between gap-2 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🧑‍🍳</span>
+                <span>No tienes mesas asignadas en este momento. Toca cualquier mesa ocupada para asignártela.</span>
+              </div>
+              <button
+                onClick={() => setFilter('all')}
+                className="text-xs font-bold text-[#3A2418] underline hover:text-black cursor-pointer shrink-0"
+              >
+                Ver todas
+              </button>
+            </div>
+          )}
+
           {/* Barra arquitectónica de referencia espacial del plano */}
           <div className="flex items-center justify-between gap-2 flex-wrap text-[11px] sm:text-xs font-bold text-[#5C3825] px-2.5 py-2 bg-white/80 rounded-2xl border border-[#E8D4BE]">
             <div className="flex items-center gap-1.5 bg-[#FFF7EA] border border-[#DEC8AE] px-3 py-1 rounded-xl shadow-2xs">
@@ -687,6 +778,9 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
             // Helper para verificar compatibilidad con el filtro activo
             const matchesActiveFilter = (t: TableRecord) => {
               if (filter === 'all') return true;
+              if (filter === 'my_tables') {
+                return isTableAssignedToUser(t, currentUser.id);
+              }
               if (filter === 'pending') {
                 return checkTableHasPending(t);
               }
@@ -1154,7 +1248,30 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
         /* ============================================================== */
         /* VISTA LISTA RÁPIDA: OPERACIÓN DIRECTA CON BOTONES INTACTA      */
         /* ============================================================== */
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        filteredTables.length === 0 ? (
+          <div className="bg-white border border-[#DEC8AE] rounded-3xl p-8 text-center space-y-3 shadow-xs">
+            <div className="w-12 h-12 rounded-full bg-[#FFF7EA] text-[#C9974D] flex items-center justify-center mx-auto text-2xl font-bold">
+              {filter === 'my_tables' ? '🧑‍🍳' : '🔍'}
+            </div>
+            <h3 className="font-serif font-bold text-lg text-[#2B1B13]">
+              {filter === 'my_tables' ? 'No tienes mesas asignadas' : 'No hay mesas para este filtro'}
+            </h3>
+            <p className="text-xs text-[#5C3825] max-w-md mx-auto">
+              {filter === 'my_tables'
+                ? 'Actualmente no tienes mesas asignadas a tu nombre. Puedes seleccionar cualquier mesa ocupada y asignártela.'
+                : 'Prueba seleccionando otro filtro o "Todas" para ver el salón completo.'}
+            </p>
+            {filter !== 'all' && (
+              <button
+                onClick={() => setFilter('all')}
+                className="px-4 py-2 bg-[#3A2418] text-[#FFF7EA] text-xs font-bold rounded-xl hover:bg-[#2B1B13] cursor-pointer transition-all"
+              >
+                Ver todas las mesas
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {filteredTables.map((table) => {
           const tableQrs = qrRequests.filter(
             (r) => r.tableNumber === table.tableNumber && r.status === 'PENDIENTE'
@@ -1464,6 +1581,7 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
           );
         })}
         </div>
+        )
       )}
 
       {/* ============================================================== */}
@@ -1520,12 +1638,16 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
                   {(['LIBRE', 'OCUPADA', 'CUENTA', 'LIMPIEZA'] as TableStatus[]).map((st) => (
                     <button
                       key={st}
-                      onClick={() =>
-                        setTableStatus(selectedTable.tableId, st, {
-                          id: currentUser.id,
-                          name: currentUser.name,
-                        })
-                      }
+                      onClick={() => {
+                        if (st === 'LIBRE') {
+                          handleFreeTable(selectedTable.tableId);
+                        } else {
+                          setTableStatus(selectedTable.tableId, st, {
+                            id: currentUser.id,
+                            name: currentUser.name,
+                          });
+                        }
+                      }}
                       className={`py-2.5 px-2 rounded-xl text-xs font-bold uppercase tracking-wider border transition-all cursor-pointer text-center ${
                         selectedTable.status === st
                           ? st === 'LIBRE'
@@ -1977,7 +2099,7 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
                       Información de Servicio
                     </label>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
                       <div>
                         <span className="text-[11px] text-[#5C3825] font-semibold block mb-1">
                           Comensales reales:
@@ -2026,12 +2148,123 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
                         <span className="text-[11px] text-[#5C3825] font-semibold block mb-1">
                           Mesero responsable:
                         </span>
-                        <div className="flex items-center gap-2 bg-[#FFF7EA] p-2 rounded-xl border border-[#DEC8AE]">
-                          <User className="w-4 h-4 text-[#C9974D]" />
-                          <span className="font-bold text-sm truncate">
-                            {selectedTable.waiterName || 'Sin asignar'}
-                          </span>
-                        </div>
+                        {!selectedTable.waiterId || !selectedTable.waiterName ? (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-2 bg-[#FFF7EA] p-2 rounded-xl border border-[#DEC8AE]">
+                              <User className="w-4 h-4 text-[#C9974D] shrink-0" />
+                              <span className="font-medium text-xs text-[#8A624C] truncate">
+                                Sin mesero
+                              </span>
+                            </div>
+                            <button
+                              id="btn-asignarme-esta-mesa"
+                              type="button"
+                              onClick={() => handleAssignSelfToTable(selectedTable)}
+                              className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-[#3A2418] hover:bg-[#2B1B13] text-[#FFF7EA] text-xs font-bold shadow-xs active:scale-95 transition-all cursor-pointer"
+                            >
+                              🙋 Asignarme esta mesa
+                            </button>
+                            {(currentUser.role === 'DUEÑA' || currentUser.role === 'ADMINISTRADOR') && (
+                              <select
+                                value=""
+                                onChange={(e) => {
+                                  const staff = staffList.find((s) => s.id === e.target.value);
+                                  if (staff) handleAssignWaiterToTable(selectedTable, staff);
+                                }}
+                                className="w-full text-xs p-1.5 rounded-lg border border-[#DEC8AE] bg-white text-[#2B1B13]"
+                              >
+                                <option value="" disabled>O asignar a otro mesero...</option>
+                                {staffList.filter((s) => s.active).map((s) => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.name} ({s.role})
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        ) : selectedTable.waiterId === currentUser.id ? (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-2 bg-[#FFF7EA] p-2 rounded-xl border border-[#DEC8AE]">
+                              <div className="flex items-center gap-2 truncate">
+                                <User className="w-4 h-4 text-[#C9974D] shrink-0" />
+                                <span className="font-bold text-sm truncate text-[#2B1B13]">
+                                  {selectedTable.waiterName || currentUser.name}
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md shrink-0">
+                                Tú
+                              </span>
+                            </div>
+
+                            {/* Confirmación explícita requerida: "✓ Esta mesa está asignada a ti" */}
+                            <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-300 text-emerald-800 px-3 py-2 rounded-xl text-xs font-bold shadow-2xs">
+                              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <span>✓ Esta mesa está asignada a ti</span>
+                            </div>
+
+                            {(currentUser.role === 'DUEÑA' || currentUser.role === 'ADMINISTRADOR') && (
+                              <select
+                                value={selectedTable.waiterId || ''}
+                                onChange={(e) => {
+                                  const staff = staffList.find((s) => s.id === e.target.value);
+                                  if (staff) handleAssignWaiterToTable(selectedTable, staff);
+                                }}
+                                className="w-full text-xs p-1.5 rounded-lg border border-[#DEC8AE] bg-white text-[#2B1B13]"
+                              >
+                                <option value="" disabled>Reasignar mesero...</option>
+                                {staffList.filter((s) => s.active).map((s) => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.name} ({s.role})
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-2 bg-[#FFF7EA] p-2 rounded-xl border border-[#DEC8AE]">
+                              <div className="flex items-center gap-2 truncate">
+                                <User className="w-4 h-4 text-[#C9974D] shrink-0" />
+                                <span className="font-bold text-sm truncate text-[#2B1B13]">
+                                  {selectedTable.waiterName}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Control de roles: Mesero no puede reasignar mesa ajena silenciosamente */}
+                            {currentUser.role === 'MESERO' ? (
+                              <div className="text-[11px] text-[#8A624C] bg-[#FFF7EA]/80 border border-[#DEC8AE] rounded-xl p-2.5 flex items-center gap-1.5">
+                                <ShieldAlert className="w-4 h-4 text-[#C9974D] shrink-0" />
+                                <span>Mesa asignada a otro mesero. Reasignación disponible para administración.</span>
+                              </div>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAssignSelfToTable(selectedTable)}
+                                  className="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white hover:bg-[#FFF7EA] border border-[#DEC8AE] text-[#3A2418] text-xs font-semibold cursor-pointer"
+                                >
+                                  🙋 Asignarme esta mesa
+                                </button>
+                                <select
+                                  value={selectedTable.waiterId || ''}
+                                  onChange={(e) => {
+                                    const staff = staffList.find((s) => s.id === e.target.value);
+                                    if (staff) handleAssignWaiterToTable(selectedTable, staff);
+                                  }}
+                                  className="w-full text-xs p-1.5 rounded-lg border border-[#DEC8AE] bg-white text-[#2B1B13]"
+                                >
+                                  <option value="" disabled>Reasignar mesero...</option>
+                                  {staffList.filter((s) => s.active).map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                      {s.name} ({s.role})
+                                    </option>
+                                  ))}
+                                </select>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
 

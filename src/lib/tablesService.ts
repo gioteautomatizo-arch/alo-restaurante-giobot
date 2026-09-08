@@ -220,7 +220,6 @@ function saveToLocalStorage(tables: TableRecord[]) {
     const sorted = sanitized.sort((a, b) => a.tableNumber - b.tableNumber);
     cachedTables = sorted;
     localStorage.setItem(STORAGE_KEY_TABLES, JSON.stringify(sorted));
-    window.dispatchEvent(new Event(TABLES_DATA_EVENT));
     notifyListeners();
   } catch (e) {
     console.warn('Error al guardar mesas en localStorage:', e);
@@ -234,6 +233,16 @@ function notifyListeners() {
       cb(current);
     } catch (err) {
       console.error('Error en listener de mesas:', err);
+    }
+  });
+}
+
+// Sincronización multi-pestaña limpia vía evento nativo storage (solo dispara en otras pestañas)
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === STORAGE_KEY_TABLES) {
+      cachedTables = loadFromLocalStorage();
+      notifyListeners();
     }
   });
 }
@@ -397,17 +406,8 @@ export function subscribeToTables(callback: (tables: TableRecord[]) => void): ()
   listeners.add(callback);
   callback([...cachedTables]);
 
-  const handleStorageChange = () => {
-    callback(loadFromLocalStorage());
-  };
-
-  window.addEventListener(TABLES_DATA_EVENT, handleStorageChange);
-  window.addEventListener('storage', handleStorageChange);
-
   return () => {
     listeners.delete(callback);
-    window.removeEventListener(TABLES_DATA_EVENT, handleStorageChange);
-    window.removeEventListener('storage', handleStorageChange);
   };
 }
 
@@ -441,7 +441,16 @@ async function syncTableToFirestoreAndLocal(table: TableRecord) {
     try {
       const docRef = doc(db, 'tables', table.tableId);
       // Limpiar campos undefined antes de mandar a Firestore
-      const cleanData = JSON.parse(JSON.stringify({ ...table, restaurantId: RESTAURANT_ID }));
+      const cleanData: Record<string, any> = JSON.parse(JSON.stringify({ ...table, restaurantId: RESTAURANT_ID }));
+      // Si la mesa se libera, garantizar que se limpien explícitamente en Firestore
+      if (table.status === 'LIBRE') {
+        cleanData.openedAt = null;
+        cleanData.currentCourse = null;
+        cleanData.waiterId = '';
+        cleanData.waiterName = '';
+        cleanData.notes = '';
+        cleanData.guestCount = 0;
+      }
       await setDoc(docRef, cleanData, { merge: true });
     } catch (err: any) {
       console.error('Error al sincronizar mesa con Firestore:', err);
@@ -486,6 +495,95 @@ export async function occupyTable(
     updatedAt: now.toISOString(),
     updatedBy: user?.id || 'staff',
     updatedByName: user?.name || params.waiterName || 'Personal',
+    restaurantId: RESTAURANT_ID,
+  };
+
+  await syncTableToFirestoreAndLocal(updated);
+}
+
+/**
+ * Ocupar una mesa al iniciar sesión desde el QR del comensal
+ */
+export async function occupyTableFromPublicQR(
+  tableNumber: number,
+  guestCount: number
+): Promise<void> {
+  const tableId = `table-${tableNumber}`;
+  const current = cachedTables.find((t) => t.tableId === tableId || t.tableNumber === tableNumber);
+
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+  const safeGuestCount = Math.max(1, Math.min(20, Math.round(guestCount || 1)));
+
+  const updated: TableRecord = {
+    ...(current || {
+      tableId,
+      tableNumber,
+      label: `Mesa ${tableNumber}`,
+      capacity: 4,
+      location: 'salon',
+      waiterId: '',
+      waiterName: '',
+      needsTortillas: false,
+      needsDrinks: false,
+      needsSecondCourse: false,
+      needsThirdCourse: false,
+      needsBill: false,
+    }),
+    status: 'OCUPADA',
+    guestCount: safeGuestCount,
+    openedAt: timeStr,
+    currentCourse: '1ER_TIEMPO',
+    updatedAt: now.toISOString(),
+    updatedBy: 'qr_cliente',
+    updatedByName: 'Cliente QR',
+    restaurantId: RESTAURANT_ID,
+  };
+
+  // 1. Actualizar caché local
+  const index = cachedTables.findIndex((t) => t.tableId === tableId || t.tableNumber === tableNumber);
+  let updatedList: TableRecord[];
+  if (index >= 0) {
+    updatedList = [...cachedTables];
+    updatedList[index] = updated;
+  } else {
+    updatedList = [...cachedTables, updated];
+  }
+  saveToLocalStorage(updatedList);
+
+  // 2. Sincronización en tiempo real con Firestore
+  try {
+    const docRef = doc(db, 'tables', tableId);
+    const cleanData = JSON.parse(JSON.stringify(updated));
+    await setDoc(docRef, cleanData, { merge: true });
+  } catch (err) {
+    console.warn('[tablesService] error al marcar mesa ocupada desde QR en Firestore:', err);
+  }
+}
+
+/**
+ * Asignar o cambiar el mesero responsable de una mesa
+ */
+export async function assignWaiterToTable(
+  tableId: string,
+  waiter: { id: string; name: string },
+  user?: { id: string; name: string }
+): Promise<void> {
+  const current = cachedTables.find((t) => t.tableId === tableId);
+  if (!current) throw new Error(`Mesa no encontrada: ${tableId}`);
+
+  const now = new Date();
+  const timeStr = current.openedAt || now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+
+  const updated: TableRecord = {
+    ...current,
+    waiterId: waiter.id,
+    waiterName: waiter.name,
+    status: current.status === 'LIBRE' ? 'OCUPADA' : current.status,
+    openedAt: timeStr,
+    updatedAt: now.toISOString(),
+    updatedBy: user?.id || waiter.id,
+    updatedByName: user?.name || waiter.name,
     restaurantId: RESTAURANT_ID,
   };
 

@@ -19,6 +19,7 @@ import {
   TableSessionStatus,
 } from '../types';
 import { sanitizeFirestorePayload } from './firestoreService';
+import { occupyTableFromPublicQR } from './tablesService';
 
 export const TABLE_SESSIONS_COLLECTION = 'table_sessions';
 export const TABLE_SESSIONS_EVENT = 'alo_table_sessions_updated';
@@ -108,6 +109,8 @@ function normalizeSession(id: string, data: Partial<TableSession>): TableSession
     updatedAt: data.updatedAt || openedAt,
     updatedById: data.updatedById,
     updatedByName: data.updatedByName,
+    waiterId: data.waiterId || '',
+    waiterName: data.waiterName || '',
   };
 }
 
@@ -197,10 +200,11 @@ export async function activatePublicTableSession(
   }
 
   const createdAt = nowIso();
+  const safeGuestCount = Math.max(1, Math.min(20, Math.round(guestCount || 1)));
   const payload: Omit<TableSession, 'id'> = {
     restaurantId: RESTAURANT_ID,
     tableNumber,
-    guestCount: Math.max(1, Math.min(20, Math.round(guestCount || 1))),
+    guestCount: safeGuestCount,
     accountMode: 'GENERAL',
     accounts: [buildGeneralAccount(createdAt)],
     status: 'ACTIVA',
@@ -211,6 +215,14 @@ export async function activatePublicTableSession(
 
   const ref = doc(db, TABLE_SESSIONS_COLLECTION, tableSessionDocId(tableNumber));
   await setDoc(ref, sanitizeFirestorePayload(payload));
+
+  // Ocupar la mesa operativamente
+  try {
+    await occupyTableFromPublicQR(tableNumber, safeGuestCount);
+  } catch (err) {
+    console.warn('[tableSessionsService] no se pudo ocupar mesa desde activatePublicTableSession:', err);
+  }
+
   return { session: { ...payload, id: ref.id }, alreadyActive: false };
 }
 
@@ -307,11 +319,135 @@ export async function updateTableSessionGuestCountByStaff(
   );
 }
 
+/**
+ * Asigna o cambia el mesero responsable de la sesión activa de la mesa
+ */
+export async function assignWaiterToTableSession(
+  tableNumber: number,
+  waiter: { id: string; name: string },
+  user: Pick<StaffUser, 'id' | 'name'>
+): Promise<void> {
+  if (!isValidOperationalTableNumber(tableNumber)) return;
+  const session = await getTableSession(tableNumber);
+  if (!session) return;
+
+  const patch: Record<string, unknown> = {
+    waiterId: waiter.id,
+    waiterName: waiter.name,
+    updatedAt: nowIso(),
+    updatedById: user.id,
+    updatedByName: user.name,
+  };
+
+  await updateDoc(
+    doc(db, TABLE_SESSIONS_COLLECTION, session.id || tableSessionDocId(tableNumber)),
+    sanitizeFirestorePayload(patch)
+  );
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(TABLE_SESSIONS_EVENT));
+  }
+}
+
+export const TABLE_SESSIONS_HISTORY_KEY = 'alo_table_sessions_history_v1';
+export const TABLE_SESSIONS_HISTORY_COLLECTION = 'table_sessions_history';
+
+export function getLocalTableSessionsHistory(): TableSession[] {
+  try {
+    const raw = localStorage.getItem(TABLE_SESSIONS_HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalTableSessionsHistory(history: TableSession[]): void {
+  try {
+    localStorage.setItem(TABLE_SESSIONS_HISTORY_KEY, JSON.stringify(history.slice(0, 100)));
+  } catch (err) {
+    console.warn('Error saving table session history locally:', err);
+  }
+}
+
+/**
+ * Cierra la sesión activa de la mesa, guarda copia completa en el historial,
+ * elimina asignación de comensales/cuentas del estado activo y deja la mesa lista.
+ */
+export async function closeAndArchiveTableSession(
+  tableNumber: number,
+  user: Pick<StaffUser, 'id' | 'name'>
+): Promise<void> {
+  if (!isValidOperationalTableNumber(tableNumber)) return;
+
+  const session = await getTableSession(tableNumber);
+  const now = nowIso();
+
+  // 1. Archivar sesión en historial si existe y no estaba cerrada
+  if (session && session.status !== 'CERRADA') {
+    const archived: TableSession = {
+      ...session,
+      status: 'CERRADA',
+      updatedAt: now,
+      updatedById: user.id,
+      updatedByName: user.name,
+    };
+
+    const localHistory = getLocalTableSessionsHistory();
+    saveLocalTableSessionsHistory([archived, ...localHistory]);
+
+    try {
+      const historyDocId = `${session.id || tableSessionDocId(tableNumber)}_${Date.now()}`;
+      await setDoc(doc(db, TABLE_SESSIONS_HISTORY_COLLECTION, historyDocId), sanitizeFirestorePayload(archived));
+    } catch (histErr) {
+      console.warn('[tableSessionsService] no se pudo archivar en Firestore:', histErr);
+    }
+  }
+
+  // 2. Limpiar selecciones locales de cuenta y persona de esta mesa
+  clearTableAccountSelection(tableNumber);
+  clearTablePersonSelection(tableNumber);
+
+  // 3. Dejar el documento de sesión en CERRADA y vaciar clientes de la sesión activa
+  try {
+    const ref = doc(db, TABLE_SESSIONS_COLLECTION, tableSessionDocId(tableNumber));
+    await setDoc(
+      ref,
+      sanitizeFirestorePayload({
+        restaurantId: RESTAURANT_ID,
+        tableNumber,
+        guestCount: 0,
+        accountMode: 'GENERAL',
+        accounts: [],
+        status: 'CERRADA',
+        waiterId: '',
+        waiterName: '',
+        openedBy: session?.openedBy || 'MESERO',
+        openedAt: session?.openedAt || now,
+        updatedAt: now,
+        updatedById: user.id,
+        updatedByName: user.name,
+      }),
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('[tableSessionsService] error al cerrar sesión en Firestore:', err);
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(TABLE_SESSIONS_EVENT));
+  }
+}
+
 export async function setTableSessionStatusByStaff(
   tableNumber: number,
   status: TableSessionStatus,
   user: Pick<StaffUser, 'id' | 'name'>
 ): Promise<void> {
+  if (status === 'CERRADA') {
+    await closeAndArchiveTableSession(tableNumber, user);
+    return;
+  }
+
   const session = await getTableSession(tableNumber);
   if (!session) return;
   await updateDoc(
@@ -323,6 +459,10 @@ export async function setTableSessionStatusByStaff(
       updatedByName: user.name,
     })
   );
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(TABLE_SESSIONS_EVENT));
+  }
 }
 
 export async function deleteTableSessionByStaff(tableNumber: number): Promise<void> {

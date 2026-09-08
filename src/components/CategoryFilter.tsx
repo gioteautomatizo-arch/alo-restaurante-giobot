@@ -30,20 +30,19 @@ interface CategoryDefinition {
 }
 
 const CATEGORIES: CategoryDefinition[] = [
-  { id: 'all', label: 'Selección & Todo', Icon: Sparkles },
+  { id: 'all', label: 'Toda la carta', Icon: Sparkles },
+  { id: 'bebidas', label: 'Bebidas', Icon: Coffee },
+  { id: 'licuados-agua-fruta-jugos', label: 'Licuados, agua y fruta, jugos', Icon: CupSoda },
+  { id: 'panaderia', label: 'Panadería', Icon: Cake },
+  { id: 'molletes-sincronizadas-tortas', label: 'Molletes, sincronizadas y tortas', Icon: Wheat },
   { id: 'desayunos', label: 'Desayunos', Icon: SunMedium },
-  { id: 'comida-corrida', label: 'Comida Corrida $90', Icon: UtensilsCrossed },
-  { id: 'ensaladas', label: 'Ensaladas $90', Icon: Salad },
-  { id: 'chapatas-sandwiches', label: 'Chapatas & Sandwiches', Icon: Sandwich },
+  { id: 'chapatas-sandwiches', label: 'Chapatas y sandwiches', Icon: Sandwich },
   { id: 'hamburguesas', label: 'Hamburguesas', Icon: Flame },
-  { id: 'tortas-molletes', label: 'Tortas & Molletes', Icon: Wheat },
+  { id: 'comida-corrida', label: 'Comida Corrida', Icon: UtensilsCrossed },
   { id: 'antojitos', label: 'Antojitos', Icon: ChefHat },
   { id: 'especialidades', label: 'Especialidades', Icon: Award },
-  { id: 'bebidas', label: 'Café & Infusiones', Icon: Coffee },
-  { id: 'frios-frappes', label: 'Fríos & Frappés', Icon: GlassWater },
-  { id: 'jugos-licuados', label: 'Jugos Naturales', Icon: CupSoda },
-  { id: 'panaderia', label: 'Postres & Pan', Icon: Cake },
-  { id: 'fin-de-semana', label: 'Fin de Semana', Icon: Soup },
+  { id: 'ensaladas', label: 'Arma tu ensalada', Icon: Salad },
+  { id: 'fin-de-semana', label: 'Fin de semana', Icon: Soup },
 ];
 
 export const CategoryFilter: React.FC<CategoryFilterProps> = ({

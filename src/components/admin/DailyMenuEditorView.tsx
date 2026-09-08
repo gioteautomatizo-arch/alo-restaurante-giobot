@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { StaffUser, DailyMenuConfig } from '../../types';
-import { getDailyMenuConfig, saveDailyMenuConfig } from '../../lib/adminStorage';
+import { StaffUser, DailyMenuConfig, ServiceMode } from '../../types';
+import { getDailyMenuConfig, saveDailyMenuConfig, getEffectiveService, setServiceMode } from '../../lib/adminStorage';
 import {
   Utensils,
   Save,
@@ -74,6 +74,7 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
           aguaDelDia: aguaDelDia.trim(),
           postreDelDia: postreDelDia.trim(),
           opcionesAlternativas: config.opcionesAlternativas,
+          serviceMode: config.serviceMode || 'AUTO',
           updatedAt: new Date().toISOString(),
           updatedBy: currentUser.name,
         },
@@ -88,6 +89,18 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
       alert(err.message || 'Error al guardar el Menú del Día.');
     }
   };
+
+  const handleServiceModeSelect = async (mode: ServiceMode) => {
+    try {
+      const updated = await setServiceMode(mode, currentUser);
+      setConfig(updated);
+      onRefreshStats();
+    } catch (err: any) {
+      console.warn('Error al cambiar modo de servicio:', err);
+    }
+  };
+
+  const effectiveService = getEffectiveService();
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -113,19 +126,63 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3 bg-[#FFF7EA] px-4 py-2.5 rounded-2xl border border-[#F4E3C8]">
-          <span className="text-xs font-bold text-[#2B1B13]">Estado del Menú:</span>
-          <button
-            type="button"
-            onClick={() => setIsAvailable(!isAvailable)}
-            className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              isAvailable
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'bg-rose-600 text-white shadow-xs'
-            }`}
-          >
-            {isAvailable ? '✅ Disponible' : '❌ Agotado / Inactivo'}
-          </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 bg-[#FFF7EA] px-3.5 py-2 rounded-2xl border border-[#F4E3C8]">
+            <span className="text-xs font-bold text-[#2B1B13]">Servicio:</span>
+            <div className="inline-flex p-0.5 bg-white rounded-xl border border-[#DEC8AE] gap-1">
+              <button
+                type="button"
+                onClick={() => handleServiceModeSelect('AUTO')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  (config.serviceMode || 'AUTO') === 'AUTO'
+                    ? 'bg-[#3A2418] text-[#FFF7EA] shadow-xs'
+                    : 'text-[#6B4028] hover:text-[#2B1B13]'
+                }`}
+                title="Modo automático: antes de las 12:00 CDMX es DESAYUNO, a las 12:00 o después COMIDA"
+              >
+                {(config.serviceMode || 'AUTO') === 'AUTO'
+                  ? `AUTO · Ahora: ${effectiveService}`
+                  : 'AUTO'}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleServiceModeSelect('DESAYUNO')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  config.serviceMode === 'DESAYUNO'
+                    ? 'bg-[#3A2418] text-[#FFF7EA] shadow-xs'
+                    : 'text-[#6B4028] hover:text-[#2B1B13]'
+                }`}
+              >
+                DESAYUNO
+              </button>
+              <button
+                type="button"
+                onClick={() => handleServiceModeSelect('COMIDA')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  config.serviceMode === 'COMIDA'
+                    ? 'bg-[#3A2418] text-[#FFF7EA] shadow-xs'
+                    : 'text-[#6B4028] hover:text-[#2B1B13]'
+                }`}
+              >
+                COMIDA
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 bg-[#FFF7EA] px-4 py-2.5 rounded-2xl border border-[#F4E3C8]">
+            <span className="text-xs font-bold text-[#2B1B13]">Estado del Menú:</span>
+            <button
+              type="button"
+              onClick={() => setIsAvailable(!isAvailable)}
+              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                isAvailable
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-rose-600 text-white shadow-xs'
+              }`}
+            >
+              {isAvailable ? '✅ Disponible' : '❌ Agotado / Inactivo'}
+            </button>
+          </div>
         </div>
       </div>
 

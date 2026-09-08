@@ -8,7 +8,7 @@ import {
   where,
   onSnapshot,
 } from 'firebase/firestore';
-import { db, isUserAuthenticated } from './firebase';
+import { db, isUserAuthenticated, subscribeToAuth } from './firebase';
 import { TableServiceRequest, TableServiceRequestType } from '../types';
 import { logActivityFirestore } from './firestoreService';
 
@@ -37,7 +37,7 @@ export const TABLE_SERVICE_REQUEST_TYPES: {
     type: 'BEBIDAS',
     label: 'Bebidas',
     icon: '🥤',
-    shortDesc: 'Bebidas frías, calientes o recargas',
+    shortDesc: 'Pide otra bebida de nuestra carta',
   },
   {
     type: 'SEGUNDO_TIEMPO',
@@ -83,6 +83,18 @@ export function isValidTableNumber(num: number): num is ValidTableNumber {
 
 // Caché en memoria para acceso síncrono ultra-rápido en frontend
 let inMemoryPendingRequests: TableServiceRequest[] = [];
+const requestListeners = new Set<(requests: TableServiceRequest[]) => void>();
+
+function notifyRequestListeners() {
+  const current = [...inMemoryPendingRequests];
+  requestListeners.forEach((cb) => {
+    try {
+      cb(current);
+    } catch (err) {
+      console.error('Error en listener de solicitudes de mesa:', err);
+    }
+  });
+}
 
 function loadLocalRequests(): TableServiceRequest[] {
   try {
@@ -98,10 +110,20 @@ function saveLocalRequests(requests: TableServiceRequest[]) {
   try {
     inMemoryPendingRequests = requests;
     localStorage.setItem(LOCAL_REQUESTS_KEY, JSON.stringify(requests));
-    window.dispatchEvent(new CustomEvent(TABLE_REQUESTS_EVENT, { detail: requests }));
+    notifyRequestListeners();
   } catch {
     // Silently ignore storage errors
   }
+}
+
+// Sincronización multi-pestaña limpia vía evento nativo storage (solo dispara en otras pestañas)
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === LOCAL_REQUESTS_KEY) {
+      inMemoryPendingRequests = loadLocalRequests();
+      notifyRequestListeners();
+    }
+  });
 }
 
 // Inicializar memoria desde local
@@ -284,35 +306,19 @@ export function subscribeToTableRequestsForTable(
   }
 }
 
-/**
- * SUSCRIPCIÓN EN TIEMPO REAL: Invocada en el módulo administrativo de Mesas.
- * Escucha las solicitudes pendientes con onSnapshot en tiempo real.
- */
-export function subscribeToPendingTableRequests(
-  callback: (requests: TableServiceRequest[]) => void
-): () => void {
-  // Emitir estado inicial en memoria
-  callback(inMemoryPendingRequests);
+let activeFirestoreRequestsUnsubscribe: (() => void) | null = null;
 
-  // Suscriptor al evento local
-  const handleLocalUpdate = (e: Event) => {
-    const customEvent = e as CustomEvent<TableServiceRequest[]>;
-    if (customEvent.detail) {
-      callback(customEvent.detail);
-    }
-  };
-  window.addEventListener(TABLE_REQUESTS_EVENT, handleLocalUpdate);
-
-  // Si el usuario está autenticado en Firebase Auth, escuchar Firestore en tiempo real
-  let unsubscribeFirestore: (() => void) | null = null;
-
+function ensureFirestoreRequestsSync() {
+  if (activeFirestoreRequestsUnsubscribe || !isUserAuthenticated()) {
+    return;
+  }
   try {
     const q = query(
       collection(db, 'table_service_requests'),
       where('status', '==', 'PENDIENTE')
     );
 
-    unsubscribeFirestore = onSnapshot(
+    activeFirestoreRequestsUnsubscribe = onSnapshot(
       q,
       (snapshot) => {
         const list: TableServiceRequest[] = [];
@@ -329,24 +335,55 @@ export function subscribeToPendingTableRequests(
         });
 
         inMemoryPendingRequests = list;
-        saveLocalRequests(list);
-        callback(list);
+        try {
+          localStorage.setItem(LOCAL_REQUESTS_KEY, JSON.stringify(list));
+        } catch {
+          // ignore
+        }
+        notifyRequestListeners();
       },
       (error) => {
-        // En caso de que aún no haya sesión o permisos
         console.warn('[tableRequestsService] onSnapshot error:', error);
-        callback(inMemoryPendingRequests);
       }
     );
   } catch (err) {
     console.warn('[tableRequestsService] error initializing listener:', err);
   }
+}
+
+function stopFirestoreRequestsSyncIfNoListeners() {
+  if (requestListeners.size === 0 && activeFirestoreRequestsUnsubscribe) {
+    activeFirestoreRequestsUnsubscribe();
+    activeFirestoreRequestsUnsubscribe = null;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  subscribeToAuth((user) => {
+    if (user && requestListeners.size > 0) {
+      ensureFirestoreRequestsSync();
+    } else if (!user && activeFirestoreRequestsUnsubscribe) {
+      activeFirestoreRequestsUnsubscribe();
+      activeFirestoreRequestsUnsubscribe = null;
+    }
+  });
+}
+
+/**
+ * SUSCRIPCIÓN EN TIEMPO REAL: Invocada en el módulo administrativo de Mesas.
+ * Escucha las solicitudes pendientes con onSnapshot en tiempo real con notificación unificada.
+ */
+export function subscribeToPendingTableRequests(
+  callback: (requests: TableServiceRequest[]) => void
+): () => void {
+  requestListeners.add(callback);
+  callback([...inMemoryPendingRequests]);
+
+  ensureFirestoreRequestsSync();
 
   return () => {
-    window.removeEventListener(TABLE_REQUESTS_EVENT, handleLocalUpdate);
-    if (unsubscribeFirestore) {
-      unsubscribeFirestore();
-    }
+    requestListeners.delete(callback);
+    stopFirestoreRequestsSyncIfNoListeners();
   };
 }
 
