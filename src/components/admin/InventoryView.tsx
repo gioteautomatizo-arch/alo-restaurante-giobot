@@ -34,6 +34,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // New product form
   const [newProductName, setNewProductName] = useState<string>('');
@@ -211,13 +212,22 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(`¿Deseas eliminar "${name}" del inventario?`)) return;
+    // Evitamos window.confirm porque el Preview de AI Studio puede bloquearlo.
+    // Primer toque: pedir confirmación. Segundo toque sobre el mismo bote: eliminar.
+    if (deleteConfirmId !== id) {
+      setDeleteConfirmId(id);
+      showNotification(`Toca de nuevo el icono de eliminar para confirmar "${name}".`);
+      return;
+    }
+
     try {
       await deleteInventoryProduct(id, currentUser);
-      refreshList();
+      setInventory((current) => current.filter((item) => item.id !== id));
+      setDeleteConfirmId(null);
       onRefreshStats();
       showNotification(`Producto "${name}" eliminado.`);
     } catch (err: any) {
+      setDeleteConfirmId(null);
       alert(err.message || 'Error al eliminar.');
     }
   };
@@ -485,7 +495,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                       <button
                         onClick={() => handleDelete(item.id, item.name)}
                         className="p-1.5 text-stone-400 hover:text-rose-600 rounded-lg lg:opacity-0 hover:opacity-100 transition-opacity cursor-pointer shrink-0"
-                        title="Eliminar producto"
+                        title={deleteConfirmId === item.id ? 'Toca otra vez para confirmar eliminación' : 'Eliminar producto'}
                         aria-label="Eliminar producto de inventario"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
