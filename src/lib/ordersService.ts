@@ -19,6 +19,61 @@ export const ORDERS_COLLECTION = 'restaurant_orders';
 export const ORDERS_EVENT = 'alo_orders_updated';
 export const RESTAURANT_ID = 'alo-restaurante' as const;
 
+type RestaurantOrdersSubscriber = (orders: RestaurantOrder[]) => void;
+
+const restaurantOrdersSubscribers = new Set<RestaurantOrdersSubscriber>();
+let restaurantOrdersFirestoreUnsubscribe: (() => void) | null = null;
+let restaurantOrdersCache: RestaurantOrder[] = [];
+let restaurantOrdersHasSnapshot = false;
+
+function notifyRestaurantOrdersSubscribers(orders: RestaurantOrder[]) {
+  restaurantOrdersCache = orders;
+  restaurantOrdersHasSnapshot = true;
+
+  [...restaurantOrdersSubscribers].forEach((subscriber) => {
+    subscriber(orders);
+  });
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(ORDERS_EVENT, { detail: orders }));
+  }
+}
+
+function ensureRestaurantOrdersListener() {
+  if (restaurantOrdersFirestoreUnsubscribe) return;
+
+  const q = query(
+    collection(db, ORDERS_COLLECTION),
+    where('restaurantId', '==', RESTAURANT_ID)
+  );
+
+  restaurantOrdersFirestoreUnsubscribe = onSnapshot(
+    q,
+    (snapshot) => {
+      const orders: RestaurantOrder[] = [];
+      snapshot.forEach((snap) => {
+        const data = snap.data() as RestaurantOrder;
+        orders.push({ ...data, id: snap.id });
+      });
+
+      orders.sort((a, b) => {
+        const aTime = Date.parse(a.createdAt || '') || 0;
+        const bTime = Date.parse(b.createdAt || '') || 0;
+        return bTime - aTime;
+      });
+
+      notifyRestaurantOrdersSubscribers(orders);
+    },
+    (error) => {
+      console.warn('[ordersService] listener error:', error);
+      restaurantOrdersCache = [];
+      restaurantOrdersHasSnapshot = true;
+      [...restaurantOrdersSubscribers].forEach((subscriber) => subscriber([]));
+      restaurantOrdersFirestoreUnsubscribe = null;
+    }
+  );
+}
+
 function buildOrderCode(): string {
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, '0');
@@ -45,38 +100,31 @@ export async function createRestaurantOrder(
   return { ...payload, id: ref.id } as RestaurantOrder;
 }
 
+/**
+ * Suscripción global compartida para el panel administrativo.
+ * Todos los consumidores internos reutilizan un único onSnapshot de Firestore.
+ */
 export function subscribeToRestaurantOrders(
-  callback: (orders: RestaurantOrder[]) => void
+  callback: RestaurantOrdersSubscriber
 ): () => void {
-  const q = query(
-    collection(db, ORDERS_COLLECTION),
-    where('restaurantId', '==', RESTAURANT_ID)
-  );
+  restaurantOrdersSubscribers.add(callback);
 
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const orders: RestaurantOrder[] = [];
-      snapshot.forEach((snap) => {
-        const data = snap.data() as RestaurantOrder;
-        orders.push({ ...data, id: snap.id });
-      });
+  if (restaurantOrdersHasSnapshot) {
+    callback(restaurantOrdersCache);
+  }
 
-      orders.sort((a, b) => {
-        const aTime = Date.parse(a.createdAt || '') || 0;
-        const bTime = Date.parse(b.createdAt || '') || 0;
-        return bTime - aTime;
-      });
-      callback(orders);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent(ORDERS_EVENT, { detail: orders }));
-      }
-    },
-    (error) => {
-      console.warn('[ordersService] listener error:', error);
-      callback([]);
+  ensureRestaurantOrdersListener();
+
+  return () => {
+    restaurantOrdersSubscribers.delete(callback);
+
+    if (restaurantOrdersSubscribers.size === 0 && restaurantOrdersFirestoreUnsubscribe) {
+      restaurantOrdersFirestoreUnsubscribe();
+      restaurantOrdersFirestoreUnsubscribe = null;
+      restaurantOrdersCache = [];
+      restaurantOrdersHasSnapshot = false;
     }
-  );
+  };
 }
 
 /**
