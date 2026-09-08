@@ -79,6 +79,39 @@ export function subscribeToRestaurantOrders(
   );
 }
 
+export function subscribeToTableOrders(
+  tableNumber: number,
+  callback: (orders: RestaurantOrder[]) => void
+): () => void {
+  const q = query(
+    collection(db, ORDERS_COLLECTION),
+    where('restaurantId', '==', RESTAURANT_ID),
+    where('tableNumber', '==', tableNumber)
+  );
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const orders: RestaurantOrder[] = [];
+      snapshot.forEach((snap) => {
+        const data = snap.data() as RestaurantOrder;
+        orders.push({ ...data, id: snap.id });
+      });
+
+      orders.sort((a, b) => {
+        const aTime = Date.parse(a.createdAt || '') || 0;
+        const bTime = Date.parse(b.createdAt || '') || 0;
+        return bTime - aTime;
+      });
+      callback(orders);
+    },
+    (error) => {
+      console.warn(`[ordersService] table ${tableNumber} listener error:`, error);
+      callback([]);
+    }
+  );
+}
+
 export async function updateRestaurantOrderStatus(
   orderId: string,
   status: RestaurantOrderStatus,
