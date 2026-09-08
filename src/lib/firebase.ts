@@ -30,6 +30,31 @@ googleProvider.setCustomParameters({
   prompt: 'select_account',
 });
 
+type AuthSubscriber = (user: FirebaseUser | null) => void;
+
+// Un único observador real de Firebase Auth compartido por todos los consumidores.
+const authSubscribers = new Set<AuthSubscriber>();
+let authObserverUnsubscribe: (() => void) | null = null;
+let cachedAuthUser: FirebaseUser | null = null;
+let hasAuthSnapshot = false;
+
+function ensureAuthObserver(): void {
+  if (authObserverUnsubscribe) return;
+
+  authObserverUnsubscribe = onAuthStateChanged(auth, (user) => {
+    cachedAuthUser = user;
+    hasAuthSnapshot = true;
+
+    [...authSubscribers].forEach((subscriber) => {
+      try {
+        subscriber(user);
+      } catch (error) {
+        console.error('Error en suscriptor de Firebase Auth:', error);
+      }
+    });
+  });
+}
+
 /**
  * Iniciar sesión con Google usando Popup (o Redirect para móviles si se especifica)
  */
@@ -100,10 +125,27 @@ export function getAuthStatus(): {
 }
 
 /**
- * Suscribirse a los cambios de estado de autenticación (onAuthStateChanged)
+ * Suscribirse a los cambios de Firebase Authentication.
+ * La API pública se conserva, pero todos los consumidores reutilizan
+ * un único onAuthStateChanged real para evitar observadores duplicados.
  */
-export function subscribeToAuth(callback: (user: FirebaseUser | null) => void): () => void {
-  return onAuthStateChanged(auth, (user) => {
-    callback(user);
-  });
+export function subscribeToAuth(callback: AuthSubscriber): () => void {
+  authSubscribers.add(callback);
+
+  if (hasAuthSnapshot) {
+    callback(cachedAuthUser);
+  }
+
+  ensureAuthObserver();
+
+  return () => {
+    authSubscribers.delete(callback);
+
+    if (authSubscribers.size === 0 && authObserverUnsubscribe) {
+      authObserverUnsubscribe();
+      authObserverUnsubscribe = null;
+      cachedAuthUser = null;
+      hasAuthSnapshot = false;
+    }
+  };
 }
