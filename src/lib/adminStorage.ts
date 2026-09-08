@@ -247,6 +247,19 @@ const INITIAL_STAFF: StaffUser[] = [
   },
 ];
 
+function sanitizeInventoryIdPart(name: string): string {
+  const safe = name
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80);
+
+  return safe || 'insumo';
+}
+
 // -------------------------------------------------------------
 // INVENTARIO INICIAL (Los 21 productos obligatorios de papel)
 // -------------------------------------------------------------
@@ -999,7 +1012,7 @@ export function getInventory(): InventoryItem[] {
     if (!raw) {
       const seeded: InventoryItem[] = INITIAL_INVENTORY_ITEMS.map((item, idx) => ({
         ...item,
-        id: `inv_${idx + 1}_${item.name.toLowerCase().replace(/\s+/g, '_')}`,
+        id: `inv_${idx + 1}_${sanitizeInventoryIdPart(item.name)}`,
         lastUpdated: new Date().toISOString(),
       }));
       localStorage.setItem(STORAGE_KEYS.INVENTORY, JSON.stringify(seeded));
@@ -1187,7 +1200,7 @@ export async function addInventoryProduct(
   const nowIso = now.toISOString();
 
   const newItem: InventoryItem = {
-    id: `inv_${now.getTime()}_${data.name.toLowerCase().replace(/\s+/g, '_')}`,
+    id: `inv_${now.getTime()}_${sanitizeInventoryIdPart(data.name)}`,
     name: data.name.trim(),
     category: data.category,
     unit: data.unit || (tipoControl === 'folio' ? 'folios' : 'pz'),
