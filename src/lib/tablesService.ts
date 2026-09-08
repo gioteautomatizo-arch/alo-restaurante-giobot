@@ -183,7 +183,8 @@ export const DEFAULT_TABLES: TableRecord[] = [
 let cachedTables: TableRecord[] = loadFromLocalStorage();
 const listeners = new Set<(tables: TableRecord[]) => void>();
 let firestoreUnsubscribe: (() => void) | null = null;
-let isRealtimeListening = false;
+let authUnsubscribe: (() => void) | null = null;
+let realtimeSyncConsumers = 0;
 
 function loadFromLocalStorage(): TableRecord[] {
   try {
@@ -196,11 +197,9 @@ function loadFromLocalStorage(): TableRecord[] {
 
         // Asegurar que todas las mesas por defecto operativas (1, 2, 4, 5, 6, 7, 8, 9) existan
         const existingIds = new Set(parsed.map((p: TableRecord) => p.tableId));
-        let addedAny = false;
         for (const defTable of DEFAULT_TABLES) {
           if (!existingIds.has(defTable.tableId)) {
             parsed.push(defTable);
-            addedAny = true;
           }
         }
         localStorage.setItem(STORAGE_KEY_TABLES, JSON.stringify(parsed));
@@ -247,139 +246,145 @@ if (typeof window !== 'undefined') {
   });
 }
 
-/**
- * Inicia la suscripción en tiempo real con Firestore para la colección 'tables'
- */
-export function initTablesRealtimeSync(): () => void {
-  if (isRealtimeListening) {
-    return () => {};
+function stopFirestoreTablesListener(): void {
+  if (firestoreUnsubscribe) {
+    firestoreUnsubscribe();
+    firestoreUnsubscribe = null;
   }
-  isRealtimeListening = true;
+}
 
-  const startFirestoreListener = () => {
-    if (!isUserAuthenticated()) {
-      return;
-    }
+function startFirestoreTablesListener(): void {
+  if (realtimeSyncConsumers === 0 || !isUserAuthenticated() || firestoreUnsubscribe) {
+    return;
+  }
 
-    try {
-      if (firestoreUnsubscribe) {
-        firestoreUnsubscribe();
-      }
+  try {
+    const q = query(
+      collection(db, 'tables'),
+      where('restaurantId', '==', RESTAURANT_ID)
+    );
 
-      const q = query(
-        collection(db, 'tables'),
-        where('restaurantId', '==', RESTAURANT_ID)
-      );
+    firestoreUnsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        if (snapshot.empty) {
+          // Si la colección está vacía en Firestore, sembramos las mesas iniciales
+          seedDefaultTablesToFirestore();
+          return;
+        }
 
-      firestoreUnsubscribe = onSnapshot(
-        q,
-        (snapshot) => {
-          if (snapshot.empty) {
-            // Si la colección está vacía en Firestore, sembramos las mesas iniciales
-            seedDefaultTablesToFirestore();
+        const remoteTables: TableRecord[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as Partial<TableRecord>;
+          // Regla: Mesa 3 no es operativa (corresponde a la Pantalla no operativa)
+          if (docSnap.id === 'table-3' || data?.tableId === 'table-3' || data?.tableNumber === 3) {
             return;
           }
+          if (data && data.tableId) {
+            remoteTables.push({
+              tableId: data.tableId,
+              tableNumber: Number(data.tableNumber || 1),
+              label: data.label || `Mesa ${data.tableNumber || 1}`,
+              status: (data.status as TableStatus) || 'LIBRE',
+              guestCount: Number(data.guestCount || 0),
+              waiterId: data.waiterId || '',
+              waiterName: data.waiterName || '',
+              currentCourse: data.currentCourse as TableCourse | undefined,
+              needsTortillas: Boolean(data.needsTortillas),
+              needsDrinks: Boolean(data.needsDrinks),
+              needsSecondCourse: Boolean(data.needsSecondCourse),
+              needsThirdCourse: Boolean(data.needsThirdCourse),
+              needsBill: Boolean(data.needsBill),
+              notes: data.notes || '',
+              openedAt: data.openedAt || undefined,
+              updatedAt: data.updatedAt || new Date().toISOString(),
+              updatedBy: data.updatedBy || 'remoto',
+              updatedByName: data.updatedByName || '',
+              restaurantId: RESTAURANT_ID,
+              capacity: data.capacity || 4,
+              location: data.location || 'salon',
+            });
+          }
+        });
 
-          const remoteTables: TableRecord[] = [];
-          snapshot.forEach((docSnap) => {
-            const data = docSnap.data() as Partial<TableRecord>;
-            // Regla: Mesa 3 no es operativa (corresponde a la Pantalla no operativa)
-            if (docSnap.id === 'table-3' || data?.tableId === 'table-3' || data?.tableNumber === 3) {
-              return;
-            }
-            if (data && data.tableId) {
-              remoteTables.push({
-                tableId: data.tableId,
-                tableNumber: Number(data.tableNumber || 1),
-                label: data.label || `Mesa ${data.tableNumber || 1}`,
-                status: (data.status as TableStatus) || 'LIBRE',
-                guestCount: Number(data.guestCount || 0),
-                waiterId: data.waiterId || '',
-                waiterName: data.waiterName || '',
-                currentCourse: data.currentCourse as TableCourse | undefined,
-                needsTortillas: Boolean(data.needsTortillas),
-                needsDrinks: Boolean(data.needsDrinks),
-                needsSecondCourse: Boolean(data.needsSecondCourse),
-                needsThirdCourse: Boolean(data.needsThirdCourse),
-                needsBill: Boolean(data.needsBill),
-                notes: data.notes || '',
-                openedAt: data.openedAt || undefined,
-                updatedAt: data.updatedAt || new Date().toISOString(),
-                updatedBy: data.updatedBy || 'remoto',
-                updatedByName: data.updatedByName || '',
-                restaurantId: RESTAURANT_ID,
-                capacity: data.capacity || 4,
-                location: data.location || 'salon',
+        if (remoteTables.length > 0) {
+          // Asegurar que table-9 exista en Firestore si falta
+          const hasTable9 = remoteTables.some((t) => t.tableId === 'table-9' || t.tableNumber === 9);
+          if (!hasTable9) {
+            const table9Record: TableRecord = {
+              tableId: 'table-9',
+              tableNumber: 9,
+              label: 'Mesa 9',
+              status: 'LIBRE',
+              guestCount: 0,
+              waiterId: '',
+              waiterName: '',
+              needsTortillas: false,
+              needsDrinks: false,
+              needsSecondCourse: false,
+              needsThirdCourse: false,
+              needsBill: false,
+              updatedAt: new Date().toISOString(),
+              updatedBy: 'sistema',
+              updatedByName: 'Sistema',
+              restaurantId: RESTAURANT_ID,
+              capacity: 4,
+              location: 'salon',
+            };
+            remoteTables.push(table9Record);
+
+            if (isUserAuthenticated()) {
+              const docRef = doc(db, 'tables', 'table-9');
+              setDoc(docRef, table9Record, { merge: true }).catch((err) => {
+                console.warn('Aviso: no se pudo guardar table-9 en Firestore:', err);
               });
             }
-          });
-
-          if (remoteTables.length > 0) {
-            // Asegurar que table-9 exista en Firestore si falta
-            const hasTable9 = remoteTables.some((t) => t.tableId === 'table-9' || t.tableNumber === 9);
-            if (!hasTable9) {
-              const table9Record: TableRecord = {
-                tableId: 'table-9',
-                tableNumber: 9,
-                label: 'Mesa 9',
-                status: 'LIBRE',
-                guestCount: 0,
-                waiterId: '',
-                waiterName: '',
-                needsTortillas: false,
-                needsDrinks: false,
-                needsSecondCourse: false,
-                needsThirdCourse: false,
-                needsBill: false,
-                updatedAt: new Date().toISOString(),
-                updatedBy: 'sistema',
-                updatedByName: 'Sistema',
-                restaurantId: RESTAURANT_ID,
-                capacity: 4,
-                location: 'salon',
-              };
-              remoteTables.push(table9Record);
-
-              if (isUserAuthenticated()) {
-                const docRef = doc(db, 'tables', 'table-9');
-                setDoc(docRef, table9Record, { merge: true }).catch((err) => {
-                  console.warn('Aviso: no se pudo guardar table-9 en Firestore:', err);
-                });
-              }
-            }
-            saveToLocalStorage(remoteTables);
           }
-        },
-        (error) => {
-          console.warn('Listener Firestore de mesas en espera o error de permisos:', error.message);
+          saveToLocalStorage(remoteTables);
         }
-      );
-    } catch (err) {
-      console.warn('No fue posible iniciar onSnapshot de mesas:', err);
-    }
-  };
-
-  // Intentar iniciar listener si ya está autenticado
-  startFirestoreListener();
-
-  // Escuchar cambios de autenticación para re-iniciar listener cuando el usuario inicie sesión con Google
-  const unsubAuth = subscribeToAuth((user) => {
-    if (user) {
-      startFirestoreListener();
-    } else {
-      if (firestoreUnsubscribe) {
-        firestoreUnsubscribe();
+      },
+      (error) => {
+        console.warn('Listener Firestore de mesas en espera o error de permisos:', error.message);
         firestoreUnsubscribe = null;
       }
-    }
-  });
+    );
+  } catch (err) {
+    console.warn('No fue posible iniciar onSnapshot de mesas:', err);
+  }
+}
 
+/**
+ * Inicia/reutiliza la suscripción en tiempo real con Firestore para la colección 'tables'.
+ * Cada consumidor obtiene su propio release; el onSnapshot real se mantiene mientras
+ * exista al menos un consumidor activo.
+ */
+export function initTablesRealtimeSync(): () => void {
+  realtimeSyncConsumers += 1;
+
+  if (!authUnsubscribe) {
+    authUnsubscribe = subscribeToAuth((user) => {
+      if (user) {
+        startFirestoreTablesListener();
+      } else {
+        stopFirestoreTablesListener();
+      }
+    });
+  }
+
+  startFirestoreTablesListener();
+
+  let released = false;
   return () => {
-    isRealtimeListening = false;
-    unsubAuth();
-    if (firestoreUnsubscribe) {
-      firestoreUnsubscribe();
-      firestoreUnsubscribe = null;
+    if (released) return;
+    released = true;
+
+    realtimeSyncConsumers = Math.max(0, realtimeSyncConsumers - 1);
+    if (realtimeSyncConsumers > 0) return;
+
+    stopFirestoreTablesListener();
+    if (authUnsubscribe) {
+      authUnsubscribe();
+      authUnsubscribe = null;
     }
   };
 }
