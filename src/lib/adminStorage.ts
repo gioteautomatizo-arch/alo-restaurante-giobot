@@ -70,51 +70,135 @@ export function notifyDataChanged() {
 // INICIALIZACIÓN DE SINCRONIZACIÓN EN TIEMPO REAL
 // -------------------------------------------------------------
 let syncStarted = false;
+const lastMirroredCacheRefs = new Map<string, unknown>();
+let lastMirroredInitialized = false;
+
+function mirrorCacheValue(
+  cacheKey: string,
+  storageKey: string,
+  value: unknown,
+  shouldPersist: boolean
+): boolean {
+  if (lastMirroredCacheRefs.get(cacheKey) === value) {
+    return false;
+  }
+
+  lastMirroredCacheRefs.set(cacheKey, value);
+
+  if (shouldPersist) {
+    const serialized = JSON.stringify(value);
+    if (localStorage.getItem(storageKey) !== serialized) {
+      localStorage.setItem(storageKey, serialized);
+    }
+  }
+
+  return true;
+}
+
 export function startAdminSync() {
   if (typeof window === 'undefined' || syncStarted) return;
   syncStarted = true;
 
   initFirestoreRealtimeSync();
 
-  // Escuchar cambios de Firestore y sincronizar el espejo local
+  // Escuchar cambios de Firestore y sincronizar únicamente la parte del espejo
+  // local cuyo valor cambió. Así evitamos serializar/escribir todas las colecciones
+  // administrativas por cada snapshot individual de Firestore.
   subscribeToCache((cache) => {
     try {
-      if (cache.staffUsers.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.STAFF_USERS, JSON.stringify(cache.staffUsers));
-      }
-      if (cache.currentShift) {
-        localStorage.setItem(STORAGE_KEYS.CURRENT_SHIFT, JSON.stringify(cache.currentShift));
-      } else if (cache.isInitialized) {
+      let cacheChanged = false;
+
+      cacheChanged = mirrorCacheValue(
+        'staffUsers',
+        STORAGE_KEYS.STAFF_USERS,
+        cache.staffUsers,
+        cache.staffUsers.length > 0
+      ) || cacheChanged;
+
+      const currentShiftChanged =
+        lastMirroredCacheRefs.get('currentShift') !== cache.currentShift;
+      cacheChanged = mirrorCacheValue(
+        'currentShift',
+        STORAGE_KEYS.CURRENT_SHIFT,
+        cache.currentShift,
+        !!cache.currentShift
+      ) || cacheChanged;
+
+      const initializedChanged = lastMirroredInitialized !== cache.isInitialized;
+      lastMirroredInitialized = cache.isInitialized;
+      cacheChanged = initializedChanged || cacheChanged;
+
+      if (
+        !cache.currentShift &&
+        cache.isInitialized &&
+        (currentShiftChanged || initializedChanged) &&
+        localStorage.getItem(STORAGE_KEYS.CURRENT_SHIFT) !== null
+      ) {
         localStorage.removeItem(STORAGE_KEYS.CURRENT_SHIFT);
       }
-      if (cache.shiftsHistory.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.SHIFTS_HISTORY, JSON.stringify(cache.shiftsHistory));
-      }
-      if (cache.expenses.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(cache.expenses));
-      }
-      if (cache.cxcList.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.CXC, JSON.stringify(cache.cxcList));
-      }
-      if (cache.inventory.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.INVENTORY, JSON.stringify(cache.inventory));
-      }
-      if (cache.sobreMovements.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.SOBRE_MOVEMENTS, JSON.stringify(cache.sobreMovements));
-      }
-      if (cache.dailyMenu) {
-        localStorage.setItem(STORAGE_KEYS.DAILY_MENU, JSON.stringify(cache.dailyMenu));
-      }
-      if (cache.restaurantInfo) {
-        localStorage.setItem(STORAGE_KEYS.RESTAURANT_INFO, JSON.stringify(cache.restaurantInfo));
-      }
-      if (cache.activityLogs.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(cache.activityLogs));
+
+      cacheChanged = mirrorCacheValue(
+        'shiftsHistory',
+        STORAGE_KEYS.SHIFTS_HISTORY,
+        cache.shiftsHistory,
+        cache.shiftsHistory.length > 0
+      ) || cacheChanged;
+
+      cacheChanged = mirrorCacheValue(
+        'expenses',
+        STORAGE_KEYS.EXPENSES,
+        cache.expenses,
+        cache.expenses.length > 0
+      ) || cacheChanged;
+
+      cacheChanged = mirrorCacheValue(
+        'cxcList',
+        STORAGE_KEYS.CXC,
+        cache.cxcList,
+        cache.cxcList.length > 0
+      ) || cacheChanged;
+
+      cacheChanged = mirrorCacheValue(
+        'inventory',
+        STORAGE_KEYS.INVENTORY,
+        cache.inventory,
+        cache.inventory.length > 0
+      ) || cacheChanged;
+
+      cacheChanged = mirrorCacheValue(
+        'sobreMovements',
+        STORAGE_KEYS.SOBRE_MOVEMENTS,
+        cache.sobreMovements,
+        cache.sobreMovements.length > 0
+      ) || cacheChanged;
+
+      cacheChanged = mirrorCacheValue(
+        'dailyMenu',
+        STORAGE_KEYS.DAILY_MENU,
+        cache.dailyMenu,
+        !!cache.dailyMenu
+      ) || cacheChanged;
+
+      cacheChanged = mirrorCacheValue(
+        'restaurantInfo',
+        STORAGE_KEYS.RESTAURANT_INFO,
+        cache.restaurantInfo,
+        !!cache.restaurantInfo
+      ) || cacheChanged;
+
+      cacheChanged = mirrorCacheValue(
+        'activityLogs',
+        STORAGE_KEYS.ACTIVITY_LOGS,
+        cache.activityLogs,
+        cache.activityLogs.length > 0
+      ) || cacheChanged;
+
+      if (cacheChanged) {
+        notifyDataChanged();
       }
     } catch (e) {
       console.warn('Error updating local mirror from Firestore:', e);
     }
-    notifyDataChanged();
   });
 }
 
@@ -939,7 +1023,7 @@ export async function saveInventoryItem(
 
   const currentItem = currentInventory[itemIndex];
   const tipoControl = updates.tipoControl !== undefined ? updates.tipoControl : (currentItem.tipoControl || 'cantidad');
-  
+
   const initialQty = Number.isFinite(Number(updates.initialQty))
     ? Number(updates.initialQty)
     : (Number.isFinite(Number(currentItem.initialQty)) ? Number(currentItem.initialQty) : 0);
@@ -949,7 +1033,7 @@ export async function saveInventoryItem(
   const finalQty = Number.isFinite(Number(updates.finalQty))
     ? Number(updates.finalQty)
     : (Number.isFinite(Number(currentItem.finalQty)) ? Number(currentItem.finalQty) : 0);
-  
+
   let folioInicial: number | null = null;
   let folioFinal: number | null = null;
 
@@ -1039,7 +1123,7 @@ export async function saveInventoryItem(
   const prevText = currentItem.tipoControl === 'folio'
     ? `Folios: [${currentItem.folioInicial ?? '—'}–${currentItem.folioFinal ?? '—'}], Ent: ${currentItem.entriesQty}`
     : `Ini: ${currentItem.initialQty}, Ent: ${currentItem.entriesQty}, Fin: ${currentItem.finalQty}`;
-    
+
   const newText = tipoControl === 'folio'
     ? `Folios: [${folioInicial ?? '—'}–${folioFinal ?? '—'}], Ent: ${entriesQty} (Resultado: ${consumption} u.)`
     : `Ini: ${initialQty}, Ent: ${entriesQty}, Fin: ${finalQty} (Consumo: ${consumption})`;
@@ -1731,7 +1815,7 @@ export function getSobreSummary(): SobreSummary {
 
   if (latestCount && latestCount.physicalCountedAmount !== undefined) {
     const diff = latestCount.countDifference ?? (latestCount.physicalCountedAmount - (latestCount.theoreticalBalanceAtCount ?? 0));
-    
+
     lastPhysicalCountSummary = {
       date: latestCount.date,
       time: latestCount.time,
