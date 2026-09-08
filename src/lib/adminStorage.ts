@@ -63,7 +63,6 @@ export const ADMIN_DATA_EVENT = 'alo_admin_data_updated';
 export function notifyDataChanged() {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(ADMIN_DATA_EVENT));
-    window.dispatchEvent(new Event('storage'));
   }
 }
 
