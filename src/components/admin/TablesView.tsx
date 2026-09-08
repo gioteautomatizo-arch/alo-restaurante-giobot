@@ -46,7 +46,7 @@ import {
 } from '../../lib/tableRequestsService';
 import { getStaffUsers } from '../../lib/adminStorage';
 import { TableSessionAccountsPanel } from './TableSessionAccountsPanel';
-import { subscribeToTableSession, setTableSessionStatusByStaff } from '../../lib/tableSessionsService';
+import { subscribeToRestaurantTableSessions, setTableSessionStatusByStaff } from '../../lib/tableSessionsService';
 import { subscribeToRestaurantOrders } from '../../lib/ordersService';
 
 interface TablesViewProps {
@@ -63,7 +63,7 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
   const [staffList, setStaffList] = useState<StaffUser[]>([]);
   const [qrRequests, setQrRequests] = useState<TableServiceRequest[]>([]);
   const [copiedTableQr, setCopiedTableQr] = useState<number | null>(null);
-  const [tableSessionsByNumber, setTableSessionsByNumber] = useState<Record<number, TableSession | null>>({});
+  const [tableSessionsByNumber, setTableSessionsByNumber] = useState<Record<number, TableSession>>({});
   const [restaurantOrders, setRestaurantOrders] = useState<RestaurantOrder[]>([]);
 
   // Datos para modal de ocupación rápida
@@ -95,14 +95,10 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
       setRestaurantOrders(orders);
     });
 
-    // Escuchar también las sesiones QR. Una sesión ACTIVA debe reflejar la mesa como
-    // ocupada en el panel aunque el registro operativo de `tables` siga en LIBRE.
-    // Usamos listeners por documento (8 mesas) para no depender de permisos de listado.
-    const sessionUnsubs = [1, 2, 4, 5, 6, 7, 8, 9].map((tableNumber) =>
-      subscribeToTableSession(tableNumber, (session) => {
-        setTableSessionsByNumber((prev) => ({ ...prev, [tableNumber]: session }));
-      })
-    );
+    // Escuchar todas las sesiones del restaurante con un único snapshot.
+    const unsubSessions = subscribeToRestaurantTableSessions((sessionsByNumber) => {
+      setTableSessionsByNumber(sessionsByNumber);
+    });
 
     setStaffList(getStaffUsers().filter((u) => u.active));
 
@@ -111,7 +107,7 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
       unsubTables();
       unsubQr();
       unsubOrders();
-      sessionUnsubs.forEach((unsub) => unsub());
+      unsubSessions();
     };
   }, []);
 

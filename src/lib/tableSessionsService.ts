@@ -1,10 +1,13 @@
 import {
+  collection,
   deleteDoc,
   doc,
   getDoc,
   onSnapshot,
+  query,
   setDoc,
   updateDoc,
+  where,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import {
@@ -114,6 +117,41 @@ export async function getTableSession(tableNumber: number): Promise<TableSession
   const snap = await getDoc(ref);
   if (!snap.exists()) return null;
   return normalizeSession(snap.id, snap.data() as Partial<TableSession>);
+}
+
+export function subscribeToRestaurantTableSessions(
+  callback: (sessionsByNumber: Record<number, TableSession>) => void
+): () => void {
+  const sessionsQuery = query(
+    collection(db, TABLE_SESSIONS_COLLECTION),
+    where('restaurantId', '==', RESTAURANT_ID)
+  );
+
+  return onSnapshot(
+    sessionsQuery,
+    (snapshot) => {
+      const sessionsByNumber: Record<number, TableSession> = {};
+
+      snapshot.forEach((sessionDoc) => {
+        const session = normalizeSession(
+          sessionDoc.id,
+          sessionDoc.data() as Partial<TableSession>
+        );
+        if (session) {
+          sessionsByNumber[session.tableNumber] = session;
+        }
+      });
+
+      callback(sessionsByNumber);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event(TABLE_SESSIONS_EVENT));
+      }
+    },
+    (error) => {
+      console.warn('[tableSessionsService] restaurant listener error:', error);
+      callback({});
+    }
+  );
 }
 
 export function subscribeToTableSession(
