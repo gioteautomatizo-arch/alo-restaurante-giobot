@@ -1,10 +1,11 @@
-import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import { storage } from './firebase';
 import { RESTAURANT_ID } from './menuCatalogService';
 
 const MAX_SOURCE_IMAGE_BYTES = 12 * 1024 * 1024;
 const MAX_IMAGE_DIMENSION = 1280;
 const WEBP_QUALITY = 0.8;
+const UPLOAD_TIMEOUT_MS = 30000;
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 function sanitizePathPart(value: string): string {
@@ -26,10 +27,10 @@ export function validateMenuImage(file: File): string | null {
 
 async function loadImage(file: File): Promise<HTMLImageElement> {
   const objectUrl = URL.createObjectURL(file);
+  const image = new Image();
+  image.decoding = 'async';
+  image.src = objectUrl;
   try {
-    const image = new Image();
-    image.decoding = 'async';
-    image.src = objectUrl;
     await image.decode();
     return image;
   } finally {
@@ -47,11 +48,6 @@ function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number):
   });
 }
 
-/**
- * Reduce las fotos en el navegador antes de enviarlas a Firebase Storage.
- * Así una foto de cámara de varios megapíxeles nunca viaja completa por la red.
- * El catálogo solo necesita una imagen de pantalla, no el archivo fotográfico original.
- */
 export async function optimizeMenuImage(file: File): Promise<File> {
   const validationError = validateMenuImage(file);
   if (validationError) throw new Error(validationError);
@@ -86,8 +82,6 @@ export async function optimizeMenuImage(file: File): Promise<File> {
     blob = await canvasToBlob(canvas, 'image/jpeg', 0.82);
   }
 
-  // Si por alguna razón la optimización genera un archivo más pesado y la fuente
-  // ya estaba en un formato eficiente, conservamos la fuente para no desperdiciar red.
   if (blob.size >= file.size && scale === 1 && file.type !== 'image/png') {
     return file;
   }
@@ -97,6 +91,45 @@ export async function optimizeMenuImage(file: File): Promise<File> {
   return new File([blob], `${baseName}.${extension}`, {
     type: blob.type,
     lastModified: Date.now(),
+  });
+}
+
+function uploadWithTimeout(
+  objectRef: ReturnType<typeof ref>,
+  file: File,
+  metadata: Parameters<typeof uploadBytesResumable>[2]
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const task = uploadBytesResumable(objectRef, file, metadata);
+    const timeout = window.setTimeout(() => {
+      try { task.cancel(); } catch {}
+      reject(new Error('La subida tardó demasiado. Revisa Firebase Storage, permisos o conexión e intenta otra vez.'));
+    }, UPLOAD_TIMEOUT_MS);
+
+    task.on(
+      'state_changed',
+      () => {},
+      (error: any) => {
+        window.clearTimeout(timeout);
+        if (error?.code === 'storage/canceled') {
+          reject(new Error('La subida fue cancelada porque excedió el tiempo máximo.'));
+          return;
+        }
+        if (error?.code === 'storage/unauthorized') {
+          reject(new Error('Firebase Storage rechazó la subida. Revisa las reglas de Storage para usuarios administradores.'));
+          return;
+        }
+        if (error?.code === 'storage/bucket-not-found') {
+          reject(new Error('No se encontró el bucket de Firebase Storage. Hay que habilitar Storage en el proyecto Firebase.'));
+          return;
+        }
+        reject(error);
+      },
+      () => {
+        window.clearTimeout(timeout);
+        resolve();
+      }
+    );
   });
 }
 
@@ -111,7 +144,7 @@ export async function uploadMenuImage(itemId: string, file: File): Promise<strin
     `restaurants/${RESTAURANT_ID}/menu/${itemKey}/${unique}.${extension}`
   );
 
-  await uploadBytes(objectRef, optimizedFile, {
+  await uploadWithTimeout(objectRef, optimizedFile, {
     contentType: optimizedFile.type,
     cacheControl: 'public,max-age=31536000,immutable',
     customMetadata: {
@@ -132,7 +165,6 @@ export async function deleteMenuImageByUrl(url: string): Promise<void> {
     const objectRef = ref(storage, url);
     await deleteObject(objectRef);
   } catch (error: any) {
-    // Si ya no existe, permitimos que el catálogo quite la referencia igualmente.
     if (error?.code === 'storage/object-not-found') return;
     throw error;
   }
