@@ -3,6 +3,8 @@ import { MENU_ITEMS } from './data/menu';
 import { MenuItem, CategoryId, CartItem, VipProfile, StaffUser, TableSessionPerson } from './types';
 import { getVipProfile, refreshCloudVipProfile, VIP_DATA_EVENT } from './lib/vipStorage';
 import { getAuthSession, logoutStaff } from './lib/adminStorage';
+import { subscribeToMenuCatalog } from './lib/menuCatalogService';
+import type { ManagedMenuItem } from './lib/menuCatalogService';
 import { Header } from './components/Header';
 import { Banner } from './components/Banner';
 import { SearchBar } from './components/SearchBar';
@@ -26,10 +28,54 @@ import { TableCustomerView } from './components/public/TableCustomerView';
 import { isValidTableNumber } from './lib/tableRequestsService';
 import { Bot, Utensils, Sparkles, ArrowRight, ChevronUp, Lock } from 'lucide-react';
 
+const toPublicMenuItem = (item: ManagedMenuItem): MenuItem | null => {
+  if (!item.active || !item.available) return null;
+
+  const sizes = (item.sizes || [])
+    .filter((size) => typeof size.price === 'number' && Number.isFinite(size.price) && size.price >= 0)
+    .map((size) => ({ name: size.name, price: size.price as number }));
+
+  const basePrice =
+    typeof item.price === 'number' && Number.isFinite(item.price) && item.price >= 0
+      ? item.price
+      : sizes.length > 0
+      ? Math.min(...sizes.map((size) => size.price))
+      : null;
+
+  // Un producto con precio pendiente no se ofrece al cliente hasta que administración lo revise.
+  if (basePrice === null) return null;
+
+  const realPhoto = [item.primaryImageUrl, ...(item.imageUrls || [])]
+    .find((url) => !!url && url.startsWith('https://res.cloudinary.com/'));
+
+  return {
+    id: item.id,
+    name: item.name,
+    category: item.category,
+    description: item.description,
+    price: basePrice,
+    ...(sizes.length > 0 ? { sizes } : {}),
+    ...(item.options?.length ? { options: item.options } : {}),
+    ...(item.extras?.length
+      ? {
+          extras: item.extras.map((extra) => ({
+            id: extra.id,
+            name: extra.name,
+            price: extra.price,
+          })),
+        }
+      : {}),
+    ...(realPhoto ? { image: realPhoto } : {}),
+    popular: item.popular,
+    ...(item.weekendOnly ? { weekendOnly: item.weekendOnly } : {}),
+  };
+};
+
 export default function App() {
   const [activeCategory, setActiveCategory] = useState<CategoryId>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [showAllCatalog, setShowAllCatalog] = useState<boolean>(false);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(MENU_ITEMS);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [isSaladBuilderOpen, setIsSaladBuilderOpen] = useState<boolean>(false);
@@ -97,6 +143,30 @@ export default function App() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (isAdminViewActive) return;
+
+    return subscribeToMenuCatalog(
+      (catalog) => {
+        if (!catalog) {
+          // Fallback seguro mientras el catálogo administrable no exista.
+          setMenuItems(MENU_ITEMS);
+          return;
+        }
+
+        const publicItems = catalog.items
+          .map(toPublicMenuItem)
+          .filter((item): item is MenuItem => item !== null);
+
+        setMenuItems(publicItems);
+      },
+      (error) => {
+        console.warn('No se pudo leer el catálogo administrable; se conserva el menú de respaldo.', error);
+        setMenuItems(MENU_ITEMS);
+      }
+    );
+  }, [isAdminViewActive]);
 
   const handleLoginSuccess = (user: StaffUser) => {
     setAdminUser(user);
@@ -217,8 +287,8 @@ export default function App() {
     scrollToMenu();
   };
 
-  // Filter menu items
-  const rawFilteredItems = MENU_ITEMS.filter((item) => {
+  // El menú público usa el catálogo administrable en tiempo real cuando está disponible.
+  const rawFilteredItems = menuItems.filter((item) => {
     const matchesCategory =
       activeCategory === 'all' || item.category === activeCategory;
 
@@ -235,6 +305,8 @@ export default function App() {
   // Check if we should slice to 12 items (initial state on 'all' without search and showAllCatalog=false)
   const isInitialCatalogView = activeCategory === 'all' && !searchTerm.trim() && !showAllCatalog;
   const displayedItems = isInitialCatalogView ? rawFilteredItems.slice(0, 12) : rawFilteredItems;
+  const catalogTotal = menuItems.length;
+  const initialVisibleCount = Math.min(12, catalogTotal);
 
   const cartTotalCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
 
@@ -340,15 +412,13 @@ export default function App() {
               {activeCategory === 'all'
                 ? isInitialCatalogView
                   ? 'Selección de Platillos Recomendados'
-                  : 'Catálogo Completo (61 Platillos)'
+                  : `Catálogo Completo (${catalogTotal} Platillos)`
                 : activeCategory === 'desayunos'
                 ? 'Desayunos & Paquetes'
                 : activeCategory === 'bebidas'
-                ? 'Café Caliente & Infusiones'
-                : activeCategory === 'frios-frappes'
-                ? 'Bebidas Frías & Frappés'
-                : activeCategory === 'jugos-licuados'
-                ? 'Jugos Naturales & Licuados'
+                ? 'Bebidas & Café'
+                : activeCategory === 'licuados-agua-fruta-jugos'
+                ? 'Licuados, Aguas, Fruta & Jugos'
                 : activeCategory === 'comida-corrida'
                 ? 'Comida Corrida de 3 Tiempos'
                 : activeCategory === 'ensaladas'
@@ -357,8 +427,8 @@ export default function App() {
                 ? 'Chapatas & Sandwiches'
                 : activeCategory === 'hamburguesas'
                 ? 'Hamburguesas'
-                : activeCategory === 'tortas-molletes'
-                ? 'Tortas & Molletes'
+                : activeCategory === 'molletes-sincronizadas-tortas'
+                ? 'Molletes, Sincronizadas & Tortas'
                 : activeCategory === 'antojitos'
                 ? 'Antojitos Mexicanos'
                 : activeCategory === 'especialidades'
@@ -369,7 +439,7 @@ export default function App() {
             </h2>
             <p className="text-xs text-[#6B4028] mt-0.5">
               {isInitialCatalogView
-                ? 'Mostrando 12 opciones populares de nuestra carta de 61 platillos'
+                ? `Mostrando ${initialVisibleCount} opciones de nuestra carta de ${catalogTotal} platillos`
                 : `${displayedItems.length} ${displayedItems.length === 1 ? 'platillo disponible' : 'platillos disponibles'}`}
             </p>
           </div>
@@ -416,8 +486,8 @@ export default function App() {
               ))}
             </div>
 
-            {/* "Ver los 61 platillos" Action Button when in initial 12 items view */}
-            {isInitialCatalogView && (
+            {/* Acción para abrir la carta completa desde la vista inicial */}
+            {isInitialCatalogView && catalogTotal > initialVisibleCount && (
               <div className="py-6 px-4 rounded-3xl bg-gradient-to-br from-[#3A2418] via-[#4E3222] to-[#2B1B13] text-[#FFF7EA] text-center border border-[#C9974D]/40 shadow-md space-y-3">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#C9974D]/20 text-[#FFF7EA] text-xs font-semibold border border-[#C9974D]/30 font-serif">
                   <Sparkles className="w-3.5 h-3.5 text-[#C9974D]" />
@@ -427,7 +497,7 @@ export default function App() {
                   ¿Quieres explorar todo lo que preparamos para ti?
                 </h3>
                 <p className="text-xs sm:text-sm text-[#F4E3C8]/80 max-w-md mx-auto font-light">
-                  Descubre chapatas, hamburguesas, antojitos mexicanos, bebidas frías, frappés, café de grano y postres artesanales.
+                  Descubre nuestra carta completa y las opciones disponibles hoy.
                 </p>
                 <div>
                   <button
@@ -437,14 +507,14 @@ export default function App() {
                     }}
                     className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#C9974D] to-[#A86B3D] hover:from-[#d6aa5f] hover:to-[#C9974D] text-[#FFF7EA] font-serif font-bold text-sm sm:text-base shadow-lg hover:shadow-xl transition-all active:scale-98 cursor-pointer"
                   >
-                    <span>Ver los 61 platillos</span>
+                    <span>Ver los {catalogTotal} platillos</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Collapse button if user opened all 61 platillos and is on 'all' category */}
+            {/* Collapse button if user opened full catalog and is on 'all' category */}
             {activeCategory === 'all' && !searchTerm && showAllCatalog && (
               <div className="text-center pt-2">
                 <button
@@ -455,7 +525,7 @@ export default function App() {
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white hover:bg-[#FFF7EA] text-[#6B4028] text-xs font-semibold border border-[#F4E3C8] transition-colors cursor-pointer font-serif"
                 >
                   <ChevronUp className="w-4 h-4 text-[#A86B3D]" />
-                  <span>Mostrar solo los 12 recomendados</span>
+                  <span>Mostrar solo los {initialVisibleCount} recomendados</span>
                 </button>
               </div>
             )}
