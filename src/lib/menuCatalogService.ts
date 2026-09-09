@@ -143,6 +143,23 @@ function sanitizeItem(item: ManagedMenuItem): ManagedMenuItem {
   return clean;
 }
 
+function hasRealCloudinaryPhoto(item: ManagedMenuItem): boolean {
+  return [item.primaryImageUrl, ...(item.imageUrls || [])]
+    .some((url) => !!url && url.startsWith('https://res.cloudinary.com/'));
+}
+
+function sortItemsForPresentation(items: ManagedMenuItem[]): ManagedMenuItem[] {
+  return [...items].sort((a, b) => {
+    if (a.popular !== b.popular) return a.popular ? -1 : 1;
+
+    const aHasRealPhoto = hasRealCloudinaryPhoto(a);
+    const bHasRealPhoto = hasRealCloudinaryPhoto(b);
+    if (aHasRealPhoto !== bHasRealPhoto) return aHasRealPhoto ? -1 : 1;
+
+    return a.sortOrder - b.sortOrder;
+  });
+}
+
 function sanitizeCatalog(items: ManagedMenuItem[], userName: string): MenuCatalogDocument {
   return {
     restaurantId: RESTAURANT_ID,
@@ -178,14 +195,16 @@ export function subscribeToMenuCatalog(
         return;
       }
       const data = snapshot.data() as MenuCatalogDocument;
+      const sanitizedItems = Array.isArray(data.items)
+        ? data.items
+            .map(sanitizeItem)
+            .filter((item) => !PACKAGE_ONLY_ITEM_IDS.has(item.id))
+        : [];
+
       callback({
         ...data,
         restaurantId: RESTAURANT_ID,
-        items: Array.isArray(data.items)
-          ? data.items
-              .map(sanitizeItem)
-              .filter((item) => !PACKAGE_ONLY_ITEM_IDS.has(item.id))
-          : [],
+        items: sortItemsForPresentation(sanitizedItems),
       });
     },
     (error) => {
