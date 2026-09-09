@@ -7,6 +7,8 @@ export const MENU_CATALOG_DOC_PATH = ['daily_menu', 'menu_catalog'] as const;
 export const MENU_CATALOG_VERSION = 1;
 export const RESTAURANT_ID = 'alo-restaurante';
 
+const PACKAGE_ONLY_ITEM_IDS = new Set(['paquete-desayuno', 'paquete-hamburguesa']);
+
 export interface ManagedMenuSize {
   name: string;
   price: number | null;
@@ -151,7 +153,11 @@ export function subscribeToMenuCatalog(
       callback({
         ...data,
         restaurantId: RESTAURANT_ID,
-        items: Array.isArray(data.items) ? data.items.map(sanitizeItem) : [],
+        items: Array.isArray(data.items)
+          ? data.items
+              .map(sanitizeItem)
+              .filter((item) => !PACKAGE_ONLY_ITEM_IDS.has(item.id))
+          : [],
       });
     },
     (error) => {
