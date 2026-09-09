@@ -26,7 +26,7 @@ import { AdminDashboard } from './components/admin/AdminDashboard';
 import { AdminLoginModal } from './components/admin/AdminLoginModal';
 import { TableCustomerView } from './components/public/TableCustomerView';
 import { isValidTableNumber } from './lib/tableRequestsService';
-import { Bot, Utensils, Sparkles, ArrowRight, ChevronUp, Lock } from 'lucide-react';
+import { Utensils, Sparkles, ArrowRight, ChevronUp, Lock } from 'lucide-react';
 
 const toPublicMenuItem = (item: ManagedMenuItem): MenuItem | null => {
   if (!item.active || !item.available) return null;
@@ -42,7 +42,6 @@ const toPublicMenuItem = (item: ManagedMenuItem): MenuItem | null => {
       ? Math.min(...sizes.map((size) => size.price))
       : null;
 
-  // Un producto con precio pendiente no se ofrece al cliente hasta que administración lo revise.
   if (basePrice === null) return null;
 
   const realPhoto = [item.primaryImageUrl, ...(item.imageUrls || [])]
@@ -89,7 +88,6 @@ export default function App() {
   const [customerTableNumber, setCustomerTableNumber] = useState<number | null>(null);
   const [selectedTablePerson, setSelectedTablePerson] = useState<TableSessionPerson | null>(null);
 
-  // Administrative State
   const [adminUser, setAdminUser] = useState<StaffUser | null>(null);
   const [isAdminViewActive, setIsAdminViewActive] = useState<boolean>(false);
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState<boolean>(false);
@@ -103,7 +101,6 @@ export default function App() {
   useEffect(() => {
     refreshVipProfile();
 
-    // Detección de atención a mesa por código QR (?table=1, ?table=2, ?table=4, ?table=5, ?table=6, ?table=7, ?table=8, ?table=9)
     try {
       const searchParams = new URLSearchParams(window.location.search);
       const tableParam = searchParams.get('table');
@@ -117,7 +114,6 @@ export default function App() {
       // ignore
     }
 
-    // Sincronizar en segundo plano con Firestore si existe perfil VIP
     refreshCloudVipProfile().then(() => {
       refreshVipProfile();
     }).catch(() => {});
@@ -128,13 +124,11 @@ export default function App() {
     window.addEventListener(VIP_DATA_EVENT, handleVipUpdate);
     window.addEventListener('storage', handleVipUpdate);
 
-    // Check if there is an active session (e.g. remembered iPad)
     const session = getAuthSession();
     if (session && session.user) {
       setAdminUser(session.user);
     }
 
-    // Check if URL specifies #admin
     if (window.location.hash === '#admin') {
       if (session && session.user) {
         setIsAdminViewActive(true);
@@ -150,7 +144,6 @@ export default function App() {
     return subscribeToMenuCatalog(
       (catalog) => {
         if (!catalog) {
-          // Fallback seguro mientras el catálogo administrable no exista.
           setMenuItems(MENU_ITEMS);
           return;
         }
@@ -189,7 +182,6 @@ export default function App() {
     }
   };
 
-  // Observe the #contacto footer section to hide FAB when footer is in view
   useEffect(() => {
     const contactEl = document.getElementById('contacto');
     if (!contactEl) return;
@@ -210,7 +202,6 @@ export default function App() {
     };
   }, []);
 
-  // If Admin View is active, render full administrative panel
   if (isAdminViewActive && adminUser) {
     return (
       <AdminDashboard
@@ -221,10 +212,7 @@ export default function App() {
     );
   }
 
-  // Cart operations
   const handleAddToCart = (item: CartItem) => {
-    // V4.3A: en modo mesa, cada platillo conserva la persona elegida al momento de agregarlo.
-    // Persona 1 funciona como fallback seguro mientras la sesión termina de sincronizar.
     const person = customerTableNumber
       ? (selectedTablePerson || { id: 'person-1', index: 1, label: 'Persona 1', accountId: 'general' })
       : null;
@@ -287,7 +275,6 @@ export default function App() {
     scrollToMenu();
   };
 
-  // El menú público usa el catálogo administrable en tiempo real cuando está disponible.
   const rawFilteredItems = menuItems.filter((item) => {
     const matchesCategory =
       activeCategory === 'all' || item.category === activeCategory;
@@ -302,7 +289,6 @@ export default function App() {
     return matchesCategory && matchesSearch;
   });
 
-  // La portada funciona como escaparate: solo seis recomendaciones antes de abrir la carta completa.
   const isInitialCatalogView = activeCategory === 'all' && !searchTerm.trim() && !showAllCatalog;
   const displayedItems = isInitialCatalogView ? rawFilteredItems.slice(0, 6) : rawFilteredItems;
   const catalogTotal = menuItems.length;
@@ -312,7 +298,6 @@ export default function App() {
 
   return (
     <div id="inicio" className="min-h-screen bg-[#FFF7EA] text-[#2B1B13] font-sans flex flex-col selection:bg-[#C9974D]/30 selection:text-[#3A2418] pb-16 sm:pb-0">
-      {/* 1. Header (Compact, Dynamic Status, Socials, VIP, Cart) */}
       <Header
         cartCount={cartTotalCount}
         onOpenCart={() => setIsCartOpen(true)}
@@ -320,7 +305,6 @@ export default function App() {
         vipProfile={vipProfile}
       />
 
-      {/* Atención a mesa por código QR si la URL contiene ?table=X válida */}
       {customerTableNumber !== null && (
         <TableCustomerView
           tableNumber={customerTableNumber}
@@ -337,7 +321,6 @@ export default function App() {
         />
       )}
 
-      {/* 2. Hero Banner Bistró Mexicano Contemporáneo - Oculto en modo mesa para no interponerse */}
       {!customerTableNumber && (
         <Banner
           onOpenGiobot={() => setIsGiobotOpen(true)}
@@ -347,10 +330,8 @@ export default function App() {
         />
       )}
 
-      {/* Top Application Flow Area (Mobile First Hub) - Solo para vista pública general */}
       {!customerTableNumber && (
         <div className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 py-3.5 sm:py-5 w-full space-y-3 sm:space-y-4">
-          {/* 2. Search Bar */}
           <SearchBar
             searchTerm={searchTerm}
             setSearchTerm={(term) => {
@@ -359,21 +340,18 @@ export default function App() {
             }}
           />
 
-          {/* 3. Primary Actions (3 tactile buttons: Ver menú, Pedir a domicilio, Preguntar a Giobot) */}
           <QuickActions
             onScrollToMenu={scrollToMenu}
             onOpenDeliveryOrder={() => setIsCartOpen(true)}
             onOpenGiobot={() => setIsGiobotOpen(true)}
           />
 
-          {/* 4. Daily Highlights */}
           <DailyHighlights
             onOpenComidaCorrida={() => setIsComidaCorridaBuilderOpen(true)}
             onOpenSaladBuilder={() => setIsSaladBuilderOpen(true)}
             onSelectCategory={handleCategorySelect}
           />
 
-          {/* 9. Eco Promotion Banner */}
           <EcoPromoCard
             bringOwnContainer={bringOwnContainer}
             setBringOwnContainer={setBringOwnContainer}
@@ -381,7 +359,6 @@ export default function App() {
         </div>
       )}
 
-      {/* En modo mesa QR (?table=N), buscador limpio directo sobre el menú */}
       {customerTableNumber && (
         <div className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 pt-1 pb-1 w-full">
           <SearchBar
@@ -394,7 +371,6 @@ export default function App() {
         </div>
       )}
 
-      {/* 5. Sticky Category Navigation Bar */}
       <CategoryFilter
         activeCategory={activeCategory}
         onSelectCategory={(cat) => {
@@ -403,9 +379,7 @@ export default function App() {
         }}
       />
 
-      {/* 6. Products Catalog Section */}
       <main id="menu-section" ref={menuSectionRef} className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 py-5 sm:py-7 flex-1 w-full space-y-4 sm:space-y-6">
-        {/* Section Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-lg sm:text-2xl font-serif font-black text-[#2B1B13] flex items-center gap-2">
@@ -444,7 +418,6 @@ export default function App() {
             </p>
           </div>
 
-          {/* Quick builder triggers if on specific categories */}
           {(activeCategory === 'all' || activeCategory === 'ensaladas' || activeCategory === 'comida-corrida') && (
             <div className="flex items-center gap-2">
               <button
@@ -465,7 +438,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Product Cards Grid */}
         {displayedItems.length > 0 ? (
           <div className="space-y-6">
             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5 sm:gap-4">
@@ -486,7 +458,6 @@ export default function App() {
               ))}
             </div>
 
-            {/* Acción para abrir la carta completa desde la vista inicial */}
             {isInitialCatalogView && catalogTotal > initialVisibleCount && (
               <div className="py-6 px-4 rounded-3xl bg-gradient-to-br from-[#3A2418] via-[#4E3222] to-[#2B1B13] text-[#FFF7EA] text-center border border-[#C9974D]/40 shadow-md space-y-3">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#C9974D]/20 text-[#FFF7EA] text-xs font-semibold border border-[#C9974D]/30 font-serif">
@@ -514,7 +485,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Collapse button if user opened full catalog and is on 'all' category */}
             {activeCategory === 'all' && !searchTerm && showAllCatalog && (
               <div className="text-center pt-2">
                 <button
@@ -553,7 +523,6 @@ export default function App() {
         )}
       </main>
 
-      {/* 7. Tita Floating Button (FAB with live pulse indicator - auto-hides when footer #contacto is visible) */}
       {!isGiobotOpen && !isContactVisible && (
         <button
           onClick={() => setIsGiobotOpen(true)}
@@ -574,14 +543,12 @@ export default function App() {
         </button>
       )}
 
-      {/* 8. Persistent Cart Floating Indicator */}
       <PersistentCartBar
         cartItems={cartItems}
         bringOwnContainer={bringOwnContainer}
         onOpenCart={() => setIsCartOpen(true)}
       />
 
-      {/* 11. Mobile Bottom Navigation (4 clear options) */}
       <BottomNav
         cartCount={cartTotalCount}
         onScrollToTop={scrollToTop}
@@ -590,7 +557,6 @@ export default function App() {
         onScrollToContact={scrollToContact}
       />
 
-      {/* Modals, Builders & Drawers */}
       <ItemModal
         item={selectedItem}
         onClose={() => setSelectedItem(null)}
@@ -614,6 +580,15 @@ export default function App() {
         onClose={() => setIsGiobotOpen(false)}
         onOpenSaladBuilder={() => setIsSaladBuilderOpen(true)}
         onOpenComidaCorridaBuilder={() => setIsComidaCorridaBuilderOpen(true)}
+        menuItems={menuItems}
+        onAddToCart={handleAddToCart}
+        onSelectMenuItem={(item) => setSelectedItem(item)}
+        onOpenCart={() => {
+          setIsGiobotOpen(false);
+          setIsCartOpen(true);
+        }}
+        tableNumber={customerTableNumber}
+        selectedPersonLabel={selectedTablePerson?.label || null}
       />
 
       <CartDrawer
@@ -637,7 +612,6 @@ export default function App() {
         onProfileUpdated={refreshVipProfile}
       />
 
-      {/* Staff Floating Quick Return Bar (Only visible if a staff user is logged in on this iPad) */}
       {adminUser && !isAdminViewActive && (
         <button
           onClick={() => setIsAdminViewActive(true)}
@@ -649,14 +623,12 @@ export default function App() {
         </button>
       )}
 
-      {/* Admin Login Modal */}
       <AdminLoginModal
         isOpen={isAdminLoginModalOpen}
         onClose={() => setIsAdminLoginModalOpen(false)}
         onLoginSuccess={handleLoginSuccess}
       />
 
-      {/* Footer */}
       <Footer onOpenAdmin={handleOpenAdminClick} />
     </div>
   );
