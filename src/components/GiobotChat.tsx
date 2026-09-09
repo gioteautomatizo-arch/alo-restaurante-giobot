@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { CartItem, ChatMessage, MenuItem } from '../types';
-import { Send, X, ShoppingBag, UtensilsCrossed } from 'lucide-react';
+import { ChatMessage } from '../types';
+import { Bot, Send, X, Sparkles, MessageSquare, Coffee, Utensils, RefreshCw } from 'lucide-react';
 import { getDailyMenuConfig, getRestaurantInfo } from '../lib/adminStorage';
 
 interface GiobotChatProps {
@@ -8,81 +8,35 @@ interface GiobotChatProps {
   onClose: () => void;
   onOpenSaladBuilder: () => void;
   onOpenComidaCorridaBuilder: () => void;
-  menuItems: MenuItem[];
-  onAddToCart: (cartItem: CartItem) => void;
-  onSelectMenuItem: (item: MenuItem) => void;
-  onOpenCart: () => void;
-  tableNumber?: number | null;
-  selectedPersonLabel?: string | null;
 }
 
 const INITIAL_MESSAGES: ChatMessage[] = [
   {
     id: 'welcome',
     sender: 'giobot',
-    text: 'Hola 👋 Soy Tita, tu anfitriona de Restaurante Calientito. Puedo ayudarte a elegir platillos, resolver dudas sobre el menú o preparar tu pedido. ¿En qué puedo consentirte hoy? 😊',
+    text: 'Hola 👋 Soy Tita, tu anfitriona de Restaurante Calientito. Puedo ayudarte a elegir platillos, resolver dudas sobre el menú o tomar tu pedido a domicilio y para llevar. ¿En qué puedo consentirte hoy? 😊',
     timestamp: 'Ahora',
   },
 ];
 
 const SUGGESTIONS = [
-  '🍽️ Quiero pedir algo',
-  '🍲 ¿Qué incluye la Comida Corrida?',
   '📍 ¿Cuál es su ubicación y horarios?',
+  '🧾 ¿Cómo pido a domicilio o anticipo por WhatsApp?',
+  '🍲 ¿Qué incluye la Comida Corrida?',
   '⭐ ¿Cómo funciona la Tarjeta VIP?',
   '🌱 ¿Cómo aplica el descuento ecológico?',
 ];
-
-const normalizeText = (value: string): string =>
-  value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-const productMatchesConversation = (item: MenuItem, conversationText: string): boolean => {
-  const haystack = normalizeText(conversationText);
-  const itemName = normalizeText(item.name);
-  if (!itemName || !haystack) return false;
-
-  if (haystack.includes(itemName)) return true;
-
-  const meaningfulWords = itemName
-    .split(' ')
-    .filter((word) => word.length >= 5 && !['tradicionales', 'especial', 'sencilla'].includes(word));
-
-  return meaningfulWords.length > 0 && meaningfulWords.every((word) => haystack.includes(word));
-};
-
-const createBasicCartItem = (item: MenuItem): CartItem => ({
-  cartId: `${item.id}-tita-${Date.now()}`,
-  item,
-  quantity: 1,
-  selectedExtras: [],
-  unitPrice: item.price,
-  totalPrice: item.price,
-});
 
 export const GiobotChat: React.FC<GiobotChatProps> = ({
   isOpen,
   onClose,
   onOpenSaladBuilder,
   onOpenComidaCorridaBuilder,
-  menuItems,
-  onAddToCart,
-  onSelectMenuItem,
-  onOpenCart,
-  tableNumber = null,
-  selectedPersonLabel = null,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [inputText, setInputText] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isThinking, setIsThinking] = useState<boolean>(false);
-  const [menuSuggestions, setMenuSuggestions] = useState<MenuItem[]>([]);
-  const [cartNotice, setCartNotice] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -93,49 +47,9 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
     if (isOpen) {
       scrollToBottom();
     }
-  }, [messages, isThinking, isOpen, menuSuggestions, cartNotice]);
+  }, [messages, isThinking, isOpen]);
 
   if (!isOpen) return null;
-
-  const refreshMenuSuggestions = (conversationText: string) => {
-    const matches = menuItems
-      .filter((item) => productMatchesConversation(item, conversationText))
-      .sort((a, b) => b.name.length - a.name.length)
-      .slice(0, 3);
-
-    setMenuSuggestions(matches);
-  };
-
-  const addSuggestionToCart = (item: MenuItem) => {
-    const needsCustomization =
-      !!item.sizes?.length ||
-      !!item.options?.length ||
-      !!item.extras?.length ||
-      item.id === 'arma-ensalada' ||
-      item.id === 'comida-corrida';
-
-    if (item.id === 'arma-ensalada') {
-      onClose();
-      onOpenSaladBuilder();
-      return;
-    }
-
-    if (item.id === 'comida-corrida') {
-      onClose();
-      onOpenComidaCorridaBuilder();
-      return;
-    }
-
-    if (needsCustomization) {
-      onClose();
-      onSelectMenuItem(item);
-      return;
-    }
-
-    onAddToCart(createBasicCartItem(item));
-    setCartNotice(`${item.name} fue agregado al carrito. Revísalo antes de enviar el pedido a cocina.`);
-    setMenuSuggestions((current) => current.filter((candidate) => candidate.id !== item.id));
-  };
 
   const handleSendMessage = async (textToSend?: string) => {
     const prompt = (textToSend || inputText).trim();
@@ -153,7 +67,6 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
     setInputText('');
     setIsLoading(true);
     setIsThinking(true);
-    setCartNotice(null);
 
     let botMsgId: string | null = null;
     let accumulatedText = '';
@@ -215,17 +128,13 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
       console.warn('No se pudo obtener la info del restaurante para Tita:', err);
     }
 
-    const appContext = tableNumber
-      ? `Contexto actual de la app: el cliente está en Mesa ${tableNumber}${selectedPersonLabel ? `, ${selectedPersonLabel}` : ''}. Si habla de pedir aquí, trátalo como consumo en mesa.`
-      : 'Contexto actual de la app: el cliente está en la vista general. Si quiere pedir, confirma si será para llevar o a domicilio cuando haga falta.';
-
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: newMessages.slice(-6),
-          userPrompt: `${appContext}\n\nMensaje del cliente: ${prompt}`,
+          messages: newMessages.slice(-6), // context window
+          userPrompt: prompt,
           dailyMenu: dailyMenuPayload,
           restaurantInfo: restaurantInfoPayload,
         }),
@@ -272,6 +181,7 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
         }
       }
 
+      // Si por alguna razón el stream finalizó sin fragmentos
       if (!botMsgId) {
         setIsThinking(false);
         const fallbackMsg: ChatMessage = {
@@ -282,12 +192,9 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
         };
         setMessages((prev) => [...prev, fallbackMsg]);
       }
-
-      // Tita nunca crea un producto inventado: solo ofrece acciones sobre IDs que ya existen
-      // en el catálogo público real que App recibió de Firestore.
-      refreshMenuSuggestions(`${prompt}\n${accumulatedText}`);
     } catch (err) {
       console.error('Error contacting Giobot:', err);
+      // Solo mostrar error si la petición realmente falló antes de recibir respuesta
       if (!botMsgId) {
         setMessages((prev) => [
           ...prev,
@@ -305,45 +212,45 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
     }
   };
 
-  const contextLabel = tableNumber
-    ? `Mesa ${tableNumber}${selectedPersonLabel ? ` · ${selectedPersonLabel}` : ''}`
-    : 'Atención general';
-
   return (
     <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-96 bg-[#FFF7EA] shadow-2xl border-l border-[#F4E3C8] flex flex-col animate-slide-left">
+      {/* Header */}
       <div className="bg-gradient-to-r from-[#3A2418] via-[#4A2E1F] to-[#2B1B13] text-[#FFF7EA] p-4 flex items-center justify-between border-b border-[#4E3222]">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="relative shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="relative">
             <div className="w-10 h-10 rounded-2xl bg-[#FFF7EA] p-1 flex items-center justify-center shadow-md border border-[#C9974D]/40">
               <img src="/tita.png" alt="Tita" className="w-full h-full object-contain" />
             </div>
             <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#3A2418]" />
           </div>
-          <div className="min-w-0">
+          <div>
             <h3 className="font-bold text-sm text-[#FFF7EA] flex items-center gap-1.5 font-serif">
               Tita 💬
               <span className="text-[10px] bg-[#4A2E1F] text-[#C9974D] px-2 py-0.5 rounded-full font-semibold border border-[#C9974D]/40 font-sans">
-                Calientito
+                Restaurante Calientito
               </span>
             </h3>
-            <p className="text-[11px] text-[#F4E3C8] truncate">{contextLabel}</p>
+            <p className="text-[11px] text-[#F4E3C8]">Tu anfitriona amable & asesora</p>
           </div>
         </div>
 
         <button
           onClick={onClose}
           className="p-1.5 rounded-xl bg-[#4A2E1F] hover:bg-[#5C3825] text-[#FFF7EA] transition-colors cursor-pointer"
-          aria-label="Cerrar Tita"
         >
           <X className="w-5 h-5" />
         </button>
       </div>
 
+      {/* Messages Scroll Area */}
       <div className="flex-1 p-4 overflow-y-auto space-y-3.5 bg-[#FFF7EA]">
         {messages.map((msg) => {
           const isGiobot = msg.sender === 'giobot';
           return (
-            <div key={msg.id} className={`flex flex-col ${isGiobot ? 'items-start' : 'items-end'}`}>
+            <div
+              key={msg.id}
+              className={`flex flex-col ${isGiobot ? 'items-start' : 'items-end'}`}
+            >
               <div
                 className={`max-w-[85%] rounded-2xl p-3 text-xs leading-relaxed shadow-2xs ${
                   isGiobot
@@ -357,7 +264,11 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
                   </div>
                 )}
                 <p className="whitespace-pre-wrap">{msg.text}</p>
-                <span className={`block text-[9px] mt-1 text-right ${isGiobot ? 'text-[#A86B3D]/80' : 'text-[#F4E3C8]'}`}>
+                <span
+                  className={`block text-[9px] mt-1 text-right ${
+                    isGiobot ? 'text-[#A86B3D]/80' : 'text-[#F4E3C8]'
+                  }`}
+                >
                   {msg.timestamp}
                 </span>
               </div>
@@ -372,54 +283,10 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
           </div>
         )}
 
-        {menuSuggestions.length > 0 && !isLoading && (
-          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-3 space-y-2">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider font-bold text-[#A86B3D]">Opciones reales del menú</p>
-              <p className="text-[11px] text-[#6B4028] mt-0.5">Tita encontró estos productos en el catálogo actual.</p>
-            </div>
-            <div className="space-y-1.5">
-              {menuSuggestions.map((item) => {
-                const needsCustomization = !!item.sizes?.length || !!item.options?.length || !!item.extras?.length;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => addSuggestionToCart(item)}
-                    className="w-full rounded-xl border border-[#E8D4BE] bg-[#FFF7EA] hover:bg-[#F4E3C8] px-3 py-2.5 text-left flex items-center justify-between gap-3 transition-colors cursor-pointer"
-                  >
-                    <div className="min-w-0">
-                      <span className="block text-xs font-bold text-[#3A2418] truncate">{item.name}</span>
-                      <span className="block text-[10px] text-[#8A624C]">{needsCustomization ? 'Revisar opciones antes de agregar' : 'Agregar directo al carrito'}</span>
-                    </div>
-                    <div className="shrink-0 flex items-center gap-1.5 text-[#A86B3D]">
-                      <span className="text-xs font-black">${item.price}</span>
-                      {needsCustomization ? <UtensilsCrossed className="w-4 h-4" /> : <ShoppingBag className="w-4 h-4" />}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {cartNotice && (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-900">
-            <p className="text-[11px] font-bold">✓ Tita preparó tu carrito</p>
-            <p className="text-[10px] mt-0.5">{cartNotice}</p>
-            <button
-              type="button"
-              onClick={onOpenCart}
-              className="mt-2 w-full rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white py-2 text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <ShoppingBag className="w-3.5 h-3.5" /> Ver y confirmar carrito
-            </button>
-          </div>
-        )}
-
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Suggestion Chips */}
       <div className="p-2.5 bg-[#F4E3C8]/40 border-t border-[#F4E3C8] overflow-x-auto no-scrollbar">
         <p className="text-[10px] font-bold uppercase tracking-wider text-[#3A2418] mb-1.5 px-1 font-serif">
           Preguntas sugeridas:
@@ -437,6 +304,7 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
         </div>
       </div>
 
+      {/* Input Form */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -456,7 +324,6 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
           type="submit"
           disabled={!inputText.trim() || isLoading}
           className="p-2 bg-gradient-to-r from-[#C77B4A] to-[#A86B3D] hover:from-[#d68a57] hover:to-[#ba7845] disabled:opacity-50 text-white rounded-xl shadow-sm transition-all cursor-pointer"
-          aria-label="Enviar mensaje a Tita"
         >
           <Send className="w-4 h-4" />
         </button>
