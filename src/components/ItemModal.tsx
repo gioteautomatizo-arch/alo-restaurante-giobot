@@ -45,7 +45,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
   let unitPrice = selectedSize ? selectedSize.price : item.price;
   selectedExtras.forEach((e) => (unitPrice += e.price));
 
-  // Add combo price if toggled
+  // Add combo price if toggled (legacy fallback menu only)
   if (makeCombo && item.isComboAvailable && item.comboPrice) {
     unitPrice += item.comboPrice;
   }
@@ -56,6 +56,12 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
   }
 
   const totalPrice = unitPrice * quantity;
+  const hasSelectionSummary =
+    !!selectedSize ||
+    !!selectedOption ||
+    selectedExtras.length > 0 ||
+    makeCombo ||
+    !!specialInstructions.trim();
 
   const handleAdd = () => {
     const cartItem: CartItem = {
@@ -84,7 +90,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
       <div className="bg-[#FFFDF9] w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-[#DEC8AE] flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="relative bg-[#3A2418] text-[#FFF7EA] p-5 flex items-start justify-between border-b border-[#4E3222]">
-          <div>
+          <div className="pr-3">
             <span className="text-[10px] uppercase font-black tracking-widest text-[#C9974D] bg-[#4A2E1F] px-2.5 py-0.5 rounded-full border border-[#C9974D]/40">
               Personaliza tu orden
             </span>
@@ -92,10 +98,14 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
               {item.name}
             </h2>
             <p className="text-xs text-[#EAD9C4] mt-0.5">{item.description}</p>
+            <p className="text-[10px] text-[#C9974D] mt-2 font-bold uppercase tracking-wide">
+              Elige · Revisa · Agrega
+            </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full bg-[#4A2E1F] hover:bg-[#5C3825] text-[#C9974D] transition-colors cursor-pointer"
+            className="p-1.5 rounded-full bg-[#4A2E1F] hover:bg-[#5C3825] text-[#C9974D] transition-colors cursor-pointer shrink-0"
+            aria-label="Cerrar personalización"
           >
             <X className="w-5 h-5" />
           </button>
@@ -107,7 +117,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
           {item.sizes && item.sizes.length > 0 && (
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-2 font-serif">
-                Selecciona el Tamaño
+                1. Selecciona el tamaño
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {item.sizes.map((s) => (
@@ -115,6 +125,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
                     key={s.name}
                     type="button"
                     onClick={() => setSelectedSize(s)}
+                    aria-pressed={selectedSize?.name === s.name}
                     className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
                       selectedSize?.name === s.name
                         ? 'bg-[#3A2418] text-[#FFF7EA] border-[#3A2418] shadow-sm'
@@ -133,7 +144,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
           {item.options && item.options.length > 0 && (
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-2 font-serif">
-                Elige tu Sabor / Guisado / Opción
+                {item.sizes && item.sizes.length > 0 ? '2.' : '1.'} Elige sabor, guisado u opción
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1 border border-[#DEC8AE] rounded-xl bg-[#FFF7EA]/30">
                 {item.options.map((opt) => (
@@ -141,6 +152,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
                     key={opt}
                     type="button"
                     onClick={() => setSelectedOption(opt)}
+                    aria-pressed={selectedOption === opt}
                     className={`p-2.5 rounded-xl border text-xs font-semibold text-left flex items-center justify-between transition-all cursor-pointer ${
                       selectedOption === opt
                         ? 'bg-[#F4E3C8]/70 border-[#A86B3D] text-[#3A2418] font-bold'
@@ -158,34 +170,44 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
           {/* Extras checklist if available */}
           {item.extras && item.extras.length > 0 && (
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-2 font-serif">
-                Agrega Extras Deliciosos
-              </label>
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] font-serif">
+                  Extras y paquetes
+                </label>
+                <span className="text-[10px] text-[#8A6A55]">Opcional</span>
+              </div>
               <div className="space-y-2">
                 {item.extras.map((extra) => {
                   const isChecked = selectedExtras.some((e) => e.id === extra.id);
+                  const isPackage = extra.id.startsWith('paquete-');
                   return (
                     <button
                       key={extra.id}
                       type="button"
                       onClick={() => toggleExtra(extra)}
-                      className={`w-full p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
+                      aria-pressed={isChecked}
+                      className={`w-full p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between gap-3 transition-all cursor-pointer ${
                         isChecked
                           ? 'bg-[#F4E3C8]/70 border-[#A86B3D] text-[#3A2418]'
                           : 'bg-[#FFF7EA] border-[#DEC8AE] text-[#6B4028] hover:bg-[#F4E3C8]'
                       }`}
                     >
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 min-w-0 text-left">
                         <div
-                          className={`w-4 h-4 rounded-md border flex items-center justify-center ${
+                          className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 ${
                             isChecked ? 'bg-[#3A2418] border-[#3A2418] text-[#C9974D]' : 'border-[#DEC8AE] bg-white'
                           }`}
                         >
                           {isChecked && <Check className="w-3 h-3" />}
                         </div>
-                        <span>{extra.name}</span>
+                        <span className="leading-snug">{extra.name}</span>
+                        {isPackage && (
+                          <span className="hidden sm:inline px-1.5 py-0.5 rounded-md bg-[#3A2418] text-[#FFF7EA] text-[8px] uppercase tracking-wide shrink-0">
+                            Paquete
+                          </span>
+                        )}
                       </div>
-                      <span className="font-bold text-[#A86B3D]">+${extra.price}</span>
+                      <span className="font-bold text-[#A86B3D] shrink-0">+${extra.price}</span>
                     </button>
                   );
                 })}
@@ -193,7 +215,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
             </div>
           )}
 
-          {/* Combo / Paquete Upgrade */}
+          {/* Combo / Paquete Upgrade - only kept for the legacy fallback catalog */}
           {item.isComboAvailable && item.comboPrice && (
             <div className="bg-[#F4E3C8]/50 border border-[#DEC8AE] rounded-2xl p-3.5 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -216,6 +238,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
               <button
                 type="button"
                 onClick={() => setMakeCombo(!makeCombo)}
+                aria-pressed={makeCombo}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   makeCombo
                     ? 'bg-[#3A2418] text-[#FFF7EA] shadow-sm'
@@ -231,42 +254,97 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-1 flex items-center gap-1 font-serif">
               <MessageSquare className="w-3.5 h-3.5 text-[#A86B3D]" />
-              Instrucciones Especiales (Opcional)
+              ¿Cómo lo quieres? <span className="normal-case font-normal tracking-normal text-[#8A6A55]">(opcional)</span>
             </label>
             <input
               type="text"
-              placeholder="Ej: Sin cebolla, extra salsa verde, con poca sal..."
+              placeholder="Ej: sin cebolla, poca sal, salsa aparte..."
               value={specialInstructions}
               onChange={(e) => setSpecialInstructions(e.target.value)}
+              maxLength={180}
               className="w-full px-3 py-2 text-xs bg-[#FFF7EA] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]"
             />
+          </div>
+
+          {/* Quick selection summary */}
+          <div className="rounded-2xl border border-[#E8D4BE] bg-[#FFF7EA] p-3.5">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider font-bold text-[#A86B3D]">Revisa antes de agregar</p>
+                <h4 className="font-serif font-bold text-sm text-[#2B1B13]">Tu selección</h4>
+              </div>
+              <div className="text-right">
+                <p className="text-[9px] uppercase text-[#8A6A55]">Por unidad</p>
+                <strong className="font-serif text-base text-[#3A2418]">${unitPrice}</strong>
+              </div>
+            </div>
+
+            {hasSelectionSummary ? (
+              <div className="flex flex-wrap gap-1.5 text-[10px]">
+                {selectedSize && (
+                  <span className="px-2 py-1 rounded-lg bg-white border border-[#E8D4BE] text-[#6B4028]">
+                    Tamaño: {selectedSize.name}
+                  </span>
+                )}
+                {selectedOption && (
+                  <span className="px-2 py-1 rounded-lg bg-white border border-[#E8D4BE] text-[#6B4028]">
+                    {selectedOption}
+                  </span>
+                )}
+                {selectedExtras.map((extra) => (
+                  <span key={extra.id} className="px-2 py-1 rounded-lg bg-[#F4E3C8] border border-[#DEC8AE] text-[#3A2418]">
+                    + {extra.name}
+                  </span>
+                ))}
+                {makeCombo && (
+                  <span className="px-2 py-1 rounded-lg bg-[#F4E3C8] border border-[#DEC8AE] text-[#3A2418]">
+                    + Paquete especial
+                  </span>
+                )}
+                {specialInstructions.trim() && (
+                  <span className="w-full mt-1 px-2 py-1.5 rounded-lg bg-white border border-[#E8D4BE] text-[#6B4028]">
+                    Nota: {specialInstructions.trim()}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <p className="text-[11px] text-[#8A6A55]">Sin cambios adicionales.</p>
+            )}
           </div>
         </div>
 
         {/* Footer with Quantity & Price */}
-        <div className="bg-[#FFF7EA] p-4 border-t border-[#DEC8AE] flex items-center justify-between gap-4">
-          <div className="flex items-center border border-[#DEC8AE] rounded-xl bg-[#FFFDF9] p-1">
+        <div className="bg-[#FFF7EA] p-4 border-t border-[#DEC8AE] flex items-center justify-between gap-3">
+          <div className="flex items-center border border-[#DEC8AE] rounded-xl bg-[#FFFDF9] p-1 shrink-0" aria-label="Cantidad">
             <button
+              type="button"
               onClick={() => setQuantity(Math.max(1, quantity - 1))}
               className="p-1.5 text-[#6B4028] hover:bg-[#F4E3C8] rounded-lg transition-colors cursor-pointer"
+              aria-label="Quitar uno"
             >
               <Minus className="w-4 h-4" />
             </button>
             <span className="w-8 text-center font-black text-sm text-[#2B1B13]">{quantity}</span>
             <button
+              type="button"
               onClick={() => setQuantity(quantity + 1)}
               className="p-1.5 text-[#6B4028] hover:bg-[#F4E3C8] rounded-lg transition-colors cursor-pointer"
+              aria-label="Agregar uno"
             >
               <Plus className="w-4 h-4" />
             </button>
           </div>
 
           <button
+            type="button"
             onClick={handleAdd}
-            className="flex-1 py-3 px-4 bg-[#3A2418] hover:bg-[#4A2E1F] text-[#FFF7EA] rounded-xl font-bold text-sm shadow-md transition-all active:scale-98 flex items-center justify-between cursor-pointer border border-[#C9974D]/30"
+            className="flex-1 py-3 px-4 bg-[#3A2418] hover:bg-[#4A2E1F] text-[#FFF7EA] rounded-xl font-bold text-sm shadow-md transition-all active:scale-98 flex items-center justify-between gap-2 cursor-pointer border border-[#C9974D]/30"
           >
-            <span>Agregar a mi orden</span>
-            <span className="font-black text-base font-serif text-[#C9974D]">${totalPrice}</span>
+            <span className="text-left leading-tight">
+              Agregar al carrito
+              {quantity > 1 && <span className="block text-[9px] font-normal text-[#EAD9C4]">{quantity} unidades</span>}
+            </span>
+            <span className="font-black text-base font-serif text-[#C9974D] shrink-0">${totalPrice}</span>
           </button>
         </div>
       </div>
