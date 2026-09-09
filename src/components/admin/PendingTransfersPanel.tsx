@@ -35,6 +35,7 @@ export const PendingTransfersPanel: React.FC<PendingTransfersPanelProps> = ({ cu
         payment.status === 'PAGADO' &&
         payment.paymentMethod === 'TRANSFERENCIA' &&
         payment.tableNumber === intent.tableNumber &&
+        (!intent.accountId || payment.accountId === intent.accountId) &&
         Math.abs(Number(payment.total || 0) - Number(intent.amount || 0)) < 0.01 &&
         Date.parse(payment.createdAt) >= Date.parse(intent.createdAt)
       );
