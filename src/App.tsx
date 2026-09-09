@@ -302,11 +302,11 @@ export default function App() {
     return matchesCategory && matchesSearch;
   });
 
-  // Check if we should slice to 12 items (initial state on 'all' without search and showAllCatalog=false)
+  // La portada funciona como escaparate: solo seis recomendaciones antes de abrir la carta completa.
   const isInitialCatalogView = activeCategory === 'all' && !searchTerm.trim() && !showAllCatalog;
-  const displayedItems = isInitialCatalogView ? rawFilteredItems.slice(0, 12) : rawFilteredItems;
+  const displayedItems = isInitialCatalogView ? rawFilteredItems.slice(0, 6) : rawFilteredItems;
   const catalogTotal = menuItems.length;
-  const initialVisibleCount = Math.min(12, catalogTotal);
+  const initialVisibleCount = Math.min(6, catalogTotal);
 
   const cartTotalCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
 
