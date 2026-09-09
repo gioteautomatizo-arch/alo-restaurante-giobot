@@ -353,7 +353,7 @@ export const MenuCatalogManagerView: React.FC<MenuCatalogManagerViewProps> = ({ 
                 return (
                   <article key={item.id} className="bg-white rounded-3xl border border-[#E8D4BE] overflow-hidden shadow-xs flex flex-col">
                     <div className="aspect-[16/8] bg-[#FAF5ED] border-b border-[#F4E3C8] relative overflow-hidden">
-                      {item.primaryImageUrl ? <img src={item.primaryImageUrl} alt={item.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex flex-col items-center justify-center text-[#A86B3D] gap-2"><ImageIcon className="w-7 h-7" /><span className="text-[11px] font-bold">Sin foto todavía</span></div>}
+                      {item.primaryImageUrl ? <img src={item.primaryImageUrl} alt={item.name} loading="lazy" decoding="async" fetchPriority="low" className="w-full h-full object-cover" /> : <div className="w-full h-full flex flex-col items-center justify-center text-[#A86B3D] gap-2"><ImageIcon className="w-7 h-7" /><span className="text-[11px] font-bold">Sin foto todavía</span></div>}
                       <div className="absolute top-2 left-2 flex gap-1.5">{!item.active && <span className="px-2 py-1 rounded-lg bg-stone-900/80 text-white text-[10px] font-bold">Oculto</span>}{!item.available && <span className="px-2 py-1 rounded-lg bg-rose-700 text-white text-[10px] font-bold">Agotado</span>}{item.popular && <span className="px-2 py-1 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold">★ Destacado</span>}</div>
                       {!!item.imageUrls?.length && <span className="absolute bottom-2 right-2 px-2 py-1 rounded-lg bg-black/60 text-white text-[10px] font-bold">{item.imageUrls.length} foto{item.imageUrls.length === 1 ? '' : 's'}</span>}
                     </div>
@@ -415,7 +415,7 @@ export const MenuCatalogManagerView: React.FC<MenuCatalogManagerViewProps> = ({ 
                     {editingItem.imageUrls.map((url) => {
                       const isPrimary = editingItem.primaryImageUrl === url;
                       return <div key={url} className={`relative rounded-xl overflow-hidden border-2 bg-[#FAF5ED] ${isPrimary ? 'border-[#C9974D]' : 'border-transparent'}`}>
-                        <img src={url} alt={editingItem.name} className="w-full aspect-square object-cover" />
+                        <img src={url} alt={editingItem.name} loading="lazy" decoding="async" className="w-full aspect-square object-cover" />
                         {isPrimary && <span className="absolute top-1.5 left-1.5 px-2 py-1 rounded-lg bg-[#3A2418] text-white text-[9px] font-bold">★ Principal</span>}
                         <div className="absolute inset-x-1.5 bottom-1.5 grid grid-cols-2 gap-1">
                           <button type="button" disabled={photoBusy || isPrimary} onClick={() => void setPrimaryPhoto(url)} className="py-1.5 rounded-lg bg-white/95 text-[#3A2418] text-[9px] font-bold disabled:opacity-60 cursor-pointer">Principal</button>
