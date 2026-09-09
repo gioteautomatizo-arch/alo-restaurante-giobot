@@ -4,6 +4,7 @@ import { MenuItem, CategoryId, CartItem, VipProfile, StaffUser, TableSessionPers
 import { getVipProfile, refreshCloudVipProfile, VIP_DATA_EVENT } from './lib/vipStorage';
 import { getAuthSession, logoutStaff } from './lib/adminStorage';
 import { subscribeToMenuCatalog } from './lib/menuCatalogService';
+import { subscribeToTableSession } from './lib/tableSessionsService';
 import type { ManagedMenuItem } from './lib/menuCatalogService';
 import { Header } from './components/Header';
 import { Banner } from './components/Banner';
@@ -87,12 +88,15 @@ export default function App() {
   const [isContactVisible, setIsContactVisible] = useState<boolean>(false);
   const [customerTableNumber, setCustomerTableNumber] = useState<number | null>(null);
   const [selectedTablePerson, setSelectedTablePerson] = useState<TableSessionPerson | null>(null);
+  const [tableCartResetNotice, setTableCartResetNotice] = useState<string | null>(null);
 
   const [adminUser, setAdminUser] = useState<StaffUser | null>(null);
   const [isAdminViewActive, setIsAdminViewActive] = useState<boolean>(false);
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState<boolean>(false);
 
   const menuSectionRef = useRef<HTMLDivElement>(null);
+  const activeTableSessionOpenedAtRef = useRef<string | null>(null);
+  const cartTableSessionOpenedAtRef = useRef<string | null>(null);
 
   const refreshVipProfile = () => {
     setVipProfile(getVipProfile());
@@ -137,6 +141,52 @@ export default function App() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (!customerTableNumber) {
+      activeTableSessionOpenedAtRef.current = null;
+      cartTableSessionOpenedAtRef.current = null;
+      return;
+    }
+
+    return subscribeToTableSession(customerTableNumber, (session) => {
+      const nextOpenedAt = session && session.status !== 'CERRADA' ? session.openedAt : null;
+      const previousOpenedAt = activeTableSessionOpenedAtRef.current;
+      const cartOpenedAt = cartTableSessionOpenedAtRef.current;
+
+      const sessionChanged = !!previousOpenedAt && previousOpenedAt !== nextOpenedAt;
+      const cartBelongsToAnotherSession = !!cartOpenedAt && cartOpenedAt !== nextOpenedAt;
+
+      if ((sessionChanged || cartBelongsToAnotherSession) && cartOpenedAt) {
+        setCartItems((currentItems) => (currentItems.length > 0 ? [] : currentItems));
+        cartTableSessionOpenedAtRef.current = null;
+        setSelectedTablePerson(null);
+        setTableCartResetNotice(
+          'La mesa inició un nuevo servicio. Por seguridad vaciamos el pedido anterior.'
+        );
+      }
+
+      activeTableSessionOpenedAtRef.current = nextOpenedAt;
+
+      // Si el cliente armó el carrito mientras terminaba de abrir la mesa,
+      // ligarlo a la primera sesión activa que aparezca. Desde ese momento no puede
+      // cruzarse a una sesión posterior.
+      if (nextOpenedAt && !cartTableSessionOpenedAtRef.current) {
+        setCartItems((currentItems) => {
+          if (currentItems.length > 0) {
+            cartTableSessionOpenedAtRef.current = nextOpenedAt;
+          }
+          return currentItems;
+        });
+      }
+    });
+  }, [customerTableNumber]);
+
+  useEffect(() => {
+    if (!tableCartResetNotice) return;
+    const timer = window.setTimeout(() => setTableCartResetNotice(null), 6500);
+    return () => window.clearTimeout(timer);
+  }, [tableCartResetNotice]);
 
   useEffect(() => {
     if (isAdminViewActive) return;
@@ -226,6 +276,24 @@ export default function App() {
         }
       : item;
 
+    if (customerTableNumber) {
+      const activeOpenedAt = activeTableSessionOpenedAtRef.current;
+      const cartOpenedAt = cartTableSessionOpenedAtRef.current;
+
+      if (activeOpenedAt && cartOpenedAt && activeOpenedAt !== cartOpenedAt) {
+        cartTableSessionOpenedAtRef.current = activeOpenedAt;
+        setCartItems([itemWithPerson]);
+        setTableCartResetNotice(
+          'La mesa cambió de servicio. Eliminamos el pedido anterior y comenzamos un carrito nuevo.'
+        );
+        return;
+      }
+
+      if (activeOpenedAt && !cartOpenedAt) {
+        cartTableSessionOpenedAtRef.current = activeOpenedAt;
+      }
+    }
+
     setCartItems((prev) => [...prev, itemWithPerson]);
   };
 
@@ -248,6 +316,7 @@ export default function App() {
   };
 
   const handleClearCart = () => {
+    cartTableSessionOpenedAtRef.current = null;
     setCartItems([]);
   };
 
@@ -304,6 +373,14 @@ export default function App() {
         onOpenVipModal={() => setIsVipModalOpen(true)}
         vipProfile={vipProfile}
       />
+
+      {tableCartResetNotice && customerTableNumber !== null && (
+        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 pt-3 w-full">
+          <div className="rounded-2xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-[11px] sm:text-xs font-semibold text-amber-900 shadow-sm">
+            ⚠️ {tableCartResetNotice}
+          </div>
+        </div>
+      )}
 
       {customerTableNumber !== null && (
         <TableCustomerView
