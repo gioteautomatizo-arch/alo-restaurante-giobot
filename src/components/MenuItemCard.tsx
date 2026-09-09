@@ -7,25 +7,36 @@ interface MenuItemCardProps {
   onSelectItem: (item: MenuItem) => void;
 }
 
+const isRealCloudinaryPhoto = (url?: string): boolean =>
+  !!url && url.startsWith('https://res.cloudinary.com/');
+
 export const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, onSelectItem }) => {
+  const realPhoto = isRealCloudinaryPhoto(item.image) ? item.image : null;
+
   return (
     <article
       onClick={() => onSelectItem(item)}
       className="group bg-[#FFFDF9] rounded-2xl border border-[#DEC8AE] shadow-2xs hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between hover:border-[#A86B3D]/70 cursor-pointer active:scale-[0.99]"
     >
       <div>
-        {/* Uniform High-End Photography Container */}
+        {/* La interfaz conserva su espacio visual, pero solo muestra fotos reales subidas a Cloudinary. */}
         <div className="relative aspect-[4/3] w-full bg-[#F4E3C8]/40 overflow-hidden">
-          {item.image ? (
+          {realPhoto ? (
             <img
-              src={item.image}
+              src={realPhoto}
               alt={item.name}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
               loading="lazy"
+              decoding="async"
+              fetchPriority="low"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-[#F4E3C8] text-[#6B4028]">
-              <Utensils className="w-8 h-8 opacity-30" />
+            <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#FFF7EA] to-[#F4E3C8] text-[#6B4028] px-4 text-center">
+              <div className="w-10 h-10 rounded-full border border-[#C9974D]/50 bg-white/70 flex items-center justify-center">
+                <Utensils className="w-5 h-5 text-[#A86B3D]" />
+              </div>
+              <span className="font-serif font-bold text-sm sm:text-base text-[#3A2418]">Próximamente</span>
+              <span className="text-[10px] sm:text-[11px] text-[#8A6A55] leading-tight">Foto real del platillo en camino</span>
             </div>
           )}
 
