@@ -61,6 +61,33 @@ function cleanArray<T>(value: T[] | undefined): T[] | undefined {
   return value;
 }
 
+function enrichPackageExtras(item: ManagedMenuItem, extras: ManagedMenuExtra[]): ManagedMenuExtra[] {
+  if (PACKAGE_ONLY_ITEM_IDS.has(item.id)) return extras;
+
+  const next = [...extras];
+  const addIfMissing = (extra: ManagedMenuExtra) => {
+    if (!next.some((candidate) => candidate.id === extra.id)) next.push(extra);
+  };
+
+  if (item.category === 'desayunos') {
+    addIfMissing({
+      id: 'paquete-desayuno',
+      name: 'Hazlo paquete: jugo o fruta + café de olla o té',
+      price: 20,
+    });
+  }
+
+  if (item.category === 'hamburguesas') {
+    addIfMissing({
+      id: 'paquete-hamburguesa',
+      name: 'Hazla paquete: papas a la francesa + refresco',
+      price: 35,
+    });
+  }
+
+  return next;
+}
+
 function sanitizeItem(item: ManagedMenuItem): ManagedMenuItem {
   const clean: ManagedMenuItem = {
     ...item,
@@ -81,11 +108,12 @@ function sanitizeItem(item: ManagedMenuItem): ManagedMenuItem {
     price: size.price == null ? null : Number(size.price),
   })).filter((size) => size.name));
   const options = cleanArray(item.options?.map((value) => value.trim()).filter(Boolean));
-  const extras = cleanArray(item.extras?.map((extra) => ({
+  const normalizedExtras = (item.extras || []).map((extra) => ({
     id: extra.id.trim(),
     name: extra.name.trim(),
     price: Number(extra.price) || 0,
-  })).filter((extra) => extra.id && extra.name));
+  })).filter((extra) => extra.id && extra.name);
+  const extras = cleanArray(enrichPackageExtras(item, normalizedExtras));
   const includedItems = cleanArray(item.includedItems?.map((value) => value.trim()).filter(Boolean));
 
   if (sizes) clean.sizes = sizes;
