@@ -19,6 +19,7 @@ import {
   TablePaymentMethod,
   TableRecord,
   TableServiceRequest,
+  TableSession,
 } from '../../types';
 import { subscribeToRestaurantOrders } from '../../lib/ordersService';
 import {
@@ -34,6 +35,7 @@ import {
   settleTableAccount,
   subscribeToTablePayments,
 } from '../../lib/paymentsService';
+import { subscribeToRestaurantTableSessions } from '../../lib/tableSessionsService';
 import { addActivityLog } from '../../lib/adminStorage';
 
 interface TableAccountsViewProps {
@@ -68,14 +70,31 @@ function isToday(iso: string): boolean {
   );
 }
 
-function getUnpaidOrdersForTable(orders: RestaurantOrder[], tableNumber: number): RestaurantOrder[] {
-  return orders.filter(
-    (order) =>
-      order.orderType === 'dine_in' &&
-      order.tableNumber === tableNumber &&
-      order.status !== 'CANCELADO' &&
-      order.billingStatus !== 'PAGADO'
-  );
+function getUnpaidOrdersForTable(
+  orders: RestaurantOrder[],
+  tableNumber: number,
+  session?: TableSession | null
+): RestaurantOrder[] {
+  // Una mesa física se reutiliza muchas veces. Caja sólo puede cobrar comandas
+  // creadas desde la apertura de la sesión vigente; nunca arrastrar una cuenta anterior.
+  if (!session || session.status === 'CERRADA') return [];
+
+  const openedAt = Date.parse(session.openedAt || '');
+  if (!openedAt) return [];
+
+  return orders.filter((order) => {
+    if (
+      order.orderType !== 'dine_in' ||
+      order.tableNumber !== tableNumber ||
+      order.status === 'CANCELADO' ||
+      order.billingStatus === 'PAGADO'
+    ) {
+      return false;
+    }
+
+    const createdAt = Date.parse(order.createdAt || '');
+    return Boolean(createdAt && createdAt >= openedAt);
+  });
 }
 
 function orderAccountId(order: RestaurantOrder): string {
@@ -90,6 +109,7 @@ function orderAccountLabel(order: RestaurantOrder): string {
 export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUser }) => {
   const [orders, setOrders] = useState<RestaurantOrder[]>([]);
   const [tables, setTables] = useState<TableRecord[]>([]);
+  const [sessionsByNumber, setSessionsByNumber] = useState<Record<number, TableSession>>({});
   const [payments, setPayments] = useState<TablePayment[]>([]);
   const [requests, setRequests] = useState<TableServiceRequest[]>([]);
   const [selectedTable, setSelectedTable] = useState<TableRecord | null>(null);
@@ -105,6 +125,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
   useEffect(() => {
     const stopTablesSync = initTablesRealtimeSync();
     const unsubTables = subscribeToTables(setTables);
+    const unsubSessions = subscribeToRestaurantTableSessions(setSessionsByNumber);
     const unsubOrders = subscribeToRestaurantOrders(setOrders);
     const unsubPayments = subscribeToTablePayments(setPayments);
     const unsubRequests = subscribeToPendingTableRequests(setRequests);
@@ -112,6 +133,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     return () => {
       stopTablesSync();
       unsubTables();
+      unsubSessions();
       unsubOrders();
       unsubPayments();
       unsubRequests();
@@ -132,7 +154,11 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     .reduce((sum, p) => sum + p.total, 0);
 
   const selectedAllOrders = selectedTable
-    ? getUnpaidOrdersForTable(orders, selectedTable.tableNumber)
+    ? getUnpaidOrdersForTable(
+        orders,
+        selectedTable.tableNumber,
+        sessionsByNumber[selectedTable.tableNumber]
+      )
     : [];
   const selectedAccountGroups = Array.from(
     selectedAllOrders.reduce((map, order) => {
@@ -161,7 +187,11 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     : 0;
 
   const openCheckout = (table: TableRecord) => {
-    const tableOrders = getUnpaidOrdersForTable(orders, table.tableNumber);
+    const tableOrders = getUnpaidOrdersForTable(
+      orders,
+      table.tableNumber,
+      sessionsByNumber[table.tableNumber]
+    );
     const accountIds = Array.from(new Set(tableOrders.map(orderAccountId)));
     setSelectedTable(table);
     // Si hay cuentas separadas, abrir por defecto la primera cuenta para evitar cobrar toda la mesa por accidente.
@@ -308,7 +338,11 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {operationalTables.map((table) => {
-          const tableOrders = getUnpaidOrdersForTable(orders, table.tableNumber);
+          const tableOrders = getUnpaidOrdersForTable(
+            orders,
+            table.tableNumber,
+            sessionsByNumber[table.tableNumber]
+          );
           const tableTotal = tableOrders.reduce((sum, order) => sum + Number(order.total || 0), 0);
           const billRequested = table.needsBill || requests.some(
             (r) => r.tableNumber === table.tableNumber && r.requestType === 'PEDIR_CUENTA' && r.status === 'PENDIENTE'
