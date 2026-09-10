@@ -115,6 +115,22 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ currentUser, onRefre
 
   const totalExpenseSum = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
+  // Mantiene el orden actual de los registros, pero los separa visualmente por fecha.
+  // Así no modificamos ni migramos ningún gasto existente: sólo cambia la presentación.
+  const groupedExpensesByDay = Array.from(
+    filteredExpenses.reduce((groups, expense) => {
+      const dayKey = expense.date || 'sin-fecha';
+      const current = groups.get(dayKey) || [];
+      current.push(expense);
+      groups.set(dayKey, current);
+      return groups;
+    }, new Map<string, ExpenseRecord[]>()).entries()
+  ).map(([date, dayExpenses]) => ({
+    date,
+    expenses: dayExpenses,
+    total: dayExpenses.reduce((sum, expense) => sum + expense.amount, 0),
+  }));
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       {successMsg && (
@@ -163,7 +179,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ currentUser, onRefre
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Concepto */}
             <div>
               <label className="block text-xs font-bold text-[#6B4028] uppercase tracking-wider mb-1 font-serif">
                 Concepto / Insumo *
@@ -178,7 +193,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ currentUser, onRefre
               />
             </div>
 
-            {/* Cantidad ($) */}
             <div>
               <label className="block text-xs font-bold text-[#6B4028] uppercase tracking-wider mb-1 font-serif">
                 Monto Pagado ($) *
@@ -198,7 +212,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ currentUser, onRefre
             </div>
           </div>
 
-          {/* Categoría Selector Visual */}
           <div>
             <label className="block text-xs font-bold text-[#6B4028] uppercase tracking-wider mb-1.5 font-serif">
               Categoría
@@ -227,7 +240,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ currentUser, onRefre
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-            {/* Método de Pago */}
             <div>
               <label className="block text-xs font-bold text-[#6B4028] uppercase tracking-wider mb-1 font-serif">
                 ¿De dónde salió el dinero?
@@ -258,7 +270,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ currentUser, onRefre
               </div>
             </div>
 
-            {/* Nota opcional */}
             <div>
               <label className="block text-xs font-bold text-[#6B4028] uppercase tracking-wider mb-1 font-serif">
                 Nota / Proveedor (Opcional)
@@ -336,9 +347,9 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ currentUser, onRefre
         ))}
       </div>
 
-      {/* Resumen Total & Listado */}
+      {/* Resumen Total & Listado agrupado por día */}
       <div className="bg-white rounded-3xl border border-[#F4E3C8] shadow-xs overflow-hidden">
-        <div className="bg-[#FFF7EA] px-6 py-4 border-b border-[#F4E3C8] flex items-center justify-between">
+        <div className="bg-[#FFF7EA] px-6 py-4 border-b border-[#F4E3C8] flex items-center justify-between gap-4">
           <span className="font-bold text-xs text-[#6B4028] uppercase tracking-wider font-serif">
             Total en gastos filtrados:
           </span>
@@ -353,68 +364,94 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ currentUser, onRefre
             <p className="text-xs">No hay gastos registrados en esta categoría.</p>
           </div>
         ) : (
-          <div className="divide-y divide-[#F4E3C8]/40">
-            {filteredExpenses.map((exp) => (
-              <div
-                key={exp.id}
-                className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[#FFF7EA]/40 transition-colors"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-[#FFF7EA] text-[#3A2418] border border-[#F4E3C8] flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
-                    ${exp.amount.toFixed(0)}
+          <div className="divide-y-4 divide-[#FFF7EA]">
+            {groupedExpensesByDay.map((day) => (
+              <section key={day.date}>
+                <div className="px-4 sm:px-6 py-3 bg-[#FAF5ED] border-b border-[#EADBC8] flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Calendar className="w-4 h-4 text-[#A86B3D] shrink-0" />
+                    <div>
+                      <div className="font-serif font-black text-sm text-[#2B1B13]">
+                        {day.date === 'sin-fecha' ? 'Sin fecha' : formatLocalDate(day.date)}
+                      </div>
+                      <div className="text-[10px] text-[#8A624C]">
+                        {day.expenses.length} {day.expenses.length === 1 ? 'gasto' : 'gastos'} registrados
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-sm text-[#2B1B13]">{exp.concept}</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FFF7EA] text-[#6B4028] border border-[#F4E3C8]">
-                        {exp.category}
-                      </span>
-                      {exp.paidWith === 'efectivo_caja' ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          Efectivo Caja
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FAF5ED] text-[#A86B3D]">
-                          Otro
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-3 text-[11px] text-[#6B4028] mt-1">
-                      <span className="flex items-center gap-1">
-                        <User className="w-3 h-3 text-[#A86B3D]" /> {exp.registeredBy}
-                      </span>
-                      <span>•</span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-[#A86B3D]" /> {exp.time} ({formatLocalDate(exp.date)})
-                      </span>
-                      {exp.note && (
-                        <>
-                          <span>•</span>
-                          <span className="italic text-[#6B4028] font-light">"{exp.note}"</span>
-                        </>
-                      )}
-                    </div>
+                  <div className="text-right shrink-0">
+                    <span className="block text-[9px] uppercase tracking-wider font-bold text-[#A86B3D]">Total del día</span>
+                    <strong className="font-serif text-base text-rose-700">
+                      ${day.total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                    </strong>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-                  <span className="font-mono font-bold text-base text-[#2B1B13]">
-                    ${exp.amount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                  </span>
-
-                  {currentUser.role !== 'EMPLEADO' && (
-                    <button
-                      onClick={() => handleDelete(exp.id)}
-                      className="p-2 text-[#A86B3D] hover:text-rose-600 rounded-xl hover:bg-rose-50 transition-colors cursor-pointer"
-                      title="Eliminar gasto"
-                      aria-label="Eliminar gasto"
+                <div className="divide-y divide-[#F4E3C8]/40">
+                  {day.expenses.map((exp) => (
+                    <div
+                      key={exp.id}
+                      className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[#FFF7EA]/40 transition-colors"
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-[#FFF7EA] text-[#3A2418] border border-[#F4E3C8] flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                          ${exp.amount.toFixed(0)}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-sm text-[#2B1B13]">{exp.concept}</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FFF7EA] text-[#6B4028] border border-[#F4E3C8]">
+                              {exp.category}
+                            </span>
+                            {exp.paidWith === 'efectivo_caja' ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                Efectivo Caja
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FAF5ED] text-[#A86B3D]">
+                                Otro
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-3 text-[11px] text-[#6B4028] mt-1 flex-wrap">
+                            <span className="flex items-center gap-1">
+                              <User className="w-3 h-3 text-[#A86B3D]" /> {exp.registeredBy}
+                            </span>
+                            <span>•</span>
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-[#A86B3D]" /> {exp.time}
+                            </span>
+                            {exp.note && (
+                              <>
+                                <span>•</span>
+                                <span className="italic text-[#6B4028] font-light">"{exp.note}"</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                        <span className="font-mono font-bold text-base text-[#2B1B13]">
+                          ${exp.amount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                        </span>
+
+                        {currentUser.role !== 'EMPLEADO' && (
+                          <button
+                            onClick={() => handleDelete(exp.id)}
+                            className="p-2 text-[#A86B3D] hover:text-rose-600 rounded-xl hover:bg-rose-50 transition-colors cursor-pointer"
+                            title="Eliminar gasto"
+                            aria-label="Eliminar gasto"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              </section>
             ))}
           </div>
         )}
