@@ -24,6 +24,21 @@ interface DailyMenuEditorViewProps {
 
 type MenuAdminSection = 'menu_dia' | 'catalogo';
 
+const ALT_SURCHARGE_MARKER = '__RECARGO_ESPECIALIDADES_SIN_PRECIO__:';
+
+function readAlternativeDefaultSurcharge(options?: string[]): number {
+  const marker = (options || []).find((option) => option.startsWith(ALT_SURCHARGE_MARKER));
+  if (!marker) return 5;
+  const parsed = Number(marker.slice(ALT_SURCHARGE_MARKER.length));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 5;
+}
+
+function writeAlternativeDefaultSurcharge(options: string[] | undefined, surcharge: number): string[] {
+  const cleanOptions = (options || []).filter((option) => !option.startsWith(ALT_SURCHARGE_MARKER));
+  const safeSurcharge = Math.max(0, Number.isFinite(Number(surcharge)) ? Number(surcharge) : 5);
+  return [...cleanOptions, `${ALT_SURCHARGE_MARKER}${safeSurcharge}`];
+}
+
 export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
   currentUser,
   onRefreshStats,
@@ -40,6 +55,9 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
   const [guarnicion2, setGuarnicion2] = useState<string>(config.guarniciones[1] || '');
   const [aguaDelDia, setAguaDelDia] = useState<string>(config.aguaDelDia);
   const [postreDelDia, setPostreDelDia] = useState<string>(config.postreDelDia);
+  const [alternativeDefaultSurcharge, setAlternativeDefaultSurcharge] = useState<number>(
+    readAlternativeDefaultSurcharge(config.opcionesAlternativas)
+  );
 
   useEffect(() => {
     const handleDataChange = () => {
@@ -53,6 +71,7 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
       setGuarnicion2(latest.guarniciones[1] || '');
       setAguaDelDia(latest.aguaDelDia);
       setPostreDelDia(latest.postreDelDia);
+      setAlternativeDefaultSurcharge(readAlternativeDefaultSurcharge(latest.opcionesAlternativas));
     };
 
     window.addEventListener('alo_admin_data_updated', handleDataChange);
@@ -80,7 +99,10 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
           guarniciones: [guarnicion1.trim(), guarnicion2.trim()].filter(Boolean),
           aguaDelDia: aguaDelDia.trim(),
           postreDelDia: postreDelDia.trim(),
-          opcionesAlternativas: config.opcionesAlternativas,
+          opcionesAlternativas: writeAlternativeDefaultSurcharge(
+            config.opcionesAlternativas,
+            alternativeDefaultSurcharge
+          ),
           serviceMode: config.serviceMode || 'AUTO',
           updatedAt: new Date().toISOString(),
           updatedBy: currentUser.name,
@@ -89,6 +111,7 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
       );
 
       setConfig(updated);
+      setAlternativeDefaultSurcharge(readAlternativeDefaultSurcharge(updated.opcionesAlternativas));
       setSuccessMsg('¡Menú del Día publicado en tiempo real para clientes y Tita!');
       window.setTimeout(() => setSuccessMsg(null), 3500);
       onRefreshStats();
@@ -210,6 +233,7 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
                   <input
                     type="number"
                     required
+                    min="0"
                     value={price}
                     onChange={(event) => setPrice(Number(event.target.value))}
                     className="w-full pl-8 pr-4 py-2.5 bg-[#FFF7EA] focus:bg-white rounded-xl border border-[#F4E3C8] text-[#2B1B13] font-bold text-lg focus:border-[#C9974D] focus:outline-hidden"
@@ -230,6 +254,34 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
                   className="w-full px-4 py-2.5 bg-[#FFF7EA] focus:bg-white rounded-xl border border-[#F4E3C8] text-xs sm:text-sm text-[#2B1B13] focus:border-[#C9974D] focus:outline-hidden"
                 />
               </div>
+            </div>
+
+            <div className="rounded-2xl border border-[#DEC8AE] bg-[#FFF7EA] p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_180px] gap-3 sm:items-end">
+                <div>
+                  <label className="block text-xs font-bold text-[#2B1B13] uppercase tracking-wider mb-1.5 flex items-center gap-1.5 font-serif">
+                    <DollarSign className="w-3.5 h-3.5 text-[#C9974D]" /> Recargo especialidades sin precio
+                  </label>
+                  <p className="text-[11px] text-[#6B4028] leading-relaxed">
+                    Se suma automáticamente a las especialidades que no tengan un recargo escrito. Hoy quedan en +${alternativeDefaultSurcharge}. Las opciones que ya dicen (+$10), (+$5), etc. conservan ese importe.
+                  </p>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#A86B3D] font-bold">+$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={alternativeDefaultSurcharge}
+                    onChange={(event) => setAlternativeDefaultSurcharge(Math.max(0, Number(event.target.value) || 0))}
+                    className="w-full pl-10 pr-4 py-2.5 bg-white rounded-xl border border-[#F4E3C8] text-[#2B1B13] font-bold text-lg focus:border-[#C9974D] focus:outline-hidden"
+                    aria-label="Recargo para especialidades sin precio"
+                  />
+                </div>
+              </div>
+              <p className="text-[10px] text-[#A86B3D] mt-2">
+                Ejemplo: Enchiladas Verdes, Enchiladas Rojas, Milanesas o Tacos Dorados sin precio visible usarán este recargo.
+              </p>
             </div>
 
             <div>
@@ -307,4 +359,4 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
       )}
     </div>
   );
-};
+}
