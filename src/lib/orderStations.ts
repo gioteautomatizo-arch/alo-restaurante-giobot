@@ -100,6 +100,13 @@ function isCafeteriaExtra(extra: string): boolean {
   ].some((term) => text.includes(term));
 }
 
+function cafeteriaDisplayLabel(extra: string): string {
+  const value = String(extra || '').trim();
+  if (!value) return '';
+  if (isLegacyBreakfastPackage(value)) return 'Paquete de desayuno';
+  return value.replace(/^Paquete\s*:?\s*/i, '').trim();
+}
+
 function routedInstruction(value: string | undefined, station: PreparationStation): string | undefined {
   if (!value) return undefined;
 
@@ -159,13 +166,17 @@ export function getOrderItemsForStation(
 
       const cafeteriaExtras = getCafeteriaExtras(item);
       if (cafeteriaExtras.length > 0) {
+        const preparationNames = cafeteriaExtras
+          .map(cafeteriaDisplayLabel)
+          .filter(Boolean);
+
         result.push({
           ...item,
-          name: `Complemento de ${item.name}`,
+          name: preparationNames.join(' + ') || item.name,
           selectedSize: undefined,
           selectedOption: undefined,
-          customizationSummary: undefined,
-          extras: cafeteriaExtras,
+          customizationSummary: `Del platillo: ${item.name}`,
+          extras: undefined,
           specialInstructions: routedInstruction(item.specialInstructions, 'CAFETERIA'),
         });
       }
