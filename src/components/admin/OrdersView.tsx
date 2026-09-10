@@ -4,6 +4,7 @@ import {
   ChefHat,
   CheckCircle2,
   Clock3,
+  Coffee,
   PackageCheck,
   RefreshCw,
   Truck,
@@ -12,9 +13,17 @@ import {
 } from 'lucide-react';
 import { RestaurantOrder, RestaurantOrderStatus, StaffUser } from '../../types';
 import {
+  getRestaurantOrderStationStatus,
+  PreparationStation,
+  PreparationStationStatus,
   subscribeToRestaurantOrders,
+  updateRestaurantOrderStationStatus,
   updateRestaurantOrderStatus,
 } from '../../lib/ordersService';
+import {
+  getOrderItemsForStation,
+  getOrderRequiredStations,
+} from '../../lib/orderStations';
 
 interface OrdersViewProps {
   currentUser: StaffUser;
@@ -85,6 +94,10 @@ function sortOldestFirst(list: RestaurantOrder[]): RestaurantOrder[] {
   return [...list].sort((a, b) => (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0));
 }
 
+function stationStatusAsOrderStatus(status: PreparationStationStatus): RestaurantOrderStatus {
+  return status;
+}
+
 export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
   const [orders, setOrders] = useState<RestaurantOrder[]>([]);
   const [filter, setFilter] = useState<Filter>('ACTIVAS');
@@ -92,6 +105,12 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
   const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [, setClockTick] = useState(0);
+
+  const normalizedRole = String(currentUser.role || '').trim().toUpperCase();
+  const kitchenMode = normalizedRole === 'COCINA';
+  const [selectedStation, setSelectedStation] = useState<PreparationStation>('COCINA');
+  const activeStation: PreparationStation = kitchenMode ? 'COCINA' : selectedStation;
+  const stationLabel = activeStation === 'COCINA' ? 'Cocina' : 'Cafetería';
 
   useEffect(() => {
     const unsubscribe = subscribeToRestaurantOrders(setOrders);
@@ -102,26 +121,59 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
     };
   }, []);
 
-  const normalizedRole = String(currentUser.role || '').trim().toUpperCase();
-  const kitchenMode = normalizedRole === 'COCINA';
+  const stationOrders = useMemo(
+    () => orders.filter((order) => getOrderRequiredStations(order).includes(activeStation)),
+    [orders, activeStation]
+  );
 
   const visibleOrders = useMemo(() => {
     if (filter === 'ACTIVAS') {
-      return sortOldestFirst(orders.filter((o) => ['NUEVO', 'PREPARANDO', 'LISTO'].includes(o.status)));
+      return sortOldestFirst(
+        stationOrders.filter((order) =>
+          !['CANCELADO', 'ENTREGADO'].includes(order.status)
+        )
+      );
     }
-    const matching = sortOldestFirst(orders.filter((o) => o.status === filter));
-    return matching.slice(0, filter === 'ENTREGADO' ? 40 : 100);
-  }, [orders, filter]);
+
+    if (filter === 'ENTREGADO' || filter === 'CANCELADO') {
+      return sortOldestFirst(stationOrders.filter((order) => order.status === filter)).slice(0, filter === 'ENTREGADO' ? 40 : 100);
+    }
+
+    return sortOldestFirst(
+      stationOrders.filter((order) => getRestaurantOrderStationStatus(order, activeStation) === filter)
+    );
+  }, [stationOrders, activeStation, filter]);
 
   const counts = useMemo(() => ({
-    NUEVO: orders.filter((o) => o.status === 'NUEVO').length,
-    PREPARANDO: orders.filter((o) => o.status === 'PREPARANDO').length,
-    LISTO: orders.filter((o) => o.status === 'LISTO').length,
-  }), [orders]);
+    NUEVO: stationOrders.filter((order) => getRestaurantOrderStationStatus(order, activeStation) === 'NUEVO' && !['CANCELADO', 'ENTREGADO'].includes(order.status)).length,
+    PREPARANDO: stationOrders.filter((order) => getRestaurantOrderStationStatus(order, activeStation) === 'PREPARANDO' && !['CANCELADO', 'ENTREGADO'].includes(order.status)).length,
+    LISTO: stationOrders.filter((order) => getRestaurantOrderStationStatus(order, activeStation) === 'LISTO' && order.status !== 'ENTREGADO' && order.status !== 'CANCELADO').length,
+  }), [stationOrders, activeStation]);
 
   const canKitchen = ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'COCINA', 'EMPLEADO'].includes(normalizedRole);
+  const canCafeteria = ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'EMPLEADO'].includes(normalizedRole);
+  const canPrepareStation = activeStation === 'COCINA' ? canKitchen : canCafeteria;
   const canDeliver = ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'EMPLEADO'].includes(normalizedRole);
   const canCancel = ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'].includes(normalizedRole);
+
+  const changeStationStatus = async (order: RestaurantOrder, status: PreparationStationStatus) => {
+    if (!order.id) return;
+    setBusyId(order.id);
+    setError(null);
+    try {
+      await updateRestaurantOrderStationStatus(
+        order,
+        activeStation,
+        status,
+        getOrderRequiredStations(order),
+        currentUser
+      );
+    } catch (err: any) {
+      setError(err?.message || `No se pudo actualizar ${stationLabel}. Revisa la conexión a Firebase.`);
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const changeStatus = async (order: RestaurantOrder, status: RestaurantOrderStatus) => {
     if (!order.id) return;
@@ -139,15 +191,36 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
 
   return (
     <div className={`space-y-5 pb-20 ${kitchenMode ? 'max-w-[1500px] mx-auto' : ''}`}>
+      {!kitchenMode && (
+        <div className="bg-white rounded-2xl border border-[#E8D4BE] p-2 inline-flex gap-2">
+          <button
+            type="button"
+            onClick={() => setSelectedStation('COCINA')}
+            className={`px-4 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 cursor-pointer ${activeStation === 'COCINA' ? 'bg-[#3A2418] text-white' : 'text-[#6B4028] hover:bg-[#FFF7EA]'}`}
+          >
+            <ChefHat className="w-4 h-4" /> Cocina
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedStation('CAFETERIA')}
+            className={`px-4 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 cursor-pointer ${activeStation === 'CAFETERIA' ? 'bg-[#3A2418] text-white' : 'text-[#6B4028] hover:bg-[#FFF7EA]'}`}
+          >
+            <Coffee className="w-4 h-4" /> Cafetería
+          </button>
+        </div>
+      )}
+
       <div className="bg-[#3A2418] text-[#FFF7EA] rounded-3xl p-5 sm:p-6 border border-[#C9974D]/30 shadow-md">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-2 text-[#C9974D] text-[11px] font-bold uppercase tracking-wider mb-1">
-              <ChefHat className="w-4 h-4" /> Cocina en tiempo real
+              {activeStation === 'COCINA' ? <ChefHat className="w-4 h-4" /> : <Coffee className="w-4 h-4" />} {stationLabel} en tiempo real
             </div>
-            <h2 className={`${kitchenMode ? 'text-3xl sm:text-4xl' : 'text-2xl sm:text-3xl'} font-serif font-bold`}>Comandas</h2>
+            <h2 className={`${kitchenMode ? 'text-3xl sm:text-4xl' : 'text-2xl sm:text-3xl'} font-serif font-bold`}>Comandas · {stationLabel}</h2>
             <p className={`${kitchenMode ? 'text-sm sm:text-base' : 'text-xs sm:text-sm'} text-[#F4E3C8]/80 mt-1`}>
-              Lectura rápida para cocina: mesa, platillo, preparación y notas primero.
+              {activeStation === 'COCINA'
+                ? 'Sólo preparación de cocina. Bebidas, jugos, café y fruta se separan automáticamente.'
+                : 'Sólo bebidas, café, té, jugos, licuados, aguas, fruta y complementos de cafetería.'}
             </p>
           </div>
           <div className="grid grid-cols-3 gap-2 min-w-[260px]">
@@ -192,16 +265,21 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
 
       {visibleOrders.length === 0 ? (
         <div className="bg-white border border-[#F4E3C8] rounded-3xl p-10 text-center text-[#6B4028]">
-          <UtensilsCrossed className="w-10 h-10 mx-auto mb-3 text-[#C9974D]" />
-          <h3 className="font-serif font-bold text-[#2B1B13]">No hay comandas en esta vista</h3>
-          <p className="text-xs mt-1">Las nuevas órdenes aparecerán aquí automáticamente.</p>
+          {activeStation === 'COCINA' ? <UtensilsCrossed className="w-10 h-10 mx-auto mb-3 text-[#C9974D]" /> : <Coffee className="w-10 h-10 mx-auto mb-3 text-[#C9974D]" />}
+          <h3 className="font-serif font-bold text-[#2B1B13]">No hay comandas para {stationLabel}</h3>
+          <p className="text-xs mt-1">Los productos de esta estación aparecerán aquí automáticamente.</p>
         </div>
       ) : (
         <div className={`grid grid-cols-1 ${kitchenMode ? 'lg:grid-cols-2' : 'lg:grid-cols-2 xl:grid-cols-3'} gap-5`}>
           {visibleOrders.map((order) => {
-            const meta = statusMeta[order.status];
+            const stationStatus = getRestaurantOrderStationStatus(order, activeStation);
+            const meta = statusMeta[stationStatusAsOrderStatus(stationStatus)];
             const busy = busyId === order.id;
             const confirmingCancel = cancelConfirmId === order.id;
+            const stationItems = getOrderItemsForStation(order, activeStation);
+            const requiredStations = getOrderRequiredStations(order);
+            const otherStationPending = requiredStations.some((station) => station !== activeStation && getRestaurantOrderStationStatus(order, station) !== 'LISTO');
+
             return (
               <article key={order.id} className="bg-white border-2 border-[#D7B995] rounded-3xl shadow-sm overflow-hidden">
                 <div className={`${kitchenMode ? 'p-5' : 'p-4'} border-b border-[#E8D4BE] bg-[#FFF9F0] flex items-start justify-between gap-3`}>
@@ -222,23 +300,22 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
                       <span className="font-black uppercase tracking-wide text-[#A86B3D]">{sourceLabel(order)}</span>
                     </div>
                   </div>
-                  {!kitchenMode && <strong className="text-base text-[#2B1B13]">${order.total}</strong>}
+                  {!kitchenMode && <span className="text-xs font-black uppercase tracking-wide text-[#A86B3D]">{stationLabel}</span>}
                 </div>
 
                 <div className={`${kitchenMode ? 'p-5' : 'p-4'} space-y-4`}>
                   <div className="space-y-4">
-                    {order.items.map((item, idx) => {
+                    {stationItems.map((item, idx) => {
                       const option = kitchenOptionParts(item.selectedOption);
                       const courses = kitchenCourseParts(item.customizationSummary);
                       const hasCourses = Boolean(courses.first || courses.second || courses.third);
 
                       return (
-                        <div key={`${order.id}-${idx}`} className={`rounded-2xl bg-white border-2 border-[#E8D4BE] ${kitchenMode ? 'px-5 py-4' : 'px-4 py-3'}`}>
+                        <div key={`${order.id}-${activeStation}-${idx}`} className={`rounded-2xl bg-white border-2 border-[#E8D4BE] ${kitchenMode ? 'px-5 py-4' : 'px-4 py-3'}`}>
                           <div className="flex items-start justify-between gap-3">
                             <span className={`${kitchenMode ? 'text-2xl sm:text-3xl' : 'text-lg sm:text-xl'} font-black text-[#2B1B13] leading-tight`}>
                               {item.quantity}× {item.name}
                             </span>
-                            {!kitchenMode && <span className="text-xs font-bold text-[#8A624C]">${item.totalPrice}</span>}
                           </div>
 
                           {item.personLabel && (
@@ -312,7 +389,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
 
                               {item.extras && item.extras.length > 0 && (
                                 <div className={`rounded-xl bg-[#FFF7EA] border border-[#DEC8AE] ${kitchenMode ? 'px-4 py-3 text-lg' : 'px-3 py-2 text-sm'} font-bold text-[#7A4A27]`}>
-                                  EXTRAS: <strong>{item.extras.join(', ')}</strong>
+                                  {activeStation === 'CAFETERIA' ? 'PREPARAR:' : 'EXTRAS:'} <strong>{item.extras.join(', ')}</strong>
                                 </div>
                               )}
 
@@ -346,40 +423,34 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
                     </div>
                   )}
 
-                  {!kitchenMode && order.customerName && !order.notes && (
-                    <div className="text-sm text-[#5C3825] bg-[#FFF7EA] rounded-2xl px-3 py-2.5 border border-[#F4E3C8]">
-                      <strong>{order.customerName}</strong>
+                  {otherStationPending && stationStatus === 'LISTO' && (
+                    <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 font-black text-sm">
+                      ✓ {stationLabel} terminó · esperando a la otra estación
                     </div>
                   )}
 
-                  {order.claimedByName && (
-                    <p className={`${kitchenMode ? 'text-sm' : 'text-xs'} text-[#6B4028]`}>
-                      Tomada por: <strong>{order.claimedByName}</strong>
-                    </p>
-                  )}
-
                   <div className="grid grid-cols-2 gap-2 pt-1">
-                    {order.status === 'NUEVO' && canKitchen && (
+                    {stationStatus === 'NUEVO' && canPrepareStation && !['CANCELADO', 'ENTREGADO'].includes(order.status) && (
                       <button
                         disabled={busy}
-                        onClick={() => changeStatus(order, 'PREPARANDO')}
+                        onClick={() => changeStationStatus(order, 'PREPARANDO')}
                         className={`col-span-2 ${kitchenMode ? 'py-5 text-xl sm:text-2xl' : 'py-4 text-base'} rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black flex items-center justify-center gap-3 disabled:opacity-50 cursor-pointer`}
                       >
-                        {busy ? <RefreshCw className="w-6 h-6 animate-spin" /> : <ChefHat className="w-6 h-6" />} PREPARAR
+                        {busy ? <RefreshCw className="w-6 h-6 animate-spin" /> : activeStation === 'COCINA' ? <ChefHat className="w-6 h-6" /> : <Coffee className="w-6 h-6" />} PREPARAR
                       </button>
                     )}
 
-                    {order.status === 'PREPARANDO' && canKitchen && (
+                    {stationStatus === 'PREPARANDO' && canPrepareStation && !['CANCELADO', 'ENTREGADO'].includes(order.status) && (
                       <button
                         disabled={busy}
-                        onClick={() => changeStatus(order, 'LISTO')}
+                        onClick={() => changeStationStatus(order, 'LISTO')}
                         className={`col-span-2 ${kitchenMode ? 'py-5 text-xl sm:text-2xl' : 'py-4 text-base'} rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black flex items-center justify-center gap-3 disabled:opacity-50 cursor-pointer`}
                       >
-                        <PackageCheck className="w-6 h-6" /> LISTO
+                        <PackageCheck className="w-6 h-6" /> LISTO · {stationLabel.toUpperCase()}
                       </button>
                     )}
 
-                    {order.status === 'LISTO' && canDeliver && (
+                    {stationStatus === 'LISTO' && order.status === 'LISTO' && canDeliver && (
                       <button
                         disabled={busy}
                         onClick={() => changeStatus(order, 'ENTREGADO')}
