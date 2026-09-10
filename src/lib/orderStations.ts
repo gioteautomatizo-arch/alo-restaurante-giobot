@@ -72,11 +72,25 @@ function looksLikeCafeteriaProduct(item: RestaurantOrderItem): boolean {
   ].some((term) => text.includes(term));
 }
 
+function isExactBreakfastPackageChoice(extra: string): boolean {
+  const text = normalize(extra);
+  return (
+    text === 'paquete jugo' ||
+    text === 'paquete fruta' ||
+    text === 'paquete cafe de olla' ||
+    text === 'paquete te'
+  );
+}
+
+function isLegacyBreakfastPackage(extra: string): boolean {
+  const text = normalize(extra);
+  return text.includes('hazlo paquete') || text.includes('paquete desayuno');
+}
+
 function isCafeteriaExtra(extra: string): boolean {
   const text = normalize(extra);
+  if (isExactBreakfastPackageChoice(extra) || isLegacyBreakfastPackage(extra)) return true;
   return [
-    'hazlo paquete',
-    'paquete desayuno',
     'jugo',
     'fruta',
     'cafe',
@@ -87,7 +101,10 @@ function isCafeteriaExtra(extra: string): boolean {
 }
 
 export function getCafeteriaExtras(item: RestaurantOrderItem): string[] {
-  return (item.extras || []).filter(isCafeteriaExtra);
+  const extras = item.extras || [];
+  const exactChoices = extras.filter(isExactBreakfastPackageChoice);
+  if (exactChoices.length > 0) return exactChoices;
+  return extras.filter(isCafeteriaExtra);
 }
 
 export function getKitchenExtras(item: RestaurantOrderItem): string[] {
@@ -132,6 +149,9 @@ export function getOrderItemsForStation(
           selectedOption: undefined,
           customizationSummary: undefined,
           extras: cafeteriaExtras,
+          // Las instrucciones del platillo pertenecen a Cocina.
+          // Cafetería recibe sólo las elecciones estructuradas de su estación.
+          specialInstructions: undefined,
         });
       }
       return;
