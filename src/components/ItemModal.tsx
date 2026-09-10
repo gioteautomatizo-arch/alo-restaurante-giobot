@@ -30,6 +30,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
   const [breakfastColdChoice, setBreakfastColdChoice] = useState<'Jugo' | 'Fruta' | undefined>(undefined);
   const [breakfastHotChoice, setBreakfastHotChoice] = useState<'Café de olla' | 'Té' | undefined>(undefined);
   const [specialInstructions, setSpecialInstructions] = useState<string>('');
+  const [kitchenInstructions, setKitchenInstructions] = useState<string>('');
+  const [cafeteriaInstructions, setCafeteriaInstructions] = useState<string>('');
 
   useEffect(() => {
     if (item) {
@@ -41,6 +43,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
       setBreakfastColdChoice(undefined);
       setBreakfastHotChoice(undefined);
       setSpecialInstructions('');
+      setKitchenInstructions('');
+      setCafeteriaInstructions('');
       setQuantity(1);
     }
   }, [item]);
@@ -57,6 +61,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
   const clearBreakfastChoices = () => {
     setBreakfastColdChoice(undefined);
     setBreakfastHotChoice(undefined);
+    setKitchenInstructions('');
+    setCafeteriaInstructions('');
   };
 
   const toggleExtra = (extra: ExtraOption) => {
@@ -108,6 +114,13 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
         ]
       : [];
 
+    const routedInstructions = breakfastPackageSelected
+      ? [
+          kitchenInstructions.trim() ? `Cocina: ${kitchenInstructions.trim()}` : '',
+          cafeteriaInstructions.trim() ? `Cafetería: ${cafeteriaInstructions.trim()}` : '',
+        ].filter(Boolean).join(' | ')
+      : specialInstructions.trim();
+
     const cartItem: CartItem = {
       cartId: `${item.id}-${Date.now()}`,
       item,
@@ -115,7 +128,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
       selectedSize,
       selectedOption: optionForCart,
       selectedExtras: [...selectedExtras, ...exactBreakfastPackageExtras],
-      specialInstructions: specialInstructions.trim() || undefined,
+      specialInstructions: routedInstructions || undefined,
       unitPrice,
       totalPrice,
     };
@@ -262,10 +275,39 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-1 flex items-center gap-1 font-serif"><MessageSquare className="w-3.5 h-3.5 text-[#A86B3D]" />Instrucciones Especiales (Opcional)</label>
-            <input type="text" placeholder="Ej: Sin cebolla, poca crema, sin queso, frijoles aparte..." value={specialInstructions} onChange={(e) => setSpecialInstructions(e.target.value)} className="w-full px-3 py-2 text-xs bg-[#FFF7EA] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]" />
-          </div>
+          {breakfastPackageSelected ? (
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-[#6B4028] mb-1 flex items-center gap-1 font-serif">
+                  <MessageSquare className="w-3.5 h-3.5 text-[#A86B3D]" /> Indicaciones para Cocina (Opcional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Huevo bien cocido, sin cebolla, poca crema..."
+                  value={kitchenInstructions}
+                  onChange={(e) => setKitchenInstructions(e.target.value)}
+                  className="w-full px-3 py-2.5 text-xs bg-[#FFF7EA] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-[#6B4028] mb-1 flex items-center gap-1 font-serif">
+                  <MessageSquare className="w-3.5 h-3.5 text-[#A86B3D]" /> Indicaciones para Cafetería (Opcional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Café tibio, jugo sin hielo, té con poca azúcar..."
+                  value={cafeteriaInstructions}
+                  onChange={(e) => setCafeteriaInstructions(e.target.value)}
+                  className="w-full px-3 py-2.5 text-xs bg-[#FFF7EA] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]"
+                />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-1 flex items-center gap-1 font-serif"><MessageSquare className="w-3.5 h-3.5 text-[#A86B3D]" />Instrucciones Especiales (Opcional)</label>
+              <input type="text" placeholder="Ej: Sin cebolla, poca crema, sin queso, frijoles aparte..." value={specialInstructions} onChange={(e) => setSpecialInstructions(e.target.value)} className="w-full px-3 py-2 text-xs bg-[#FFF7EA] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]" />
+            </div>
+          )}
         </div>
 
         <div className="bg-[#FFF7EA] p-4 border-t border-[#DEC8AE] flex items-center justify-between gap-4">
