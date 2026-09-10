@@ -16,6 +16,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
   const [selectedOption, setSelectedOption] = useState<string | undefined>(
     item?.options && item.options.length > 0 ? item.options[0] : undefined
   );
+  const [selectedSauce, setSelectedSauce] = useState<'Verde' | 'Roja' | undefined>(undefined);
   const [selectedExtras, setSelectedExtras] = useState<ExtraOption[]>([]);
   const [makeCombo, setMakeCombo] = useState<boolean>(false);
   const [specialInstructions, setSpecialInstructions] = useState<string>('');
@@ -24,6 +25,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
     if (item) {
       setSelectedSize(item.sizes && item.sizes.length > 0 ? item.sizes[0] : undefined);
       setSelectedOption(item.options && item.options.length > 0 ? item.options[0] : undefined);
+      setSelectedSauce(undefined);
       setSelectedExtras([]);
       setMakeCombo(false);
       setSpecialInstructions('');
@@ -32,6 +34,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
   }, [item]);
 
   if (!item) return null;
+
+  const isChilaquiles = item.id === 'chilaquiles';
 
   const toggleExtra = (extra: ExtraOption) => {
     if (selectedExtras.some((e) => e.id === extra.id)) {
@@ -58,18 +62,24 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
   const totalPrice = unitPrice * quantity;
 
   const handleAdd = () => {
+    if (isChilaquiles && !selectedSauce) return;
+
+    const optionForCart = isChilaquiles
+      ? `Salsa: ${selectedSauce} · Preparación: ${selectedOption || 'Sin especificar'}`
+      : selectedOption
+      ? makeCombo
+        ? `${selectedOption} (En Paquete Combo)`
+        : selectedOption
+      : makeCombo
+      ? 'En Paquete Combo'
+      : undefined;
+
     const cartItem: CartItem = {
       cartId: `${item.id}-${Date.now()}`,
       item,
       quantity,
       selectedSize,
-      selectedOption: selectedOption
-        ? makeCombo
-          ? `${selectedOption} (En Paquete Combo)`
-          : selectedOption
-        : makeCombo
-        ? 'En Paquete Combo'
-        : undefined,
+      selectedOption: optionForCart,
       selectedExtras,
       specialInstructions: specialInstructions.trim() || undefined,
       unitPrice,
@@ -129,11 +139,50 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
             </div>
           )}
 
+          {isChilaquiles && (
+            <div>
+              <label className="block text-sm font-black uppercase tracking-wider text-[#3A2418] mb-2 font-serif">
+                1. Elige la salsa *
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSauce('Verde')}
+                  className={`py-3 px-3 rounded-xl border text-sm font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    selectedSauce === 'Verde'
+                      ? 'bg-emerald-700 text-white border-emerald-800 shadow-sm'
+                      : 'bg-emerald-50 border-emerald-300 text-emerald-900 hover:bg-emerald-100'
+                  }`}
+                >
+                  <span aria-hidden="true">🟢</span>
+                  <span>VERDE</span>
+                  {selectedSauce === 'Verde' && <Check className="w-4 h-4 shrink-0" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSauce('Roja')}
+                  className={`py-3 px-3 rounded-xl border text-sm font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    selectedSauce === 'Roja'
+                      ? 'bg-rose-700 text-white border-rose-800 shadow-sm'
+                      : 'bg-rose-50 border-rose-300 text-rose-900 hover:bg-rose-100'
+                  }`}
+                >
+                  <span aria-hidden="true">🔴</span>
+                  <span>ROJA</span>
+                  {selectedSauce === 'Roja' && <Check className="w-4 h-4 shrink-0" />}
+                </button>
+              </div>
+              {!selectedSauce && (
+                <p className="text-[11px] font-bold text-rose-700 mt-2">Selecciona Verde o Roja para continuar.</p>
+              )}
+            </div>
+          )}
+
           {/* Option Choices if available */}
           {item.options && item.options.length > 0 && (
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-2 font-serif">
-                Elige tu Sabor / Guisado / Opción
+                {isChilaquiles ? '2. Elige la preparación' : 'Elige tu Sabor / Guisado / Opción'}
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1 border border-[#DEC8AE] rounded-xl bg-[#FFF7EA]/30">
                 {item.options.map((opt) => (
@@ -235,7 +284,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
             </label>
             <input
               type="text"
-              placeholder="Ej: Sin cebolla, extra salsa verde, con poca sal..."
+              placeholder="Ej: Sin cebolla, poca crema, sin queso, frijoles aparte..."
               value={specialInstructions}
               onChange={(e) => setSpecialInstructions(e.target.value)}
               className="w-full px-3 py-2 text-xs bg-[#FFF7EA] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]"
@@ -263,9 +312,10 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
 
           <button
             onClick={handleAdd}
-            className="flex-1 py-3 px-4 bg-[#3A2418] hover:bg-[#4A2E1F] text-[#FFF7EA] rounded-xl font-bold text-sm shadow-md transition-all active:scale-98 flex items-center justify-between cursor-pointer border border-[#C9974D]/30"
+            disabled={isChilaquiles && !selectedSauce}
+            className="flex-1 py-3 px-4 bg-[#3A2418] hover:bg-[#4A2E1F] text-[#FFF7EA] rounded-xl font-bold text-sm shadow-md transition-all active:scale-98 flex items-center justify-between cursor-pointer border border-[#C9974D]/30 disabled:opacity-45 disabled:cursor-not-allowed"
           >
-            <span>Agregar a mi orden</span>
+            <span>{isChilaquiles && !selectedSauce ? 'Elige salsa para continuar' : 'Agregar a mi orden'}</span>
             <span className="font-black text-base font-serif text-[#C9974D]">${totalPrice}</span>
           </button>
         </div>
