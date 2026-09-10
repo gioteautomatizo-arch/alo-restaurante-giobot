@@ -19,6 +19,13 @@ export const ORDERS_COLLECTION = 'restaurant_orders';
 export const ORDERS_EVENT = 'alo_orders_updated';
 export const RESTAURANT_ID = 'alo-restaurante' as const;
 
+export type PreparationStation = 'COCINA' | 'CAFETERIA';
+export type PreparationStationStatus = 'NUEVO' | 'PREPARANDO' | 'LISTO';
+
+type StationAwareOrder = RestaurantOrder & {
+  stationStatuses?: Partial<Record<PreparationStation, PreparationStationStatus>>;
+};
+
 type RestaurantOrdersSubscriber = (orders: RestaurantOrder[]) => void;
 
 const restaurantOrdersSubscribers = new Set<RestaurantOrdersSubscriber>();
@@ -169,6 +176,81 @@ export function subscribeToTableOrders(
       callback([]);
     }
   );
+}
+
+export function getRestaurantOrderStationStatus(
+  order: RestaurantOrder,
+  station: PreparationStation
+): PreparationStationStatus {
+  const stationAware = order as StationAwareOrder;
+  const explicit = stationAware.stationStatuses?.[station];
+  if (explicit) return explicit;
+
+  // Compatibilidad con comandas anteriores a la separación por estaciones.
+  if (order.status === 'LISTO' || order.status === 'ENTREGADO') return 'LISTO';
+  if (order.status === 'PREPARANDO') return 'PREPARANDO';
+  return 'NUEVO';
+}
+
+/**
+ * Avanza sólo la estación que está preparando la comanda.
+ * El estado global pasa a LISTO únicamente cuando todas las estaciones requeridas
+ * terminaron. Así Cocina no puede marcar por accidente como listo algo pendiente
+ * de Cafetería y viceversa.
+ */
+export async function updateRestaurantOrderStationStatus(
+  order: RestaurantOrder,
+  station: PreparationStation,
+  stationStatus: PreparationStationStatus,
+  requiredStations: PreparationStation[],
+  user: Pick<StaffUser, 'id' | 'name'>
+): Promise<void> {
+  if (!order.id) return;
+  if (order.status === 'CANCELADO' || order.status === 'ENTREGADO') return;
+
+  const now = new Date().toISOString();
+  const stationAware = order as StationAwareOrder;
+  const previousStatuses = stationAware.stationStatuses || {};
+  const nextStatuses: Partial<Record<PreparationStation, PreparationStationStatus>> = {
+    ...previousStatuses,
+    [station]: stationStatus,
+  };
+
+  const effectiveStations = requiredStations.length > 0 ? requiredStations : [station];
+  const resolveStatus = (target: PreparationStation): PreparationStationStatus => {
+    const explicit = nextStatuses[target];
+    if (explicit) return explicit;
+    if (order.status === 'LISTO' || order.status === 'ENTREGADO') return 'LISTO';
+    // En comandas viejas sin stationStatuses respetamos el estado existente.
+    if (!stationAware.stationStatuses && order.status === 'PREPARANDO') return 'PREPARANDO';
+    return 'NUEVO';
+  };
+
+  const allReady = effectiveStations.every((target) => resolveStatus(target) === 'LISTO');
+  const anyStarted = effectiveStations.some((target) => {
+    const status = resolveStatus(target);
+    return status === 'PREPARANDO' || status === 'LISTO';
+  });
+
+  const globalStatus: RestaurantOrderStatus = allReady
+    ? 'LISTO'
+    : anyStarted
+    ? 'PREPARANDO'
+    : 'NUEVO';
+
+  const patch: Record<string, unknown> = {
+    stationStatuses: nextStatuses,
+    status: globalStatus,
+    updatedAt: now,
+  };
+
+  if (stationStatus === 'PREPARANDO') {
+    patch.claimedById = user.id;
+    patch.claimedByName = user.name;
+  }
+  if (allReady) patch.readyAt = now;
+
+  await updateDoc(doc(db, ORDERS_COLLECTION, order.id), sanitizeFirestorePayload(patch));
 }
 
 export async function updateRestaurantOrderStatus(
