@@ -902,6 +902,15 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             )}
 
             <button
+              type="button"
+              onClick={onClose}
+              disabled={isSubmittingOrder}
+              className="w-full py-3 px-4 bg-[#FFFDF9] hover:bg-[#F4E3C8] text-[#5C3825] rounded-xl font-bold text-sm border-2 border-[#DEC8AE] transition-colors disabled:opacity-50 disabled:cursor-wait"
+            >
+              ← Volver a editar pedido
+            </button>
+
+            <button
               type="submit"
               disabled={isSubmittingOrder}
               className="w-full py-3.5 px-4 bg-gradient-to-r from-[#3A2418] to-[#4A2E1F] hover:from-[#4A2E1F] hover:to-[#5C3825] text-white rounded-xl font-bold text-sm shadow-md transition-all active:scale-98 flex items-center justify-center gap-2 cursor-pointer border border-[#C9974D]/30 disabled:opacity-60 disabled:cursor-wait"
