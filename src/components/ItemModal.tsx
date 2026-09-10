@@ -8,19 +8,6 @@ interface ItemModalProps {
   onAddToCart: (cartItem: CartItem) => void;
 }
 
-type BreakfastPackageChoice =
-  | 'Jugo + Café de olla'
-  | 'Jugo + Té'
-  | 'Fruta + Café de olla'
-  | 'Fruta + Té';
-
-const BREAKFAST_PACKAGE_CHOICES: BreakfastPackageChoice[] = [
-  'Jugo + Café de olla',
-  'Jugo + Té',
-  'Fruta + Café de olla',
-  'Fruta + Té',
-];
-
 function isBreakfastPackageExtraName(name: string): boolean {
   const normalized = String(name || '')
     .toLowerCase()
@@ -40,7 +27,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
   const [selectedSauce, setSelectedSauce] = useState<'Verde' | 'Roja' | undefined>(undefined);
   const [selectedExtras, setSelectedExtras] = useState<ExtraOption[]>([]);
   const [makeCombo, setMakeCombo] = useState<boolean>(false);
-  const [breakfastPackageChoice, setBreakfastPackageChoice] = useState<BreakfastPackageChoice | undefined>(undefined);
+  const [breakfastColdChoice, setBreakfastColdChoice] = useState<'Jugo' | 'Fruta' | undefined>(undefined);
+  const [breakfastHotChoice, setBreakfastHotChoice] = useState<'Café de olla' | 'Té' | undefined>(undefined);
   const [specialInstructions, setSpecialInstructions] = useState<string>('');
 
   useEffect(() => {
@@ -50,7 +38,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
       setSelectedSauce(undefined);
       setSelectedExtras([]);
       setMakeCombo(false);
-      setBreakfastPackageChoice(undefined);
+      setBreakfastColdChoice(undefined);
+      setBreakfastHotChoice(undefined);
       setSpecialInstructions('');
       setQuantity(1);
     }
@@ -62,16 +51,19 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
   const breakfastPackageExtraInCatalog = item.extras?.find((extra) => isBreakfastPackageExtraName(extra.name));
   const hasBreakfastPackageExtra = selectedExtras.some((extra) => isBreakfastPackageExtraName(extra.name));
   const breakfastPackageSelected = item.category === 'desayunos' && (makeCombo || hasBreakfastPackageExtra);
-  const breakfastPackageComplete = !breakfastPackageSelected || Boolean(breakfastPackageChoice);
+  const breakfastPackageComplete = !breakfastPackageSelected || Boolean(breakfastColdChoice && breakfastHotChoice);
   const canAdd = (!isChilaquiles || Boolean(selectedSauce)) && breakfastPackageComplete;
+
+  const clearBreakfastChoices = () => {
+    setBreakfastColdChoice(undefined);
+    setBreakfastHotChoice(undefined);
+  };
 
   const toggleExtra = (extra: ExtraOption) => {
     const isSelected = selectedExtras.some((e) => e.id === extra.id);
     if (isSelected) {
       setSelectedExtras(selectedExtras.filter((e) => e.id !== extra.id));
-      if (isBreakfastPackageExtraName(extra.name) && !makeCombo) {
-        setBreakfastPackageChoice(undefined);
-      }
+      if (isBreakfastPackageExtraName(extra.name) && !makeCombo) clearBreakfastChoices();
     } else {
       setSelectedExtras([...selectedExtras, extra]);
     }
@@ -80,9 +72,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
   const toggleCombo = () => {
     const next = !makeCombo;
     setMakeCombo(next);
-    if (!next && !hasBreakfastPackageExtra) {
-      setBreakfastPackageChoice(undefined);
-    }
+    if (!next && !hasBreakfastPackageExtra) clearBreakfastChoices();
   };
 
   let unitPrice = selectedSize ? selectedSize.price : item.price;
@@ -111,8 +101,11 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
       ? 'En Paquete Combo'
       : undefined;
 
-    const exactBreakfastPackageExtras: ExtraOption[] = breakfastPackageSelected && breakfastPackageChoice
-      ? [{ id: 'paquete-desayuno-eleccion', name: `Paquete: ${breakfastPackageChoice}`, price: 0 }]
+    const exactBreakfastPackageExtras: ExtraOption[] = breakfastPackageSelected
+      ? [
+          { id: 'paquete-desayuno-frio', name: `Paquete: ${breakfastColdChoice}`, price: 0 },
+          { id: 'paquete-desayuno-caliente', name: `Paquete: ${breakfastHotChoice}`, price: 0 },
+        ]
       : [];
 
     const cartItem: CartItem = {
@@ -133,7 +126,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
   const addButtonLabel = !canAdd
     ? isChilaquiles && !selectedSauce
       ? 'Elige salsa para continuar'
-      : 'Elige tu paquete'
+      : 'Completa tu complemento'
     : 'Agregar a mi orden';
 
   return (
@@ -210,7 +203,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
                         </div>
                         <div className="text-left">
                           <span className="block">{isBreakfastPackage ? 'Paquete desayuno' : extra.name}</span>
-                          {isBreakfastPackage && <span className="block text-[10px] font-normal opacity-80 mt-0.5">Jugo o fruta + café de olla o té</span>}
+                          {isBreakfastPackage && <span className="block text-[10px] font-normal opacity-80 mt-0.5">Elige 1 complemento + 1 bebida caliente</span>}
                         </div>
                       </div>
                       <span className="font-bold text-[#A86B3D] shrink-0">+${extra.price}</span>
@@ -227,7 +220,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
                 <div className="p-2 bg-[#3A2418] text-[#C9974D] rounded-xl"><PackageCheck className="w-5 h-5" /></div>
                 <div>
                   <h4 className="text-xs font-bold text-[#3A2418] font-serif">¡Hazlo Paquete Especial!</h4>
-                  <p className="text-[11px] text-[#6B4028]">{item.category === 'desayunos' ? 'Incluye Jugo/Fruta + Café de Olla o Té (+ $20)' : item.category === 'hamburguesas' ? 'Incluye Papas a la Francesa y Refresco (+ $35)' : 'Incluye complemento y bebida'}</p>
+                  <p className="text-[11px] text-[#6B4028]">{item.category === 'desayunos' ? 'Elige Jugo o Fruta + Café de Olla o Té (+ $20)' : item.category === 'hamburguesas' ? 'Incluye Papas a la Francesa y Refresco (+ $35)' : 'Incluye complemento y bebida'}</p>
                 </div>
               </div>
               <button type="button" onClick={toggleCombo} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${makeCombo ? 'bg-[#3A2418] text-[#FFF7EA] shadow-sm' : 'bg-[#FFFDF9] text-[#3A2418] border border-[#DEC8AE] hover:bg-[#F4E3C8]'}`}>
@@ -237,16 +230,35 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
           )}
 
           {breakfastPackageSelected && (
-            <div className="rounded-2xl border-2 border-[#C9974D] bg-[#FFF7EA] p-4">
-              <h4 className="text-sm font-black text-[#3A2418] font-serif">Elige tu paquete *</h4>
-              <p className="text-[11px] text-[#6B4028] mt-0.5 mb-3">Toca una sola combinación.</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {BREAKFAST_PACKAGE_CHOICES.map((choice) => (
-                  <button key={choice} type="button" onClick={() => setBreakfastPackageChoice(choice)} className={`py-3 px-3 rounded-xl border text-sm font-black text-left transition-all cursor-pointer flex items-center justify-between gap-2 ${breakfastPackageChoice === choice ? 'bg-[#3A2418] text-white border-[#3A2418]' : 'bg-white text-[#5C3825] border-[#DEC8AE] hover:bg-[#F4E3C8]'}`}>
-                    <span>{choice}</span>{breakfastPackageChoice === choice && <Check className="w-4 h-4 shrink-0" />}
-                  </button>
-                ))}
+            <div className="rounded-2xl border-2 border-[#C9974D] bg-[#FFF7EA] p-4 space-y-4">
+              <div>
+                <h4 className="text-sm font-black text-[#3A2418] font-serif">Completa tu paquete *</h4>
+                <p className="text-[11px] text-[#6B4028] mt-0.5">Elige una opción en cada apartado.</p>
               </div>
+
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide text-[#6B4028] mb-2">Complemento</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['Jugo', 'Fruta'] as const).map((choice) => (
+                    <button key={choice} type="button" onClick={() => setBreakfastColdChoice(choice)} className={`py-3 px-3 rounded-xl border text-sm font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${breakfastColdChoice === choice ? 'bg-[#3A2418] text-white border-[#3A2418]' : 'bg-white text-[#5C3825] border-[#DEC8AE] hover:bg-[#F4E3C8]'}`}>
+                      <span>{choice}</span>{breakfastColdChoice === choice && <Check className="w-4 h-4 shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide text-[#6B4028] mb-2">Bebida caliente</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['Café de olla', 'Té'] as const).map((choice) => (
+                    <button key={choice} type="button" onClick={() => setBreakfastHotChoice(choice)} className={`py-3 px-3 rounded-xl border text-sm font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${breakfastHotChoice === choice ? 'bg-[#3A2418] text-white border-[#3A2418]' : 'bg-white text-[#5C3825] border-[#DEC8AE] hover:bg-[#F4E3C8]'}`}>
+                      <span>{choice}</span>{breakfastHotChoice === choice && <Check className="w-4 h-4 shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {!breakfastPackageComplete && <p className="text-[11px] font-bold text-rose-700">Selecciona un complemento y una bebida para continuar.</p>}
             </div>
           )}
 
