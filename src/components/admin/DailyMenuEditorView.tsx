@@ -24,19 +24,70 @@ interface DailyMenuEditorViewProps {
 
 type MenuAdminSection = 'menu_dia' | 'catalogo';
 
+type AlternativePriceRow = {
+  name: string;
+  price: number;
+};
+
 const ALT_SURCHARGE_MARKER = '__RECARGO_ESPECIALIDADES_SIN_PRECIO__:';
 
-function readAlternativeDefaultSurcharge(options?: string[]): number {
+const DEFAULT_ALTERNATIVE_OPTIONS = [
+  'Enchiladas Suizas (+$10)',
+  'Bistec Asado (+$5)',
+  'Pechuga Asada (+$5)',
+  'Enchiladas Verdes (+$5)',
+  'Enchiladas Rojas (+$5)',
+  'Milanesa de Res (+$5)',
+  'Milanesa de Pollo (+$5)',
+  'Tacos Dorados (+$5)',
+];
+
+function readLegacyDefaultSurcharge(options?: string[]): number {
   const marker = (options || []).find((option) => option.startsWith(ALT_SURCHARGE_MARKER));
   if (!marker) return 5;
   const parsed = Number(marker.slice(ALT_SURCHARGE_MARKER.length));
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 5;
 }
 
-function writeAlternativeDefaultSurcharge(options: string[] | undefined, surcharge: number): string[] {
-  const cleanOptions = (options || []).filter((option) => !option.startsWith(ALT_SURCHARGE_MARKER));
-  const safeSurcharge = Math.max(0, Number.isFinite(Number(surcharge)) ? Number(surcharge) : 5);
-  return [...cleanOptions, `${ALT_SURCHARGE_MARKER}${safeSurcharge}`];
+function getExplicitSurcharge(option: string): number | null {
+  const match = option.match(/\(\s*\+\s*\$?\s*(\d+(?:\.\d+)?)\s*\)\s*$/i);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function stripExplicitSurcharge(option: string): string {
+  return option
+    .replace(/\s*\(\s*\+\s*\$?\s*\d+(?:\.\d+)?\s*\)\s*$/i, '')
+    .trim();
+}
+
+function buildAlternativePriceRows(options?: string[]): AlternativePriceRow[] {
+  const fallbackPrice = readLegacyDefaultSurcharge(options);
+  const configured = (options || [])
+    .filter((option) => !option.startsWith(ALT_SURCHARGE_MARKER))
+    .map((option) => option.trim())
+    .filter(Boolean);
+
+  const source = configured.length > 0 ? configured : DEFAULT_ALTERNATIVE_OPTIONS;
+
+  return source.map((option) => ({
+    name: stripExplicitSurcharge(option),
+    price: getExplicitSurcharge(option) ?? fallbackPrice,
+  }));
+}
+
+function formatSurcharge(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+function serializeAlternativePriceRows(rows: AlternativePriceRow[]): string[] {
+  return rows
+    .filter((row) => row.name.trim())
+    .map((row) => {
+      const safePrice = Math.max(0, Number.isFinite(Number(row.price)) ? Number(row.price) : 0);
+      return `${row.name.trim()} (+$${formatSurcharge(safePrice)})`;
+    });
 }
 
 export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
@@ -55,8 +106,8 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
   const [guarnicion2, setGuarnicion2] = useState<string>(config.guarniciones[1] || '');
   const [aguaDelDia, setAguaDelDia] = useState<string>(config.aguaDelDia);
   const [postreDelDia, setPostreDelDia] = useState<string>(config.postreDelDia);
-  const [alternativeDefaultSurcharge, setAlternativeDefaultSurcharge] = useState<number>(
-    readAlternativeDefaultSurcharge(config.opcionesAlternativas)
+  const [alternativePrices, setAlternativePrices] = useState<AlternativePriceRow[]>(
+    buildAlternativePriceRows(config.opcionesAlternativas)
   );
 
   useEffect(() => {
@@ -71,7 +122,7 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
       setGuarnicion2(latest.guarniciones[1] || '');
       setAguaDelDia(latest.aguaDelDia);
       setPostreDelDia(latest.postreDelDia);
-      setAlternativeDefaultSurcharge(readAlternativeDefaultSurcharge(latest.opcionesAlternativas));
+      setAlternativePrices(buildAlternativePriceRows(latest.opcionesAlternativas));
     };
 
     window.addEventListener('alo_admin_data_updated', handleDataChange);
@@ -81,6 +132,16 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
       window.removeEventListener('storage', handleDataChange);
     };
   }, []);
+
+  const handleAlternativePriceChange = (index: number, value: number) => {
+    setAlternativePrices((current) =>
+      current.map((row, rowIndex) =>
+        rowIndex === index
+          ? { ...row, price: Math.max(0, Number.isFinite(value) ? value : 0) }
+          : row
+      )
+    );
+  };
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -99,10 +160,7 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
           guarniciones: [guarnicion1.trim(), guarnicion2.trim()].filter(Boolean),
           aguaDelDia: aguaDelDia.trim(),
           postreDelDia: postreDelDia.trim(),
-          opcionesAlternativas: writeAlternativeDefaultSurcharge(
-            config.opcionesAlternativas,
-            alternativeDefaultSurcharge
-          ),
+          opcionesAlternativas: serializeAlternativePriceRows(alternativePrices),
           serviceMode: config.serviceMode || 'AUTO',
           updatedAt: new Date().toISOString(),
           updatedBy: currentUser.name,
@@ -111,7 +169,7 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
       );
 
       setConfig(updated);
-      setAlternativeDefaultSurcharge(readAlternativeDefaultSurcharge(updated.opcionesAlternativas));
+      setAlternativePrices(buildAlternativePriceRows(updated.opcionesAlternativas));
       setSuccessMsg('¡Menú del Día publicado en tiempo real para clientes y Tita!');
       window.setTimeout(() => setSuccessMsg(null), 3500);
       onRefreshStats();
@@ -257,30 +315,37 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
             </div>
 
             <div className="rounded-2xl border border-[#DEC8AE] bg-[#FFF7EA] p-4">
-              <div className="grid grid-cols-1 sm:grid-cols-[1fr_180px] gap-3 sm:items-end">
-                <div>
-                  <label className="block text-xs font-bold text-[#2B1B13] uppercase tracking-wider mb-1.5 flex items-center gap-1.5 font-serif">
-                    <DollarSign className="w-3.5 h-3.5 text-[#C9974D]" /> Recargo especialidades sin precio
-                  </label>
-                  <p className="text-[11px] text-[#6B4028] leading-relaxed">
-                    Se suma automáticamente a las especialidades que no tengan un recargo escrito. Hoy quedan en +${alternativeDefaultSurcharge}. Las opciones que ya dicen (+$10), (+$5), etc. conservan ese importe.
-                  </p>
-                </div>
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#A86B3D] font-bold">+$</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={alternativeDefaultSurcharge}
-                    onChange={(event) => setAlternativeDefaultSurcharge(Math.max(0, Number(event.target.value) || 0))}
-                    className="w-full pl-10 pr-4 py-2.5 bg-white rounded-xl border border-[#F4E3C8] text-[#2B1B13] font-bold text-lg focus:border-[#C9974D] focus:outline-hidden"
-                    aria-label="Recargo para especialidades sin precio"
-                  />
-                </div>
+              <div className="mb-3">
+                <label className="block text-xs font-bold text-[#2B1B13] uppercase tracking-wider mb-1.5 flex items-center gap-1.5 font-serif">
+                  <DollarSign className="w-3.5 h-3.5 text-[#C9974D]" /> Precios de Especialidades y Clásicos
+                </label>
+                <p className="text-[11px] text-[#6B4028] leading-relaxed">
+                  Cada platillo extra tiene su propio recargo. Cambia solamente el importe que necesites y publica el menú.
+                </p>
               </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {alternativePrices.map((row, index) => (
+                  <div key={`${row.name}-${index}`} className="flex items-center justify-between gap-3 rounded-xl border border-[#F4E3C8] bg-white px-3 py-2.5">
+                    <span className="text-[11px] font-bold text-[#3A2418] leading-snug min-w-0">{row.name}</span>
+                    <div className="relative w-24 shrink-0">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#A86B3D] text-xs font-bold">+$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={row.price}
+                        onChange={(event) => handleAlternativePriceChange(index, Number(event.target.value))}
+                        className="w-full pl-8 pr-2 py-2 bg-[#FFF7EA] rounded-lg border border-[#DEC8AE] text-[#2B1B13] font-bold text-sm focus:border-[#C9974D] focus:outline-hidden"
+                        aria-label={`Recargo de ${row.name}`}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
               <p className="text-[10px] text-[#A86B3D] mt-2">
-                Ejemplo: Enchiladas Verdes, Enchiladas Rojas, Milanesas o Tacos Dorados sin precio visible usarán este recargo.
+                Estos importes se reflejan en el selector del cliente, en el carrito y en las comandas.
               </p>
             </div>
 
