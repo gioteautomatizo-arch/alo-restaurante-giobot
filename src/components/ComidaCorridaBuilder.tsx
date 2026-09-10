@@ -11,17 +11,36 @@ interface ComidaCorridaBuilderProps {
   onAddToCart: (cartItem: CartItem) => void;
 }
 
+const ALT_SURCHARGE_MARKER = '__RECARGO_ESPECIALIDADES_SIN_PRECIO__:';
+
 // Helper para normalizar nombres de platillos y evitar duplicados (ej: mayúsculas, acentos, tags de recargo)
 const normalizeDishKey = (name: string): string => {
   return name
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s*\(\+?\$?\d+\)\s*/g, '')
+    .replace(/\s*\(\+?\$?\d+(?:\.\d+)?\)\s*/g, '')
     .replace(/[^a-z0-9]/g, ' ')
     .trim()
     .replace(/\s+/g, ' ');
 };
+
+const getAlternativeDefaultSurcharge = (options?: string[]): number => {
+  const marker = (options || []).find((option) => option.startsWith(ALT_SURCHARGE_MARKER));
+  if (!marker) return 5;
+  const parsed = Number(marker.slice(ALT_SURCHARGE_MARKER.length));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 5;
+};
+
+const getExplicitSurcharge = (name: string): number | null => {
+  const match = name.match(/\(\s*\+\s*\$?\s*(\d+(?:\.\d+)?)\s*\)/i);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
+
+const formatSurcharge = (value: number): string =>
+  Number.isInteger(value) ? String(value) : value.toFixed(2);
 
 export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
   isOpen,
@@ -33,22 +52,19 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
   const [segundoTiempo, setSegundoTiempo] = useState<string>('');
   const [tercerTiempo, setTercerTiempo] = useState<string>('');
   const [extraAgrega, setExtraAgrega] = useState<string>('Sin extra');
-  const [quantity, setQuantity] = useState<number>(1);
+  const [quantity] = useState<number>(1);
 
   // Escuchar cambios en tiempo real desde Firestore y el caché local
   useEffect(() => {
-    // 1. Cargar estado inicial
     const initialConfig = getDailyMenuConfig();
     setDailyMenu(initialConfig);
 
-    // 2. Suscribirse a cambios en tiempo real de Firestore mediante el bus de caché
     const unsubCache = subscribeToCache((cache) => {
       if (cache.dailyMenu) {
         setDailyMenu(cache.dailyMenu);
       }
     });
 
-    // 3. Escuchar eventos entre pestañas o actualizaciones inmediatas
     const handleDataChange = () => {
       setDailyMenu(getDailyMenuConfig());
     };
@@ -112,21 +128,17 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
     return result.length > 0 ? result : [cleanPlato.trim()];
   }, [dailyMenu.platoFuerte]);
 
-  // Opciones alternativas clásicas de la cocina (sanitizadas y deduplicadas contra guisados del día)
+  const alternativeDefaultSurcharge = useMemo(
+    () => getAlternativeDefaultSurcharge(dailyMenu.opcionesAlternativas),
+    [dailyMenu.opcionesAlternativas]
+  );
+
+  // Opciones alternativas clásicas de la cocina. El marcador interno del recargo nunca se muestra al cliente.
   const alternativeOptions = useMemo<string[]>(() => {
-    const rawList =
-      dailyMenu.opcionesAlternativas && dailyMenu.opcionesAlternativas.length > 0
-        ? dailyMenu.opcionesAlternativas
-        : [
-            'Enchiladas Suizas (+$10)',
-            'Bistec Asado (+$5)',
-            'Pechuga Asada (+$5)',
-            'Enchiladas Verdes',
-            'Enchiladas Rojas',
-            'Milanesa de Res',
-            'Milanesa de Pollo',
-            'Tacos Dorados',
-          ];
+    const configuredOptions = (dailyMenu.opcionesAlternativas || [])
+      .filter((option) => !option.startsWith(ALT_SURCHARGE_MARKER))
+      .map((option) => option.trim())
+      .filter(Boolean);
 
     const fallbackDefaults = [
       'Enchiladas Suizas (+$10)',
@@ -139,6 +151,7 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
       'Tacos Dorados',
     ];
 
+    const rawList = configuredOptions.length > 0 ? configuredOptions : fallbackDefaults;
     const combined = [...rawList, ...fallbackDefaults];
     const seen = new Set<string>();
     const result: string[] = [];
@@ -150,7 +163,6 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
       const key = normalizeDishKey(trimmed);
       if (!key) return;
 
-      // Si ya está en los guisados del día o ya se agregó, ignorar para evitar duplicados
       if (!seen.has(key) && !dailyKeys.has(key)) {
         seen.add(key);
         result.push(trimmed);
@@ -159,6 +171,18 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
 
     return result;
   }, [dailyMenu.opcionesAlternativas, dailyGuisadoOptions]);
+
+  const getAlternativeDisplayLabel = (option: string): string => {
+    const explicit = getExplicitSurcharge(option);
+    if (explicit !== null) return option;
+    return `${option} (+$${formatSurcharge(alternativeDefaultSurcharge)})`;
+  };
+
+  const selectedThirdSurcharge = useMemo(() => {
+    const explicit = getExplicitSurcharge(tercerTiempo);
+    if (explicit !== null) return explicit;
+    return alternativeOptions.includes(tercerTiempo) ? alternativeDefaultSurcharge : 0;
+  }, [tercerTiempo, alternativeOptions, alternativeDefaultSurcharge]);
 
   // Sincronizar selección activa cuando cambia el menú
   useEffect(() => {
@@ -184,16 +208,18 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
 
   // Cálculo de precio base y extras
   const baseMenuPrice = Number(dailyMenu.price) > 0 ? Number(dailyMenu.price) : 90;
-  let finalUnitPrice = baseMenuPrice;
-  if (tercerTiempo.includes('+$5')) finalUnitPrice += 5;
-  if (tercerTiempo.includes('+$10')) finalUnitPrice += 10;
+  let finalUnitPrice = baseMenuPrice + selectedThirdSurcharge;
   if (extraAgrega !== 'Sin extra') finalUnitPrice += 10;
+
+  const selectedThirdDisplay = alternativeOptions.includes(tercerTiempo)
+    ? getAlternativeDisplayLabel(tercerTiempo)
+    : tercerTiempo;
 
   const handleAdd = () => {
     const customComidaCorrida: ComidaCorridaCustomization = {
       primerTiempo: primerTiempo || primerTiempoOptions[0] || 'Sopa del día',
       segundoTiempo: segundoTiempo || segundoTiempoOptions[0] || 'Arroz del día',
-      tercerTiempo: tercerTiempo || dailyGuisadoOptions[0] || 'Guisado del día',
+      tercerTiempo: selectedThirdDisplay || dailyGuisadoOptions[0] || 'Guisado del día',
       extraAgrega: extraAgrega !== 'Sin extra' ? extraAgrega : undefined,
     };
 
@@ -354,7 +380,6 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
               3er Tiempo (Plato Fuerte / Guisado)
             </label>
 
-            {/* Guisados del Día Publicados */}
             <div>
               <span className="text-[11px] font-bold text-[#A86B3D] uppercase tracking-wider block mb-1.5 font-serif">
                 ✨ Guisados del Día de Hoy
@@ -378,7 +403,6 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
               </div>
             </div>
 
-            {/* Alternativas y Especialidades Clásicas */}
             {alternativeOptions.length > 0 && (
               <div>
                 <span className="text-[11px] font-semibold text-[#6B4028] uppercase tracking-wider block mb-1.5 font-serif">
@@ -396,7 +420,7 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
                           : 'bg-[#FFF7EA] border-[#F4E3C8] text-[#3A2418] hover:bg-[#F4E3C8]/50'
                       }`}
                     >
-                      <span className="leading-snug">{opt}</span>
+                      <span className="leading-snug">{getAlternativeDisplayLabel(opt)}</span>
                       {tercerTiempo === opt && <Check className="w-4 h-4 text-[#A86B3D] shrink-0 ml-2" />}
                     </button>
                   ))}
@@ -436,13 +460,12 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
             </h4>
             <p>• 1er Tiempo: <strong>{primerTiempo || 'Entrada del día'}</strong></p>
             <p>• 2do Tiempo: <strong>{segundoTiempo || 'Guarnición del día'}</strong> {extraAgrega !== 'Sin extra' && `(${extraAgrega})`}</p>
-            <p>• 3er Tiempo: <strong>{tercerTiempo || 'Guisado del día'}</strong></p>
+            <p>• 3er Tiempo: <strong>{selectedThirdDisplay || 'Guisado del día'}</strong></p>
             <p>• Bebida: <strong>1/2 Litro de {dailyMenu.aguaDelDia || 'Agua fresca del día'}</strong></p>
             <p>• Postre: <strong>{dailyMenu.postreDelDia || 'Postre casero del día'}</strong></p>
           </div>
         </div>
 
-        {/* Footer */}
         <div className="bg-[#FFF7EA] p-4 border-t border-[#F4E3C8] flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="text-xs text-[#6B4028] font-bold uppercase">Precio Total:</span>
@@ -461,4 +484,3 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
     </div>
   );
 };
-
