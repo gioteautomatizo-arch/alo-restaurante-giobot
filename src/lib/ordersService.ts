@@ -186,6 +186,11 @@ export function getRestaurantOrderStationStatus(
   const explicit = stationAware.stationStatuses?.[station];
   if (explicit) return explicit;
 
+  // En comandas nuevas, en cuanto existe stationStatuses cada estación es independiente.
+  // Si una estación todavía no tiene estado explícito, debe seguir como NUEVO aunque
+  // el estado global ya sea PREPARANDO porque la otra estación comenzó.
+  if (stationAware.stationStatuses) return 'NUEVO';
+
   // Compatibilidad con comandas anteriores a la separación por estaciones.
   if (order.status === 'LISTO' || order.status === 'ENTREGADO') return 'LISTO';
   if (order.status === 'PREPARANDO') return 'PREPARANDO';
