@@ -100,6 +100,20 @@ function isCafeteriaExtra(extra: string): boolean {
   ].some((term) => text.includes(term));
 }
 
+function routedInstruction(value: string | undefined, station: PreparationStation): string | undefined {
+  if (!value) return undefined;
+
+  const kitchenMatch = value.match(/(?:^|\|)\s*Cocina:\s*([^|]+)/i)?.[1]?.trim();
+  const cafeteriaMatch = value.match(/(?:^|\|)\s*Cafeter[ií]a:\s*([^|]+)/i)?.[1]?.trim();
+
+  if (kitchenMatch || cafeteriaMatch) {
+    return station === 'COCINA' ? kitchenMatch || undefined : cafeteriaMatch || undefined;
+  }
+
+  // Compatibilidad con pedidos anteriores: una nota sin prefijo sigue siendo del platillo.
+  return station === 'COCINA' ? value : undefined;
+}
+
 export function getCafeteriaExtras(item: RestaurantOrderItem): string[] {
   const extras = item.extras || [];
   const exactChoices = extras.filter(isExactBreakfastPackageChoice);
@@ -136,7 +150,10 @@ export function getOrderItemsForStation(
 
     if (station === 'CAFETERIA') {
       if (baseIsCafeteria) {
-        result.push(item);
+        result.push({
+          ...item,
+          specialInstructions: routedInstruction(item.specialInstructions, 'CAFETERIA'),
+        });
         return;
       }
 
@@ -149,9 +166,7 @@ export function getOrderItemsForStation(
           selectedOption: undefined,
           customizationSummary: undefined,
           extras: cafeteriaExtras,
-          // Las instrucciones del platillo pertenecen a Cocina.
-          // Cafetería recibe sólo las elecciones estructuradas de su estación.
-          specialInstructions: undefined,
+          specialInstructions: routedInstruction(item.specialInstructions, 'CAFETERIA'),
         });
       }
       return;
@@ -161,6 +176,7 @@ export function getOrderItemsForStation(
       result.push({
         ...item,
         extras: getKitchenExtras(item),
+        specialInstructions: routedInstruction(item.specialInstructions, 'COCINA'),
       });
     }
   });
