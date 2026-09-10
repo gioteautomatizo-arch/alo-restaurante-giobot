@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   ChefHat,
   CheckCircle2,
   Clock3,
@@ -33,15 +34,30 @@ function formatAge(iso: string): string {
   const ms = Date.now() - (Date.parse(iso) || Date.now());
   const minutes = Math.max(0, Math.floor(ms / 60000));
   if (minutes < 1) return 'ahora';
-  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 60) return `hace ${minutes} min`;
   const hours = Math.floor(minutes / 60);
-  return `${hours} h ${minutes % 60} min`;
+  return `hace ${hours} h ${minutes % 60} min`;
 }
 
 function orderOriginLabel(order: RestaurantOrder) {
-  if (order.orderType === 'dine_in') return order.tableNumber ? `Mesa ${order.tableNumber}` : 'En sucursal';
-  if (order.orderType === 'pickup') return 'Para llevar';
-  return 'Domicilio';
+  if (order.orderType === 'dine_in') return order.tableNumber ? `MESA ${order.tableNumber}` : 'EN SUCURSAL';
+  if (order.orderType === 'pickup') return 'PARA LLEVAR';
+  return 'DOMICILIO';
+}
+
+function sourceLabel(order: RestaurantOrder): string {
+  if (order.orderSource === 'CLIENTE_QR') return 'QR CLIENTE';
+  if (order.orderSource === 'MESERO') return 'MESERO';
+  if (order.orderSource === 'CAJA') return 'CAJA';
+  return order.orderType === 'delivery' ? 'DOMICILIO' : 'APP';
+}
+
+function kitchenOptionParts(value?: string): { sauce?: string; preparation?: string; raw?: string } {
+  if (!value) return {};
+  const sauce = value.match(/Salsa:\s*([^·]+)/i)?.[1]?.trim();
+  const preparation = value.match(/Preparación:\s*(.+)$/i)?.[1]?.trim();
+  if (sauce || preparation) return { sauce, preparation };
+  return { raw: value };
 }
 
 export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
@@ -85,9 +101,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
     setError(null);
     try {
       await updateRestaurantOrderStatus(order.id, status, currentUser);
-      if (status === 'CANCELADO') {
-        setCancelConfirmId(null);
-      }
+      if (status === 'CANCELADO') setCancelConfirmId(null);
     } catch (err: any) {
       setError(err?.message || 'No se pudo actualizar la comanda. Revisa la conexión a Firebase.');
     } finally {
@@ -104,9 +118,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
               <ChefHat className="w-4 h-4" /> Cocina en tiempo real
             </div>
             <h2 className="text-2xl sm:text-3xl font-serif font-bold">Comandas</h2>
-            <p className="text-xs sm:text-sm text-[#F4E3C8]/80 mt-1">
-              Pedidos de mesas, para llevar y domicilio en una sola bandeja.
-            </p>
+            <p className="text-xs sm:text-sm text-[#F4E3C8]/80 mt-1">Lectura rápida para cocina: mesa, platillo, preparación y notas primero.</p>
           </div>
           <div className="grid grid-cols-3 gap-2 min-w-[260px]">
             <div className="rounded-2xl bg-rose-950/40 border border-rose-400/30 px-3 py-2 text-center">
@@ -125,11 +137,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
         </div>
       </div>
 
-      {error && (
-        <div className="rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 text-xs font-medium">
-          {error}
-        </div>
-      )}
+      {error && <div className="rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 text-xs font-medium">{error}</div>}
 
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
         {([
@@ -144,9 +152,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
             key={id}
             onClick={() => setFilter(id)}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap border transition-all cursor-pointer ${
-              filter === id
-                ? 'bg-[#3A2418] text-[#FFF7EA] border-[#3A2418]'
-                : 'bg-white text-[#5C3825] border-[#DEC8AE] hover:bg-[#FFF7EA]'
+              filter === id ? 'bg-[#3A2418] text-[#FFF7EA] border-[#3A2418]' : 'bg-white text-[#5C3825] border-[#DEC8AE] hover:bg-[#FFF7EA]'
             }`}
           >
             {label}
@@ -161,129 +167,130 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
           <p className="text-xs mt-1">Las nuevas órdenes aparecerán aquí automáticamente.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
           {visibleOrders.map((order) => {
             const meta = statusMeta[order.status];
             const busy = busyId === order.id;
             const confirmingCancel = cancelConfirmId === order.id;
             return (
-              <article key={order.id} className="bg-white border border-[#E8D4BE] rounded-3xl shadow-xs overflow-hidden">
-                <div className="p-4 border-b border-[#F4E3C8] flex items-start justify-between gap-3">
+              <article key={order.id} className="bg-white border-2 border-[#D7B995] rounded-3xl shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-[#E8D4BE] bg-[#FFF9F0] flex items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-lg font-serif font-extrabold text-[#2B1B13]">{orderOriginLabel(order)}</span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${meta.className}`}>{meta.label}</span>
+                      <span className="text-2xl font-serif font-black text-[#2B1B13]">{orderOriginLabel(order)}</span>
+                      <span className={`text-[11px] px-2.5 py-1 rounded-full border font-black ${meta.className}`}>{meta.label}</span>
                     </div>
-                    <div className="flex items-center gap-2 mt-1 text-[10px] text-[#6B4028]">
+                    <div className="flex items-center gap-2 mt-1.5 text-[11px] text-[#6B4028] flex-wrap">
                       <span className="font-mono font-bold">#{order.code}</span>
                       <span>•</span>
-                      <span className="inline-flex items-center gap-1"><Clock3 className="w-3 h-3" /> {formatAge(order.createdAt)}</span>
+                      <span className="inline-flex items-center gap-1 font-bold"><Clock3 className="w-3.5 h-3.5" /> {formatAge(order.createdAt)}</span>
+                      <span>•</span>
+                      <span className="font-black uppercase tracking-wide text-[#A86B3D]">{sourceLabel(order)}</span>
                     </div>
                   </div>
-                  <strong className="text-sm text-[#2B1B13]">${order.total}</strong>
+                  <strong className="text-base text-[#2B1B13]">${order.total}</strong>
                 </div>
 
-                <div className="p-4 space-y-3">
-                  <div className="space-y-2">
-                    {order.items.map((item, idx) => (
-                      <div key={`${order.id}-${idx}`} className="rounded-2xl bg-[#FFF9F0] border border-[#F4E3C8] px-3 py-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="text-xs font-bold text-[#2B1B13]">{item.quantity}× {item.name}</span>
-                          <span className="text-[11px] font-semibold text-[#6B4028]">${item.totalPrice}</span>
+                <div className="p-4 space-y-4">
+                  <div className="space-y-3">
+                    {order.items.map((item, idx) => {
+                      const option = kitchenOptionParts(item.selectedOption);
+                      return (
+                        <div key={`${order.id}-${idx}`} className="rounded-2xl bg-white border-2 border-[#E8D4BE] px-4 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="text-lg sm:text-xl font-black text-[#2B1B13] leading-tight">{item.quantity}× {item.name}</span>
+                            <span className="text-xs font-bold text-[#8A624C]">${item.totalPrice}</span>
+                          </div>
+
+                          {item.personLabel && <p className="text-sm font-black text-emerald-800 mt-2">👤 {item.personLabel}</p>}
+
+                          {(option.sauce || option.preparation || option.raw || item.selectedSize || (item.extras && item.extras.length > 0) || item.customizationSummary) && (
+                            <div className="mt-3 grid gap-2">
+                              {option.sauce && (
+                                <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2">
+                                  <span className="block text-[10px] uppercase tracking-wider font-black text-emerald-700">Salsa</span>
+                                  <strong className="text-base sm:text-lg text-emerald-950">{option.sauce.toUpperCase()}</strong>
+                                </div>
+                              )}
+                              {option.preparation && (
+                                <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
+                                  <span className="block text-[10px] uppercase tracking-wider font-black text-amber-700">Preparación</span>
+                                  <strong className="text-base sm:text-lg text-amber-950">{option.preparation}</strong>
+                                </div>
+                              )}
+                              {option.raw && (
+                                <div className="rounded-xl bg-[#FFF7EA] border border-[#DEC8AE] px-3 py-2">
+                                  <span className="block text-[10px] uppercase tracking-wider font-black text-[#A86B3D]">Opción</span>
+                                  <strong className="text-sm sm:text-base text-[#3A2418]">{option.raw}</strong>
+                                </div>
+                              )}
+                              {item.selectedSize && <p className="text-sm font-bold text-[#5C3825]">Tamaño: <strong>{item.selectedSize}</strong></p>}
+                              {item.extras && item.extras.length > 0 && <p className="text-sm font-bold text-[#7A4A27]">EXTRAS: <strong>{item.extras.join(', ')}</strong></p>}
+                              {item.customizationSummary && <p className="text-sm font-bold text-[#5C3825]">{item.customizationSummary}</p>}
+                            </div>
+                          )}
+
+                          {item.specialInstructions && (
+                            <div className="mt-3 rounded-2xl bg-rose-50 border-2 border-rose-300 px-3 py-3 flex items-start gap-2">
+                              <AlertTriangle className="w-5 h-5 text-rose-700 shrink-0 mt-0.5" />
+                              <div>
+                                <span className="block text-[10px] uppercase tracking-wider font-black text-rose-700">Atención</span>
+                                <strong className="block text-base sm:text-lg leading-tight text-rose-950">{item.specialInstructions}</strong>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        {item.personLabel && (
-                          <p className="text-[10px] font-black text-emerald-700 mt-1">👤 {item.personLabel}</p>
-                        )}
-                        {item.selectedSize && <p className="text-[10px] text-[#6B4028] mt-1">Tamaño: {item.selectedSize}</p>}
-                        {item.selectedOption && <p className="text-[10px] text-[#6B4028]">Opción: {item.selectedOption}</p>}
-                        {item.extras && item.extras.length > 0 && <p className="text-[10px] text-[#A86B3D]">Extras: {item.extras.join(', ')}</p>}
-                        {item.customizationSummary && <p className="text-[10px] text-[#6B4028]">{item.customizationSummary}</p>}
-                        {item.specialInstructions && <p className="text-[10px] text-rose-800 font-semibold mt-1">Nota: {item.specialInstructions}</p>}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   {(order.notes || order.customerName) && (
-                    <div className="text-[11px] text-[#5C3825] bg-[#FFF7EA] rounded-2xl px-3 py-2 border border-[#F4E3C8]">
+                    <div className="text-sm text-[#5C3825] bg-[#FFF7EA] rounded-2xl px-3 py-2.5 border border-[#F4E3C8]">
                       <strong>{order.customerName || 'Cliente'}</strong>
-                      {order.notes && <p className="mt-0.5">Nota general: {order.notes}</p>}
+                      {order.notes && <p className="mt-1 font-bold">Nota general: {order.notes}</p>}
                     </div>
                   )}
 
-                  {order.claimedByName && (
-                    <p className="text-[10px] text-[#6B4028]">Tomada por: <strong>{order.claimedByName}</strong></p>
-                  )}
+                  {order.claimedByName && <p className="text-xs text-[#6B4028]">Tomada por: <strong>{order.claimedByName}</strong></p>}
 
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     {order.status === 'NUEVO' && canKitchen && (
-                      <button
-                        disabled={busy}
-                        onClick={() => changeStatus(order, 'PREPARANDO')}
-                        className="col-span-2 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
-                      >
-                        {busy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ChefHat className="w-4 h-4" />}
-                        Tomar / Preparar
+                      <button disabled={busy} onClick={() => changeStatus(order, 'PREPARANDO')} className="col-span-2 py-4 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white text-base font-black flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer">
+                        {busy ? <RefreshCw className="w-5 h-5 animate-spin" /> : <ChefHat className="w-5 h-5" />} PREPARAR
                       </button>
                     )}
 
                     {order.status === 'PREPARANDO' && canKitchen && (
-                      <button
-                        disabled={busy}
-                        onClick={() => changeStatus(order, 'LISTO')}
-                        className="col-span-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
-                      >
-                        <PackageCheck className="w-4 h-4" /> Marcar listo
+                      <button disabled={busy} onClick={() => changeStatus(order, 'LISTO')} className="col-span-2 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-base font-black flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer">
+                        <PackageCheck className="w-5 h-5" /> LISTO
                       </button>
                     )}
 
                     {order.status === 'LISTO' && canDeliver && (
-                      <button
-                        disabled={busy}
-                        onClick={() => changeStatus(order, 'ENTREGADO')}
-                        className="col-span-2 py-2.5 rounded-xl bg-[#3A2418] hover:bg-[#5C3825] text-[#FFF7EA] text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
-                      >
-                        <CheckCircle2 className="w-4 h-4" /> Entregado
+                      <button disabled={busy} onClick={() => changeStatus(order, 'ENTREGADO')} className="col-span-2 py-4 rounded-2xl bg-[#3A2418] hover:bg-[#5C3825] text-[#FFF7EA] text-base font-black flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer">
+                        <CheckCircle2 className="w-5 h-5" /> ENTREGADO
                       </button>
                     )}
 
                     {order.status === 'ENTREGADO' && (
-                      <div className="col-span-2 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-xs font-bold flex items-center justify-center gap-2">
+                      <div className="col-span-2 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-xs font-bold flex items-center justify-center gap-2">
                         {order.orderType === 'delivery' ? <Truck className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />} Finalizada
                       </div>
                     )}
 
                     {canCancel && !['ENTREGADO', 'CANCELADO'].includes(order.status) && !confirmingCancel && (
-                      <button
-                        disabled={busy}
-                        onClick={() => setCancelConfirmId(order.id || null)}
-                        className="col-span-2 py-2 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 text-[11px] font-bold flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                      >
+                      <button disabled={busy} onClick={() => setCancelConfirmId(order.id || null)} className="col-span-2 py-2 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 text-[11px] font-bold flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer">
                         <XCircle className="w-3.5 h-3.5" /> Cancelar comanda
                       </button>
                     )}
 
                     {canCancel && !['ENTREGADO', 'CANCELADO'].includes(order.status) && confirmingCancel && (
                       <div className="col-span-2 rounded-xl border border-rose-200 bg-rose-50 p-2.5 space-y-2">
-                        <p className="text-[11px] font-bold text-rose-800 text-center">
-                          ¿Confirmas cancelar la comanda #{order.code}?
-                        </p>
+                        <p className="text-[11px] font-bold text-rose-800 text-center">¿Confirmas cancelar la comanda #{order.code}?</p>
                         <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => setCancelConfirmId(null)}
-                            className="py-2 rounded-lg border border-rose-200 bg-white text-rose-700 text-[11px] font-bold disabled:opacity-50 cursor-pointer"
-                          >
-                            No cancelar
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => changeStatus(order, 'CANCELADO')}
-                            className="py-2 rounded-lg bg-rose-700 hover:bg-rose-800 text-white text-[11px] font-bold disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1"
-                          >
-                            {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
-                            Sí, cancelar
+                          <button type="button" disabled={busy} onClick={() => setCancelConfirmId(null)} className="py-2 rounded-lg border border-rose-200 bg-white text-rose-700 text-[11px] font-bold disabled:opacity-50 cursor-pointer">No cancelar</button>
+                          <button type="button" disabled={busy} onClick={() => changeStatus(order, 'CANCELADO')} className="py-2 rounded-lg bg-rose-700 hover:bg-rose-800 text-white text-[11px] font-bold disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1">
+                            {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />} Sí, cancelar
                           </button>
                         </div>
                       </div>
