@@ -31,15 +31,15 @@ type AlternativePriceRow = {
 
 const ALT_SURCHARGE_MARKER = '__RECARGO_ESPECIALIDADES_SIN_PRECIO__:';
 
-const DEFAULT_ALTERNATIVE_OPTIONS = [
-  'Enchiladas Suizas (+$10)',
-  'Bistec Asado (+$5)',
-  'Pechuga Asada (+$5)',
-  'Enchiladas Verdes (+$5)',
-  'Enchiladas Rojas (+$5)',
-  'Milanesa de Res (+$5)',
-  'Milanesa de Pollo (+$5)',
-  'Tacos Dorados (+$5)',
+// Fuente funcional alineada con la carta original de Comida Corrida:
+// opciones: Enchiladas verdes o rojas, Milanesa de res o pollo, Tacos dorados.
+// cambios con recargo: Bistec o pechuga asada (+$5), Enchiladas suizas (+$10).
+const ORIGINAL_ALTERNATIVE_ROWS: AlternativePriceRow[] = [
+  { name: 'Enchiladas verdes o rojas', price: 5 },
+  { name: 'Milanesa de res o pollo', price: 5 },
+  { name: 'Tacos dorados', price: 5 },
+  { name: 'Bistec o pechuga asada', price: 5 },
+  { name: 'Enchiladas suizas', price: 10 },
 ];
 
 function readLegacyDefaultSurcharge(options?: string[]): number {
@@ -62,18 +62,46 @@ function stripExplicitSurcharge(option: string): string {
     .trim();
 }
 
-function buildAlternativePriceRows(options?: string[]): AlternativePriceRow[] {
-  const fallbackPrice = readLegacyDefaultSurcharge(options);
+function normalizeAlternativeName(value: string): string {
+  return stripExplicitSurcharge(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function configuredPriceForCanonical(
+  canonicalName: string,
+  options: string[] | undefined,
+  fallbackPrice: number
+): number {
+  const canonicalKey = normalizeAlternativeName(canonicalName);
   const configured = (options || [])
     .filter((option) => !option.startsWith(ALT_SURCHARGE_MARKER))
-    .map((option) => option.trim())
-    .filter(Boolean);
+    .find((option) => {
+      const optionKey = normalizeAlternativeName(option);
+      if (optionKey === canonicalKey) return true;
+      if (canonicalKey === 'tacos dorados' && optionKey.startsWith('tacos dorados')) return true;
+      if (canonicalKey === 'enchiladas suizas' && optionKey === 'enchiladas suizas') return true;
+      if (canonicalKey === 'bistec o pechuga asada') {
+        return optionKey === 'bistec asado' || optionKey === 'pechuga asada' || optionKey === canonicalKey;
+      }
+      return false;
+    });
 
-  const source = configured.length > 0 ? configured : DEFAULT_ALTERNATIVE_OPTIONS;
+  return configured ? (getExplicitSurcharge(configured) ?? fallbackPrice) : fallbackPrice;
+}
 
-  return source.map((option) => ({
-    name: stripExplicitSurcharge(option),
-    price: getExplicitSurcharge(option) ?? fallbackPrice,
+function buildAlternativePriceRows(options?: string[]): AlternativePriceRow[] {
+  const legacyFallback = readLegacyDefaultSurcharge(options);
+  return ORIGINAL_ALTERNATIVE_ROWS.map((row) => ({
+    ...row,
+    price: configuredPriceForCanonical(
+      row.name,
+      options,
+      row.price === 10 ? 10 : legacyFallback
+    ),
   }));
 }
 
@@ -320,7 +348,7 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
                   <DollarSign className="w-3.5 h-3.5 text-[#C9974D]" /> Precios de Especialidades y Clásicos
                 </label>
                 <p className="text-[11px] text-[#6B4028] leading-relaxed">
-                  Cada platillo extra tiene su propio recargo. Cambia solamente el importe que necesites y publica el menú.
+                  Sólo se muestran las alternativas que existen en la carta original. Cada una puede tener su propio recargo.
                 </p>
               </div>
 
@@ -345,7 +373,7 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
               </div>
 
               <p className="text-[10px] text-[#A86B3D] mt-2">
-                Estos importes se reflejan en el selector del cliente, en el carrito y en las comandas.
+                Al publicar se reemplazan alternativas antiguas que no pertenecen a la carta, como “Bistec encebollado”.
               </p>
             </div>
 
