@@ -60,6 +60,27 @@ function kitchenOptionParts(value?: string): { sauce?: string; preparation?: str
   return { raw: value };
 }
 
+function kitchenCourseParts(value?: string): {
+  first?: string;
+  second?: string;
+  third?: string;
+  extra?: string;
+} {
+  if (!value) return {};
+
+  const parts = value
+    .split('·')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const first = parts.find((part) => /^1er\s+tiempo\s*:/i.test(part))?.replace(/^1er\s+tiempo\s*:\s*/i, '').trim();
+  const second = parts.find((part) => /^2do\s+tiempo\s*:/i.test(part))?.replace(/^2do\s+tiempo\s*:\s*/i, '').trim();
+  const third = parts.find((part) => /^3er\s+tiempo\s*:/i.test(part))?.replace(/^3er\s+tiempo\s*:\s*/i, '').trim();
+  const extra = parts.find((part) => !/^[123](?:er|do)?\s+tiempo\s*:/i.test(part));
+
+  return { first, second, third, extra };
+}
+
 function sortOldestFirst(list: RestaurantOrder[]): RestaurantOrder[] {
   return [...list].sort((a, b) => (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0));
 }
@@ -208,6 +229,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
                   <div className="space-y-4">
                     {order.items.map((item, idx) => {
                       const option = kitchenOptionParts(item.selectedOption);
+                      const courses = kitchenCourseParts(item.customizationSummary);
+                      const hasCourses = Boolean(courses.first || courses.second || courses.third);
+
                       return (
                         <div key={`${order.id}-${idx}`} className={`rounded-2xl bg-white border-2 border-[#E8D4BE] ${kitchenMode ? 'px-5 py-4' : 'px-4 py-3'}`}>
                           <div className="flex items-start justify-between gap-3">
@@ -223,7 +247,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
                             </p>
                           )}
 
-                          {(option.sauce || option.preparation || option.raw || item.selectedSize || (item.extras && item.extras.length > 0) || item.customizationSummary) && (
+                          {(option.sauce || option.preparation || (!hasCourses && option.raw) || item.selectedSize || (item.extras && item.extras.length > 0) || item.customizationSummary) && (
                             <div className="mt-4 grid gap-3">
                               {option.sauce && (
                                 <div className={`rounded-2xl bg-emerald-50 border-2 border-emerald-300 ${kitchenMode ? 'px-4 py-3.5' : 'px-3 py-2'}`}>
@@ -233,6 +257,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
                                   </strong>
                                 </div>
                               )}
+
                               {option.preparation && (
                                 <div className={`rounded-2xl bg-amber-50 border-2 border-amber-300 ${kitchenMode ? 'px-4 py-3.5' : 'px-3 py-2'}`}>
                                   <span className={`${kitchenMode ? 'text-xs sm:text-sm' : 'text-[10px]'} block uppercase tracking-wider font-black text-amber-700`}>PREPARACIÓN</span>
@@ -241,7 +266,36 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
                                   </strong>
                                 </div>
                               )}
-                              {option.raw && (
+
+                              {hasCourses && (
+                                <div className="grid gap-2.5">
+                                  {courses.first && (
+                                    <div className={`rounded-2xl bg-[#FFF7EA] border-2 border-[#E8D4BE] ${kitchenMode ? 'px-4 py-3.5' : 'px-3 py-2'}`}>
+                                      <span className={`${kitchenMode ? 'text-xs sm:text-sm' : 'text-[10px]'} block uppercase tracking-wider font-black text-[#A86B3D]`}>1ER TIEMPO</span>
+                                      <strong className={`${kitchenMode ? 'text-2xl sm:text-3xl' : 'text-base sm:text-lg'} block mt-0.5 text-[#2B1B13] leading-tight`}>{courses.first}</strong>
+                                    </div>
+                                  )}
+                                  {courses.second && (
+                                    <div className={`rounded-2xl bg-amber-50 border-2 border-amber-200 ${kitchenMode ? 'px-4 py-3.5' : 'px-3 py-2'}`}>
+                                      <span className={`${kitchenMode ? 'text-xs sm:text-sm' : 'text-[10px]'} block uppercase tracking-wider font-black text-amber-700`}>2DO TIEMPO</span>
+                                      <strong className={`${kitchenMode ? 'text-2xl sm:text-3xl' : 'text-base sm:text-lg'} block mt-0.5 text-amber-950 leading-tight`}>{courses.second}</strong>
+                                    </div>
+                                  )}
+                                  {courses.third && (
+                                    <div className={`rounded-2xl bg-orange-50 border-2 border-orange-300 ${kitchenMode ? 'px-4 py-3.5' : 'px-3 py-2'}`}>
+                                      <span className={`${kitchenMode ? 'text-xs sm:text-sm' : 'text-[10px]'} block uppercase tracking-wider font-black text-orange-700`}>3ER TIEMPO</span>
+                                      <strong className={`${kitchenMode ? 'text-2xl sm:text-3xl' : 'text-base sm:text-lg'} block mt-0.5 text-orange-950 leading-tight`}>{courses.third}</strong>
+                                    </div>
+                                  )}
+                                  {courses.extra && (
+                                    <div className={`rounded-xl bg-[#FFF7EA] border border-[#DEC8AE] ${kitchenMode ? 'px-4 py-3 text-lg' : 'px-3 py-2 text-sm'} font-bold text-[#7A4A27]`}>
+                                      EXTRA: <strong>{courses.extra}</strong>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {!hasCourses && option.raw && (
                                 <div className={`rounded-2xl bg-[#FFF7EA] border-2 border-[#DEC8AE] ${kitchenMode ? 'px-4 py-3.5' : 'px-3 py-2'}`}>
                                   <span className={`${kitchenMode ? 'text-xs sm:text-sm' : 'text-[10px]'} block uppercase tracking-wider font-black text-[#A86B3D]`}>OPCIÓN</span>
                                   <strong className={`${kitchenMode ? 'text-xl sm:text-2xl' : 'text-sm sm:text-base'} block mt-0.5 text-[#3A2418] leading-tight`}>
@@ -249,17 +303,20 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
                                   </strong>
                                 </div>
                               )}
+
                               {item.selectedSize && (
                                 <p className={`${kitchenMode ? 'text-lg' : 'text-sm'} font-bold text-[#5C3825]`}>
                                   TAMAÑO: <strong>{item.selectedSize}</strong>
                                 </p>
                               )}
+
                               {item.extras && item.extras.length > 0 && (
                                 <div className={`rounded-xl bg-[#FFF7EA] border border-[#DEC8AE] ${kitchenMode ? 'px-4 py-3 text-lg' : 'px-3 py-2 text-sm'} font-bold text-[#7A4A27]`}>
                                   EXTRAS: <strong>{item.extras.join(', ')}</strong>
                                 </div>
                               )}
-                              {item.customizationSummary && (
+
+                              {!hasCourses && item.customizationSummary && (
                                 <p className={`${kitchenMode ? 'text-lg' : 'text-sm'} font-bold text-[#5C3825]`}>
                                   {item.customizationSummary}
                                 </p>
