@@ -1,0 +1,149 @@
+import { RestaurantOrder, RestaurantOrderItem } from '../types';
+import type { PreparationStation } from './ordersService';
+
+const CAFETERIA_PRODUCT_IDS = new Set([
+  'espresso',
+  'americano',
+  'cappuccino',
+  'latte',
+  'chai',
+  'cafe-olla',
+  'cafe-de-olla',
+  'chocolate',
+  'chocolate-blanco',
+  'mocca',
+  'te',
+  'ice-coffee',
+  'ice-coffee-leche',
+  'naranjada-mineral',
+  'limonada-mineral',
+  'te-frio',
+  'frappe-mocca',
+  'frappe-chocolate',
+  'frappe-chocolate-blanco',
+  'frappe-cookies-cream',
+  'frappuccino',
+  'refresco',
+  'agua-botella-05',
+  'agua-botella-1',
+  'agua-botella-15',
+  'licuado-1-fruta',
+  'licuado-combinado',
+  'agua-fresca',
+  'cocktail-frutas',
+  'jugo-natural',
+  'jugo-combinado',
+]);
+
+function normalize(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function looksLikeCafeteriaProduct(item: RestaurantOrderItem): boolean {
+  if (CAFETERIA_PRODUCT_IDS.has(item.productId)) return true;
+
+  const text = normalize(`${item.productId} ${item.name}`);
+  return [
+    'cafe',
+    'espresso',
+    'americano',
+    'cappuccino',
+    'latte',
+    'chai',
+    'chocolate',
+    'mocca',
+    'te frio',
+    'frappe',
+    'frappuccino',
+    'refresco',
+    'agua fresca',
+    'botella de agua',
+    'licuado',
+    'jugo',
+    'naranjada',
+    'limonada',
+    'cocktail de frutas',
+    'coctel de frutas',
+  ].some((term) => text.includes(term));
+}
+
+function isCafeteriaExtra(extra: string): boolean {
+  const text = normalize(extra);
+  return [
+    'hazlo paquete',
+    'paquete desayuno',
+    'jugo',
+    'fruta',
+    'cafe',
+    'te',
+    'licuado',
+    'bebida',
+  ].some((term) => text.includes(term));
+}
+
+export function getCafeteriaExtras(item: RestaurantOrderItem): string[] {
+  return (item.extras || []).filter(isCafeteriaExtra);
+}
+
+export function getKitchenExtras(item: RestaurantOrderItem): string[] {
+  return (item.extras || []).filter((extra) => !isCafeteriaExtra(extra));
+}
+
+export function getItemStations(item: RestaurantOrderItem): PreparationStation[] {
+  if (looksLikeCafeteriaProduct(item)) return ['CAFETERIA'];
+
+  const stations: PreparationStation[] = ['COCINA'];
+  if (getCafeteriaExtras(item).length > 0) stations.push('CAFETERIA');
+  return stations;
+}
+
+export function getOrderRequiredStations(order: RestaurantOrder): PreparationStation[] {
+  const stations = new Set<PreparationStation>();
+  order.items.forEach((item) => getItemStations(item).forEach((station) => stations.add(station)));
+  return Array.from(stations);
+}
+
+export function getOrderItemsForStation(
+  order: RestaurantOrder,
+  station: PreparationStation
+): RestaurantOrderItem[] {
+  const result: RestaurantOrderItem[] = [];
+
+  order.items.forEach((item) => {
+    const baseIsCafeteria = looksLikeCafeteriaProduct(item);
+
+    if (station === 'CAFETERIA') {
+      if (baseIsCafeteria) {
+        result.push(item);
+        return;
+      }
+
+      const cafeteriaExtras = getCafeteriaExtras(item);
+      if (cafeteriaExtras.length > 0) {
+        result.push({
+          ...item,
+          name: `Complemento de ${item.name}`,
+          selectedSize: undefined,
+          selectedOption: undefined,
+          customizationSummary: undefined,
+          extras: cafeteriaExtras,
+        });
+      }
+      return;
+    }
+
+    if (!baseIsCafeteria) {
+      result.push({
+        ...item,
+        extras: getKitchenExtras(item),
+      });
+    }
+  });
+
+  return result;
+}
