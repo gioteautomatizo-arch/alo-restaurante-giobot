@@ -113,6 +113,17 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
   const [effectiveService, setEffectiveService] = useState<EffectiveService>(() => getEffectiveService());
   const isDesayuno = effectiveService === 'DESAYUNO';
 
+  // staffOrder=1 se usa cuando el personal abre "Tomar pedido desde mi celular".
+  // Mantiene el mismo motor de mesa/cuenta/persona, pero con una interfaz de personal.
+  const isStaffOrder = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return new URLSearchParams(window.location.search).get('staffOrder') === '1';
+    } catch {
+      return false;
+    }
+  }, []);
+
   // Solicitudes operativas en tiempo real (Firestore)
   const [submittingType, setSubmittingType] = useState<TableServiceRequestType | null>(null);
   const [pendingTypes, setPendingTypes] = useState<Set<TableServiceRequestType>>(new Set());
@@ -417,6 +428,32 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
     );
   }
 
+  // En modo personal, una liga antigua no debe reabrir una mesa que ya fue liberada.
+  if (isStaffOrder && (!session || session.status === 'CERRADA')) {
+    return (
+      <section className="w-full max-w-xl mx-auto my-4 px-3 sm:px-4">
+        <div className="bg-[#FFFDF9] rounded-3xl p-6 sm:p-8 border border-[#DEC8AE] shadow-md text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-[#FFF7EA] border border-[#DEC8AE] flex items-center justify-center mx-auto text-[#3A2418] shadow-2xs">
+            <Utensils className="w-7 h-7" />
+          </div>
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#3A2418] text-[#FFF7EA] text-xs font-serif font-bold tracking-wide shadow-2xs mb-2">
+              <span>Mesa {tableNumber}</span>
+              <span>·</span>
+              <span>Modo personal</span>
+            </div>
+            <h2 className="font-serif font-black text-xl sm:text-2xl text-[#2B1B13]">
+              Esta mesa ya no tiene servicio activo
+            </h2>
+            <p className="text-xs sm:text-sm text-[#6B4028] mt-1.5 max-w-md mx-auto">
+              Vuelve al panel de Mesas para abrirla o seleccionar otra mesa antes de tomar un pedido.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   // REGLA DE FUENTE DE VERDAD:
   // Si existe una TableSession con status === 'ACTIVA' o status === 'CUENTA',
   // la vista del cliente NUNCA debe mostrar el selector de personas.
@@ -550,8 +587,12 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 <span>Mesa {tableNumber}</span>
               </div>
-              {/* Indicador discreto de mesero en tiempo real */}
-              {effectiveWaiterName ? (
+              {isStaffOrder ? (
+                <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold shadow-2xs">
+                  <Utensils className="w-3 h-3" />
+                  <span>Modo personal</span>
+                </div>
+              ) : effectiveWaiterName ? (
                 <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-[#6B4028] border border-[#DEC8AE] text-xs font-medium shadow-2xs">
                   <span>Te atiende:</span>
                   <strong className="font-semibold text-[#2B1B13]">{effectiveWaiterName}</strong>
@@ -563,30 +604,34 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
               )}
             </div>
             <h1 className="text-lg sm:text-xl font-serif font-black text-[#2B1B13] tracking-tight">
-              Tu servicio ha comenzado
+              {isStaffOrder ? `Tomando pedido · Mesa ${tableNumber}` : 'Tu servicio ha comenzado'}
             </h1>
             <p className="text-xs sm:text-sm text-[#6B4028] font-medium mt-0.5">
-              ¿Qué te gustaría ordenar?
+              {isStaffOrder
+                ? 'Selecciona a la persona y agrega sus platillos o bebidas.'
+                : '¿Qué te gustaría ordenar?'}
             </p>
           </div>
 
-          {/* Botón Secundario: 🔔 Necesito algo */}
-          <div className="sm:self-center">
-            <button
-              id="btn-necesito-algo"
-              type="button"
-              onClick={() => setIsOperationalModalOpen(true)}
-              className="relative inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white hover:bg-[#FFF7EA] border border-[#DEC8AE] hover:border-[#C9974D] text-[#3A2418] text-xs font-serif font-bold shadow-2xs transition-all cursor-pointer active:scale-95"
-            >
-              <Bell className="w-3.5 h-3.5 text-[#C9974D]" />
-              <span>Necesito algo</span>
-              {pendingTypes.size > 0 && (
-                <span className="bg-emerald-600 text-white text-[10px] font-sans font-bold px-1.5 py-0.2 rounded-full">
-                  {pendingTypes.size} activo{pendingTypes.size > 1 ? 's' : ''}
-                </span>
-              )}
-            </button>
-          </div>
+          {/* "Necesito algo" sólo pertenece a la experiencia del cliente */}
+          {!isStaffOrder && (
+            <div className="sm:self-center">
+              <button
+                id="btn-necesito-algo"
+                type="button"
+                onClick={() => setIsOperationalModalOpen(true)}
+                className="relative inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white hover:bg-[#FFF7EA] border border-[#DEC8AE] hover:border-[#C9974D] text-[#3A2418] text-xs font-serif font-bold shadow-2xs transition-all cursor-pointer active:scale-95"
+              >
+                <Bell className="w-3.5 h-3.5 text-[#C9974D]" />
+                <span>Necesito algo</span>
+                {pendingTypes.size > 0 && (
+                  <span className="bg-emerald-600 text-white text-[10px] font-sans font-bold px-1.5 py-0.2 rounded-full">
+                    {pendingTypes.size} activo{pendingTypes.size > 1 ? 's' : ''}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Notificación temporal de acción */}
@@ -602,7 +647,7 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
           <div className="bg-white rounded-xl border border-[#DEC8AE] p-3 space-y-2">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-[#6B4028]">
-                ¿Quién está ordenando?
+                {isStaffOrder ? '¿Para quién es este pedido?' : '¿Quién está ordenando?'}
               </span>
               <span className="text-[10px] text-[#8A624C]">
                 {session.guestCount} personas
@@ -628,7 +673,9 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
               })}
             </div>
             <p className="text-[10px] text-[#8A624C]">
-              Tus platillos quedarán identificados con esta persona aunque todos paguen en una sola cuenta.
+              {isStaffOrder
+                ? 'Los platillos quedarán identificados con esta persona dentro de la mesa.'
+                : 'Tus platillos quedarán identificados con esta persona aunque todos paguen en una sola cuenta.'}
             </p>
           </div>
         )}
@@ -639,7 +686,7 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
             <div className="flex items-center gap-1.5">
               <ReceiptText className="w-3.5 h-3.5 text-[#C9974D]" />
               <span className="text-[11px] font-bold uppercase tracking-wider text-[#6B4028]">
-                Elige tu cuenta para ordenar
+                {isStaffOrder ? 'Cuenta donde se cargará el pedido' : 'Elige tu cuenta para ordenar'}
               </span>
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -818,7 +865,7 @@ export const TableCustomerView: React.FC<TableCustomerViewProps> = ({
       </div>
 
       {/* Modal / Ventana Emergente: 🔔 Necesito algo */}
-      {isOperationalModalOpen && (
+      {!isStaffOrder && isOperationalModalOpen && (
         <div
           role="dialog"
           aria-modal="true"
