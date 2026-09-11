@@ -14,7 +14,7 @@ export type CategoryId =
   | 'fin-de-semana';
 
 export interface SizeOption {
-  name: string; // e.g., 'Chico', 'Mediano', 'Grande'
+  name: string;
   price: number;
 }
 
@@ -29,9 +29,9 @@ export interface MenuItem {
   name: string;
   category: CategoryId;
   description: string;
-  price: number; // Base price or starting price
+  price: number;
   sizes?: SizeOption[];
-  options?: string[]; // Choice options, e.g. ['Jamón', 'Tocino', 'Chorizo']
+  options?: string[];
   extras?: ExtraOption[];
   image?: string;
   popular?: boolean;
@@ -41,7 +41,7 @@ export interface MenuItem {
 }
 
 export interface CartItem {
-  cartId: string; // Unique instance ID in cart
+  cartId: string;
   item: MenuItem;
   quantity: number;
   selectedSize?: SizeOption;
@@ -50,10 +50,8 @@ export interface CartItem {
   specialInstructions?: string;
   unitPrice: number;
   totalPrice: number;
-  // Specific customizers
   customSalad?: SaladCustomization;
   customComidaCorrida?: ComidaCorridaCustomization;
-  // V4.3A - Persona asignada dentro de la mesa
   personId?: string;
   personIndex?: number;
   personLabel?: string;
@@ -67,10 +65,10 @@ export interface SaladCustomization {
 }
 
 export interface ComidaCorridaCustomization {
-  primerTiempo: string; // 'Consumé del día' | 'Sopa del día'
-  segundoTiempo: string; // 'Arroz' | 'Pasta'
-  tercerTiempo: string; // 'Guisado del día', 'Enchiladas verdes/rojas', 'Milanesa res/pollo', 'Bistec/Pechuga asada (+$5)', 'Tacos dorados', 'Enchiladas suizas (+$10)'
-  extraAgrega?: string; // 'Sin extra', 'Huevo (+$10)', 'Plátano (+$10)'
+  primerTiempo: string;
+  segundoTiempo: string;
+  tercerTiempo: string;
+  extraAgrega?: string;
 }
 
 export interface ChatMessage {
@@ -86,20 +84,20 @@ export interface ChatMessage {
 }
 
 export interface VipProfile {
-  id?: string; // Document ID en Firestore (hash SHA-256 de teléfono normalizado + PIN)
-  restaurantId?: string; // 'alo-restaurante'
+  id?: string;
+  restaurantId?: string;
   memberId: string;
   customerName: string;
-  phone: string; // 10 dígitos normalizados
-  pinHash?: string; // Hash seguro del PIN (nunca en texto plano)
+  phone: string;
+  pinHash?: string;
   address?: string;
   reference?: string;
   preferredPayment?: 'efectivo' | 'transferencia' | 'tarjeta';
   preferredOrderType?: OrderType;
-  stamps: number; // 0 to N
+  stamps: number;
   totalOrders: number;
   rewardAvailable: boolean;
-  pendingStampsToValidate?: number; // Sellos locales migrados pendientes de validación administrativa
+  pendingStampsToValidate?: number;
   syncedWithCloud?: boolean;
   createdAt: string;
   updatedAt?: string;
@@ -114,14 +112,10 @@ export interface OrderDetails {
   addressReference?: string;
   phone?: string;
   paymentMethod: 'efectivo' | 'transferencia' | 'tarjeta';
-  cashAmount?: number; // Para cuánto cambio necesita
-  bringOwnContainer: boolean; // 10% discount toggle!
+  cashAmount?: number;
+  bringOwnContainer: boolean;
   notes?: string;
 }
-
-// -------------------------------------------------------------
-// SISTEMA ADMINISTRATIVO - ¡ALÓ! RESTAURANTE
-// -------------------------------------------------------------
 
 export type UserRole =
   | 'DUEÑA'
@@ -137,9 +131,9 @@ export interface StaffUser {
   name: string;
   username: string;
   role: UserRole;
-  pin?: string; // PIN local legado (4-6 dígitos). V3 prefiere correo + contraseña Firebase.
-  email?: string; // Correo de acceso individual
-  firebaseUid?: string; // UID de Firebase Auth cuando la cuenta ya fue migrada
+  pin?: string;
+  email?: string;
+  firebaseUid?: string;
   active: boolean;
   phone?: string;
   avatarColor?: string;
@@ -174,13 +168,12 @@ export interface InventoryItem {
   id: string;
   name: string;
   category: 'Desechables & Vasos' | 'Panadería' | 'Bebidas' | 'Abarrotes & Varios' | 'Operación';
-  unit: string; // 'pz', 'paq', 'kg', etc.
-  tipoControl?: InventoryControlType; // 'cantidad' (por piezas) | 'folio' (por rango)
+  unit: string;
+  tipoControl?: InventoryControlType;
   initialQty: number;
   entriesQty: number;
   finalQty: number;
-  consumption: number; // For cantidad: initialQty + entriesQty - finalQty. For folio: (folioFinal - folioInicial + 1) + entriesQty
-  // Campos específicos de control por Folio / Rango
+  consumption: number;
   folioInicial?: number | null;
   folioFinal?: number | null;
   notes?: string;
@@ -190,44 +183,43 @@ export interface InventoryItem {
 
 export interface ShiftRecord {
   id: string;
-  createdAt?: string; // ISO string como origen temporal único
-  date: string; // '28/08/2026'
+  createdAt?: string;
+  date: string;
   shiftType: 'AM' | 'PM';
-  openedAt: string; // '7:55 AM'
-  openedAtTimestamp?: string; // ISO string de apertura
-  openedByUserId?: string; // ID permanente de quien abrió el turno
-  openedByName?: string; // Nombre permanente de quien abrió el turno
-  closedAt?: string; // '05:30 PM'
-  closedAtTimestamp?: string; // ISO string de cierre
-  closedByUserId?: string; // ID de quien cerró el turno si fue un tercero
-  closedByName?: string; // Nombre de quien cerró el turno
-  closedByReason?: string; // Motivo de cierre (obligatorio si cierra otra persona)
-  responsibleUser: string; // Responsable original del turno (nunca se cambia retroactivamente)
+  openedAt: string;
+  openedAtTimestamp?: string;
+  openedByUserId?: string;
+  openedByName?: string;
+  closedAt?: string;
+  closedAtTimestamp?: string;
+  closedByUserId?: string;
+  closedByName?: string;
+  closedByReason?: string;
+  responsibleUser: string;
   responsibleUserId: string;
   status: 'abierto' | 'cerrado';
-  // Caja y Cuadre
-  initialCashFund: number; // Fondo inicial de caja
-  salesCash: number; // Venta en efectivo
-  salesCard: number; // Venta con tarjeta
-  salesPlatforms: number; // Venta en plataformas (Uber, Didi, etc)
-  totalSales: number; // Calculado automático
-  cashExpenses: number; // Gastos pagados con efectivo de caja
-  expectedCash: number; // Venta efectivo - Gastos efectivo + Fondo inicial
-  countedCashAtClose?: number; // Efectivo contado al cierre
-  cashDifference?: number; // contado - esperado
+  initialCashFund: number;
+  salesCash: number;
+  salesCard: number;
+  salesPlatforms: number;
+  totalSales: number;
+  cashExpenses: number;
+  expectedCash: number;
+  countedCashAtClose?: number;
+  cashDifference?: number;
   notes?: string;
   inventorySnapshot?: InventoryItem[];
 }
 
 export interface ActivityLog {
   id: string;
-  timestamp: string; // ISO string
-  dateFormatted: string; // '26 Ago'
-  timeFormatted: string; // '5:42 PM'
+  timestamp: string;
+  dateFormatted: string;
+  timeFormatted: string;
   userName: string;
   userId: string;
   userRole: UserRole;
-  action: string; // 'Registró gasto de $240: Mayonesa'
+  action: string;
   category: 'gasto' | 'inventario' | 'turno' | 'menu' | 'sesion' | 'usuario' | 'sistema' | 'cxc' | 'sobre';
   details?: string;
   previousValue?: string;
@@ -272,11 +264,11 @@ export type CxcStatus = 'Pendiente' | 'Pagado' | 'Anulado';
 
 export interface CxcRecord {
   id: string;
-  person: string; // Persona
-  amount: number; // Monto
-  concept: string; // Concepto
-  date: string; // Fecha (e.g. '2026-08-28')
-  status: CxcStatus; // 'Pendiente' | 'Pagado' | 'Anulado'
+  person: string;
+  amount: number;
+  concept: string;
+  date: string;
+  status: CxcStatus;
   registeredBy?: string;
   registeredById?: string;
   paidAt?: string;
@@ -287,10 +279,6 @@ export interface CxcRecord {
   notes?: string;
   createdAt: string;
 }
-
-// -------------------------------------------------------------
-// MÓDULO: SOBRE / RESGUARDO (Dinero físico en resguardo de Dueña)
-// -------------------------------------------------------------
 
 export type SobreMovementType = 'SALDO_INICIAL' | 'ENTRADA' | 'GASTO' | 'CONTEO' | 'AJUSTE' | 'TRANSICION';
 
@@ -312,26 +300,24 @@ export type SobreInflowCategory =
 export interface SobreMovement {
   id: string;
   type: SobreMovementType;
-  amount: number; // Para GASTO/ENTRADA/SALDO_INICIAL: valor positivo. Para AJUSTE: monto a sumar/restar. Para CONTEO/TRANSICION: conteo físico.
+  amount: number;
   concept: string;
-  category?: string; // Categoría de gasto o entrada o transición
-  personOrVendor?: string; // Persona o proveedor opcional
+  category?: string;
+  personOrVendor?: string;
   notes?: string;
-  date: string; // '28/08/2026'
-  time: string; // '07:05 PM'
-  timestamp: string; // ISO string
+  date: string;
+  time: string;
+  timestamp: string;
   userId: string;
   userName: string;
   userRole: UserRole;
-  resultingBalance: number; // Saldo teórico resultante después del movimiento
-  // Específico para Conteos Físicos y Transición
+  resultingBalance: number;
   theoreticalBalanceAtCount?: number;
   physicalCountedAmount?: number;
-  countDifference?: number; // physical - theoretical
-  isDifferencePending?: boolean; // si hubo diferencia y aún no se concilia
+  countDifference?: number;
+  isDifferencePending?: boolean;
   reconciledAt?: string;
   reconciledBy?: string;
-  // Específico para Anulaciones (No borrado definitivo)
   isCancelled?: boolean;
   cancelledAt?: string;
   cancelledBy?: string;
@@ -340,12 +326,12 @@ export interface SobreMovement {
 }
 
 export interface SobreSummary {
-  currentTheoreticalBalance: number; // Saldo actual del Sobre
-  totalInflows: number; // Entradas acumuladas
-  totalOutflows: number; // Salidas acumuladas
-  totalAdjustments: number; // Ajustes de conciliación acumulados
-  initialBalance: number; // Saldo inicial si existe
-  transitionBalance?: number; // Saldo base de transición si existe
+  currentTheoreticalBalance: number;
+  totalInflows: number;
+  totalOutflows: number;
+  totalAdjustments: number;
+  initialBalance: number;
+  transitionBalance?: number;
   transitionDate?: string;
   transitionTime?: string;
   transitionReason?: string;
@@ -359,20 +345,17 @@ export interface SobreSummary {
     difference: number;
     userName: string;
   };
-  pendingDifference: number; // Diferencia pendiente si el último conteo o estado tiene desfase sin conciliar
+  pendingDifference: number;
   hasPendingDifference: boolean;
 }
 
-// -------------------------------------------------------------
-// CONTROL OPERATIVO DE MESAS
-// -------------------------------------------------------------
 export type TableStatus = 'LIBRE' | 'OCUPADA' | 'CUENTA' | 'LIMPIEZA';
 export type TableCourse = '1ER_TIEMPO' | '2DO_TIEMPO' | '3ER_TIEMPO' | 'FINALIZADO';
 
 export interface TableRecord {
-  tableId: string; // e.g. 'table-1'
-  tableNumber: number; // e.g. 1
-  label?: string; // e.g. 'Mesa 1'
+  tableId: string;
+  tableNumber: number;
+  label?: string;
   status: TableStatus;
   guestCount: number;
   waiterId: string;
@@ -393,9 +376,6 @@ export interface TableRecord {
   location?: 'salon' | 'terraza' | 'barra';
 }
 
-// -------------------------------------------------------------
-// SOLICITUDES DE ATENCIÓN A MESA POR QR (PÚBLICAS)
-// -------------------------------------------------------------
 export type TableServiceRequestType =
   | 'LLAMAR_MESERO'
   | 'TORTILLAS'
@@ -406,18 +386,13 @@ export type TableServiceRequestType =
 
 export interface TableServiceRequest {
   id?: string;
-  tableNumber: number; // 1, 2, 4, 5, 6, 7, 8, 9
+  tableNumber: number;
   requestType: TableServiceRequestType;
   status: 'PENDIENTE';
   restaurantId: 'alo-restaurante';
   createdAt: string;
 }
 
-
-
-// -------------------------------------------------------------
-// V3 - COMANDAS / PEDIDOS EN TIEMPO REAL
-// -------------------------------------------------------------
 export type RestaurantOrderStatus =
   | 'NUEVO'
   | 'PREPARANDO'
@@ -436,14 +411,12 @@ export interface RestaurantOrderItem {
   extras?: string[];
   specialInstructions?: string;
   customizationSummary?: string;
-  // V4.3A - Persona/comensal dentro de la sesión de mesa
   personId?: string;
   personIndex?: number;
   personLabel?: string;
 }
 
 export type RestaurantOrderBillingStatus = 'PENDIENTE' | 'PAGADO';
-
 export type RestaurantOrderSource = 'CLIENTE_QR' | 'MESERO' | 'CAJA';
 
 export interface RestaurantOrder {
@@ -484,9 +457,6 @@ export interface RestaurantOrder {
   cancelledBy?: string;
 }
 
-// -------------------------------------------------------------
-// V4.1 - SESIÓN DE MESA / CUENTAS OPCIONALES
-// -------------------------------------------------------------
 export type TableAccountMode = 'GENERAL' | 'SEPARADAS';
 export type TableSessionStatus = 'ACTIVA' | 'CUENTA' | 'CERRADA';
 export type TableSessionOpenedBy = 'QR' | 'MESERO';
@@ -522,14 +492,16 @@ export interface TableSession {
   waiterName?: string;
 }
 
-// -------------------------------------------------------------
-// V4 - CUENTAS POR MESA / CAJA / COBROS
-// -------------------------------------------------------------
 export type TablePaymentMethod =
   | 'EFECTIVO'
   | 'TARJETA'
   | 'TRANSFERENCIA'
   | 'MERCADO_PAGO';
+
+export interface TablePaymentBreakdownItem {
+  method: TablePaymentMethod;
+  amount: number;
+}
 
 export interface TablePayment {
   id?: string;
@@ -544,7 +516,8 @@ export interface TablePayment {
   discountAmount: number;
   tipAmount: number;
   total: number;
-  paymentMethod: TablePaymentMethod;
+  paymentMethod: TablePaymentMethod | 'MIXTO';
+  paymentBreakdown?: TablePaymentBreakdownItem[];
   cashReceived?: number;
   changeDue: number;
   status: 'PAGADO' | 'ANULADO';
@@ -552,4 +525,3 @@ export interface TablePayment {
   chargedById: string;
   chargedByName: string;
 }
-
