@@ -24,7 +24,7 @@ type OwnerMessage = {
 const INITIAL_MESSAGE: OwnerMessage = {
   id: 'owner-welcome',
   sender: 'tita',
-  text: 'Hola 👋 Soy Tita para Dueña. Puedo explicarte cómo funciona la app y analizar lo que está pasando hoy en Restaurante Calientito. ¿Qué quieres revisar?',
+  text: 'Hola 👋 Soy Tita Administrativa. Puedo explicarte cómo funciona la app y analizar lo que está pasando hoy en Restaurante Calientito. ¿Qué quieres revisar?',
   timestamp: 'Ahora',
 };
 
@@ -280,7 +280,7 @@ export const AdminOwnerTita: React.FC = () => {
         ]);
       }
     } catch (error) {
-      console.error('[Tita Dueña] error:', error);
+      console.error('[Tita Administrativa] error:', error);
       setMessages((prev) => [
         ...prev,
         {
@@ -304,12 +304,12 @@ export const AdminOwnerTita: React.FC = () => {
           type="button"
           onClick={() => setIsOpen(true)}
           className="fixed bottom-5 right-4 z-[75] flex items-center gap-2 rounded-full border border-[#C9974D] bg-[#3A2418] px-3 py-2.5 text-xs font-bold text-[#FFF7EA] shadow-2xl active:scale-95"
-          title="Abrir Tita para Dueña"
+          title="Abrir Tita Administrativa"
         >
           <div className="h-8 w-8 rounded-full bg-[#FFF7EA] p-0.5">
             <img src="/tita.png" alt="Tita" className="h-full w-full object-contain" />
           </div>
-          <span>Tita · Dueña</span>
+          <span>Tita Administrativa</span>
           <span className="h-2 w-2 rounded-full bg-emerald-400" />
         </button>
       )}
@@ -327,7 +327,7 @@ export const AdminOwnerTita: React.FC = () => {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="font-serif text-base font-black">Tita · Dueña</h2>
+                    <h2 className="font-serif text-base font-black">Tita Administrativa</h2>
                     <span className="rounded-full border border-emerald-400/40 bg-emerald-950/50 px-2 py-0.5 text-[9px] font-bold text-emerald-300">OPERACIÓN</span>
                   </div>
                   <p className="text-[11px] text-[#F4E3C8]">Ayuda de la app + análisis del restaurante</p>
@@ -337,7 +337,7 @@ export const AdminOwnerTita: React.FC = () => {
                 type="button"
                 onClick={() => setIsOpen(false)}
                 className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 hover:bg-white/20"
-                aria-label="Cerrar Tita Dueña"
+                aria-label="Cerrar Tita Administrativa"
               >
                 <X className="h-4 w-4" />
               </button>
