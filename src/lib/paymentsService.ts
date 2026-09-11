@@ -19,6 +19,13 @@ export const TABLE_PAYMENTS_COLLECTION = 'table_payments';
 export const TABLE_PAYMENTS_EVENT = 'alo_table_payments_updated';
 export const RESTAURANT_ID = 'alo-restaurante' as const;
 
+export type CheckoutPaymentMethod = TablePaymentMethod | 'MIXTO';
+
+export interface PaymentBreakdownItem {
+  method: TablePaymentMethod;
+  amount: number;
+}
+
 function buildPaymentCode(): string {
   const now = new Date();
   const yyyy = now.getFullYear();
@@ -68,11 +75,33 @@ export interface SettleTableAccountInput {
   accountId?: string;
   accountLabel?: string;
   orders: RestaurantOrder[];
-  paymentMethod: TablePaymentMethod;
+  paymentMethod: CheckoutPaymentMethod;
+  paymentBreakdown?: PaymentBreakdownItem[];
   discountAmount?: number;
   tipAmount?: number;
   cashReceived?: number;
   user: Pick<StaffUser, 'id' | 'name'>;
+}
+
+function normalizePaymentBreakdown(items?: PaymentBreakdownItem[]): PaymentBreakdownItem[] {
+  const allowedMethods: TablePaymentMethod[] = [
+    'EFECTIVO',
+    'TARJETA',
+    'TRANSFERENCIA',
+    'MERCADO_PAGO',
+  ];
+  const seen = new Set<TablePaymentMethod>();
+  const normalized: PaymentBreakdownItem[] = [];
+
+  (items || []).forEach((item) => {
+    if (!allowedMethods.includes(item.method) || seen.has(item.method)) return;
+    const amount = Math.round(Math.max(0, Number(item.amount || 0)) * 100) / 100;
+    if (amount <= 0) return;
+    seen.add(item.method);
+    normalized.push({ method: item.method, amount });
+  });
+
+  return normalized;
 }
 
 export async function settleTableAccount(
@@ -123,8 +152,25 @@ export async function settleTableAccount(
     const discountAmount = Math.max(0, Math.min(Number(input.discountAmount || 0), subtotal));
     const tipAmount = Math.max(0, Number(input.tipAmount || 0));
     const total = Math.max(0, subtotal - discountAmount + tipAmount);
+    const paymentBreakdown = input.paymentMethod === 'MIXTO'
+      ? normalizePaymentBreakdown(input.paymentBreakdown)
+      : undefined;
+
+    if (input.paymentMethod === 'MIXTO') {
+      if (!paymentBreakdown || paymentBreakdown.length < 2) {
+        throw new Error('El pago mixto debe usar al menos dos métodos de pago.');
+      }
+      const allocatedTotal = paymentBreakdown.reduce((sum, item) => sum + item.amount, 0);
+      if (Math.abs(allocatedTotal - total) > 0.01) {
+        throw new Error(`El desglose del pago mixto debe sumar exactamente $${total.toFixed(2)}.`);
+      }
+    }
+
+    const mixedCashAmount = paymentBreakdown?.find((item) => item.method === 'EFECTIVO')?.amount || 0;
     const cashReceived = input.paymentMethod === 'EFECTIVO'
       ? Math.max(0, Number(input.cashReceived || 0))
+      : input.paymentMethod === 'MIXTO' && mixedCashAmount > 0
+      ? mixedCashAmount
       : undefined;
 
     if (input.paymentMethod === 'EFECTIVO' && Number(cashReceived || 0) < total) {
@@ -136,7 +182,7 @@ export async function settleTableAccount(
       : 0;
 
     const now = new Date().toISOString();
-    const payment: TablePayment = {
+    const payment = {
       id: paymentRef.id,
       code: buildPaymentCode(),
       restaurantId: RESTAURANT_ID,
@@ -150,12 +196,16 @@ export async function settleTableAccount(
       tipAmount,
       total,
       paymentMethod: input.paymentMethod,
+      paymentBreakdown,
       cashReceived,
       changeDue,
-      status: 'PAGADO',
+      status: 'PAGADO' as const,
       createdAt: now,
       chargedById: input.user.id,
       chargedByName: input.user.name,
+    } as TablePayment & {
+      paymentMethod: CheckoutPaymentMethod;
+      paymentBreakdown?: PaymentBreakdownItem[];
     };
 
     transaction.set(paymentRef, sanitizeFirestorePayload(payment));
@@ -169,6 +219,6 @@ export async function settleTableAccount(
       }));
     });
 
-    return payment;
+    return payment as TablePayment;
   });
 }
