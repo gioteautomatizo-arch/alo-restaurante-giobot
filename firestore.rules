@@ -264,7 +264,7 @@ service cloud.firestore {
         && request.resource.data.tipAmount is number
         && request.resource.data.total is number
         && request.resource.data.total >= 0
-        && request.resource.data.paymentMethod in ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'MERCADO_PAGO']
+        && request.resource.data.paymentMethod in ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'MERCADO_PAGO', 'MIXTO']
         && request.resource.data.status == 'PAGADO'
         && request.resource.data.createdAt is string
         && request.resource.data.chargedById is string
