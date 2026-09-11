@@ -31,6 +31,8 @@ import {
   subscribeToPendingTableRequests,
 } from '../../lib/tableRequestsService';
 import {
+  CheckoutPaymentMethod,
+  PaymentBreakdownItem,
   settleTableAccount,
   subscribeToTablePayments,
 } from '../../lib/paymentsService';
@@ -71,13 +73,19 @@ function isToday(iso: string): boolean {
   );
 }
 
+function paymentAmountByMethod(payment: TablePayment, method: TablePaymentMethod): number {
+  if (payment.paymentMethod === method) return Number(payment.total || 0);
+  if (payment.paymentMethod !== 'MIXTO') return 0;
+  return (payment.paymentBreakdown || [])
+    .filter((item) => item.method === method)
+    .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+}
+
 function getUnpaidOrdersForTable(
   orders: RestaurantOrder[],
   tableNumber: number,
   session?: TableSession | null
 ): RestaurantOrder[] {
-  // Una mesa física se reutiliza muchas veces. Caja sólo puede cobrar comandas
-  // creadas desde la apertura de la sesión vigente; nunca arrastrar una cuenta anterior.
   if (!session || session.status === 'CERRADA') return [];
 
   const openedAt = Date.parse(session.openedAt || '');
@@ -115,10 +123,13 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
   const [requests, setRequests] = useState<TableServiceRequest[]>([]);
   const [selectedTable, setSelectedTable] = useState<TableRecord | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
-  const [paymentMethod, setPaymentMethod] = useState<TablePaymentMethod>('EFECTIVO');
+  const [paymentMethod, setPaymentMethod] = useState<CheckoutPaymentMethod>('EFECTIVO');
   const [discountAmount, setDiscountAmount] = useState('0');
   const [tipAmount, setTipAmount] = useState('0');
   const [cashReceived, setCashReceived] = useState('');
+  const [mixedTransferAmount, setMixedTransferAmount] = useState('');
+  const [mixedCardAmount, setMixedCardAmount] = useState('');
+  const [mixedMercadoPagoAmount, setMixedMercadoPagoAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -152,11 +163,12 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
 
   const todayPayments = useMemo(() => payments.filter((p) => p.status === 'PAGADO' && isToday(p.createdAt)), [payments]);
   const todayTotal = todayPayments.reduce((sum, p) => sum + p.total, 0);
-  const todayCash = todayPayments.filter((p) => p.paymentMethod === 'EFECTIVO').reduce((sum, p) => sum + p.total, 0);
-  const todayCard = todayPayments.filter((p) => p.paymentMethod === 'TARJETA').reduce((sum, p) => sum + p.total, 0);
-  const todayDigital = todayPayments
-    .filter((p) => p.paymentMethod === 'TRANSFERENCIA' || p.paymentMethod === 'MERCADO_PAGO')
-    .reduce((sum, p) => sum + p.total, 0);
+  const todayCash = todayPayments.reduce((sum, p) => sum + paymentAmountByMethod(p, 'EFECTIVO'), 0);
+  const todayCard = todayPayments.reduce((sum, p) => sum + paymentAmountByMethod(p, 'TARJETA'), 0);
+  const todayDigital = todayPayments.reduce(
+    (sum, p) => sum + paymentAmountByMethod(p, 'TRANSFERENCIA') + paymentAmountByMethod(p, 'MERCADO_PAGO'),
+    0
+  );
 
   const selectedAllOrders = selectedTable
     ? getUnpaidOrdersForTable(
@@ -187,9 +199,21 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
   const selectedDiscount = Math.max(0, Math.min(Number(discountAmount || 0), selectedSubtotal));
   const selectedTip = Math.max(0, Number(tipAmount || 0));
   const selectedTotal = Math.max(0, selectedSubtotal - selectedDiscount + selectedTip);
+  const mixedTransfer = Math.max(0, Number(mixedTransferAmount || 0));
+  const mixedCard = Math.max(0, Number(mixedCardAmount || 0));
+  const mixedMercadoPago = Math.max(0, Number(mixedMercadoPagoAmount || 0));
+  const mixedNonCashTotal = mixedTransfer + mixedCard + mixedMercadoPago;
+  const mixedCash = Math.max(0, selectedTotal - mixedNonCashTotal);
+  const mixedOverage = Math.max(0, mixedNonCashTotal - selectedTotal);
   const changeDue = paymentMethod === 'EFECTIVO'
     ? Math.max(0, Number(cashReceived || 0) - selectedTotal)
     : 0;
+
+  const resetMixedPayment = () => {
+    setMixedTransferAmount('');
+    setMixedCardAmount('');
+    setMixedMercadoPagoAmount('');
+  };
 
   const openCheckout = (table: TableRecord) => {
     const tableOrders = getUnpaidOrdersForTable(
@@ -204,6 +228,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     setDiscountAmount('0');
     setTipAmount('0');
     setCashReceived('');
+    resetMixedPayment();
     setError(null);
     setSuccess(null);
   };
@@ -231,6 +256,24 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
       return;
     }
 
+    let paymentBreakdown: PaymentBreakdownItem[] | undefined;
+    if (paymentMethod === 'MIXTO') {
+      if (mixedOverage > 0.009) {
+        setError(`Los pagos digitales exceden el total por ${money(mixedOverage)}.`);
+        return;
+      }
+      paymentBreakdown = [
+        ...(mixedTransfer > 0 ? [{ method: 'TRANSFERENCIA' as TablePaymentMethod, amount: mixedTransfer }] : []),
+        ...(mixedCard > 0 ? [{ method: 'TARJETA' as TablePaymentMethod, amount: mixedCard }] : []),
+        ...(mixedMercadoPago > 0 ? [{ method: 'MERCADO_PAGO' as TablePaymentMethod, amount: mixedMercadoPago }] : []),
+        ...(mixedCash > 0 ? [{ method: 'EFECTIVO' as TablePaymentMethod, amount: mixedCash }] : []),
+      ];
+      if (paymentBreakdown.length < 2) {
+        setError('Para un pago mixto captura al menos una parte por transferencia, tarjeta o Mercado Pago; el resto se calculará en efectivo.');
+        return;
+      }
+    }
+
     setBusy(true);
     setError(null);
     setSuccess(null);
@@ -243,6 +286,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
         accountLabel: selectedAccountId === 'ALL' ? undefined : selectedAccountLabel,
         orders: selectedOrders,
         paymentMethod,
+        paymentBreakdown,
         discountAmount: selectedDiscount,
         tipAmount: selectedTip,
         cashReceived: paymentMethod === 'EFECTIVO' ? Number(cashReceived || 0) : undefined,
@@ -271,17 +315,22 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
         console.warn('[TableAccountsView] pago guardado, no se pudo cambiar estado de mesa:', tableErr);
       }
 
+      const mixedDetails = paymentMethod === 'MIXTO' && paymentBreakdown
+        ? ` · ${paymentBreakdown.map((part) => `${part.method} ${money(part.amount)}`).join(' + ')}`
+        : '';
       addActivityLog({
         userName: currentUser.name,
         userId: currentUser.id,
         userRole: currentUser.role,
         action: `${currentUser.name} cobró Mesa ${selectedTable.tableNumber} · ${selectedAccountLabel}: ${money(payment.total)} (${payment.paymentMethod})`,
         category: 'turno',
-        details: `Folio ${payment.code}. Subtotal ${money(payment.subtotal)} · Descuento ${money(payment.discountAmount)} · Propina ${money(payment.tipAmount)}`,
+        details: `Folio ${payment.code}. Subtotal ${money(payment.subtotal)} · Descuento ${money(payment.discountAmount)} · Propina ${money(payment.tipAmount)}${mixedDetails}`,
       });
 
       setSuccess(
-        payment.paymentMethod === 'EFECTIVO'
+        paymentMethod === 'MIXTO'
+          ? `Pago mixto registrado · ${selectedAccountLabel} · ${payment.code}`
+          : payment.paymentMethod === 'EFECTIVO'
           ? `Pago registrado · ${selectedAccountLabel} · Cambio: ${money(payment.changeDue)}`
           : `Pago registrado · ${selectedAccountLabel} · ${payment.code}`
       );
@@ -497,7 +546,10 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
                     return (
                       <button
                         key={method.id}
-                        onClick={() => setPaymentMethod(method.id)}
+                        onClick={() => {
+                          setPaymentMethod(method.id);
+                          setError(null);
+                        }}
                         className={`p-3 rounded-2xl border text-left flex items-center gap-2 text-xs font-bold ${
                           active
                             ? 'bg-[#3A2418] border-[#3A2418] text-[#FFF7EA]'
@@ -509,6 +561,22 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
                       </button>
                     );
                   })}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentMethod('MIXTO');
+                      setCashReceived('');
+                      setError(null);
+                    }}
+                    className={`p-3 rounded-2xl border text-left flex items-center gap-2 text-xs font-bold col-span-2 ${
+                      paymentMethod === 'MIXTO'
+                        ? 'bg-[#3A2418] border-[#3A2418] text-[#FFF7EA]'
+                        : 'bg-amber-50 border-amber-200 text-amber-900'
+                    }`}
+                  >
+                    <Wallet className={`w-4 h-4 ${paymentMethod === 'MIXTO' ? 'text-[#C9974D]' : 'text-amber-700'}`} />
+                    Pago mixto · divide entre transferencia, tarjeta, MP y efectivo
+                  </button>
                 </div>
               </div>
 
@@ -556,6 +624,69 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
                 </div>
               )}
 
+              {paymentMethod === 'MIXTO' && (
+                <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+                  <div>
+                    <span className="text-[10px] uppercase tracking-wider font-bold text-amber-800">Distribución del pago</span>
+                    <p className="text-[10px] text-amber-900 mt-1">Captura sólo las partes digitales. El resto se calcula automáticamente como efectivo.</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <label className="text-[11px] font-bold text-violet-800">
+                      Transferencia $
+                      <input
+                        type="number"
+                        min="0"
+                        max={selectedTotal}
+                        step="0.01"
+                        value={mixedTransferAmount}
+                        onChange={(e) => setMixedTransferAmount(e.target.value)}
+                        className="mt-1 w-full px-3 py-2.5 rounded-xl border border-violet-200 bg-white outline-none"
+                        placeholder="0.00"
+                      />
+                    </label>
+                    <label className="text-[11px] font-bold text-sky-800">
+                      Tarjeta $
+                      <input
+                        type="number"
+                        min="0"
+                        max={selectedTotal}
+                        step="0.01"
+                        value={mixedCardAmount}
+                        onChange={(e) => setMixedCardAmount(e.target.value)}
+                        className="mt-1 w-full px-3 py-2.5 rounded-xl border border-sky-200 bg-white outline-none"
+                        placeholder="0.00"
+                      />
+                    </label>
+                    <label className="text-[11px] font-bold text-fuchsia-800">
+                      Mercado Pago $
+                      <input
+                        type="number"
+                        min="0"
+                        max={selectedTotal}
+                        step="0.01"
+                        value={mixedMercadoPagoAmount}
+                        onChange={(e) => setMixedMercadoPagoAmount(e.target.value)}
+                        className="mt-1 w-full px-3 py-2.5 rounded-xl border border-fuchsia-200 bg-white outline-none"
+                        placeholder="0.00"
+                      />
+                    </label>
+                  </div>
+                  <div className={`rounded-2xl border p-3 flex items-center justify-between ${mixedOverage > 0 ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                    <div>
+                      <span className={`text-[10px] uppercase tracking-wider font-bold ${mixedOverage > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                        {mixedOverage > 0 ? 'Exceso capturado' : 'Resto en efectivo'}
+                      </span>
+                      <p className={`text-[10px] mt-0.5 ${mixedOverage > 0 ? 'text-rose-800' : 'text-emerald-800'}`}>
+                        {mixedOverage > 0 ? 'Reduce alguno de los montos digitales.' : 'Se registra automáticamente.'}
+                      </p>
+                    </div>
+                    <strong className={`font-serif text-2xl ${mixedOverage > 0 ? 'text-rose-900' : 'text-emerald-900'}`}>
+                      {money(mixedOverage > 0 ? mixedOverage : mixedCash)}
+                    </strong>
+                  </div>
+                </div>
+              )}
+
               <div className="rounded-3xl bg-white border border-[#F4E3C8] p-4 space-y-2">
                 <div className="flex justify-between text-xs text-[#6B4028]"><span>Subtotal</span><span>{money(selectedSubtotal)}</span></div>
                 <div className="flex justify-between text-xs text-[#6B4028]"><span>Descuento</span><span>-{money(selectedDiscount)}</span></div>
@@ -577,7 +708,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
 
               <button
                 onClick={handleCharge}
-                disabled={busy || selectedOrders.length === 0}
+                disabled={busy || selectedOrders.length === 0 || (paymentMethod === 'MIXTO' && mixedOverage > 0.009)}
                 className="w-full py-4 rounded-2xl bg-[#3A2418] text-[#FFF7EA] font-serif font-bold text-base flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : <Wallet className="w-5 h-5 text-[#C9974D]" />}
