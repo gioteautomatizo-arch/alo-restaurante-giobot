@@ -71,6 +71,41 @@ function sameLocalDay(iso: string | undefined): boolean {
   return parsed.toDateString() === new Date().toDateString();
 }
 
+function renderFormattedText(text: string): React.ReactNode {
+  const lines = text.split('\n');
+
+  return (
+    <div className="space-y-1.5">
+      {lines.map((line, lineIndex) => {
+        if (!line.trim()) return <div key={`gap-${lineIndex}`} className="h-1" />;
+
+        const parts = line.split(/(\*\*.*?\*\*)/g).filter(Boolean);
+        const isBullet = /^\s*[-•]\s+/.test(line);
+        const isNumbered = /^\s*\d+[.)]\s+/.test(line);
+
+        return (
+          <p
+            key={`line-${lineIndex}`}
+            className={`${isBullet || isNumbered ? 'pl-1' : ''} whitespace-pre-wrap`}
+          >
+            {parts.map((part, partIndex) => {
+              const isBold = part.startsWith('**') && part.endsWith('**') && part.length > 4;
+              if (isBold) {
+                return (
+                  <strong key={`part-${lineIndex}-${partIndex}`} className="font-black text-[#3A2418]">
+                    {part.slice(2, -2)}
+                  </strong>
+                );
+              }
+              return <React.Fragment key={`part-${lineIndex}-${partIndex}`}>{part}</React.Fragment>;
+            })}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 export const AdminOwnerTita: React.FC = () => {
   const [isVisible, setIsVisible] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -368,7 +403,11 @@ export const AdminOwnerTita: React.FC = () => {
                       ? 'rounded-tl-sm border border-[#F4E3C8] bg-white text-[#2B1B13]'
                       : 'rounded-tr-sm bg-[#3A2418] text-[#FFF7EA]'
                   }`}>
-                    <p className="whitespace-pre-wrap">{message.text}</p>
+                    {message.sender === 'tita' ? (
+                      renderFormattedText(message.text)
+                    ) : (
+                      <p className="whitespace-pre-wrap">{message.text}</p>
+                    )}
                     <span className={`mt-1 block text-[9px] ${message.sender === 'tita' ? 'text-[#A86B3D]' : 'text-[#EAD9C4]'}`}>
                       {message.timestamp}
                     </span>
