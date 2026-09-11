@@ -31,7 +31,7 @@ REGLAS DE ORO:
    - Amable, cercana, paciente, segura, positiva y rápida.
    - Habla en español como una persona real en México (de 'tú').
    - NUNCA digas "como IA", "según mi programación", "como modelo de lenguaje", "procesando..." o similares.
-   - NUNCA respondas con bloques gigantes de texto. Mantén respuestas cortas (entre 2 y 5 líneas).
+   - NUNCA respondas con bloques gigantes de texto. Mantén respuestas cortas (entre 2 y 5 líneas normalmente).
    - Usa emojis con moderación (máximo 2 o 3 por mensaje).
 
 2. Filosofía de Servicio:
@@ -39,22 +39,33 @@ REGLAS DE ORO:
    - Responde exactamente la pregunta principal del cliente primero.
    - Haz máximo 1 pregunta por mensaje para no saturar la conversación.
    - Si el cliente está indeciso, recomienda máximo 2 opciones y explica brevemente por qué.
+   - Si tienes contexto de mesa, úsalo de forma natural: número de mesa, persona seleccionada, mesero asignado y lo que ya está en el carrito.
 
-3. Conocimiento base de Restaurante Calientito:
-   - DESAYUNOS: huevos al gusto, omelettes, enfrijoladas, chilaquiles y paquetes matutinos.
-   - BEBIDAS: café, té, chocolate, jugos, licuados, aguas, refrescos y frappés.
-   - COMIDA CORRIDA: menú de tres tiempos con agua y postre cuando está disponible.
-   - SERVICIOS: consumo en sucursal, para llevar y a domicilio.
-   - PROGRAMA VIP: sellos y recompensas según la configuración vigente.
-   - Siempre prioriza los datos dinámicos que reciba el sistema sobre estos ejemplos generales.
+3. Conocimiento y fuente de verdad:
+   - Siempre prioriza el catálogo real, el menú del día, la información vigente del restaurante y customerContext.
+   - NO inventes platillos, precios, extras, tamaños, promociones ni disponibilidad.
+   - Si un producto no aparece en menuCatalog, di que no puedes confirmarlo y ofrece alternativas reales del catálogo.
+   - Si preguntan "¿qué llevo?", usa customerContext.cart. Si está vacío, dilo claramente.
+   - Si preguntan por su mesa o mesero, usa customerContext.table. Si no hay dato, no lo inventes.
 
-4. Cierre y empatía:
+4. Servicio en mesa:
+   - Puedes explicar cómo llamar al mesero o pedir servicio desde la interfaz de la mesa.
+   - NO ejecutes solicitudes ni cambios por tu cuenta y no prometas haberlos enviado.
+   - Si preguntan por cuenta, tortillas, bebidas u otro servicio, indica que usen los botones de atención de su mesa o llamen al mesero.
+   - Nunca reveles información administrativa, ventas, gastos, usuarios, inventario interno, métricas, bitácora ni datos de otras mesas.
+
+5. Recomendaciones:
+   - Para recomendar, usa primero productos populares y disponibles del catálogo real.
+   - Considera lo que ya pidió el cliente para sugerir una bebida o complemento coherente sin repetir de más.
+   - Si menciona alergias o restricciones, no asegures que algo es seguro si no tienes información de ingredientes; recomienda confirmar con el personal.
+
+6. Cierre y empatía:
    - Despide amablemente asegurando que todo quede claro.
    - Si el cliente menciona alguna restricción o preferencia, adáptate con respeto.
 `;
 
 const OWNER_SYSTEM_INSTRUCTION = `
-Eres Tita para Dueña, asistente operativa de Restaurante Calientito.
+Eres Tita Administrativa, asistente operativa de Restaurante Calientito.
 Tu función es ayudar a la dueña o administrador a entender la app, detectar pendientes y analizar el restaurante usando EXCLUSIVAMENTE los datos administrativos estructurados que recibes en cada solicitud.
 
 REGLAS:
@@ -72,7 +83,17 @@ REGLAS:
 
 app.post('/api/chat', async (req, res) => {
   try {
-    const { messages, userPrompt, dailyMenu, restaurantInfo, mode, adminContext } = req.body;
+    const {
+      messages,
+      userPrompt,
+      dailyMenu,
+      restaurantInfo,
+      mode,
+      adminContext,
+      menuCatalog,
+      customerContext,
+    } = req.body;
+
     const isOwnerMode = mode === 'owner';
 
     if (!ai) {
@@ -81,12 +102,12 @@ app.post('/api/chat', async (req, res) => {
         const pending = adminContext?.today?.pendingTableRequests ?? 0;
         const newOrders = adminContext?.today?.newOrders ?? 0;
         const preparing = adminContext?.today?.preparingOrders ?? 0;
-        return res.send(`Tita Dueña está disponible, pero falta configurar la llave de Gemini para análisis conversacional. Ahora mismo veo ${pending} solicitud(es) de mesa pendiente(s), ${newOrders} comanda(s) nueva(s) y ${preparing} en preparación.`);
+        return res.send(`Tita Administrativa está disponible, pero falta configurar la llave de Gemini para análisis conversacional. Ahora mismo veo ${pending} solicitud(es) de mesa pendiente(s), ${newOrders} comanda(s) nueva(s) y ${preparing} en preparación.`);
       }
       if (dailyMenu && dailyMenu.isAvailable === false) {
         return res.send('¡Hola! 👋 Soy Tita. Por el momento la comida corrida no está disponible hoy, pero tenemos otras opciones de la carta. ¿Qué se te antoja? 😊');
       }
-      return res.send('¡Hola! 👋 Soy Tita. ¿Qué se te antoja hoy? Puedo ayudarte con el menú, bebidas, paquetes y promociones. 😊');
+      return res.send('¡Hola! 👋 Soy Tita. Puedo ayudarte con la carta, recomendaciones, bebidas y tu servicio en mesa. ¿Qué se te antoja hoy? 😊');
     }
 
     let effectiveSystemInstruction = '';
@@ -141,10 +162,44 @@ Usa únicamente estos datos si preguntan por el menú del día.
 `.trim();
       }
 
+      const safeCatalog = Array.isArray(menuCatalog)
+        ? menuCatalog.slice(0, 120).map((item: any) => ({
+            id: item?.id,
+            name: item?.name,
+            category: item?.category,
+            description: item?.description,
+            price: item?.price,
+            sizes: item?.sizes,
+            options: item?.options,
+            extras: item?.extras,
+            popular: Boolean(item?.popular),
+          }))
+        : [];
+
+      const safeCustomerContext = customerContext && typeof customerContext === 'object'
+        ? customerContext
+        : { serviceMode: 'GENERAL', table: null, cart: { items: [], itemCount: 0, total: 0 } };
+
+      const catalogInstruction = `
+CATÁLOGO REAL DISPONIBLE PARA EL CLIENTE:
+${JSON.stringify(safeCatalog, null, 2)}
+
+REGLA: no recomiendes ni cotices productos que no estén aquí, salvo el menú del día si está incluido arriba.
+`.trim();
+
+      const customerContextInstruction = `
+CONTEXTO ACTUAL DEL COMENSAL:
+${JSON.stringify(safeCustomerContext, null, 2)}
+
+Usa este contexto para responder preguntas sobre su mesa, persona seleccionada y carrito. Nunca menciones datos de otras mesas.
+`.trim();
+
       effectiveSystemInstruction = [
         GIOBOT_SYSTEM_INSTRUCTION,
         dynamicRestaurantInfoInstruction,
         dynamicMenuInstruction,
+        catalogInstruction,
+        customerContextInstruction,
       ].filter(Boolean).join('\n\n');
     }
 
@@ -163,8 +218,8 @@ Usa únicamente estos datos si preguntan por el menú del día.
       ],
       config: {
         systemInstruction: effectiveSystemInstruction,
-        temperature: isOwnerMode ? 0.35 : 0.7,
-        topP: isOwnerMode ? 0.8 : 0.9,
+        temperature: isOwnerMode ? 0.35 : 0.55,
+        topP: isOwnerMode ? 0.8 : 0.85,
       },
     };
 
