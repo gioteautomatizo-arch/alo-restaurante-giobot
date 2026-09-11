@@ -5,6 +5,8 @@ import { getVipProfile, refreshCloudVipProfile, VIP_DATA_EVENT } from './lib/vip
 import { getAuthSession, logoutStaff } from './lib/adminStorage';
 import { subscribeToMenuCatalog } from './lib/menuCatalogService';
 import type { ManagedMenuItem } from './lib/menuCatalogService';
+import { getTableSession, updateTableSessionGuestCountByStaff } from './lib/tableSessionsService';
+import { updateTableGuestCount } from './lib/tablesService';
 import { Header } from './components/Header';
 import { Banner } from './components/Banner';
 import { SearchBar } from './components/SearchBar';
@@ -26,7 +28,7 @@ import { AdminDashboard } from './components/admin/AdminDashboard';
 import { AdminLoginModal } from './components/admin/AdminLoginModal';
 import { TableCustomerView } from './components/public/TableCustomerView';
 import { isValidTableNumber } from './lib/tableRequestsService';
-import { Bot, Utensils, Sparkles, ArrowRight, ChevronUp, Lock } from 'lucide-react';
+import { Bot, Utensils, Sparkles, ArrowRight, ChevronUp, Lock, Users } from 'lucide-react';
 
 const toPublicMenuItem = (item: ManagedMenuItem): MenuItem | null => {
   if (!item.active || !item.available) return null;
@@ -88,6 +90,10 @@ export default function App() {
   const [isContactVisible, setIsContactVisible] = useState<boolean>(false);
   const [customerTableNumber, setCustomerTableNumber] = useState<number | null>(null);
   const [selectedTablePerson, setSelectedTablePerson] = useState<TableSessionPerson | null>(null);
+  const [isTableEditModalOpen, setIsTableEditModalOpen] = useState<boolean>(false);
+  const [tableEditGuestCount, setTableEditGuestCount] = useState<number>(1);
+  const [isSavingTableEdit, setIsSavingTableEdit] = useState<boolean>(false);
+  const [tableEditError, setTableEditError] = useState<string | null>(null);
 
   // Administrative State
   const [adminUser, setAdminUser] = useState<StaffUser | null>(null);
@@ -95,6 +101,22 @@ export default function App() {
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState<boolean>(false);
 
   const menuSectionRef = useRef<HTMLDivElement>(null);
+
+  const isStaffOrderMode = (() => {
+    if (typeof window === 'undefined' || customerTableNumber === null) return false;
+    try {
+      return new URLSearchParams(window.location.search).get('staffOrder') === '1';
+    } catch {
+      return false;
+    }
+  })();
+
+  // No permitir bajar el número de comensales por debajo de una Persona que ya tenga
+  // un producto en el carrito. Primero se corrige/elimina ese producto y luego la mesa.
+  const minimumTableGuestCount = Math.max(
+    1,
+    cartItems.reduce((max, item) => Math.max(max, item.personIndex || 1), 1)
+  );
 
   const refreshVipProfile = () => {
     setVipProfile(getVipProfile());
@@ -287,6 +309,55 @@ export default function App() {
     scrollToMenu();
   };
 
+  const handleOpenTableEditor = async () => {
+    if (!customerTableNumber || !adminUser) return;
+    setTableEditError(null);
+
+    try {
+      const currentSession = await getTableSession(customerTableNumber);
+      const currentCount = Math.max(1, Math.round(currentSession?.guestCount || 1));
+      setTableEditGuestCount(Math.max(minimumTableGuestCount, Math.min(10, currentCount)));
+      setIsTableEditModalOpen(true);
+    } catch (error) {
+      console.warn('[App] no se pudo cargar la mesa para editar:', error);
+      setTableEditGuestCount(Math.max(1, minimumTableGuestCount));
+      setIsTableEditModalOpen(true);
+      setTableEditError('No pudimos leer los datos actuales de la mesa. Puedes intentar guardarlos de nuevo.');
+    }
+  };
+
+  const handleSaveTableEditor = async () => {
+    if (!customerTableNumber || !adminUser || isSavingTableEdit) return;
+
+    const safeGuestCount = Math.max(
+      minimumTableGuestCount,
+      Math.min(10, Math.round(tableEditGuestCount || 1))
+    );
+
+    setIsSavingTableEdit(true);
+    setTableEditError(null);
+
+    try {
+      await updateTableGuestCount(`table-${customerTableNumber}`, safeGuestCount, {
+        id: adminUser.id,
+        name: adminUser.name,
+      });
+      await updateTableSessionGuestCountByStaff(customerTableNumber, safeGuestCount, {
+        id: adminUser.id,
+        name: adminUser.name,
+      });
+
+      setTableEditGuestCount(safeGuestCount);
+      setIsTableEditModalOpen(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (error: any) {
+      console.error('[App] error actualizando comensales de mesa:', error);
+      setTableEditError(error?.message || 'No se pudo actualizar la mesa. Intenta nuevamente.');
+    } finally {
+      setIsSavingTableEdit(false);
+    }
+  };
+
   // El menú público usa el catálogo administrable en tiempo real cuando está disponible.
   const rawFilteredItems = menuItems.filter((item) => {
     const matchesCategory =
@@ -335,6 +406,20 @@ export default function App() {
           }}
           onPersonSelectionChange={setSelectedTablePerson}
         />
+      )}
+
+      {/* En modo personal, permitir corregir los datos de la mesa sin abandonar la toma de pedido */}
+      {customerTableNumber !== null && isStaffOrderMode && adminUser && (
+        <div className="w-full max-w-3xl mx-auto px-3 sm:px-4 -mt-1 mb-2">
+          <button
+            type="button"
+            onClick={handleOpenTableEditor}
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-[#FFF7EA] border-2 border-[#DEC8AE] hover:border-[#C9974D] text-[#5C3825] text-xs sm:text-sm font-bold shadow-2xs transition-all active:scale-[0.99] cursor-pointer"
+          >
+            <Users className="w-4 h-4 text-[#A86B3D]" />
+            <span>← Editar mesa / número de comensales</span>
+          </button>
+        </div>
       )}
 
       {/* 2. Hero Banner Bistró Mexicano Contemporáneo - Oculto en modo mesa para no interponerse */}
@@ -636,6 +721,109 @@ export default function App() {
         vipProfile={vipProfile}
         onProfileUpdated={refreshVipProfile}
       />
+
+      {/* Editor rápido de mesa para el mesero: corrige comensales sin perder el carrito */}
+      {isTableEditModalOpen && customerTableNumber !== null && adminUser && (
+        <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-[#FFFDF9] rounded-3xl border-2 border-[#C9974D]/50 shadow-2xl overflow-hidden">
+            <div className="bg-[#3A2418] text-[#FFF7EA] px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-[#C9974D]" />
+                <div>
+                  <h3 className="font-serif font-black text-base">Editar Mesa {customerTableNumber}</h3>
+                  <p className="text-[11px] text-[#F4E3C8]">Corrige los comensales antes de enviar la comanda</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsTableEditModalOpen(false)}
+                disabled={isSavingTableEdit}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold disabled:opacity-40"
+                aria-label="Cerrar editor de mesa"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-2">Número de comensales</p>
+                <div className="flex items-center justify-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setTableEditGuestCount((value) => Math.max(minimumTableGuestCount, value - 1))}
+                    disabled={isSavingTableEdit || tableEditGuestCount <= minimumTableGuestCount}
+                    className="w-11 h-11 rounded-xl bg-white border border-[#DEC8AE] text-xl font-bold text-[#3A2418] disabled:opacity-30"
+                  >
+                    −
+                  </button>
+                  <div className="min-w-[100px] py-2 px-4 rounded-xl bg-[#FFF7EA] border border-[#DEC8AE] text-center">
+                    <strong className="text-2xl font-serif text-[#2B1B13] block">{tableEditGuestCount}</strong>
+                    <span className="text-[10px] text-[#8A624C]">{tableEditGuestCount === 1 ? 'persona' : 'personas'}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTableEditGuestCount((value) => Math.min(10, value + 1))}
+                    disabled={isSavingTableEdit || tableEditGuestCount >= 10}
+                    className="w-11 h-11 rounded-xl bg-white border border-[#DEC8AE] text-xl font-bold text-[#3A2418] disabled:opacity-30"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-5 gap-2">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((count) => (
+                  <button
+                    key={count}
+                    type="button"
+                    disabled={isSavingTableEdit || count < minimumTableGuestCount}
+                    onClick={() => setTableEditGuestCount(count)}
+                    className={`h-10 rounded-xl border text-sm font-bold transition-all disabled:opacity-25 ${
+                      tableEditGuestCount === count
+                        ? 'bg-[#3A2418] border-[#3A2418] text-[#FFF7EA]'
+                        : 'bg-white border-[#DEC8AE] text-[#5C3825]'
+                    }`}
+                  >
+                    {count}
+                  </button>
+                ))}
+              </div>
+
+              {minimumTableGuestCount > 1 && (
+                <p className="text-[11px] text-[#8A624C] bg-[#FFF7EA] border border-[#DEC8AE] rounded-xl px-3 py-2">
+                  Hay productos en el carrito asignados hasta Persona {minimumTableGuestCount}. Para bajar de ese número, primero corrige o elimina esos productos.
+                </p>
+              )}
+
+              {tableEditError && (
+                <div className="rounded-xl bg-rose-50 border border-rose-200 text-rose-800 px-3 py-2 text-xs">
+                  {tableEditError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsTableEditModalOpen(false)}
+                  disabled={isSavingTableEdit}
+                  className="py-3 rounded-xl bg-white border border-[#DEC8AE] text-[#5C3825] text-xs font-bold disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveTableEditor}
+                  disabled={isSavingTableEdit}
+                  className="py-3 rounded-xl bg-[#3A2418] text-[#FFF7EA] text-xs font-bold shadow-sm disabled:opacity-60"
+                >
+                  {isSavingTableEdit ? 'Guardando…' : 'Guardar cambios'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Staff Floating Quick Return Bar (Only visible if a staff user is logged in on this iPad) */}
       {adminUser && !isAdminViewActive && (
