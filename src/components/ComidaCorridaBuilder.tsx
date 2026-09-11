@@ -79,6 +79,13 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
     };
   }, []);
 
+  // Cada nueva comida corrida debe iniciar SIN extra para evitar heredar huevo/plátano de la anterior.
+  useEffect(() => {
+    if (isOpen) {
+      setExtraAgrega('Sin extra');
+    }
+  }, [isOpen]);
+
   // Parsear opciones de Entrada / Sopa (1er Tiempo)
   const primerTiempoOptions = useMemo<string[]>(() => {
     if (!dailyMenu.entrada || !dailyMenu.entrada.trim()) {
@@ -204,6 +211,14 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
     }
   }, [dailyGuisadoOptions, alternativeOptions, tercerTiempo]);
 
+  const handleSegundoTiempoChange = (option: string) => {
+    if (option !== segundoTiempo) {
+      // Cambiar de arroz a pasta/espagueti (o viceversa) obliga a volver a elegir el extra conscientemente.
+      setExtraAgrega('Sin extra');
+    }
+    setSegundoTiempo(option);
+  };
+
   if (!isOpen) return null;
 
   // Cálculo de precio base y extras
@@ -242,6 +257,7 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
     };
 
     onAddToCart(cartItem);
+    setExtraAgrega('Sin extra');
     onClose();
   };
 
@@ -359,7 +375,7 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({
                 <button
                   key={opt}
                   type="button"
-                  onClick={() => setSegundoTiempo(opt)}
+                  onClick={() => handleSegundoTiempoChange(opt)}
                   className={`p-3 rounded-xl border text-xs font-bold text-left transition-all flex items-center justify-between cursor-pointer ${
                     segundoTiempo === opt
                       ? 'bg-[#C77B4A]/15 border-[#A86B3D] text-[#3A2418] shadow-xs ring-1 ring-[#A86B3D]'
