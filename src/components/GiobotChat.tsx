@@ -3,6 +3,7 @@ import { ChatMessage, CartItem, MenuItem, TableSessionPerson } from '../types';
 import { Send, X } from 'lucide-react';
 import { getDailyMenuConfig, getRestaurantInfo } from '../lib/adminStorage';
 import { getTableSession } from '../lib/tableSessionsService';
+import { subscribeToMenuCatalog } from '../lib/menuCatalogService';
 
 interface GiobotChatProps {
   isOpen: boolean;
@@ -34,11 +35,23 @@ const GENERAL_SUGGESTIONS = [
 
 const TABLE_SUGGESTIONS = [
   '🍽️ ¿Qué me recomiendas de la carta?',
-  '🧾 ¿Qué llevo en mi pedido?',
-  '☕ ¿Qué bebida combina con lo que pedí?',
+  '☕ ¿Qué bebida me recomiendas?',
   '🙋 ¿Cómo llamo a mi mesero?',
   '🍲 ¿Qué incluye la comida corrida?',
+  '🧾 ¿Cómo pido la cuenta?',
 ];
+
+function readTableNumberFromUrl(): number | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const value = new URLSearchParams(window.location.search).get('table');
+    if (!value) return null;
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 function renderFormattedText(text: string): React.ReactNode {
   return (
@@ -77,7 +90,52 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
   const [inputText, setInputText] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isThinking, setIsThinking] = useState<boolean>(false);
+  const [liveMenuItems, setLiveMenuItems] = useState<MenuItem[]>(menuItems);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const effectiveTableNumber = tableNumber ?? readTableNumberFromUrl();
+
+  useEffect(() => {
+    if (menuItems.length > 0) {
+      setLiveMenuItems(menuItems);
+      return;
+    }
+
+    return subscribeToMenuCatalog(
+      (catalog) => {
+        if (!catalog) return;
+        const items: MenuItem[] = catalog.items
+          .filter((item) => item.active && item.available)
+          .map((item) => {
+            const sizes = (item.sizes || [])
+              .filter((size) => typeof size.price === 'number' && size.price != null)
+              .map((size) => ({ name: size.name, price: Number(size.price) }));
+            const basePrice = typeof item.price === 'number'
+              ? item.price
+              : sizes.length > 0
+              ? Math.min(...sizes.map((size) => size.price))
+              : 0;
+
+            return {
+              id: item.id,
+              name: item.name,
+              category: item.category,
+              description: item.description,
+              price: basePrice,
+              ...(sizes.length ? { sizes } : {}),
+              ...(item.options?.length ? { options: item.options } : {}),
+              ...(item.extras?.length
+                ? { extras: item.extras.map((extra) => ({ id: extra.id, name: extra.name, price: extra.price })) }
+                : {}),
+              popular: item.popular,
+              ...(item.weekendOnly ? { weekendOnly: item.weekendOnly } : {}),
+            } as MenuItem;
+          });
+        setLiveMenuItems(items);
+      },
+      (error) => console.warn('No se pudo sincronizar catálogo para Tita:', error)
+    );
+  }, [menuItems]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -89,15 +147,15 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    const tableIntro = tableNumber
-      ? `Hola 👋 Soy Tita. Ya sé que estás en la Mesa ${tableNumber}${selectedPerson?.label ? ` como ${selectedPerson.label}` : ''}. Puedo ayudarte con la carta, recomendarte algo y orientarte con el servicio. ¿Qué se te antoja? 😊`
+    const tableIntro = effectiveTableNumber
+      ? `Hola 👋 Soy Tita. Ya sé que estás en la Mesa ${effectiveTableNumber}${selectedPerson?.label ? ` como ${selectedPerson.label}` : ''}. Puedo ayudarte con la carta, recomendarte algo y orientarte con el servicio. ¿Qué se te antoja? 😊`
       : INITIAL_MESSAGES[0].text;
 
     setMessages((current) => {
       if (current.length !== 1 || current[0].id !== 'welcome') return current;
       return [{ ...current[0], text: tableIntro }];
     });
-  }, [isOpen, tableNumber, selectedPerson?.label]);
+  }, [isOpen, effectiveTableNumber, selectedPerson?.label]);
 
   if (!isOpen) return null;
 
@@ -178,12 +236,12 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
     }
 
     let tableSessionPayload: any = null;
-    if (tableNumber) {
+    if (effectiveTableNumber) {
       try {
-        const session = await getTableSession(tableNumber);
+        const session = await getTableSession(effectiveTableNumber);
         tableSessionPayload = session
           ? {
-              tableNumber,
+              tableNumber: effectiveTableNumber,
               status: session.status,
               guestCount: session.guestCount,
               accountMode: session.accountMode,
@@ -192,14 +250,14 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
                 ? { index: selectedPerson.index, label: selectedPerson.label }
                 : null,
             }
-          : { tableNumber, status: 'SIN_SESION' };
+          : { tableNumber: effectiveTableNumber, status: 'SIN_SESION' };
       } catch (err) {
         console.warn('No se pudo obtener la sesión de mesa para Tita:', err);
-        tableSessionPayload = { tableNumber, status: 'NO_DISPONIBLE' };
+        tableSessionPayload = { tableNumber: effectiveTableNumber, status: 'NO_DISPONIBLE' };
       }
     }
 
-    const menuCatalogPayload = menuItems.slice(0, 120).map((item) => ({
+    const menuCatalogPayload = liveMenuItems.slice(0, 120).map((item) => ({
       id: item.id,
       name: item.name,
       category: item.category,
@@ -222,7 +280,7 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
     }));
 
     const customerContext = {
-      serviceMode: tableNumber ? 'MESA' : 'GENERAL',
+      serviceMode: effectiveTableNumber ? 'MESA' : 'GENERAL',
       table: tableSessionPayload,
       cart: {
         items: cartPayload,
@@ -255,7 +313,6 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
         const chunk = decoder.decode(value, { stream: true });
         if (!chunk) continue;
         accumulatedText += chunk;
@@ -263,17 +320,17 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
         if (!botMsgId) {
           botMsgId = `giobot-${Date.now()}`;
           setIsThinking(false);
-          const firstBotMsg: ChatMessage = {
-            id: botMsgId,
-            sender: 'giobot',
-            text: accumulatedText,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          };
-          setMessages((prev) => [...prev, firstBotMsg]);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: botMsgId!,
+              sender: 'giobot',
+              text: accumulatedText,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            },
+          ]);
         } else {
-          setMessages((prev) =>
-            prev.map((msg) => (msg.id === botMsgId ? { ...msg, text: accumulatedText } : msg))
-          );
+          setMessages((prev) => prev.map((msg) => (msg.id === botMsgId ? { ...msg, text: accumulatedText } : msg)));
         }
       }
 
@@ -308,7 +365,7 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
     }
   };
 
-  const suggestions = tableNumber ? TABLE_SUGGESTIONS : GENERAL_SUGGESTIONS;
+  const suggestions = effectiveTableNumber ? TABLE_SUGGESTIONS : GENERAL_SUGGESTIONS;
 
   return (
     <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-96 bg-[#FFF7EA] shadow-2xl border-l border-[#F4E3C8] flex flex-col animate-slide-left">
@@ -324,11 +381,11 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
             <div className="flex items-center gap-1.5 flex-wrap">
               <h3 className="font-bold text-sm text-[#FFF7EA] font-serif">Tita</h3>
               <span className="text-[9px] bg-[#4A2E1F] text-[#C9974D] px-2 py-0.5 rounded-full font-semibold border border-[#C9974D]/40 font-sans">
-                {tableNumber ? `MESA ${tableNumber}` : 'COMENSALES'}
+                {effectiveTableNumber ? `MESA ${effectiveTableNumber}` : 'COMENSALES'}
               </span>
             </div>
             <p className="text-[11px] text-[#F4E3C8] truncate">
-              {tableNumber
+              {effectiveTableNumber
                 ? `${selectedPerson?.label || 'Tu mesa'} · anfitriona y guía de servicio`
                 : 'Tu anfitriona amable & asesora'}
             </p>
@@ -376,7 +433,7 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
 
       <div className="p-2.5 bg-[#F4E3C8]/40 border-t border-[#F4E3C8] overflow-x-auto no-scrollbar">
         <p className="text-[10px] font-bold uppercase tracking-wider text-[#3A2418] mb-1.5 px-1 font-serif">
-          {tableNumber ? 'Puedo ayudarte con:' : 'Preguntas sugeridas:'}
+          {effectiveTableNumber ? 'Puedo ayudarte con:' : 'Preguntas sugeridas:'}
         </p>
         <div className="flex items-center gap-1.5 min-w-max">
           {suggestions.map((sug, i) => (
@@ -401,7 +458,7 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
       >
         <input
           type="text"
-          placeholder={tableNumber ? `Pregunta desde Mesa ${tableNumber}...` : 'Escribe tu mensaje a Tita...'}
+          placeholder={effectiveTableNumber ? `Pregunta desde Mesa ${effectiveTableNumber}...` : 'Escribe tu mensaje a Tita...'}
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           disabled={isLoading}
