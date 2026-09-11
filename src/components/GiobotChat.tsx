@@ -1,37 +1,77 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage } from '../types';
-import { Bot, Send, X, Sparkles, MessageSquare, Coffee, Utensils, RefreshCw } from 'lucide-react';
+import { ChatMessage, CartItem, MenuItem, TableSessionPerson } from '../types';
+import { Send, X } from 'lucide-react';
 import { getDailyMenuConfig, getRestaurantInfo } from '../lib/adminStorage';
+import { getTableSession } from '../lib/tableSessionsService';
 
 interface GiobotChatProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenSaladBuilder: () => void;
   onOpenComidaCorridaBuilder: () => void;
+  tableNumber?: number | null;
+  selectedPerson?: TableSessionPerson | null;
+  cartItems?: CartItem[];
+  menuItems?: MenuItem[];
 }
 
 const INITIAL_MESSAGES: ChatMessage[] = [
   {
     id: 'welcome',
     sender: 'giobot',
-    text: 'Hola 👋 Soy Tita, tu anfitriona de Restaurante Calientito. Puedo ayudarte a elegir platillos, resolver dudas sobre el menú o tomar tu pedido a domicilio y para llevar. ¿En qué puedo consentirte hoy? 😊',
+    text: 'Hola 👋 Soy Tita, tu anfitriona de Restaurante Calientito. Puedo ayudarte a elegir, explicarte el menú y orientarte durante tu visita. ¿Qué se te antoja hoy? 😊',
     timestamp: 'Ahora',
   },
 ];
 
-const SUGGESTIONS = [
-  '📍 ¿Cuál es su ubicación y horarios?',
-  '🧾 ¿Cómo pido a domicilio o anticipo por WhatsApp?',
+const GENERAL_SUGGESTIONS = [
+  '🍽️ ¿Qué me recomiendas?',
   '🍲 ¿Qué incluye la Comida Corrida?',
+  '📍 ¿Cuál es su ubicación y horarios?',
   '⭐ ¿Cómo funciona la Tarjeta VIP?',
   '🌱 ¿Cómo aplica el descuento ecológico?',
 ];
 
+const TABLE_SUGGESTIONS = [
+  '🍽️ ¿Qué me recomiendas de la carta?',
+  '🧾 ¿Qué llevo en mi pedido?',
+  '☕ ¿Qué bebida combina con lo que pedí?',
+  '🙋 ¿Cómo llamo a mi mesero?',
+  '🍲 ¿Qué incluye la comida corrida?',
+];
+
+function renderFormattedText(text: string): React.ReactNode {
+  return (
+    <div className="space-y-1.5">
+      {text.split('\n').map((line, lineIndex) => {
+        if (!line.trim()) return <div key={`gap-${lineIndex}`} className="h-1" />;
+        const parts = line.split(/(\*\*.*?\*\*)/g).filter(Boolean);
+        return (
+          <p key={`line-${lineIndex}`} className="whitespace-pre-wrap">
+            {parts.map((part, partIndex) => {
+              const bold = part.startsWith('**') && part.endsWith('**') && part.length > 4;
+              return bold ? (
+                <strong key={`part-${lineIndex}-${partIndex}`} className="font-black text-[#3A2418]">
+                  {part.slice(2, -2)}
+                </strong>
+              ) : (
+                <React.Fragment key={`part-${lineIndex}-${partIndex}`}>{part}</React.Fragment>
+              );
+            })}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 export const GiobotChat: React.FC<GiobotChatProps> = ({
   isOpen,
   onClose,
-  onOpenSaladBuilder,
-  onOpenComidaCorridaBuilder,
+  tableNumber = null,
+  selectedPerson = null,
+  cartItems = [],
+  menuItems = [],
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [inputText, setInputText] = useState<string>('');
@@ -44,10 +84,20 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
   };
 
   useEffect(() => {
-    if (isOpen) {
-      scrollToBottom();
-    }
+    if (isOpen) scrollToBottom();
   }, [messages, isThinking, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const tableIntro = tableNumber
+      ? `Hola 👋 Soy Tita. Ya sé que estás en la Mesa ${tableNumber}${selectedPerson?.label ? ` como ${selectedPerson.label}` : ''}. Puedo ayudarte con la carta, recomendarte algo y orientarte con el servicio. ¿Qué se te antoja? 😊`
+      : INITIAL_MESSAGES[0].text;
+
+    setMessages((current) => {
+      if (current.length !== 1 || current[0].id !== 'welcome') return current;
+      return [{ ...current[0], text: tableIntro }];
+    });
+  }, [isOpen, tableNumber, selectedPerson?.label]);
 
   if (!isOpen) return null;
 
@@ -71,7 +121,6 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
     let botMsgId: string | null = null;
     let accumulatedText = '';
 
-    // Obtener menú del día actual de Firestore/espejo local
     let dailyMenuPayload: any = null;
     try {
       const menuConfig = getDailyMenuConfig();
@@ -93,7 +142,6 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
       console.warn('No se pudo obtener el menú del día para Tita:', err);
     }
 
-    // Obtener información dinámica del restaurante (Firestore / espejo local)
     let restaurantInfoPayload = {
       address: 'Calle la Fama 12, 14260 Tlalpan CDMX, México',
       whatsapp: '55 7441 1437',
@@ -107,6 +155,7 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
       servicePolicies: 'Servicio en comedor, para llevar y a domicilio. Formas de pago: efectivo, transferencia y tarjeta.',
       activePromotions: '10% de descuento por traer recipientes propios.',
     };
+
     try {
       const restInfo = getRestaurantInfo();
       if (restInfo) {
@@ -128,25 +177,77 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
       console.warn('No se pudo obtener la info del restaurante para Tita:', err);
     }
 
+    let tableSessionPayload: any = null;
+    if (tableNumber) {
+      try {
+        const session = await getTableSession(tableNumber);
+        tableSessionPayload = session
+          ? {
+              tableNumber,
+              status: session.status,
+              guestCount: session.guestCount,
+              accountMode: session.accountMode,
+              waiterName: session.waiterName || 'Por asignar',
+              selectedPerson: selectedPerson
+                ? { index: selectedPerson.index, label: selectedPerson.label }
+                : null,
+            }
+          : { tableNumber, status: 'SIN_SESION' };
+      } catch (err) {
+        console.warn('No se pudo obtener la sesión de mesa para Tita:', err);
+        tableSessionPayload = { tableNumber, status: 'NO_DISPONIBLE' };
+      }
+    }
+
+    const menuCatalogPayload = menuItems.slice(0, 120).map((item) => ({
+      id: item.id,
+      name: item.name,
+      category: item.category,
+      description: item.description,
+      price: item.price,
+      sizes: item.sizes?.map((size) => ({ name: size.name, price: size.price })),
+      options: item.options,
+      extras: item.extras?.map((extra) => ({ name: extra.name, price: extra.price })),
+      popular: item.popular || false,
+    }));
+
+    const cartPayload = cartItems.map((cartItem) => ({
+      name: cartItem.item.name,
+      quantity: cartItem.quantity,
+      totalPrice: cartItem.totalPrice,
+      personLabel: cartItem.personLabel,
+      selectedSize: cartItem.selectedSize?.name,
+      selectedOption: cartItem.selectedOption,
+      extras: cartItem.selectedExtras?.map((extra) => extra.name) || [],
+    }));
+
+    const customerContext = {
+      serviceMode: tableNumber ? 'MESA' : 'GENERAL',
+      table: tableSessionPayload,
+      cart: {
+        items: cartPayload,
+        itemCount: cartItems.reduce((sum, item) => sum + item.quantity, 0),
+        total: cartItems.reduce((sum, item) => sum + item.totalPrice, 0),
+      },
+    };
+
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: newMessages.slice(-6), // context window
+          mode: 'customer',
+          messages: newMessages.slice(-8),
           userPrompt: prompt,
           dailyMenu: dailyMenuPayload,
           restaurantInfo: restaurantInfoPayload,
+          menuCatalog: menuCatalogPayload,
+          customerContext,
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Error en el servidor: ${response.status}`);
-      }
-
-      if (!response.body) {
-        throw new Error('No se recibió cuerpo de respuesta');
-      }
+      if (!response.ok) throw new Error(`Error en el servidor: ${response.status}`);
+      if (!response.body) throw new Error('No se recibió cuerpo de respuesta');
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder('utf-8');
@@ -157,44 +258,39 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
 
         const chunk = decoder.decode(value, { stream: true });
         if (!chunk) continue;
-
         accumulatedText += chunk;
 
         if (!botMsgId) {
           botMsgId = `giobot-${Date.now()}`;
           setIsThinking(false);
-          const currentTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           const firstBotMsg: ChatMessage = {
             id: botMsgId,
             sender: 'giobot',
             text: accumulatedText,
-            timestamp: currentTimestamp,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           };
           setMessages((prev) => [...prev, firstBotMsg]);
         } else {
-          const currentText = accumulatedText;
           setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === botMsgId ? { ...msg, text: currentText } : msg
-            )
+            prev.map((msg) => (msg.id === botMsgId ? { ...msg, text: accumulatedText } : msg))
           );
         }
       }
 
-      // Si por alguna razón el stream finalizó sin fragmentos
       if (!botMsgId) {
         setIsThinking(false);
-        const fallbackMsg: ChatMessage = {
-          id: `giobot-${Date.now()}`,
-          sender: 'giobot',
-          text: accumulatedText || '¡Con gusto te ayudo! ¿En qué más puedo apoyarte? 😊',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        };
-        setMessages((prev) => [...prev, fallbackMsg]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `giobot-${Date.now()}`,
+            sender: 'giobot',
+            text: accumulatedText || '¡Con gusto te ayudo! ¿En qué más puedo apoyarte? 😊',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          },
+        ]);
       }
     } catch (err) {
-      console.error('Error contacting Giobot:', err);
-      // Solo mostrar error si la petición realmente falló antes de recibir respuesta
+      console.error('Error contacting Tita:', err);
       if (!botMsgId) {
         setMessages((prev) => [
           ...prev,
@@ -212,63 +308,55 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
     }
   };
 
+  const suggestions = tableNumber ? TABLE_SUGGESTIONS : GENERAL_SUGGESTIONS;
+
   return (
     <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-96 bg-[#FFF7EA] shadow-2xl border-l border-[#F4E3C8] flex flex-col animate-slide-left">
-      {/* Header */}
       <div className="bg-gradient-to-r from-[#3A2418] via-[#4A2E1F] to-[#2B1B13] text-[#FFF7EA] p-4 flex items-center justify-between border-b border-[#4E3222]">
-        <div className="flex items-center gap-3">
-          <div className="relative">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="relative shrink-0">
             <div className="w-10 h-10 rounded-2xl bg-[#FFF7EA] p-1 flex items-center justify-center shadow-md border border-[#C9974D]/40">
               <img src="/tita.png" alt="Tita" className="w-full h-full object-contain" />
             </div>
             <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#3A2418]" />
           </div>
-          <div>
-            <h3 className="font-bold text-sm text-[#FFF7EA] flex items-center gap-1.5 font-serif">
-              Tita 💬
-              <span className="text-[10px] bg-[#4A2E1F] text-[#C9974D] px-2 py-0.5 rounded-full font-semibold border border-[#C9974D]/40 font-sans">
-                Restaurante Calientito
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h3 className="font-bold text-sm text-[#FFF7EA] font-serif">Tita</h3>
+              <span className="text-[9px] bg-[#4A2E1F] text-[#C9974D] px-2 py-0.5 rounded-full font-semibold border border-[#C9974D]/40 font-sans">
+                {tableNumber ? `MESA ${tableNumber}` : 'COMENSALES'}
               </span>
-            </h3>
-            <p className="text-[11px] text-[#F4E3C8]">Tu anfitriona amable & asesora</p>
+            </div>
+            <p className="text-[11px] text-[#F4E3C8] truncate">
+              {tableNumber
+                ? `${selectedPerson?.label || 'Tu mesa'} · anfitriona y guía de servicio`
+                : 'Tu anfitriona amable & asesora'}
+            </p>
           </div>
         </div>
 
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-xl bg-[#4A2E1F] hover:bg-[#5C3825] text-[#FFF7EA] transition-colors cursor-pointer"
-        >
+        <button onClick={onClose} className="p-1.5 rounded-xl bg-[#4A2E1F] hover:bg-[#5C3825] text-[#FFF7EA] transition-colors cursor-pointer">
           <X className="w-5 h-5" />
         </button>
       </div>
 
-      {/* Messages Scroll Area */}
       <div className="flex-1 p-4 overflow-y-auto space-y-3.5 bg-[#FFF7EA]">
         {messages.map((msg) => {
           const isGiobot = msg.sender === 'giobot';
           return (
-            <div
-              key={msg.id}
-              className={`flex flex-col ${isGiobot ? 'items-start' : 'items-end'}`}
-            >
-              <div
-                className={`max-w-[85%] rounded-2xl p-3 text-xs leading-relaxed shadow-2xs ${
-                  isGiobot
-                    ? 'bg-white border border-[#F4E3C8] text-[#2B1B13] rounded-tl-xs'
-                    : 'bg-[#3A2418] text-[#FFF7EA] rounded-tr-xs font-medium'
-                }`}
-              >
+            <div key={msg.id} className={`flex flex-col ${isGiobot ? 'items-start' : 'items-end'}`}>
+              <div className={`max-w-[88%] rounded-2xl p-3 text-xs leading-relaxed shadow-2xs ${
+                isGiobot
+                  ? 'bg-white border border-[#F4E3C8] text-[#2B1B13] rounded-tl-xs'
+                  : 'bg-[#3A2418] text-[#FFF7EA] rounded-tr-xs font-medium'
+              }`}>
                 {isGiobot && (
                   <div className="flex items-center gap-1 mb-1 text-[10px] font-bold text-[#A86B3D] font-serif">
                     <img src="/tita.png" alt="Tita" className="w-3.5 h-3.5 object-contain" /> Tita
                   </div>
                 )}
-                <p className="whitespace-pre-wrap">{msg.text}</p>
-                <span
-                  className={`block text-[9px] mt-1 text-right ${
-                    isGiobot ? 'text-[#A86B3D]/80' : 'text-[#F4E3C8]'
-                  }`}
-                >
+                {isGiobot ? renderFormattedText(msg.text) : <p className="whitespace-pre-wrap">{msg.text}</p>}
+                <span className={`block text-[9px] mt-1 text-right ${isGiobot ? 'text-[#A86B3D]/80' : 'text-[#F4E3C8]'}`}>
                   {msg.timestamp}
                 </span>
               </div>
@@ -286,17 +374,17 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Suggestion Chips */}
       <div className="p-2.5 bg-[#F4E3C8]/40 border-t border-[#F4E3C8] overflow-x-auto no-scrollbar">
         <p className="text-[10px] font-bold uppercase tracking-wider text-[#3A2418] mb-1.5 px-1 font-serif">
-          Preguntas sugeridas:
+          {tableNumber ? 'Puedo ayudarte con:' : 'Preguntas sugeridas:'}
         </p>
         <div className="flex items-center gap-1.5 min-w-max">
-          {SUGGESTIONS.map((sug, i) => (
+          {suggestions.map((sug, i) => (
             <button
               key={i}
               onClick={() => handleSendMessage(sug)}
-              className="text-[11px] bg-[#FFF7EA] hover:bg-[#F4E3C8] text-[#3A2418] font-semibold border border-[#F4E3C8] px-2.5 py-1 rounded-xl shadow-2xs transition-all active:scale-95 cursor-pointer"
+              disabled={isLoading}
+              className="text-[11px] bg-[#FFF7EA] hover:bg-[#F4E3C8] text-[#3A2418] font-semibold border border-[#F4E3C8] px-2.5 py-1 rounded-xl shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
             >
               {sug}
             </button>
@@ -304,7 +392,6 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
         </div>
       </div>
 
-      {/* Input Form */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -314,7 +401,7 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
       >
         <input
           type="text"
-          placeholder="Escribe tu mensaje a Tita..."
+          placeholder={tableNumber ? `Pregunta desde Mesa ${tableNumber}...` : 'Escribe tu mensaje a Tita...'}
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           disabled={isLoading}
