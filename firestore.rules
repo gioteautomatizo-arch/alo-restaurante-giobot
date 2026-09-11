@@ -2,17 +2,14 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Identificador único y estable de la instalación del restaurante
     function isValidRestaurant(data) {
       return data.restaurantId == 'alo-restaurante';
     }
 
-    // Validación de usuario autenticado en Firebase Auth
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // 1. Staff Users: Personal del restaurante y roles
     match /staff_users/{userId} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn()
@@ -22,7 +19,6 @@ service cloud.firestore {
       allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
     }
 
-    // 2. Shifts: Control de turnos y arqueos de caja
     match /shifts/{shiftId} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn()
@@ -32,7 +28,6 @@ service cloud.firestore {
       allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
     }
 
-    // 3. Expenses: Registro de gastos operativos
     match /expenses/{expenseId} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn()
@@ -43,7 +38,6 @@ service cloud.firestore {
       allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
     }
 
-    // 4. CXC: Cuentas por cobrar
     match /cxc_records/{cxcId} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn()
@@ -54,7 +48,6 @@ service cloud.firestore {
       allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
     }
 
-    // 5. Inventory: Artículos y consumos de inventario
     match /inventory_items/{itemId} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn()
@@ -63,7 +56,6 @@ service cloud.firestore {
       allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
     }
 
-    // 6. Sobre: Movimientos de resguardo seguro
     match /sobre_movements/{movementId} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn()
@@ -72,23 +64,20 @@ service cloud.firestore {
       allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
     }
 
-    // 7. Daily Menu: Menú del día (lectura pública para comensales, gestión administrativa autenticada)
     match /daily_menu/{menuDoc} {
       allow read: if true;
       allow create, update: if isSignedIn() && isValidRestaurant(request.resource.data);
       allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
     }
 
-    // 8. Activity Logs: Bitácora inmutable de auditoría
     match /activity_logs/{logId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
         && isValidRestaurant(request.resource.data)
         && request.resource.data.action is string;
-      allow update, delete: if false; // Inmutabilidad de auditoría
+      allow update, delete: if false;
     }
 
-    // 9. VIP Profiles: Perfiles de clientes VIP Calientito
     match /vip_profiles/{profileId} {
       allow get: if true;
       allow list: if isSignedIn();
@@ -123,7 +112,6 @@ service cloud.firestore {
       allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
     }
 
-    // 10. Tables: Gestión operativa de mesas en tiempo real (exclusivo personal autenticado, actualización de ocupación por QR)
     match /tables/{tableId} {
       allow get: if true;
       allow list: if isSignedIn();
@@ -144,7 +132,6 @@ service cloud.firestore {
       allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
     }
 
-    // 11. Table Service Requests: Solicitudes de comensales desde su mesa vía código QR
     match /table_service_requests/{requestId} {
       allow create: if (
         request.auth == null
@@ -163,7 +150,6 @@ service cloud.firestore {
       allow update, delete: if isSignedIn();
     }
 
-    // 12. Restaurant Orders / Comandas: pedidos desde menú digital
     match /restaurant_orders/{orderId} {
       allow create: if (
         isValidRestaurant(request.resource.data)
@@ -187,7 +173,6 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // 13. Table Sessions: sesión digital de una mesa y cuentas opcionales
     match /table_sessions/{sessionId} {
       allow get: if true;
       allow list: if isSignedIn();
@@ -220,10 +205,6 @@ service cloud.firestore {
         && request.resource.data.accountMode in ['GENERAL', 'SEPARADAS']
       );
 
-      // Actualización de sesión:
-      // 1. Cliente público: reactivar una sesión CERRADA a ACTIVA por QR.
-      // 2. Modo personal portátil: sólo corregir guestCount de una sesión abierta por MESERO.
-      // 3. Personal autenticado: operación completa de la sesión.
       allow update: if (
         request.auth == null
         && resource.data.status == 'CERRADA'
@@ -257,7 +238,9 @@ service cloud.firestore {
         && request.resource.data.guestCount >= 1
         && request.resource.data.guestCount <= 20
         && request.resource.data.updatedAt is string
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['guestCount', 'updatedAt'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'guestCount', 'updatedAt', 'updatedById', 'updatedByName'
+        ])
       ) || (
         isSignedIn()
         && isValidRestaurant(request.resource.data)
@@ -269,7 +252,6 @@ service cloud.firestore {
       allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
     }
 
-    // 14. Table Payments / Caja: cobros cerrados por mesa
     match /table_payments/{paymentId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
