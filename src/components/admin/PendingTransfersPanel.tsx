@@ -19,6 +19,14 @@ function money(value: number): string {
   })}`;
 }
 
+function transferAmountFromPayment(payment: TablePayment): number {
+  if (payment.paymentMethod === 'TRANSFERENCIA') return Number(payment.total || 0);
+  if (payment.paymentMethod !== 'MIXTO') return 0;
+  return (payment.paymentBreakdown || [])
+    .filter((item) => item.method === 'TRANSFERENCIA')
+    .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+}
+
 export const PendingTransfersPanel: React.FC<PendingTransfersPanelProps> = ({ currentUser }) => {
   const [intents, setIntents] = useState<TablePaymentIntent[]>([]);
   const [payments, setPayments] = useState<TablePayment[]>([]);
@@ -33,9 +41,9 @@ export const PendingTransfersPanel: React.FC<PendingTransfersPanelProps> = ({ cu
     intents.forEach((intent) => {
       const match = payments.find((payment) =>
         payment.status === 'PAGADO' &&
-        payment.paymentMethod === 'TRANSFERENCIA' &&
+        transferAmountFromPayment(payment) > 0 &&
         payment.tableNumber === intent.tableNumber &&
-        Math.abs(Number(payment.total || 0) - Number(intent.amount || 0)) < 0.01 &&
+        Math.abs(transferAmountFromPayment(payment) - Number(intent.amount || 0)) < 0.01 &&
         Date.parse(payment.createdAt) >= Date.parse(intent.createdAt)
       );
       if (match && intent.id) ids.add(intent.id);
@@ -78,7 +86,7 @@ export const PendingTransfersPanel: React.FC<PendingTransfersPanelProps> = ({ cu
             <Landmark className="w-4 h-4" /> Transferencias por verificar
           </div>
           <p className="text-xs text-violet-900 mt-1">
-            Revisa el comprobante y después usa <strong>Cobrar → Transferencia → Confirmar cobro</strong>. Al registrar el cobro, el comprobante se marca automáticamente como confirmado.
+            Revisa el comprobante y después usa <strong>Cobrar → Transferencia</strong> o <strong>Cobrar → Pago mixto</strong>. Al registrar exactamente ese monto por transferencia, el comprobante se marca automáticamente como confirmado.
           </p>
         </div>
         <span className="shrink-0 rounded-full bg-violet-700 text-white px-2.5 py-1 text-[10px] font-bold">{intents.length}</span>
