@@ -644,6 +644,14 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               </button>
             </div>
 
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full py-2.5 px-4 bg-[#FFFDF9] hover:bg-[#F4E3C8] text-[#5C3825] rounded-xl font-bold text-xs border-2 border-[#DEC8AE] transition-colors cursor-pointer"
+            >
+              ← Seguir agregando o corregir pedido
+            </button>
+
             {cartItems.map((cartItem) => (
               <div
                 key={cartItem.cartId}
@@ -900,15 +908,6 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 {orderSubmitError}
               </div>
             )}
-
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmittingOrder}
-              className="w-full py-3 px-4 bg-[#FFFDF9] hover:bg-[#F4E3C8] text-[#5C3825] rounded-xl font-bold text-sm border-2 border-[#DEC8AE] transition-colors disabled:opacity-50 disabled:cursor-wait"
-            >
-              ← Volver a editar pedido
-            </button>
 
             <button
               type="submit"
