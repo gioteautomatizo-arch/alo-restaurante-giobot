@@ -90,12 +90,9 @@ service cloud.firestore {
 
     // 9. VIP Profiles: Perfiles de clientes VIP Calientito
     match /vip_profiles/{profileId} {
-      // 1. Lectura individual pública únicamente (conociendo el ID determinístico).
-      // 2. Prohibido listar (list) para usuarios públicos (previene enumeración y descarga masiva).
       allow get: if true;
       allow list: if isSignedIn();
 
-      // Creación: Administración autenticada O cliente público bajo validación estricta (stamps: 0, totalOrders: 0, rewardAvailable: false)
       allow create: if (
         isSignedIn() && isValidRestaurant(request.resource.data)
       ) || (
@@ -109,8 +106,6 @@ service cloud.firestore {
         && request.resource.data.pinHash is string
       );
 
-      // Actualización: Administración autenticada (sellos, órdenes, recompensas)
-      // O cliente público (únicamente datos personales; PROHIBIDO modificar sellos, órdenes, recompensas o identidad)
       allow update: if (
         isSignedIn() && isValidRestaurant(request.resource.data)
       ) || (
@@ -125,7 +120,6 @@ service cloud.firestore {
         && request.resource.data.customerName is string
       );
 
-      // Eliminación únicamente por administración
       allow delete: if isSignedIn() && resource.data.restaurantId == 'alo-restaurante';
     }
 
@@ -152,7 +146,6 @@ service cloud.firestore {
 
     // 11. Table Service Requests: Solicitudes de comensales desde su mesa vía código QR
     match /table_service_requests/{requestId} {
-      // Cliente público: CREATE únicamente bajo validación estricta
       allow create: if (
         request.auth == null
         && isValidRestaurant(request.resource.data)
@@ -166,17 +159,12 @@ service cloud.firestore {
         && isValidRestaurant(request.resource.data)
       );
 
-      // Lectura: Personal autenticado O comensal en mesa de restaurante en tiempo real
       allow read: if true;
-
-      // Personal autenticado: actualización y eliminación para atender solicitudes
       allow update, delete: if isSignedIn();
     }
 
-
     // 12. Restaurant Orders / Comandas: pedidos desde menú digital
     match /restaurant_orders/{orderId} {
-      // Cliente público puede crear una comanda con validación básica.
       allow create: if (
         isValidRestaurant(request.resource.data)
         && request.resource.data.status == 'NUEVO'
@@ -189,10 +177,8 @@ service cloud.firestore {
         && request.resource.data.createdAt is string
       );
 
-      // Las comandas completas sólo las ve el personal autenticado.
       allow read: if isSignedIn();
 
-      // Personal autenticado puede avanzar estados / corregir operación.
       allow update: if isSignedIn()
         && resource.data.restaurantId == 'alo-restaurante'
         && request.resource.data.restaurantId == 'alo-restaurante'
@@ -201,15 +187,11 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-
-
     // 13. Table Sessions: sesión digital de una mesa y cuentas opcionales
     match /table_sessions/{sessionId} {
-      // El QR consulta únicamente la sesión de su mesa; el personal puede listar todas.
       allow get: if true;
       allow list: if isSignedIn();
 
-      // Primer escaneo público: sólo puede CREAR una sesión general y válida si no existía el documento.
       allow create: if (
         request.auth == null
         && isValidRestaurant(request.resource.data)
@@ -239,8 +221,9 @@ service cloud.firestore {
       );
 
       // Actualización de sesión:
-      // 1. Cliente público: reactivar una sesión que estaba CERRADA a ACTIVA por QR
-      // 2. Personal autenticado: cambiar comensales, separar cuentas, pedir cuenta o cerrar sesión
+      // 1. Cliente público: reactivar una sesión CERRADA a ACTIVA por QR.
+      // 2. Modo personal portátil: sólo corregir guestCount de una sesión abierta por MESERO.
+      // 3. Personal autenticado: operación completa de la sesión.
       allow update: if (
         request.auth == null
         && resource.data.status == 'CERRADA'
@@ -264,6 +247,18 @@ service cloud.firestore {
           'status', 'openedBy', 'openedAt', 'updatedAt'
         ])
       ) || (
+        request.auth == null
+        && resource.data.openedBy == 'MESERO'
+        && resource.data.status == 'ACTIVA'
+        && isValidRestaurant(request.resource.data)
+        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && request.resource.data.tableNumber == resource.data.tableNumber
+        && (request.resource.data.guestCount is int || request.resource.data.guestCount is number)
+        && request.resource.data.guestCount >= 1
+        && request.resource.data.guestCount <= 20
+        && request.resource.data.updatedAt is string
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['guestCount', 'updatedAt'])
+      ) || (
         isSignedIn()
         && isValidRestaurant(request.resource.data)
         && request.resource.data.tableNumber == resource.data.tableNumber
@@ -276,7 +271,6 @@ service cloud.firestore {
 
     // 14. Table Payments / Caja: cobros cerrados por mesa
     match /table_payments/{paymentId} {
-      // Sólo el personal autenticado puede consultar o registrar cobros.
       allow read: if isSignedIn();
       allow create: if isSignedIn()
         && isValidRestaurant(request.resource.data)
@@ -294,12 +288,9 @@ service cloud.firestore {
         && request.resource.data.chargedById is string
         && request.resource.data.chargedByName is string;
 
-      // En V4 los pagos son inmutables desde la app. Las anulaciones se implementarán
-      // como movimiento compensatorio para conservar trazabilidad.
       allow update, delete: if false;
     }
 
-    // Denegación por defecto para cualquier otra ruta
     match /{document=**} {
       allow read, write: if false;
     }
