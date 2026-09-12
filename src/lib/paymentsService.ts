@@ -88,7 +88,6 @@ function normalizePaymentBreakdown(items?: PaymentBreakdownItem[]): PaymentBreak
     'EFECTIVO',
     'TARJETA',
     'TRANSFERENCIA',
-    'MERCADO_PAGO',
   ];
   const seen = new Set<TablePaymentMethod>();
   const normalized: PaymentBreakdownItem[] = [];
@@ -125,8 +124,6 @@ export async function settleTableAccount(
   const paymentRef = doc(collection(db, TABLE_PAYMENTS_COLLECTION));
 
   return runTransaction(db, async (transaction) => {
-    // Releer las comandas dentro de la transacción evita cobrar dos veces si
-    // dos cajas intentan cerrar la misma mesa casi al mismo tiempo.
     const freshOrders: RestaurantOrder[] = [];
     for (const orderId of candidateOrderIds) {
       const orderRef = doc(db, 'restaurant_orders', orderId);
