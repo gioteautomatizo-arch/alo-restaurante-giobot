@@ -6,7 +6,6 @@ import {
   Landmark,
   Loader2,
   ReceiptText,
-  Smartphone,
   Sparkles,
   Wallet,
   X,
@@ -53,7 +52,6 @@ const METHODS: Array<{
   { id: 'EFECTIVO', label: 'Efectivo', icon: Banknote },
   { id: 'TARJETA', label: 'Tarjeta', icon: CreditCard },
   { id: 'TRANSFERENCIA', label: 'Transferencia', icon: Landmark },
-  { id: 'MERCADO_PAGO', label: 'Mercado Pago', icon: Smartphone },
 ];
 
 function money(value: number): string {
@@ -129,7 +127,6 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
   const [cashReceived, setCashReceived] = useState('');
   const [mixedTransferAmount, setMixedTransferAmount] = useState('');
   const [mixedCardAmount, setMixedCardAmount] = useState('');
-  const [mixedMercadoPagoAmount, setMixedMercadoPagoAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -165,10 +162,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
   const todayTotal = todayPayments.reduce((sum, p) => sum + p.total, 0);
   const todayCash = todayPayments.reduce((sum, p) => sum + paymentAmountByMethod(p, 'EFECTIVO'), 0);
   const todayCard = todayPayments.reduce((sum, p) => sum + paymentAmountByMethod(p, 'TARJETA'), 0);
-  const todayDigital = todayPayments.reduce(
-    (sum, p) => sum + paymentAmountByMethod(p, 'TRANSFERENCIA') + paymentAmountByMethod(p, 'MERCADO_PAGO'),
-    0
-  );
+  const todayTransfer = todayPayments.reduce((sum, p) => sum + paymentAmountByMethod(p, 'TRANSFERENCIA'), 0);
 
   const selectedAllOrders = selectedTable
     ? getUnpaidOrdersForTable(
@@ -201,10 +195,14 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
   const selectedTotal = Math.max(0, selectedSubtotal - selectedDiscount + selectedTip);
   const mixedTransfer = Math.max(0, Number(mixedTransferAmount || 0));
   const mixedCard = Math.max(0, Number(mixedCardAmount || 0));
-  const mixedMercadoPago = Math.max(0, Number(mixedMercadoPagoAmount || 0));
-  const mixedNonCashTotal = mixedTransfer + mixedCard + mixedMercadoPago;
-  const mixedCash = Math.max(0, selectedTotal - mixedNonCashTotal);
-  const mixedOverage = Math.max(0, mixedNonCashTotal - selectedTotal);
+  const mixedDigitalTotal = mixedTransfer + mixedCard;
+  const mixedCash = Math.max(0, selectedTotal - mixedDigitalTotal);
+  const mixedOverage = Math.max(0, mixedDigitalTotal - selectedTotal);
+  const mixedMethodCount =
+    (mixedTransfer > 0 ? 1 : 0) +
+    (mixedCard > 0 ? 1 : 0) +
+    (mixedCash > 0 ? 1 : 0);
+  const mixedIsValid = mixedOverage <= 0.009 && mixedMethodCount >= 2;
   const changeDue = paymentMethod === 'EFECTIVO'
     ? Math.max(0, Number(cashReceived || 0) - selectedTotal)
     : 0;
@@ -212,7 +210,6 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
   const resetMixedPayment = () => {
     setMixedTransferAmount('');
     setMixedCardAmount('');
-    setMixedMercadoPagoAmount('');
   };
 
   const openCheckout = (table: TableRecord) => {
@@ -259,17 +256,16 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     let paymentBreakdown: PaymentBreakdownItem[] | undefined;
     if (paymentMethod === 'MIXTO') {
       if (mixedOverage > 0.009) {
-        setError(`Los pagos digitales exceden el total por ${money(mixedOverage)}.`);
+        setError(`La suma de transferencia y tarjeta excede el total por ${money(mixedOverage)}.`);
         return;
       }
       paymentBreakdown = [
         ...(mixedTransfer > 0 ? [{ method: 'TRANSFERENCIA' as TablePaymentMethod, amount: mixedTransfer }] : []),
         ...(mixedCard > 0 ? [{ method: 'TARJETA' as TablePaymentMethod, amount: mixedCard }] : []),
-        ...(mixedMercadoPago > 0 ? [{ method: 'MERCADO_PAGO' as TablePaymentMethod, amount: mixedMercadoPago }] : []),
         ...(mixedCash > 0 ? [{ method: 'EFECTIVO' as TablePaymentMethod, amount: mixedCash }] : []),
       ];
       if (paymentBreakdown.length < 2) {
-        setError('Para un pago mixto captura al menos una parte por transferencia, tarjeta o Mercado Pago; el resto se calculará en efectivo.');
+        setError('Para pago mixto combina al menos dos métodos. Captura una parte por transferencia o tarjeta y el resto se calculará en efectivo.');
         return;
       }
     }
@@ -378,8 +374,8 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
           <strong className="block text-xl font-serif text-[#2B1B13] mt-1">{money(todayCard)}</strong>
         </div>
         <div className="bg-white rounded-2xl border border-[#F4E3C8] p-4">
-          <span className="text-[10px] uppercase tracking-wider font-bold text-violet-700">Transferencia / MP</span>
-          <strong className="block text-xl font-serif text-[#2B1B13] mt-1">{money(todayDigital)}</strong>
+          <span className="text-[10px] uppercase tracking-wider font-bold text-violet-700">Transferencia</span>
+          <strong className="block text-xl font-serif text-[#2B1B13] mt-1">{money(todayTransfer)}</strong>
         </div>
       </div>
 
@@ -550,13 +546,13 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
                           setPaymentMethod(method.id);
                           setError(null);
                         }}
-                        className={`p-3 rounded-2xl border text-left flex items-center gap-2 text-xs font-bold ${
+                        className={`min-h-[54px] p-3 rounded-2xl border text-left flex items-center gap-2 text-xs font-bold ${
                           active
                             ? 'bg-[#3A2418] border-[#3A2418] text-[#FFF7EA]'
                             : 'bg-white border-[#F4E3C8] text-[#6B4028]'
                         }`}
                       >
-                        <Icon className={`w-4 h-4 ${active ? 'text-[#C9974D]' : 'text-[#A86B3D]'}`} />
+                        <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-[#C9974D]' : 'text-[#A86B3D]'}`} />
                         {method.label}
                       </button>
                     );
@@ -568,14 +564,19 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
                       setCashReceived('');
                       setError(null);
                     }}
-                    className={`p-3 rounded-2xl border text-left flex items-center gap-2 text-xs font-bold col-span-2 ${
+                    className={`min-h-[54px] p-3 rounded-2xl border text-left flex items-center gap-2 text-xs font-bold ${
                       paymentMethod === 'MIXTO'
                         ? 'bg-[#3A2418] border-[#3A2418] text-[#FFF7EA]'
-                        : 'bg-amber-50 border-amber-200 text-amber-900'
+                        : 'bg-white border-[#F4E3C8] text-[#6B4028]'
                     }`}
                   >
-                    <Wallet className={`w-4 h-4 ${paymentMethod === 'MIXTO' ? 'text-[#C9974D]' : 'text-amber-700'}`} />
-                    Pago mixto · divide entre transferencia, tarjeta, MP y efectivo
+                    <Wallet className={`w-4 h-4 shrink-0 ${paymentMethod === 'MIXTO' ? 'text-[#C9974D]' : 'text-[#A86B3D]'}`} />
+                    <span className="min-w-0">
+                      <span className="block">Pago mixto</span>
+                      <span className={`block text-[9px] font-medium mt-0.5 ${paymentMethod === 'MIXTO' ? 'text-[#F4E3C8]' : 'text-[#8A624C]'}`}>
+                        Combinar métodos
+                      </span>
+                    </span>
                   </button>
                 </div>
               </div>
@@ -625,64 +626,121 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
               )}
 
               {paymentMethod === 'MIXTO' && (
-                <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 space-y-3">
-                  <div>
-                    <span className="text-[10px] uppercase tracking-wider font-bold text-amber-800">Distribución del pago</span>
-                    <p className="text-[10px] text-amber-900 mt-1">Captura sólo las partes digitales. El resto se calcula automáticamente como efectivo.</p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <label className="text-[11px] font-bold text-violet-800">
-                      Transferencia $
-                      <input
-                        type="number"
-                        min="0"
-                        max={selectedTotal}
-                        step="0.01"
-                        value={mixedTransferAmount}
-                        onChange={(e) => setMixedTransferAmount(e.target.value)}
-                        className="mt-1 w-full px-3 py-2.5 rounded-xl border border-violet-200 bg-white outline-none"
-                        placeholder="0.00"
-                      />
-                    </label>
-                    <label className="text-[11px] font-bold text-sky-800">
-                      Tarjeta $
-                      <input
-                        type="number"
-                        min="0"
-                        max={selectedTotal}
-                        step="0.01"
-                        value={mixedCardAmount}
-                        onChange={(e) => setMixedCardAmount(e.target.value)}
-                        className="mt-1 w-full px-3 py-2.5 rounded-xl border border-sky-200 bg-white outline-none"
-                        placeholder="0.00"
-                      />
-                    </label>
-                    <label className="text-[11px] font-bold text-fuchsia-800">
-                      Mercado Pago $
-                      <input
-                        type="number"
-                        min="0"
-                        max={selectedTotal}
-                        step="0.01"
-                        value={mixedMercadoPagoAmount}
-                        onChange={(e) => setMixedMercadoPagoAmount(e.target.value)}
-                        className="mt-1 w-full px-3 py-2.5 rounded-xl border border-fuchsia-200 bg-white outline-none"
-                        placeholder="0.00"
-                      />
-                    </label>
-                  </div>
-                  <div className={`rounded-2xl border p-3 flex items-center justify-between ${mixedOverage > 0 ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                <div className="rounded-3xl border border-[#DEC8AE] bg-white p-4 space-y-4 shadow-xs">
+                  <div className="flex items-start justify-between gap-3">
                     <div>
-                      <span className={`text-[10px] uppercase tracking-wider font-bold ${mixedOverage > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-                        {mixedOverage > 0 ? 'Exceso capturado' : 'Resto en efectivo'}
-                      </span>
-                      <p className={`text-[10px] mt-0.5 ${mixedOverage > 0 ? 'text-rose-800' : 'text-emerald-800'}`}>
-                        {mixedOverage > 0 ? 'Reduce alguno de los montos digitales.' : 'Se registra automáticamente.'}
+                      <div className="flex items-center gap-2 text-[#3A2418]">
+                        <Wallet className="w-4 h-4 text-[#A86B3D]" />
+                        <span className="text-xs font-black">Distribuir pago</span>
+                      </div>
+                      <p className="text-[10px] text-[#8A624C] mt-1">
+                        Escribe lo que pagarán por transferencia o tarjeta. El efectivo restante se calcula solo.
                       </p>
                     </div>
-                    <strong className={`font-serif text-2xl ${mixedOverage > 0 ? 'text-rose-900' : 'text-emerald-900'}`}>
-                      {money(mixedOverage > 0 ? mixedOverage : mixedCash)}
-                    </strong>
+                    <span className="shrink-0 rounded-full bg-[#FFF7EA] border border-[#F4E3C8] px-2.5 py-1 text-[10px] font-bold text-[#6B4028]">
+                      Total {money(selectedTotal)}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="rounded-2xl border border-violet-200 bg-violet-50/60 p-3 text-[11px] font-bold text-violet-900">
+                      <span className="flex items-center gap-1.5">
+                        <Landmark className="w-3.5 h-3.5" /> Transferencia
+                      </span>
+                      <div className="relative mt-2">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-violet-700">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max={selectedTotal}
+                          step="0.01"
+                          value={mixedTransferAmount}
+                          onChange={(e) => setMixedTransferAmount(e.target.value)}
+                          className="w-full pl-7 pr-3 py-2.5 rounded-xl border border-violet-200 bg-white outline-none text-[#2B1B13]"
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </label>
+
+                    <label className="rounded-2xl border border-sky-200 bg-sky-50/60 p-3 text-[11px] font-bold text-sky-900">
+                      <span className="flex items-center gap-1.5">
+                        <CreditCard className="w-3.5 h-3.5" /> Tarjeta
+                      </span>
+                      <div className="relative mt-2">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sky-700">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max={selectedTotal}
+                          step="0.01"
+                          value={mixedCardAmount}
+                          onChange={(e) => setMixedCardAmount(e.target.value)}
+                          className="w-full pl-7 pr-3 py-2.5 rounded-xl border border-sky-200 bg-white outline-none text-[#2B1B13]"
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </label>
+                  </div>
+
+                  <div className={`rounded-2xl border p-3 ${
+                    mixedOverage > 0
+                      ? 'bg-rose-50 border-rose-200'
+                      : mixedIsValid
+                      ? 'bg-emerald-50 border-emerald-200'
+                      : 'bg-[#FFF7EA] border-[#F4E3C8]'
+                  }`}>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <span className="block text-[9px] uppercase tracking-wider font-bold text-[#8A624C]">Transferencia</span>
+                        <strong className="block mt-1 text-sm font-serif text-[#3A2418]">{money(mixedTransfer)}</strong>
+                      </div>
+                      <div className="border-x border-[#DEC8AE]/70 px-2">
+                        <span className="block text-[9px] uppercase tracking-wider font-bold text-[#8A624C]">Tarjeta</span>
+                        <strong className="block mt-1 text-sm font-serif text-[#3A2418]">{money(mixedCard)}</strong>
+                      </div>
+                      <div>
+                        <span className="block text-[9px] uppercase tracking-wider font-bold text-[#8A624C]">Efectivo</span>
+                        <strong className={`block mt-1 text-sm font-serif ${mixedOverage > 0 ? 'text-rose-800' : 'text-emerald-900'}`}>
+                          {money(mixedCash)}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 pt-3 border-t border-current/10 flex items-center justify-between gap-3">
+                      <div>
+                        <span className={`block text-[10px] uppercase tracking-wider font-black ${
+                          mixedOverage > 0
+                            ? 'text-rose-700'
+                            : mixedIsValid
+                            ? 'text-emerald-700'
+                            : 'text-[#A86B3D]'
+                        }`}>
+                          {mixedOverage > 0
+                            ? 'Exceso capturado'
+                            : mixedIsValid
+                            ? 'Listo para cobrar'
+                            : 'Combina al menos 2 métodos'}
+                        </span>
+                        <span className={`block text-[10px] mt-0.5 ${
+                          mixedOverage > 0
+                            ? 'text-rose-800'
+                            : mixedIsValid
+                            ? 'text-emerald-800'
+                            : 'text-[#8A624C]'
+                        }`}>
+                          {mixedOverage > 0
+                            ? 'Reduce transferencia o tarjeta.'
+                            : mixedIsValid
+                            ? `La cuenta queda cubierta por ${money(selectedTotal)}.`
+                            : 'Ejemplo: transferencia + efectivo.'}
+                        </span>
+                      </div>
+                      <strong className={`font-serif text-xl ${
+                        mixedOverage > 0 ? 'text-rose-900' : mixedIsValid ? 'text-emerald-900' : 'text-[#3A2418]'
+                      }`}>
+                        {mixedOverage > 0 ? money(mixedOverage) : money(mixedCash)}
+                      </strong>
+                    </div>
                   </div>
                 </div>
               )}
@@ -708,11 +766,19 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
 
               <button
                 onClick={handleCharge}
-                disabled={busy || selectedOrders.length === 0 || (paymentMethod === 'MIXTO' && mixedOverage > 0.009)}
+                disabled={
+                  busy ||
+                  selectedOrders.length === 0 ||
+                  (paymentMethod === 'MIXTO' && !mixedIsValid)
+                }
                 className="w-full py-4 rounded-2xl bg-[#3A2418] text-[#FFF7EA] font-serif font-bold text-base flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : <Wallet className="w-5 h-5 text-[#C9974D]" />}
-                {busy ? 'Registrando cobro…' : `Confirmar cobro · ${money(selectedTotal)}`}
+                {busy
+                  ? 'Registrando cobro…'
+                  : paymentMethod === 'MIXTO'
+                  ? `Confirmar cobro mixto · ${money(selectedTotal)}`
+                  : `Confirmar cobro · ${money(selectedTotal)}`}
               </button>
 
               <p className="text-[10px] text-center text-[#8A624C]">
