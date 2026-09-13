@@ -7,8 +7,9 @@ import { ManagedMenuItem, subscribeToMenuCatalog } from '../lib/menuCatalogServi
 import { VipCardModal } from './VipCardModal';
 
 interface QuickActionsProps {
+  onScrollToMenu: () => void;
   onOpenDeliveryOrder: () => void;
-  onSelectFeaturedItem: (itemId: string) => void;
+  onOpenGiobot: () => void;
 }
 
 const itemPrice = (item: ManagedMenuItem): number | null => {
@@ -28,8 +29,8 @@ const formatCustomerName = (name: string): string =>
     .join(' ');
 
 export const QuickActions: React.FC<QuickActionsProps> = ({
+  onScrollToMenu,
   onOpenDeliveryOrder,
-  onSelectFeaturedItem,
 }) => {
   const [vipProfile, setVipProfile] = useState<VipProfile | null>(() => getVipProfile());
   const [vipOpen, setVipOpen] = useState(false);
@@ -61,6 +62,31 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
   const remaining = Math.max(0, goal - stamps);
   const progress = Math.min(100, (stamps / goal) * 100);
   const formattedName = vipProfile ? formatCustomerName(vipProfile.customerName) : '';
+
+  const openFeaturedItem = (item: ManagedMenuItem) => {
+    if (item.id === 'comida-corrida' || item.id === 'arma-ensalada') {
+      onScrollToMenu();
+      window.setTimeout(() => {
+        const cards = Array.from(document.querySelectorAll<HTMLElement>('article'));
+        const target = cards.find((card) => card.textContent?.includes(item.name));
+        target?.click();
+      }, 350);
+      return;
+    }
+
+    const cards = Array.from(document.querySelectorAll<HTMLElement>('article'));
+    const target = cards.find((card) => card.textContent?.includes(item.name));
+    if (target) {
+      target.click();
+      return;
+    }
+
+    onScrollToMenu();
+    window.setTimeout(() => {
+      const refreshedCards = Array.from(document.querySelectorAll<HTMLElement>('article'));
+      refreshedCards.find((card) => card.textContent?.includes(item.name))?.click();
+    }, 350);
+  };
 
   return (
     <div className="space-y-4 sm:space-y-5 w-full">
@@ -124,7 +150,7 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => onSelectFeaturedItem(item.id)}
+                  onClick={() => openFeaturedItem(item)}
                   className={`${single ? 'w-full sm:grid sm:grid-cols-[minmax(220px,36%)_1fr]' : 'min-w-[210px] sm:min-w-[250px] max-w-[270px] snap-start'} rounded-2xl bg-white border border-[#DEC8AE] overflow-hidden text-left shadow-2xs hover:shadow-md hover:border-[#A86B3D]/60 transition-all active:scale-[0.99] cursor-pointer`}
                 >
                   <div className={`relative ${single ? 'h-40 sm:h-full sm:min-h-[165px]' : 'h-28 sm:h-32'} bg-gradient-to-br from-[#FFF7EA] to-[#F4E3C8] overflow-hidden`}>
