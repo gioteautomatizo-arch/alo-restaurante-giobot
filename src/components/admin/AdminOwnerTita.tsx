@@ -107,7 +107,11 @@ function renderFormattedText(text: string): React.ReactNode {
 }
 
 export const AdminOwnerTita: React.FC = () => {
-  const [isVisible, setIsVisible] = useState(false);
+  const currentSession = getAuthSession();
+  const currentUser = currentSession?.user || null;
+  const canUseOwnerTita = currentUser?.role === 'DUEÑA' || currentUser?.role === 'ADMINISTRADOR';
+
+  const [isVisible, setIsVisible] = useState(() => Boolean(canUseOwnerTita && isAdminWorkspaceVisible()));
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<OwnerMessage[]>([INITIAL_MESSAGE]);
   const [input, setInput] = useState('');
@@ -117,29 +121,18 @@ export const AdminOwnerTita: React.FC = () => {
   const [, forceRefresh] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
 
-  const currentSession = getAuthSession();
-  const currentUser = currentSession?.user || null;
-  const canUseOwnerTita = currentUser?.role === 'DUEÑA' || currentUser?.role === 'ADMINISTRADOR';
-
   useEffect(() => {
-    let rafId = 0;
     const check = () => {
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        setIsVisible(Boolean(canUseOwnerTita && isAdminWorkspaceVisible()));
-      });
+      setIsVisible(Boolean(canUseOwnerTita && isAdminWorkspaceVisible()));
     };
 
     check();
-    const root = document.getElementById('root') || document.body;
-    const observer = new MutationObserver(check);
-    observer.observe(root, { childList: true, subtree: true });
     window.addEventListener('hashchange', check);
+    window.addEventListener('popstate', check);
 
     return () => {
-      cancelAnimationFrame(rafId);
-      observer.disconnect();
       window.removeEventListener('hashchange', check);
+      window.removeEventListener('popstate', check);
     };
   }, [canUseOwnerTita]);
 

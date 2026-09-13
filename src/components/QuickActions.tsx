@@ -77,11 +77,10 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
     };
 
     tidyPublicCatalog();
-    const observer = new MutationObserver(tidyPublicCatalog);
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    const timer = window.setInterval(tidyPublicCatalog, 1200);
 
     return () => {
-      observer.disconnect();
+      window.clearInterval(timer);
       document.querySelectorAll<HTMLElement>('[data-public-duplicate-actions="true"]').forEach((node) => {
         node.style.display = '';
         delete node.dataset.publicDuplicateActions;

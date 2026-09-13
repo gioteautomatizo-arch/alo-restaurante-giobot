@@ -78,13 +78,16 @@ function renderFormattedText(text: string): React.ReactNode {
   );
 }
 
+const DEFAULT_CART_ITEMS: CartItem[] = [];
+const DEFAULT_MENU_ITEMS: MenuItem[] = [];
+
 export const GiobotChat: React.FC<GiobotChatProps> = ({
   isOpen,
   onClose,
   tableNumber = null,
   selectedPerson = null,
-  cartItems = [],
-  menuItems = [],
+  cartItems = DEFAULT_CART_ITEMS,
+  menuItems = DEFAULT_MENU_ITEMS,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [inputText, setInputText] = useState<string>('');

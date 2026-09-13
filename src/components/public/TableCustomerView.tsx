@@ -147,11 +147,10 @@ export const TableCustomerView: React.FC<Props> = ({
     };
 
     hideDuplicatedBuilders();
-    const observer = new MutationObserver(hideDuplicatedBuilders);
-    observer.observe(document.body, { childList: true, subtree: true });
+    const timer = window.setInterval(hideDuplicatedBuilders, 1200);
 
     return () => {
-      observer.disconnect();
+      window.clearInterval(timer);
       document.querySelectorAll<HTMLElement>('[data-table-qr-duplicate-builders="true"]').forEach((node) => {
         node.style.display = '';
         delete node.dataset.tableQrDuplicateBuilders;
@@ -192,7 +191,9 @@ export const TableCustomerView: React.FC<Props> = ({
     });
     return () => {
       unsubscribe();
-      Object.values(attendedTimersRef.current).forEach((timer) => timer && clearTimeout(timer));
+      Object.values(attendedTimersRef.current).forEach((timer) => {
+        if (timer) clearTimeout(timer as unknown as number);
+      });
       attendedTimersRef.current = {};
     };
   }, [tableNumber]);
