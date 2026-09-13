@@ -18,6 +18,8 @@ type AdminTabKey =
   | 'usuarios';
 
 const STORAGE_KEY = 'alo_admin_tab_order_v1';
+const SORTABLE_ATTR = 'data-admin-tab-sortable';
+const STYLE_ID = 'alo-admin-tab-sort-style';
 
 const TAB_LABELS: Record<AdminTabKey, string> = {
   resumen: 'Resumen',
@@ -38,7 +40,6 @@ const TAB_LABELS: Record<AdminTabKey, string> = {
 };
 
 const DEFAULT_ORDER = Object.keys(TAB_LABELS) as AdminTabKey[];
-const HANDLE_ATTR = 'data-admin-drag-handle';
 
 function normalizeOrder(value: unknown): AdminTabKey[] {
   const valid = new Set<AdminTabKey>(DEFAULT_ORDER);
@@ -60,9 +61,7 @@ function readSavedOrder(): AdminTabKey[] {
 }
 
 function buttonLabel(button: HTMLButtonElement): string {
-  const clone = button.cloneNode(true) as HTMLButtonElement;
-  clone.querySelectorAll(`[${HANDLE_ATTR}]`).forEach((node) => node.remove());
-  return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+  return (button.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
 function findAdminNav(): HTMLElement | null {
@@ -108,140 +107,154 @@ function canCurrentRoleCustomize(): boolean {
   return headerText.includes('DUEÑA') || headerText.includes('ADMINISTRADOR');
 }
 
-function addDirectDragHandle(button: HTMLButtonElement) {
-  if (button.querySelector(`[${HANDLE_ATTR}]`)) return;
+function installHandleStyles() {
+  if (document.getElementById(STYLE_ID)) return;
 
-  const handle = document.createElement('span');
-  handle.setAttribute(HANDLE_ATTR, 'true');
-  handle.setAttribute('role', 'button');
-  handle.setAttribute('aria-label', `Mover ${buttonLabel(button)}`);
-  handle.setAttribute('title', 'Mantén y arrastra para cambiar de posición');
-  handle.textContent = '⋮⋮';
-
-  Object.assign(handle.style, {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: '0 0 auto',
-    minWidth: '18px',
-    height: '24px',
-    marginLeft: '6px',
-    padding: '0 3px',
-    borderRadius: '7px',
-    border: '1px solid rgba(201,151,77,.38)',
-    background: 'rgba(201,151,77,.10)',
-    color: '#A86B3D',
-    fontSize: '12px',
-    fontWeight: '900',
-    lineHeight: '1',
-    letterSpacing: '-2px',
-    cursor: 'grab',
-    touchAction: 'none',
-    userSelect: 'none',
-  } as Partial<CSSStyleDeclaration>);
-
-  button.appendChild(handle);
-}
-
-function removeDirectDragHandles(nav: HTMLElement) {
-  nav.querySelectorAll(`[${HANDLE_ATTR}]`).forEach((node) => node.remove());
+  const style = document.createElement('style');
+  style.id = STYLE_ID;
+  style.textContent = `
+    button[${SORTABLE_ATTR}="true"]::after {
+      content: '⋮⋮';
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      min-width: 18px;
+      height: 24px;
+      margin-left: 6px;
+      padding: 0 3px;
+      border-radius: 7px;
+      border: 1px solid rgba(201,151,77,.38);
+      background: rgba(201,151,77,.10);
+      color: #A86B3D;
+      font-size: 12px;
+      font-weight: 900;
+      line-height: 1;
+      letter-spacing: -2px;
+    }
+    button[${SORTABLE_ATTR}="true"] { touch-action: pan-x; }
+    button[${SORTABLE_ATTR}="true"].alo-tab-dragging {
+      opacity: .72;
+      transform: scale(.98);
+      box-shadow: 0 0 0 2px rgba(201,151,77,.45) inset;
+    }
+  `;
+  document.head.appendChild(style);
 }
 
 /**
- * Personalización directa de la barra administrativa.
+ * Orden de pestañas administrativas sin tocar nodos hijos controlados por React.
  *
- * Dueña/Admin pueden mover las pestañas desde el pequeño control ⋮⋮ que aparece
- * dentro de cada pestaña. Ya no existe botón flotante ni modal separado: el orden
- * se modifica sobre la propia navegación, sin salir de la vista en la que están.
+ * El antiguo enfoque insertaba spans con appendChild y observaba #root con
+ * MutationObserver. React reconciliaba esos nodos y ambos observadores podían
+ * retroalimentarse hasta producir "Maximum update depth exceeded".
+ *
+ * Esta versión solo usa CSS ::after para dibujar ⋮⋮ y aplica style.order/dataset
+ * a los botones existentes. No observa el DOM ni agrega hijos dentro de React.
  */
 export const AdminTabOrderManager: React.FC = () => {
   const [order, setOrder] = useState<AdminTabKey[]>(readSavedOrder);
+  const orderRef = useRef(order);
   const draggedIdRef = useRef<AdminTabKey | null>(null);
   const draggedButtonRef = useRef<HTMLButtonElement | null>(null);
-
-  const applyOrderToNav = () => {
-    const nav = findAdminNav();
-    if (!nav) return;
-
-    const buttons = getAdminButtons(nav);
-    order.forEach((id, index) => {
-      const button = buttons.get(id);
-      if (!button) return;
-      button.style.order = String(index);
-      button.dataset.adminTabId = id;
-    });
-
-    const canCustomize = canCurrentRoleCustomize() && buttons.has('info_restaurante') && buttons.has('usuarios');
-    if (!canCustomize) {
-      removeDirectDragHandles(nav);
-      return;
-    }
-
-    buttons.forEach((button) => addDirectDragHandle(button));
-  };
+  const movedRef = useRef(false);
+  const suppressClickUntilRef = useRef(0);
 
   useEffect(() => {
+    orderRef.current = order;
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(order));
     } catch {
-      // Si el navegador bloquea almacenamiento, el orden seguirá durante esta sesión.
+      // Si el navegador bloquea almacenamiento, el orden sigue durante la sesión.
     }
-    applyOrderToNav();
   }, [order]);
 
   useEffect(() => {
-    let rafId = 0;
-    const scheduleApply = () => {
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(applyOrderToNav);
+    installHandleStyles();
+
+    const applyOrderToNav = () => {
+      const nav = findAdminNav();
+      if (!nav) return;
+
+      const buttons = getAdminButtons(nav);
+      const canCustomize = canCurrentRoleCustomize() && buttons.has('info_restaurante') && buttons.has('usuarios');
+
+      orderRef.current.forEach((id, index) => {
+        const button = buttons.get(id);
+        if (!button) return;
+
+        if (button.dataset.adminTabId !== id) button.dataset.adminTabId = id;
+        if (button.style.order !== String(index)) button.style.order = String(index);
+
+        if (canCustomize) {
+          if (button.getAttribute(SORTABLE_ATTR) !== 'true') button.setAttribute(SORTABLE_ATTR, 'true');
+        } else if (button.hasAttribute(SORTABLE_ATTR)) {
+          button.removeAttribute(SORTABLE_ATTR);
+        }
+      });
     };
 
-    scheduleApply();
-    const root = document.getElementById('root') || document.body;
-    const observer = new MutationObserver(scheduleApply);
-    observer.observe(root, { childList: true, subtree: true });
-    window.addEventListener('resize', scheduleApply);
+    applyOrderToNav();
+    // Sin MutationObserver: una comprobación ligera mantiene el orden cuando React
+    // vuelve a crear la barra al cambiar de vista/rol, sin reaccionar a cada mutación.
+    const timer = window.setInterval(applyOrderToNav, 800);
+    window.addEventListener('resize', applyOrderToNav);
 
     return () => {
-      cancelAnimationFrame(rafId);
-      observer.disconnect();
-      window.removeEventListener('resize', scheduleApply);
+      window.clearInterval(timer);
+      window.removeEventListener('resize', applyOrderToNav);
+      document.querySelectorAll<HTMLButtonElement>(`button[${SORTABLE_ATTR}]`).forEach((button) => {
+        button.removeAttribute(SORTABLE_ATTR);
+        button.classList.remove('alo-tab-dragging');
+      });
     };
+  }, []);
+
+  useEffect(() => {
+    // Al cambiar el orden, lo reflejamos inmediatamente sin esperar al intervalo.
+    const nav = findAdminNav();
+    if (!nav) return;
+    const buttons = getAdminButtons(nav);
+    order.forEach((id, index) => {
+      const button = buttons.get(id);
+      if (button && button.style.order !== String(index)) button.style.order = String(index);
+    });
   }, [order]);
 
   useEffect(() => {
     const finishDrag = () => {
-      if (draggedButtonRef.current) {
-        draggedButtonRef.current.style.opacity = '';
-        draggedButtonRef.current.style.transform = '';
-        draggedButtonRef.current.style.boxShadow = '';
-      }
+      if (draggedButtonRef.current) draggedButtonRef.current.classList.remove('alo-tab-dragging');
+      if (movedRef.current) suppressClickUntilRef.current = Date.now() + 350;
       draggedIdRef.current = null;
       draggedButtonRef.current = null;
+      movedRef.current = false;
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
     };
 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
-      const handle = target?.closest<HTMLElement>(`[${HANDLE_ATTR}]`);
-      if (!handle) return;
+      const button = target?.closest<HTMLButtonElement>(`button[${SORTABLE_ATTR}="true"][data-admin-tab-id]`);
+      if (!button) return;
 
-      const button = handle.closest<HTMLButtonElement>('button[data-admin-tab-id]');
-      const id = button?.dataset.adminTabId as AdminTabKey | undefined;
-      if (!button || !id || !DEFAULT_ORDER.includes(id)) return;
+      // El pseudo-handle ⋮⋮ ocupa el extremo derecho. Solo esa zona inicia arrastre,
+      // así un toque normal en la pestaña sigue abriendo la sección.
+      const rect = button.getBoundingClientRect();
+      const isHandleZone = event.clientX >= rect.right - 34;
+      if (!isHandleZone) return;
+
+      const id = button.dataset.adminTabId as AdminTabKey | undefined;
+      if (!id || !DEFAULT_ORDER.includes(id)) return;
 
       event.preventDefault();
       event.stopPropagation();
       draggedIdRef.current = id;
       draggedButtonRef.current = button;
+      movedRef.current = false;
+      button.classList.add('alo-tab-dragging');
       document.body.style.userSelect = 'none';
       document.body.style.cursor = 'grabbing';
-      handle.style.cursor = 'grabbing';
-      button.style.opacity = '0.72';
-      button.style.transform = 'scale(0.98)';
-      button.style.boxShadow = '0 0 0 2px rgba(201,151,77,.45) inset';
-      handle.setPointerCapture?.(event.pointerId);
+      button.setPointerCapture?.(event.pointerId);
     };
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -254,12 +267,14 @@ export const AdminTabOrderManager: React.FC = () => {
       const targetId = targetButton?.dataset.adminTabId as AdminTabKey | undefined;
       if (!targetId || targetId === draggedId || !DEFAULT_ORDER.includes(targetId)) return;
 
+      movedRef.current = true;
       setOrder((current) => reorderIds(current, draggedId, targetId));
     };
 
     const handleClickCapture = (event: MouseEvent) => {
+      if (Date.now() > suppressClickUntilRef.current) return;
       const target = event.target as HTMLElement | null;
-      if (!target?.closest(`[${HANDLE_ATTR}]`)) return;
+      if (!target?.closest('button[data-admin-tab-id]')) return;
       event.preventDefault();
       event.stopPropagation();
     };
