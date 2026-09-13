@@ -34,6 +34,7 @@ export interface ManagedMenuItem {
   includedItems?: string[];
   imageUrls: string[];
   primaryImageUrl?: string;
+  sizeImageUrls?: Record<string, string>;
   popular: boolean;
   active: boolean;
   available: boolean;
@@ -139,6 +140,15 @@ function sanitizeItem(item: ManagedMenuItem): ManagedMenuItem {
   if (primary && clean.imageUrls.includes(primary)) clean.primaryImageUrl = primary;
   else if (clean.imageUrls.length > 0) clean.primaryImageUrl = clean.imageUrls[0];
   else delete clean.primaryImageUrl;
+
+  const validSizeNames = new Set((sizes || []).map((size) => size.name));
+  const cleanedSizeImageUrls = Object.fromEntries(
+    Object.entries(item.sizeImageUrls || {})
+      .map(([name, url]) => [name.trim(), String(url || '').trim()] as const)
+      .filter(([name, url]) => validSizeNames.has(name) && !!url)
+  );
+  if (Object.keys(cleanedSizeImageUrls).length > 0) clean.sizeImageUrls = cleanedSizeImageUrls;
+  else delete clean.sizeImageUrls;
 
   const sourcePriceText = item.sourcePriceText?.trim();
   if (sourcePriceText) clean.sourcePriceText = sourcePriceText;
