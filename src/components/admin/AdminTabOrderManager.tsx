@@ -1,6 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Check, GripVertical, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
 
 type AdminTabKey =
   | 'resumen'
@@ -40,6 +38,7 @@ const TAB_LABELS: Record<AdminTabKey, string> = {
 };
 
 const DEFAULT_ORDER = Object.keys(TAB_LABELS) as AdminTabKey[];
+const HANDLE_ATTR = 'data-admin-drag-handle';
 
 function normalizeOrder(value: unknown): AdminTabKey[] {
   const valid = new Set<AdminTabKey>(DEFAULT_ORDER);
@@ -61,7 +60,9 @@ function readSavedOrder(): AdminTabKey[] {
 }
 
 function buttonLabel(button: HTMLButtonElement): string {
-  return (button.textContent || '').replace(/\s+/g, ' ').trim();
+  const clone = button.cloneNode(true) as HTMLButtonElement;
+  clone.querySelectorAll(`[${HANDLE_ATTR}]`).forEach((node) => node.remove());
+  return (clone.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
 function findAdminNav(): HTMLElement | null {
@@ -77,9 +78,15 @@ function getAdminButtons(nav: HTMLElement): Map<AdminTabKey, HTMLButtonElement> 
   const result = new Map<AdminTabKey, HTMLButtonElement>();
 
   DEFAULT_ORDER.forEach((id) => {
+    const byDataset = buttons.find((button) => button.dataset.adminTabId === id);
+    if (byDataset) {
+      result.set(id, byDataset);
+      return;
+    }
+
     const expected = TAB_LABELS[id];
-    const button = buttons.find((candidate) => buttonLabel(candidate) === expected);
-    if (button) result.set(id, button);
+    const byLabel = buttons.find((candidate) => buttonLabel(candidate) === expected);
+    if (byLabel) result.set(id, byLabel);
   });
 
   return result;
@@ -96,50 +103,89 @@ function reorderIds(order: AdminTabKey[], draggedId: AdminTabKey, targetId: Admi
   return next;
 }
 
+function canCurrentRoleCustomize(): boolean {
+  const headerText = (document.querySelector('header')?.textContent || '').toUpperCase();
+  return headerText.includes('DUEÑA') || headerText.includes('ADMINISTRADOR');
+}
+
+function addDirectDragHandle(button: HTMLButtonElement) {
+  if (button.querySelector(`[${HANDLE_ATTR}]`)) return;
+
+  const handle = document.createElement('span');
+  handle.setAttribute(HANDLE_ATTR, 'true');
+  handle.setAttribute('role', 'button');
+  handle.setAttribute('aria-label', `Mover ${buttonLabel(button)}`);
+  handle.setAttribute('title', 'Mantén y arrastra para cambiar de posición');
+  handle.textContent = '⋮⋮';
+
+  Object.assign(handle.style, {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: '0 0 auto',
+    minWidth: '18px',
+    height: '24px',
+    marginLeft: '6px',
+    padding: '0 3px',
+    borderRadius: '7px',
+    border: '1px solid rgba(201,151,77,.38)',
+    background: 'rgba(201,151,77,.10)',
+    color: '#A86B3D',
+    fontSize: '12px',
+    fontWeight: '900',
+    lineHeight: '1',
+    letterSpacing: '-2px',
+    cursor: 'grab',
+    touchAction: 'none',
+    userSelect: 'none',
+  } as Partial<CSSStyleDeclaration>);
+
+  button.appendChild(handle);
+}
+
+function removeDirectDragHandles(nav: HTMLElement) {
+  nav.querySelectorAll(`[${HANDLE_ATTR}]`).forEach((node) => node.remove());
+}
+
+/**
+ * Personalización directa de la barra administrativa.
+ *
+ * Dueña/Admin pueden mover las pestañas desde el pequeño control ⋮⋮ que aparece
+ * dentro de cada pestaña. Ya no existe botón flotante ni modal separado: el orden
+ * se modifica sobre la propia navegación, sin salir de la vista en la que están.
+ */
 export const AdminTabOrderManager: React.FC = () => {
   const [order, setOrder] = useState<AdminTabKey[]>(readSavedOrder);
-  const [isAdminNavVisible, setIsAdminNavVisible] = useState(false);
-  const [canCustomize, setCanCustomize] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
-  const [draggingId, setDraggingId] = useState<AdminTabKey | null>(null);
   const draggedIdRef = useRef<AdminTabKey | null>(null);
-
-  const orderedLabels = useMemo(
-    () => order.map((id) => ({ id, label: TAB_LABELS[id] })),
-    [order]
-  );
+  const draggedButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const applyOrderToNav = () => {
     const nav = findAdminNav();
-    if (!nav) {
-      setIsAdminNavVisible(false);
-      setCanCustomize(false);
-      return;
-    }
+    if (!nav) return;
 
     const buttons = getAdminButtons(nav);
     order.forEach((id, index) => {
       const button = buttons.get(id);
-      if (button) {
-        button.style.order = String(index);
-        button.dataset.adminTabId = id;
-      }
+      if (!button) return;
+      button.style.order = String(index);
+      button.dataset.adminTabId = id;
     });
 
-    const headerText = (document.querySelector('header')?.textContent || '').toUpperCase();
-    const roleCanCustomize = headerText.includes('DUEÑA') || headerText.includes('ADMINISTRADOR');
+    const canCustomize = canCurrentRoleCustomize() && buttons.has('info_restaurante') && buttons.has('usuarios');
+    if (!canCustomize) {
+      removeDirectDragHandles(nav);
+      return;
+    }
 
-    setIsAdminNavVisible(buttons.size >= 3);
-    setCanCustomize(roleCanCustomize && buttons.has('info_restaurante') && buttons.has('usuarios'));
+    buttons.forEach((button) => addDirectDragHandle(button));
   };
 
   useEffect(() => {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(order));
     } catch {
-      // Si el navegador bloquea almacenamiento, el orden seguirá funcionando durante esta sesión.
+      // Si el navegador bloquea almacenamiento, el orden seguirá durante esta sesión.
     }
-
     applyOrderToNav();
   }, [order]);
 
@@ -164,140 +210,75 @@ export const AdminTabOrderManager: React.FC = () => {
   }, [order]);
 
   useEffect(() => {
-    if (!isAdminNavVisible && isOpen) setIsOpen(false);
-  }, [isAdminNavVisible, isOpen]);
+    const finishDrag = () => {
+      if (draggedButtonRef.current) {
+        draggedButtonRef.current.style.opacity = '';
+        draggedButtonRef.current.style.transform = '';
+        draggedButtonRef.current.style.boxShadow = '';
+      }
+      draggedIdRef.current = null;
+      draggedButtonRef.current = null;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
 
-  const resetOrder = () => {
-    setOrder(DEFAULT_ORDER);
-  };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      const handle = target?.closest<HTMLElement>(`[${HANDLE_ATTR}]`);
+      if (!handle) return;
 
-  const handlePointerDown = (id: AdminTabKey, event: React.PointerEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    draggedIdRef.current = id;
-    setDraggingId(id);
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  };
+      const button = handle.closest<HTMLButtonElement>('button[data-admin-tab-id]');
+      const id = button?.dataset.adminTabId as AdminTabKey | undefined;
+      if (!button || !id || !DEFAULT_ORDER.includes(id)) return;
 
-  const handlePointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
-    const dragged = draggedIdRef.current;
-    if (!dragged) return;
+      event.preventDefault();
+      event.stopPropagation();
+      draggedIdRef.current = id;
+      draggedButtonRef.current = button;
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'grabbing';
+      handle.style.cursor = 'grabbing';
+      button.style.opacity = '0.72';
+      button.style.transform = 'scale(0.98)';
+      button.style.boxShadow = '0 0 0 2px rgba(201,151,77,.45) inset';
+      handle.setPointerCapture?.(event.pointerId);
+    };
 
-    const element = document.elementFromPoint(event.clientX, event.clientY);
-    const row = element?.closest<HTMLElement>('[data-admin-order-row]');
-    const targetId = row?.dataset.adminOrderRow as AdminTabKey | undefined;
-    if (!targetId || targetId === dragged) return;
+    const handlePointerMove = (event: PointerEvent) => {
+      const draggedId = draggedIdRef.current;
+      if (!draggedId) return;
 
-    setOrder((current) => reorderIds(current, dragged, targetId));
-  };
+      event.preventDefault();
+      const element = document.elementFromPoint(event.clientX, event.clientY);
+      const targetButton = element?.closest<HTMLButtonElement>('button[data-admin-tab-id]');
+      const targetId = targetButton?.dataset.adminTabId as AdminTabKey | undefined;
+      if (!targetId || targetId === draggedId || !DEFAULT_ORDER.includes(targetId)) return;
 
-  const finishDragging = (event?: React.PointerEvent<HTMLButtonElement>) => {
-    if (event && event.currentTarget.hasPointerCapture?.(event.pointerId)) {
-      event.currentTarget.releasePointerCapture?.(event.pointerId);
-    }
-    draggedIdRef.current = null;
-    setDraggingId(null);
-  };
+      setOrder((current) => reorderIds(current, draggedId, targetId));
+    };
 
-  if (!isAdminNavVisible || !canCustomize || typeof document === 'undefined') return null;
+    const handleClickCapture = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest(`[${HANDLE_ATTR}]`)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
 
-  return createPortal(
-    <>
-      {!isOpen && (
-        <button
-          type="button"
-          onClick={() => setIsOpen(true)}
-          className="fixed right-3 top-[118px] z-[70] inline-flex items-center gap-1.5 rounded-xl border border-[#C9974D]/60 bg-[#3A2418] px-3 py-2 text-[11px] font-bold text-[#FFF7EA] shadow-lg active:scale-95"
-          title="Personalizar el orden de las pestañas"
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5 text-[#C9974D]" />
-          <span>Ordenar</span>
-        </button>
-      )}
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false });
+    document.addEventListener('pointerup', finishDrag, true);
+    document.addEventListener('pointercancel', finishDrag, true);
+    document.addEventListener('click', handleClickCapture, true);
 
-      {isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-3 backdrop-blur-[1px]">
-          <div className="flex max-h-[88vh] w-full max-w-md flex-col overflow-hidden rounded-3xl border-2 border-[#C9974D]/45 bg-[#FFFDF9] shadow-2xl">
-            <div className="flex items-center justify-between bg-[#3A2418] px-4 py-3.5 text-[#FFF7EA]">
-              <div>
-                <h2 className="font-serif text-base font-black">Personalizar pestañas</h2>
-                <p className="mt-0.5 text-[11px] text-[#F4E3C8]">Arrastra desde ⋮⋮ y acomódalas a tu gusto.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  finishDragging();
-                  setIsOpen(false);
-                }}
-                className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-white hover:bg-white/20"
-                aria-label="Cerrar personalización"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('pointermove', handlePointerMove, true);
+      document.removeEventListener('pointerup', finishDrag, true);
+      document.removeEventListener('pointercancel', finishDrag, true);
+      document.removeEventListener('click', handleClickCapture, true);
+      finishDrag();
+    };
+  }, []);
 
-            <div className="overflow-y-auto p-3">
-              <div className="space-y-2">
-                {orderedLabels.map(({ id, label }, index) => (
-                  <div
-                    key={id}
-                    data-admin-order-row={id}
-                    className={`flex items-center gap-3 rounded-2xl border px-3 py-2.5 transition-all ${
-                      draggingId === id
-                        ? 'border-[#C9974D] bg-[#F4E3C8] shadow-md scale-[1.01]'
-                        : 'border-[#DEC8AE] bg-white'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onPointerDown={(event) => handlePointerDown(id, event)}
-                      onPointerMove={handlePointerMove}
-                      onPointerUp={finishDragging}
-                      onPointerCancel={finishDragging}
-                      className="flex h-9 w-9 shrink-0 touch-none items-center justify-center rounded-xl border border-[#DEC8AE] bg-[#FFF7EA] text-[#A86B3D] active:bg-[#F4E3C8]"
-                      aria-label={`Arrastrar ${label}`}
-                      title={`Arrastrar ${label}`}
-                    >
-                      <GripVertical className="h-5 w-5" />
-                    </button>
-
-                    <div className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-bold text-[#3A2418]">{label}</span>
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-[#A86B3D]">Posición {index + 1}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 border-t border-[#F4E3C8] bg-[#FFF7EA] p-3">
-              <button
-                type="button"
-                onClick={resetOrder}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-[#DEC8AE] bg-white px-3 py-2.5 text-xs font-bold text-[#6B4028]"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                Restablecer
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  finishDragging();
-                  setIsOpen(false);
-                }}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#3A2418] px-3 py-2.5 text-xs font-bold text-[#FFF7EA] shadow-sm"
-              >
-                <Check className="h-3.5 w-3.5 text-[#C9974D]" />
-                Listo
-              </button>
-            </div>
-
-            <p className="px-4 pb-3 text-center text-[10px] text-[#8A624C]">
-              El orden se guarda en este dispositivo y no cambia los permisos de cada rol.
-            </p>
-          </div>
-        </div>
-      )}
-    </>,
-    document.body
-  );
+  return null;
 };
