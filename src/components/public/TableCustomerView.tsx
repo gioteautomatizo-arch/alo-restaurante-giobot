@@ -132,6 +132,33 @@ export const TableCustomerView: React.FC<Props> = ({
 
   useEffect(() => subscribeToTableOrders(tableNumber, setTableOrders), [tableNumber]);
 
+  useEffect(() => {
+    const hideDuplicatedBuilders = () => {
+      const menu = document.getElementById('menu-section');
+      if (!menu) return;
+      const buttons = Array.from(menu.querySelectorAll<HTMLButtonElement>('button'));
+      const corrida = buttons.find((button) => (button.textContent || '').includes('Armar Corrida'));
+      const ensalada = buttons.find((button) => (button.textContent || '').includes('Armar Ensalada'));
+      const wrapper = corrida?.parentElement;
+      if (wrapper && ensalada && wrapper.contains(ensalada)) {
+        wrapper.dataset.tableQrDuplicateBuilders = 'true';
+        wrapper.style.display = 'none';
+      }
+    };
+
+    hideDuplicatedBuilders();
+    const observer = new MutationObserver(hideDuplicatedBuilders);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+      document.querySelectorAll<HTMLElement>('[data-table-qr-duplicate-builders="true"]').forEach((node) => {
+        node.style.display = '';
+        delete node.dataset.tableQrDuplicateBuilders;
+      });
+    };
+  }, []);
+
   const hasCorrida = useMemo(() => tableOrders.some((order) => {
     if (order.status === 'CANCELADO' || order.billingStatus === 'PAGADO') return false;
     if (session?.accountMode === 'SEPARADAS' && selectedAccountId && order.accountId !== selectedAccountId) return false;
@@ -224,6 +251,24 @@ export const TableCustomerView: React.FC<Props> = ({
     onExploreMenu?.();
   };
 
+  const openSaladBuilder = () => {
+    if (onOpenSaladBuilder) {
+      onOpenSaladBuilder();
+      return;
+    }
+    const menu = document.getElementById('menu-section');
+    const button = menu
+      ? Array.from(menu.querySelectorAll<HTMLButtonElement>('button')).find((candidate) =>
+          (candidate.textContent || '').includes('Armar Ensalada')
+        )
+      : undefined;
+    if (button) {
+      button.click();
+      return;
+    }
+    openCategory('ensaladas');
+  };
+
   if (!sessionLoaded) return (
     <section className="w-full max-w-xl mx-auto my-3 px-3"><div className="bg-white rounded-2xl border border-[#E6CCA8] p-5 text-center text-sm">Cargando servicio de Mesa {tableNumber}…</div></section>
   );
@@ -282,12 +327,12 @@ export const TableCustomerView: React.FC<Props> = ({
           <div className="grid grid-cols-2 gap-2 mt-1.5">
             {isDesayuno ? <>
               <button onClick={() => openCategory('desayunos')} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🍳</span><strong className="block text-xs mt-1">Desayunos</strong></button>
-              <button onClick={() => onOpenSaladBuilder ? onOpenSaladBuilder() : openCategory('ensaladas')} className={`${card} border-2 border-[#C9974D] bg-[#FFFDF9]`}><span className="text-xl block">🥗</span><strong className="block text-xs mt-1">Arma tu ensalada</strong><span className="text-[10px] font-bold text-[#A86B3D]">$90</span></button>
+              <button onClick={openSaladBuilder} className={`${card} border-2 border-[#C9974D] bg-[#FFFDF9]`}><span className="text-xl block">🥗</span><strong className="block text-xs mt-1">Arma tu ensalada</strong><span className="text-[10px] font-bold text-[#A86B3D]">$90</span></button>
               <button onClick={() => openCategory('all')} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🍽️</span><strong className="block text-xs mt-1">Carta</strong></button>
               <button onClick={() => openCategory('bebidas')} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🥤</span><strong className="block text-xs mt-1">Bebidas</strong></button>
             </> : <>
               <button onClick={() => onOpenComidaCorrida ? onOpenComidaCorrida() : openCategory('comida-corrida')} className={`${card} border-2 border-[#C9974D] bg-[#FFFDF9]`}><span className="text-xl block">🍲</span><strong className="block text-xs mt-1">Comida corrida</strong><span className="text-[10px] font-bold text-[#A86B3D]">$90</span></button>
-              <button onClick={() => onOpenSaladBuilder ? onOpenSaladBuilder() : openCategory('ensaladas')} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🥗</span><strong className="block text-xs mt-1">Arma tu ensalada</strong><span className="text-[10px] font-bold text-[#A86B3D]">$90</span></button>
+              <button onClick={openSaladBuilder} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🥗</span><strong className="block text-xs mt-1">Arma tu ensalada</strong><span className="text-[10px] font-bold text-[#A86B3D]">$90</span></button>
               <button onClick={() => openCategory('all')} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🍽️</span><strong className="block text-xs mt-1">Carta</strong></button>
               <button onClick={() => openCategory('bebidas')} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🥤</span><strong className="block text-xs mt-1">Bebidas</strong></button>
             </>}
