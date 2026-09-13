@@ -52,8 +52,6 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
     };
   }, []);
 
-  // Esta limpieza sólo existe en la portada pública porque QuickActions no se renderiza en QR de mesa.
-  // Evita duplicar los accesos de Corrida/Ensalada que ya están en “Especialidades del día”.
   useEffect(() => {
     const tidyPublicCatalog = () => {
       const main = document.getElementById('menu-section');
@@ -102,29 +100,34 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
   const progress = Math.min(100, (stamps / goal) * 100);
   const formattedName = vipProfile ? formatCustomerName(vipProfile.customerName) : '';
 
-  const openFeaturedItem = (item: ManagedMenuItem) => {
-    if (item.id === 'comida-corrida' || item.id === 'arma-ensalada') {
-      onScrollToMenu();
-      window.setTimeout(() => {
-        const cards = Array.from(document.querySelectorAll<HTMLElement>('article'));
-        const target = cards.find((card) => card.textContent?.includes(item.name));
-        target?.click();
-      }, 350);
-      return;
-    }
-
+  const clickRenderedDish = (dishName: string): boolean => {
     const cards = Array.from(document.querySelectorAll<HTMLElement>('article'));
-    const target = cards.find((card) => card.textContent?.includes(item.name));
-    if (target) {
-      target.click();
+    const target = cards.find((card) => card.textContent?.includes(dishName));
+    if (!target) return false;
+    target.click();
+    return true;
+  };
+
+  const openFeaturedItem = (item: ManagedMenuItem) => {
+    if (clickRenderedDish(item.name)) return;
+
+    const menu = document.getElementById('menu-section');
+    const showAllButton = menu
+      ? Array.from(menu.querySelectorAll<HTMLButtonElement>('button')).find((button) =>
+          (button.textContent || '').includes('Ver los') && (button.textContent || '').includes('platillos')
+        )
+      : undefined;
+
+    if (showAllButton) {
+      showAllButton.click();
+      window.setTimeout(() => {
+        if (!clickRenderedDish(item.name)) onScrollToMenu();
+      }, 150);
       return;
     }
 
     onScrollToMenu();
-    window.setTimeout(() => {
-      const refreshedCards = Array.from(document.querySelectorAll<HTMLElement>('article'));
-      refreshedCards.find((card) => card.textContent?.includes(item.name))?.click();
-    }, 350);
+    window.setTimeout(() => clickRenderedDish(item.name), 200);
   };
 
   return (
