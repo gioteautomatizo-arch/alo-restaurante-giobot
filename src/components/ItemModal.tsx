@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { MenuItem, SizeOption, ExtraOption, CartItem } from '../types';
-import { X, Check, Plus, Minus, PackageCheck, MessageSquare } from 'lucide-react';
+import { X, Check, Plus, Minus, PackageCheck, MessageSquare, Image as ImageIcon } from 'lucide-react';
+import { subscribeToMenuCatalog, type ManagedMenuItem } from '../lib/menuCatalogService';
 
 interface ItemModalProps {
   item: MenuItem | null;
   onClose: () => void;
   onAddToCart: (cartItem: CartItem) => void;
 }
+
+type ManagedMenuItemWithSizeImages = ManagedMenuItem & {
+  sizeImageUrls?: Record<string, string>;
+};
 
 function isBreakfastPackageExtraName(name: string): boolean {
   const normalized = String(name || '')
@@ -32,6 +37,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
   const [specialInstructions, setSpecialInstructions] = useState<string>('');
   const [kitchenInstructions, setKitchenInstructions] = useState<string>('');
   const [cafeteriaInstructions, setCafeteriaInstructions] = useState<string>('');
+  const [sizeImageUrls, setSizeImageUrls] = useState<Record<string, string>>({});
+  const [catalogPrimaryImage, setCatalogPrimaryImage] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (item) {
@@ -49,6 +56,19 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
     }
   }, [item]);
 
+  useEffect(() => {
+    setSizeImageUrls({});
+    setCatalogPrimaryImage(item?.image);
+    if (!item?.id) return;
+
+    return subscribeToMenuCatalog((catalog) => {
+      const managed = catalog?.items.find((candidate) => candidate.id === item.id) as ManagedMenuItemWithSizeImages | undefined;
+      if (!managed) return;
+      setSizeImageUrls(managed.sizeImageUrls || {});
+      setCatalogPrimaryImage(managed.primaryImageUrl || managed.imageUrls?.[0] || item.image);
+    });
+  }, [item?.id, item?.image]);
+
   if (!item) return null;
 
   const isChilaquiles = item.id === 'chilaquiles';
@@ -57,6 +77,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
   const breakfastPackageSelected = item.category === 'desayunos' && (makeCombo || hasBreakfastPackageExtra);
   const breakfastPackageComplete = !breakfastPackageSelected || Boolean(breakfastColdChoice && breakfastHotChoice);
   const canAdd = (!isChilaquiles || Boolean(selectedSauce)) && breakfastPackageComplete;
+  const selectedSizeImage = selectedSize ? sizeImageUrls[selectedSize.name] : undefined;
+  const displayImage = selectedSizeImage || catalogPrimaryImage || item.image;
 
   const clearBreakfastChoices = () => {
     setBreakfastColdChoice(undefined);
@@ -160,15 +182,40 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
 
         <div className="p-5 space-y-5 overflow-y-auto flex-1">
           {item.sizes && item.sizes.length > 0 && (
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-2 font-serif">Selecciona el Tamaño</label>
-              <div className="grid grid-cols-3 gap-2">
-                {item.sizes.map((s) => (
-                  <button key={s.name} type="button" onClick={() => setSelectedSize(s)} className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${selectedSize?.name === s.name ? 'bg-[#3A2418] text-[#FFF7EA] border-[#3A2418] shadow-sm' : 'bg-[#FFF7EA] border-[#DEC8AE] text-[#6B4028] hover:bg-[#F4E3C8]'}`}>
-                    <span>{s.name}</span>
-                    <span className="text-[11px] opacity-90">${s.price}</span>
-                  </button>
-                ))}
+            <div className="space-y-3">
+              {displayImage ? (
+                <div className="relative overflow-hidden rounded-2xl border border-[#DEC8AE] bg-[#F4E3C8]/35">
+                  <img src={displayImage} alt={`${item.name}${selectedSize ? ` ${selectedSize.name}` : ''}`} className="w-full aspect-[16/9] object-cover" />
+                  {selectedSize && (
+                    <span className="absolute bottom-2 left-2 rounded-lg bg-[#3A2418]/95 px-2.5 py-1 text-[10px] font-black text-[#FFF7EA]">
+                      {selectedSize.name} · ${selectedSize.price}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-[#DEC8AE] bg-[#FFF7EA] p-4 text-center text-[#A86B3D]">
+                  <ImageIcon className="w-5 h-5 mx-auto mb-1" />
+                  <span className="text-[10px] font-bold">Imagen del tamaño próximamente</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-2 font-serif">Selecciona el Tamaño</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {item.sizes.map((s) => {
+                    const sizeImage = sizeImageUrls[s.name] || catalogPrimaryImage || item.image;
+                    const selected = selectedSize?.name === s.name;
+                    return (
+                      <button key={s.name} type="button" onClick={() => setSelectedSize(s)} className={`overflow-hidden rounded-xl border text-xs font-bold transition-all text-center flex flex-col cursor-pointer ${selected ? 'bg-[#3A2418] text-[#FFF7EA] border-[#3A2418] shadow-sm' : 'bg-[#FFF7EA] border-[#DEC8AE] text-[#6B4028] hover:bg-[#F4E3C8]'}`}>
+                        {sizeImage && <img src={sizeImage} alt={`${item.name} ${s.name}`} className="w-full aspect-[4/3] object-cover" loading="lazy" />}
+                        <span className="py-2 px-1 flex flex-col items-center">
+                          <span>{s.name}</span>
+                          <span className="text-[11px] opacity-90">${s.price}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
