@@ -56,6 +56,16 @@ export interface MenuCatalogDocument {
 
 const catalogRef = () => doc(db, MENU_CATALOG_DOC_PATH[0], MENU_CATALOG_DOC_PATH[1]);
 
+type CatalogSubscriber = {
+  callback: (catalog: MenuCatalogDocument | null) => void;
+  onError?: (error: unknown) => void;
+};
+
+const catalogSubscribers = new Set<CatalogSubscriber>();
+let catalogFirestoreUnsubscribe: (() => void) | null = null;
+let catalogCache: MenuCatalogDocument | null = null;
+let catalogHasSnapshot = false;
+
 function cleanArray<T>(value: T[] | undefined): T[] | undefined {
   if (!value || value.length === 0) return undefined;
   return value;
@@ -154,6 +164,44 @@ function sanitizeCatalog(items: ManagedMenuItem[], userName: string): MenuCatalo
   };
 }
 
+function normalizeCatalog(data: MenuCatalogDocument): MenuCatalogDocument {
+  return {
+    ...data,
+    restaurantId: RESTAURANT_ID,
+    items: Array.isArray(data.items)
+      ? data.items
+          .map(sanitizeItem)
+          .filter((item) => !PACKAGE_ONLY_ITEM_IDS.has(item.id))
+      : [],
+  };
+}
+
+function notifyCatalogSubscribers(catalog: MenuCatalogDocument | null) {
+  catalogCache = catalog;
+  catalogHasSnapshot = true;
+  [...catalogSubscribers].forEach((subscriber) => subscriber.callback(catalog));
+}
+
+function ensureCatalogListener() {
+  if (catalogFirestoreUnsubscribe) return;
+
+  catalogFirestoreUnsubscribe = onSnapshot(
+    catalogRef(),
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        notifyCatalogSubscribers(null);
+        return;
+      }
+      notifyCatalogSubscribers(normalizeCatalog(snapshot.data() as MenuCatalogDocument));
+    },
+    (error) => {
+      console.error('Error leyendo catálogo de menú:', error);
+      [...catalogSubscribers].forEach((subscriber) => subscriber.onError?.(error));
+      catalogFirestoreUnsubscribe = null;
+    }
+  );
+}
+
 export function createMenuItemId(name: string): string {
   const slug = name
     .trim()
@@ -166,33 +214,30 @@ export function createMenuItemId(name: string): string {
   return `${slug || 'platillo'}-${Date.now().toString(36)}`;
 }
 
+/**
+ * Suscripción compartida al catálogo.
+ * App, portada y cualquier otro consumidor reutilizan un único onSnapshot,
+ * evitando listeners duplicados de Firestore.
+ */
 export function subscribeToMenuCatalog(
   callback: (catalog: MenuCatalogDocument | null) => void,
   onError?: (error: unknown) => void
 ): () => void {
-  return onSnapshot(
-    catalogRef(),
-    (snapshot) => {
-      if (!snapshot.exists()) {
-        callback(null);
-        return;
-      }
-      const data = snapshot.data() as MenuCatalogDocument;
-      callback({
-        ...data,
-        restaurantId: RESTAURANT_ID,
-        items: Array.isArray(data.items)
-          ? data.items
-              .map(sanitizeItem)
-              .filter((item) => !PACKAGE_ONLY_ITEM_IDS.has(item.id))
-          : [],
-      });
-    },
-    (error) => {
-      console.error('Error leyendo catálogo de menú:', error);
-      if (onError) onError(error);
+  const subscriber: CatalogSubscriber = { callback, onError };
+  catalogSubscribers.add(subscriber);
+
+  if (catalogHasSnapshot) callback(catalogCache);
+  ensureCatalogListener();
+
+  return () => {
+    catalogSubscribers.delete(subscriber);
+    if (catalogSubscribers.size === 0 && catalogFirestoreUnsubscribe) {
+      catalogFirestoreUnsubscribe();
+      catalogFirestoreUnsubscribe = null;
+      catalogCache = null;
+      catalogHasSnapshot = false;
     }
-  );
+  };
 }
 
 export async function initializeMenuCatalogFromOriginal(user: StaffUser): Promise<MenuCatalogDocument> {
