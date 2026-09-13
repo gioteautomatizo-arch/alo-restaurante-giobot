@@ -52,6 +52,45 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
     };
   }, []);
 
+  // Esta limpieza sólo existe en la portada pública porque QuickActions no se renderiza en QR de mesa.
+  // Evita duplicar los accesos de Corrida/Ensalada que ya están en “Especialidades del día”.
+  useEffect(() => {
+    const tidyPublicCatalog = () => {
+      const main = document.getElementById('menu-section');
+      if (!main) return;
+
+      const heading = main.querySelector('h2');
+      if (heading?.textContent?.trim() === 'Selección de Platillos Recomendados') {
+        heading.textContent = 'Explora nuestra carta';
+      }
+
+      const buttons = Array.from(main.querySelectorAll<HTMLButtonElement>('button'));
+      const builderButtons = buttons.filter((button) => {
+        const text = button.textContent || '';
+        return text.includes('Armar Corrida') || text.includes('Armar Ensalada');
+      });
+      builderButtons.forEach((button) => {
+        const wrapper = button.parentElement;
+        if (wrapper && wrapper.querySelectorAll('button').length === 2) {
+          wrapper.dataset.publicDuplicateActions = 'true';
+          wrapper.style.display = 'none';
+        }
+      });
+    };
+
+    tidyPublicCatalog();
+    const observer = new MutationObserver(tidyPublicCatalog);
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+    return () => {
+      observer.disconnect();
+      document.querySelectorAll<HTMLElement>('[data-public-duplicate-actions="true"]').forEach((node) => {
+        node.style.display = '';
+        delete node.dataset.publicDuplicateActions;
+      });
+    };
+  }, []);
+
   const featured = useMemo(
     () => catalog.filter((item) => item.active && item.available && item.popular && itemPrice(item) !== null).slice(0, 4),
     [catalog]
