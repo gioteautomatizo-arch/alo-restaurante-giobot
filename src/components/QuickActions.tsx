@@ -1,5 +1,10 @@
-import React from 'react';
-import { UtensilsCrossed, Bike, Bot, Sparkles } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ArrowRight, Crown, Gift, Sparkles, Star, Utensils } from 'lucide-react';
+import { VipProfile } from '../types';
+import { getVipProfile, VIP_DATA_EVENT } from '../lib/vipStorage';
+import { ADMIN_DATA_EVENT, getRestaurantInfo } from '../lib/adminStorage';
+import { ManagedMenuItem, subscribeToMenuCatalog } from '../lib/menuCatalogService';
+import { VipCardModal } from './VipCardModal';
 
 interface QuickActionsProps {
   onScrollToMenu: () => void;
@@ -7,69 +12,146 @@ interface QuickActionsProps {
   onOpenGiobot: () => void;
 }
 
-export const QuickActions: React.FC<QuickActionsProps> = ({
-  onScrollToMenu,
-  onOpenDeliveryOrder,
-  onOpenGiobot,
-}) => {
+const itemPrice = (item: ManagedMenuItem): number | null => {
+  if (typeof item.price === 'number' && Number.isFinite(item.price) && item.price >= 0) return item.price;
+  const values = (item.sizes || [])
+    .map((size) => size.price)
+    .filter((price): price is number => typeof price === 'number' && Number.isFinite(price) && price >= 0);
+  return values.length ? Math.min(...values) : null;
+};
+
+export const QuickActions: React.FC<QuickActionsProps> = ({ onScrollToMenu, onOpenDeliveryOrder }) => {
+  const [vipProfile, setVipProfile] = useState<VipProfile | null>(() => getVipProfile());
+  const [vipOpen, setVipOpen] = useState(false);
+  const [restaurantInfo, setRestaurantInfo] = useState(getRestaurantInfo());
+  const [catalog, setCatalog] = useState<ManagedMenuItem[]>([]);
+
+  useEffect(() => {
+    const refreshVip = () => setVipProfile(getVipProfile());
+    const refreshRestaurant = () => setRestaurantInfo(getRestaurantInfo());
+    window.addEventListener(VIP_DATA_EVENT, refreshVip);
+    window.addEventListener('storage', refreshVip);
+    window.addEventListener(ADMIN_DATA_EVENT, refreshRestaurant);
+    const unsubscribe = subscribeToMenuCatalog((next) => setCatalog(next?.items || []), () => setCatalog([]));
+    return () => {
+      unsubscribe();
+      window.removeEventListener(VIP_DATA_EVENT, refreshVip);
+      window.removeEventListener('storage', refreshVip);
+      window.removeEventListener(ADMIN_DATA_EVENT, refreshRestaurant);
+    };
+  }, []);
+
+  const featured = useMemo(
+    () => catalog.filter((item) => item.active && item.available && item.popular && itemPrice(item) !== null).slice(0, 4),
+    [catalog]
+  );
+
+  const goal = Math.max(1, restaurantInfo.vipStampsRequired ?? 5);
+  const stamps = Math.max(0, vipProfile?.stamps ?? 0);
+  const remaining = Math.max(0, goal - stamps);
+  const progress = Math.min(100, (stamps / goal) * 100);
+
   return (
-    <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full">
-      {/* 1. Ver Menú */}
+    <div className="space-y-4 sm:space-y-5 w-full">
       <button
-        onClick={onScrollToMenu}
-        className="flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2.5 p-3 sm:py-3.5 sm:px-4 rounded-2xl bg-[#3A2418] hover:bg-[#4A2E1F] active:scale-95 text-[#FFF7EA] shadow-xs border border-[#4E3222] transition-all cursor-pointer group"
+        type="button"
+        onClick={() => setVipOpen(true)}
+        className="w-full rounded-3xl border border-[#C9974D]/35 bg-gradient-to-r from-[#3A2418] via-[#4A2E1F] to-[#3A2418] text-[#FFF7EA] p-4 sm:p-5 text-left shadow-sm hover:border-[#C9974D]/70 transition-all active:scale-[0.995] cursor-pointer"
       >
-        <div className="w-8 h-8 rounded-xl bg-[#4A2E1F] flex items-center justify-center text-[#C9974D] group-hover:scale-105 transition-transform shrink-0 border border-[#C9974D]/30">
-          <UtensilsCrossed className="w-4 h-4" />
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="w-11 h-11 rounded-2xl bg-[#C9974D]/15 border border-[#C9974D]/35 flex items-center justify-center shrink-0">
+              <Crown className="w-5 h-5 text-[#C9974D]" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-[10px] sm:text-xs uppercase tracking-wider font-black text-[#C9974D]">Cliente VIP</span>
+              <h3 className="font-serif font-black text-base sm:text-xl mt-0.5">
+                {vipProfile ? `Hola, ${vipProfile.customerName}` : 'Haz que cada visita cuente'}
+              </h3>
+              <p className="text-[11px] sm:text-sm text-[#EAD9C4] mt-1 leading-snug max-w-2xl">
+                {vipProfile
+                  ? vipProfile.rewardAvailable
+                    ? (restaurantInfo.vipRewardDescription || 'Ya tienes una recompensa lista para usar.')
+                    : remaining === 1
+                    ? 'Te falta solo 1 sello para tu siguiente recompensa.'
+                    : `Llevas ${stamps} de ${goal} sellos. Te faltan ${remaining}.`
+                  : 'Crea tu tarjeta VIP, acumula sellos con tus pedidos y recibe recompensas.'}
+              </p>
+            </div>
+          </div>
+          <ArrowRight className="w-5 h-5 text-[#C9974D] shrink-0 mt-2" />
         </div>
-        <div className="text-center sm:text-left">
-          <span className="block font-bold text-xs sm:text-sm leading-tight text-[#FFF7EA]">
-            Ver menú
-          </span>
-          <span className="hidden sm:block text-[10px] text-[#EAD9C4] font-light">
-            Explora platillos
-          </span>
+        {vipProfile && !vipProfile.rewardAvailable && (
+          <div className="mt-3 h-2 rounded-full bg-[#2B1B13]/70 overflow-hidden border border-[#C9974D]/15">
+            <div className="h-full rounded-full bg-[#C9974D]" style={{ width: `${progress}%` }} />
+          </div>
+        )}
+        <div className="mt-3 flex items-center gap-2 text-[10px] sm:text-xs font-bold text-[#F4E3C8]">
+          {vipProfile ? <Gift className="w-3.5 h-3.5 text-[#C9974D]" /> : <Star className="w-3.5 h-3.5 text-[#C9974D]" />}
+          <span>{vipProfile ? 'Ver mi tarjeta VIP' : 'Crear mi tarjeta VIP'}</span>
         </div>
       </button>
 
-      {/* 2. Pedir a Domicilio */}
-      <button
-        onClick={onOpenDeliveryOrder}
-        className="flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2.5 p-3 sm:py-3.5 sm:px-4 rounded-2xl bg-gradient-to-br from-[#C9974D] to-[#A86B3D] hover:from-[#d6aa5f] hover:to-[#C9974D] active:scale-95 text-[#3A2418] shadow-sm border border-[#F4E3C8]/60 transition-all cursor-pointer group"
-      >
-        <div className="w-8 h-8 rounded-xl bg-[#3A2418]/15 flex items-center justify-center text-[#3A2418] group-hover:scale-105 transition-transform shrink-0">
-          <Bike className="w-4 h-4" />
-        </div>
-        <div className="text-center sm:text-left">
-          <span className="block font-black text-xs sm:text-sm leading-tight text-[#3A2418]">
-            Pedir a domicilio
-          </span>
-          <span className="hidden sm:block text-[10px] text-[#3A2418]/85 font-medium">
-            Envío o anticipar
-          </span>
-        </div>
-      </button>
+      {featured.length > 0 && (
+        <section>
+          <div className="mb-2.5">
+            <div className="flex items-center gap-1.5 text-[#A86B3D]">
+              <Sparkles className="w-4 h-4" />
+              <span className="text-[10px] sm:text-xs uppercase tracking-wider font-black">Favoritos de Calientito</span>
+            </div>
+            <h3 className="font-serif font-black text-lg sm:text-xl text-[#2B1B13]">Platillos estrella</h3>
+            <p className="text-[10px] sm:text-xs text-[#6B4028]">Los destacados que recomendamos hoy.</p>
+          </div>
 
-      {/* 3. Preguntar a Tita */}
-      <button
-        onClick={onOpenGiobot}
-        className="flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2.5 p-3 sm:py-3.5 sm:px-4 rounded-2xl bg-[#FFFDF9] hover:bg-[#F4E3C8]/40 active:scale-95 text-[#2B1B13] shadow-2xs border border-[#DEC8AE] hover:border-[#A86B3D]/60 transition-all cursor-pointer group relative overflow-hidden"
-      >
-        <div className="w-8 h-8 rounded-xl bg-[#FFF7EA] flex items-center justify-center group-hover:scale-105 transition-transform shrink-0 relative border border-[#A86B3D]/30 p-0.5">
-          <img src="/tita.png" alt="Tita" className="w-full h-full object-contain" />
-          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
-          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-500 rounded-full" />
-        </div>
-        <div className="text-center sm:text-left">
-          <span className="block font-bold text-xs sm:text-sm leading-tight text-[#2B1B13] flex items-center justify-center sm:justify-start gap-1">
-            Tita
-            <Sparkles className="w-3 h-3 text-[#C9974D] fill-[#C9974D]" />
-          </span>
-          <span className="hidden sm:block text-[10px] text-[#6B4028] font-light">
-            Asesora de confianza
-          </span>
-        </div>
-      </button>
+          <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory">
+            {featured.map((item) => {
+              const price = itemPrice(item) as number;
+              const image = [item.primaryImageUrl, ...(item.imageUrls || [])]
+                .find((url) => !!url && url.startsWith('https://res.cloudinary.com/'));
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={onScrollToMenu}
+                  className="min-w-[210px] sm:min-w-[250px] max-w-[270px] snap-start rounded-2xl bg-white border border-[#DEC8AE] overflow-hidden text-left shadow-2xs hover:shadow-md hover:border-[#A86B3D]/60 transition-all active:scale-[0.99] cursor-pointer"
+                >
+                  <div className="relative h-28 sm:h-32 bg-gradient-to-br from-[#FFF7EA] to-[#F4E3C8] overflow-hidden">
+                    {image ? (
+                      <img src={image} alt={item.name} className="w-full h-full object-cover" loading="lazy" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-full bg-white/70 border border-[#C9974D]/40 flex items-center justify-center">
+                          <Utensils className="w-5 h-5 text-[#A86B3D]" />
+                        </div>
+                      </div>
+                    )}
+                    <span className="absolute top-2 left-2 px-2 py-1 rounded-full bg-[#C9974D] text-[#3A2418] text-[9px] font-black uppercase flex items-center gap-1">
+                      <Star className="w-2.5 h-2.5 fill-[#3A2418]" /> Estrella
+                    </span>
+                    <span className="absolute bottom-2 right-2 px-2 py-1 rounded-lg bg-[#3A2418]/95 text-[#FFF7EA] text-xs font-black">${price}</span>
+                  </div>
+                  <div className="p-3">
+                    <strong className="block font-serif text-sm sm:text-base text-[#2B1B13] line-clamp-1">{item.name}</strong>
+                    <span className="block text-[10px] sm:text-[11px] text-[#6B4028] mt-1 line-clamp-2">{item.description}</span>
+                    <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-black text-[#A86B3D]">Ver en la carta <ArrowRight className="w-3 h-3" /></span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      <VipCardModal
+        isOpen={vipOpen}
+        onClose={() => setVipOpen(false)}
+        onOpenCart={() => {
+          setVipOpen(false);
+          onOpenDeliveryOrder();
+        }}
+        vipProfile={vipProfile}
+        onProfileUpdated={() => setVipProfile(getVipProfile())}
+      />
     </div>
   );
 };
