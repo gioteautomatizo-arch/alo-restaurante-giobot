@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Leaf, Check } from 'lucide-react';
+import { Leaf, Check, Megaphone, Sparkles } from 'lucide-react';
 import { getRestaurantInfo, ADMIN_DATA_EVENT } from '../lib/adminStorage';
+import { parseActivePromotions } from '../lib/promotions';
 
 interface EcoPromoCardProps {
   bringOwnContainer: boolean;
@@ -26,6 +27,7 @@ export const EcoPromoCard: React.FC<EcoPromoCardProps> = ({
   }, []);
 
   const discountPercent = restaurantInfo.ecoDiscountPercent ?? 10;
+  const promotions = parseActivePromotions(restaurantInfo.activePromotions);
 
   // Extract explanation without any hardcoded percentage so ecoDiscountPercent is the sole source of truth
   const rawDesc = (restaurantInfo.ecoDiscountDescription || '').trim();
@@ -47,41 +49,66 @@ export const EcoPromoCard: React.FC<EcoPromoCardProps> = ({
   const discountDescription = `${discountPercent}% de descuento ${explanation}`;
 
   return (
-    <div className="w-full bg-[#F4E3C8]/50 border border-[#DEC8AE] rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-2xs">
-      <div className="flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-xl bg-[#FFFDF9] text-[#C77B4A] border border-[#C77B4A]/30 flex items-center justify-center shrink-0">
-          <Leaf className="w-4 h-4 text-[#C77B4A]" />
+    <div className="space-y-2.5">
+      <div className="w-full bg-[#F4E3C8]/50 border border-[#DEC8AE] rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-2xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-[#FFFDF9] text-[#C77B4A] border border-[#C77B4A]/30 flex items-center justify-center shrink-0">
+            <Leaf className="w-4 h-4 text-[#C77B4A]" />
+          </div>
+          <div>
+            <h4 className="text-xs sm:text-sm font-black text-[#2B1B13] flex items-center gap-1.5 font-serif">
+              {discountPercent}% de Descuento Ecológico
+              <span className="text-[10px] font-bold bg-[#C77B4A]/20 text-[#6B4028] px-1.5 py-0.5 rounded-md">
+                Sustentable
+              </span>
+            </h4>
+            <p className="text-[11px] text-[#6B4028]">
+              {discountDescription}
+            </p>
+          </div>
         </div>
-        <div>
-          <h4 className="text-xs sm:text-sm font-black text-[#2B1B13] flex items-center gap-1.5 font-serif">
-            {discountPercent}% de Descuento Ecológico
-            <span className="text-[10px] font-bold bg-[#C77B4A]/20 text-[#6B4028] px-1.5 py-0.5 rounded-md">
-              Sustentable
-            </span>
-          </h4>
-          <p className="text-[11px] text-[#6B4028]">
-            {discountDescription}
-          </p>
-        </div>
+
+        <button
+          onClick={() => setBringOwnContainer(!bringOwnContainer)}
+          className={`w-full sm:w-auto px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer ${
+            bringOwnContainer
+              ? 'bg-[#A86B3D] text-[#FFF7EA] shadow-xs'
+              : 'bg-[#FFFDF9] text-[#6B4028] border border-[#DEC8AE] hover:bg-[#F4E3C8]'
+          }`}
+        >
+          {bringOwnContainer ? (
+            <>
+              <Check className="w-3.5 h-3.5 text-[#FFF7EA]" />
+              <span>Descuento Activado</span>
+            </>
+          ) : (
+            <span>Traeré mis recipientes</span>
+          )}
+        </button>
       </div>
 
-      <button
-        onClick={() => setBringOwnContainer(!bringOwnContainer)}
-        className={`w-full sm:w-auto px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer ${
-          bringOwnContainer
-            ? 'bg-[#A86B3D] text-[#FFF7EA] shadow-xs'
-            : 'bg-[#FFFDF9] text-[#6B4028] border border-[#DEC8AE] hover:bg-[#F4E3C8]'
-        }`}
-      >
-        {bringOwnContainer ? (
-          <>
-            <Check className="w-3.5 h-3.5 text-[#FFF7EA]" />
-            <span>Descuento Activado</span>
-          </>
-        ) : (
-          <span>Traeré mis recipientes</span>
-        )}
-      </button>
+      {promotions.length > 0 && (
+        <div className="w-full rounded-2xl border border-[#C9974D]/35 bg-[#FFFDF9] px-3.5 py-3 shadow-2xs">
+          <div className="flex items-start gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[#F4E3C8]/55 border border-[#C9974D]/35 flex items-center justify-center shrink-0">
+              <Megaphone className="w-4 h-4 text-[#A86B3D]" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-[#C9974D]" />
+                <span className="text-[10px] sm:text-xs uppercase tracking-wider font-black text-[#A86B3D]">Promociones vigentes</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {promotions.map((promotion) => (
+                  <span key={promotion} className="px-2.5 py-1 rounded-full bg-[#FFF7EA] border border-[#DEC8AE] text-[10px] sm:text-xs font-bold text-[#5C3825]">
+                    {promotion}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
