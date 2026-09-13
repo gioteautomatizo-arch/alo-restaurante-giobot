@@ -7,9 +7,8 @@ import { ManagedMenuItem, subscribeToMenuCatalog } from '../lib/menuCatalogServi
 import { VipCardModal } from './VipCardModal';
 
 interface QuickActionsProps {
-  onScrollToMenu: () => void;
   onOpenDeliveryOrder: () => void;
-  onOpenGiobot: () => void;
+  onSelectFeaturedItem: (itemId: string) => void;
 }
 
 const itemPrice = (item: ManagedMenuItem): number | null => {
@@ -20,7 +19,18 @@ const itemPrice = (item: ManagedMenuItem): number | null => {
   return values.length ? Math.min(...values) : null;
 };
 
-export const QuickActions: React.FC<QuickActionsProps> = ({ onScrollToMenu, onOpenDeliveryOrder }) => {
+const formatCustomerName = (name: string): string =>
+  name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toLocaleUpperCase('es-MX') + part.slice(1).toLocaleLowerCase('es-MX'))
+    .join(' ');
+
+export const QuickActions: React.FC<QuickActionsProps> = ({
+  onOpenDeliveryOrder,
+  onSelectFeaturedItem,
+}) => {
   const [vipProfile, setVipProfile] = useState<VipProfile | null>(() => getVipProfile());
   const [vipOpen, setVipOpen] = useState(false);
   const [restaurantInfo, setRestaurantInfo] = useState(getRestaurantInfo());
@@ -50,6 +60,7 @@ export const QuickActions: React.FC<QuickActionsProps> = ({ onScrollToMenu, onOp
   const stamps = Math.max(0, vipProfile?.stamps ?? 0);
   const remaining = Math.max(0, goal - stamps);
   const progress = Math.min(100, (stamps / goal) * 100);
+  const formattedName = vipProfile ? formatCustomerName(vipProfile.customerName) : '';
 
   return (
     <div className="space-y-4 sm:space-y-5 w-full">
@@ -66,7 +77,7 @@ export const QuickActions: React.FC<QuickActionsProps> = ({ onScrollToMenu, onOp
             <div className="min-w-0">
               <span className="text-[10px] sm:text-xs uppercase tracking-wider font-black text-[#C9974D]">Cliente VIP</span>
               <h3 className="font-serif font-black text-base sm:text-xl mt-0.5">
-                {vipProfile ? `Hola, ${vipProfile.customerName}` : 'Haz que cada visita cuente'}
+                {vipProfile ? `Hola, ${formattedName}` : 'Haz que cada visita cuente'}
               </h3>
               <p className="text-[11px] sm:text-sm text-[#EAD9C4] mt-1 leading-snug max-w-2xl">
                 {vipProfile
@@ -103,19 +114,20 @@ export const QuickActions: React.FC<QuickActionsProps> = ({ onScrollToMenu, onOp
             <p className="text-[10px] sm:text-xs text-[#6B4028]">Los destacados que recomendamos hoy.</p>
           </div>
 
-          <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory">
+          <div className={featured.length === 1 ? 'grid grid-cols-1' : 'flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory'}>
             {featured.map((item) => {
               const price = itemPrice(item) as number;
               const image = [item.primaryImageUrl, ...(item.imageUrls || [])]
                 .find((url) => !!url && url.startsWith('https://res.cloudinary.com/'));
+              const single = featured.length === 1;
               return (
                 <button
                   key={item.id}
                   type="button"
-                  onClick={onScrollToMenu}
-                  className="min-w-[210px] sm:min-w-[250px] max-w-[270px] snap-start rounded-2xl bg-white border border-[#DEC8AE] overflow-hidden text-left shadow-2xs hover:shadow-md hover:border-[#A86B3D]/60 transition-all active:scale-[0.99] cursor-pointer"
+                  onClick={() => onSelectFeaturedItem(item.id)}
+                  className={`${single ? 'w-full sm:grid sm:grid-cols-[minmax(220px,36%)_1fr]' : 'min-w-[210px] sm:min-w-[250px] max-w-[270px] snap-start'} rounded-2xl bg-white border border-[#DEC8AE] overflow-hidden text-left shadow-2xs hover:shadow-md hover:border-[#A86B3D]/60 transition-all active:scale-[0.99] cursor-pointer`}
                 >
-                  <div className="relative h-28 sm:h-32 bg-gradient-to-br from-[#FFF7EA] to-[#F4E3C8] overflow-hidden">
+                  <div className={`relative ${single ? 'h-40 sm:h-full sm:min-h-[165px]' : 'h-28 sm:h-32'} bg-gradient-to-br from-[#FFF7EA] to-[#F4E3C8] overflow-hidden`}>
                     {image ? (
                       <img src={image} alt={item.name} className="w-full h-full object-cover" loading="lazy" />
                     ) : (
@@ -130,10 +142,10 @@ export const QuickActions: React.FC<QuickActionsProps> = ({ onScrollToMenu, onOp
                     </span>
                     <span className="absolute bottom-2 right-2 px-2 py-1 rounded-lg bg-[#3A2418]/95 text-[#FFF7EA] text-xs font-black">${price}</span>
                   </div>
-                  <div className="p-3">
-                    <strong className="block font-serif text-sm sm:text-base text-[#2B1B13] line-clamp-1">{item.name}</strong>
-                    <span className="block text-[10px] sm:text-[11px] text-[#6B4028] mt-1 line-clamp-2">{item.description}</span>
-                    <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-black text-[#A86B3D]">Ver en la carta <ArrowRight className="w-3 h-3" /></span>
+                  <div className={`${single ? 'p-4 sm:p-5 sm:flex sm:flex-col sm:justify-center' : 'p-3'}`}>
+                    <strong className={`block font-serif ${single ? 'text-base sm:text-xl' : 'text-sm sm:text-base'} text-[#2B1B13] line-clamp-1`}>{item.name}</strong>
+                    <span className={`block ${single ? 'text-xs sm:text-sm' : 'text-[10px] sm:text-[11px]'} text-[#6B4028] mt-1 line-clamp-2`}>{item.description}</span>
+                    <span className="mt-3 inline-flex items-center gap-1 text-[10px] sm:text-xs font-black text-[#A86B3D]">Abrir platillo <ArrowRight className="w-3 h-3" /></span>
                   </div>
                 </button>
               );
