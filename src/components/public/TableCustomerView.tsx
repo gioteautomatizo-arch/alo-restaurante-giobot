@@ -28,6 +28,7 @@ interface Props {
   onExploreMenu?: () => void;
   onSelectCategory?: (category: CategoryId) => void;
   onOpenComidaCorrida?: () => void;
+  onOpenSaladBuilder?: () => void;
   onPersonSelectionChange?: (person: TableSessionPerson | null) => void;
 }
 
@@ -51,6 +52,7 @@ export const TableCustomerView: React.FC<Props> = ({
   onExploreMenu,
   onSelectCategory,
   onOpenComidaCorrida,
+  onOpenSaladBuilder,
   onPersonSelectionChange,
 }) => {
   const [session, setSession] = useState<TableSession | null>(null);
@@ -275,17 +277,22 @@ export const TableCustomerView: React.FC<Props> = ({
 
         {session.accountMode === 'SEPARADAS' && <div className="bg-white rounded-xl border border-[#DEC8AE] p-2.5"><div className="flex items-center gap-1.5 text-[10px] font-bold uppercase mb-2"><ReceiptText className="w-3.5 h-3.5"/>Elige tu cuenta</div><div className="flex flex-wrap gap-1.5">{session.accounts.map((account) => <button key={account.id} onClick={() => chooseAccount(account.id)} className={`px-3 py-1.5 rounded-lg border text-xs font-bold ${selectedAccountId === account.id ? 'bg-[#3A2418] border-[#3A2418] text-white' : 'bg-[#FFF7EA] border-[#DEC8AE]'}`}>{selectedAccountId === account.id ? '✓ ' : ''}{account.label}</button>)}</div></div>}
 
-        <div><span className="text-[10px] uppercase tracking-wider font-black text-[#A86B3D]">Pedir ahora</span><div className="grid grid-cols-3 gap-2 mt-1.5">
-          {isDesayuno ? <>
-            <button onClick={() => openCategory('desayunos')} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🍳</span><strong className="block text-xs mt-1">Desayunos</strong></button>
-            <button onClick={() => openCategory('all')} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🍽️</span><strong className="block text-xs mt-1">Carta</strong></button>
-            <button onClick={() => openCategory('bebidas')} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🥤</span><strong className="block text-xs mt-1">Bebidas</strong></button>
-          </> : <>
-            <button onClick={() => onOpenComidaCorrida ? onOpenComidaCorrida() : openCategory('comida-corrida')} className={`${card} border-2 border-[#C9974D] bg-[#FFFDF9]`}><span className="text-xl block">🍲</span><strong className="block text-xs mt-1">Comida corrida</strong><span className="text-[10px] font-bold text-[#A86B3D]">$90</span></button>
-            <button onClick={() => openCategory('all')} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🍽️</span><strong className="block text-xs mt-1">Carta</strong></button>
-            <button onClick={() => openCategory('bebidas')} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🥤</span><strong className="block text-xs mt-1">Bebidas</strong></button>
-          </>}
-        </div></div>
+        <div>
+          <span className="text-[10px] uppercase tracking-wider font-black text-[#A86B3D]">Pedir ahora</span>
+          <div className="grid grid-cols-2 gap-2 mt-1.5">
+            {isDesayuno ? <>
+              <button onClick={() => openCategory('desayunos')} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🍳</span><strong className="block text-xs mt-1">Desayunos</strong></button>
+              <button onClick={() => onOpenSaladBuilder ? onOpenSaladBuilder() : openCategory('ensaladas')} className={`${card} border-2 border-[#C9974D] bg-[#FFFDF9]`}><span className="text-xl block">🥗</span><strong className="block text-xs mt-1">Arma tu ensalada</strong><span className="text-[10px] font-bold text-[#A86B3D]">$90</span></button>
+              <button onClick={() => openCategory('all')} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🍽️</span><strong className="block text-xs mt-1">Carta</strong></button>
+              <button onClick={() => openCategory('bebidas')} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🥤</span><strong className="block text-xs mt-1">Bebidas</strong></button>
+            </> : <>
+              <button onClick={() => onOpenComidaCorrida ? onOpenComidaCorrida() : openCategory('comida-corrida')} className={`${card} border-2 border-[#C9974D] bg-[#FFFDF9]`}><span className="text-xl block">🍲</span><strong className="block text-xs mt-1">Comida corrida</strong><span className="text-[10px] font-bold text-[#A86B3D]">$90</span></button>
+              <button onClick={() => onOpenSaladBuilder ? onOpenSaladBuilder() : openCategory('ensaladas')} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🥗</span><strong className="block text-xs mt-1">Arma tu ensalada</strong><span className="text-[10px] font-bold text-[#A86B3D]">$90</span></button>
+              <button onClick={() => openCategory('all')} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🍽️</span><strong className="block text-xs mt-1">Carta</strong></button>
+              <button onClick={() => openCategory('bebidas')} className={`${card} border-[#DEC8AE]`}><span className="text-xl block">🥤</span><strong className="block text-xs mt-1">Bebidas</strong></button>
+            </>}
+          </div>
+        </div>
 
         {!isStaffOrder && <div className="grid grid-cols-2 gap-2 pt-1">
           <button onClick={() => setIsOperationalModalOpen(true)} className="min-h-[48px] rounded-xl bg-white border border-[#DEC8AE] text-xs font-bold flex items-center justify-center gap-2"><Bell className="w-4 h-4 text-[#C9974D]"/>Necesito algo</button>
