@@ -3,13 +3,26 @@ import { MENU_ITEMS } from '../data/menu';
 import { CartItem, ComidaCorridaCustomization, DailyMenuConfig } from '../types';
 import { getDailyMenuConfig } from '../lib/adminStorage';
 import { subscribeToCache } from '../lib/firestoreService';
-import { AlertCircle, Cake, Check, Flame, GlassWater, Soup, Sparkles, Utensils, X } from 'lucide-react';
+import { AlertCircle, Cake, Check, ChevronDown, Flame, GlassWater, Soup, Sparkles, Utensils, X } from 'lucide-react';
 
 interface ComidaCorridaBuilderProps {
   isOpen: boolean;
   onClose: () => void;
   onAddToCart: (cartItem: CartItem) => void;
 }
+
+type AlternativeChoice = {
+  label: string;
+  value: string;
+};
+
+type AlternativeGroup = {
+  id: string;
+  label: string;
+  surcharge: number;
+  choices: AlternativeChoice[];
+  directValue?: string;
+};
 
 const ALT_SURCHARGE_MARKER = '__RECARGO_ESPECIALIDADES_SIN_PRECIO__:';
 
@@ -36,37 +49,87 @@ const formatSurcharge = (value: number): string =>
 const stripSurcharge = (value: string): string =>
   value.replace(/\s*\(\s*\+\s*\$?\s*\d+(?:\.\d+)?\s*\)\s*$/i, '').trim();
 
+const withSurcharge = (name: string, surcharge: number): string =>
+  `${name} (+$${formatSurcharge(surcharge)})`;
+
 const splitMenuChoices = (value: string): string[] =>
   value
     .split(/\s*\/\s*|\n+|\s+(?:o|u)\s+/i)
     .map((part) => part.trim())
     .filter(Boolean);
 
-const expandAlternativeOption = (option: string): string[] => {
-  const surcharge = getExplicitSurcharge(option);
-  const suffix = surcharge !== null ? ` (+$${formatSurcharge(surcharge)})` : '';
-  const base = stripSurcharge(option);
-  const key = normalizeDishKey(base);
-
-  const knownGroups: Record<string, string[]> = {
-    'enchiladas verdes o rojas': ['Enchiladas Verdes', 'Enchiladas Rojas'],
-    'milanesa de res o pollo': ['Milanesa de Res', 'Milanesa de Pollo'],
-    'bistec o pechuga asada': ['Bistec Asado', 'Pechuga Asada'],
-    'bistec asado o pechuga asada': ['Bistec Asado', 'Pechuga Asada'],
-    'bistec o pollo': ['Bistec', 'Pollo'],
-  };
-
-  const known = knownGroups[key];
-  if (known) return known.map((name) => `${name}${suffix}`);
-
-  const generic = splitMenuChoices(base);
-  return generic.length > 1 ? generic.map((name) => `${name}${suffix}`) : [option.trim()];
-};
-
 const getAlternativeDefaultSurcharge = (options?: string[]): number => {
   const marker = (options || []).find((option) => option.startsWith(ALT_SURCHARGE_MARKER));
   const parsed = marker ? Number(marker.slice(ALT_SURCHARGE_MARKER.length)) : 5;
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 5;
+};
+
+const buildAlternativeGroup = (rawOption: string, defaultSurcharge: number): AlternativeGroup => {
+  const explicit = getExplicitSurcharge(rawOption);
+  const surcharge = explicit ?? defaultSurcharge;
+  const base = stripSurcharge(rawOption);
+  const key = normalizeDishKey(base);
+
+  if (key === 'milanesa de res o pollo' || key === 'milanesa res o pollo') {
+    return {
+      id: 'milanesa',
+      label: 'Milanesa',
+      surcharge,
+      choices: [
+        { label: 'Res', value: withSurcharge('Milanesa de Res', surcharge) },
+        { label: 'Pollo', value: withSurcharge('Milanesa de Pollo', surcharge) },
+      ],
+    };
+  }
+
+  if (
+    key === 'bistec o pechuga asada' ||
+    key === 'bistec asado o pechuga asada' ||
+    key === 'asada de res o pollo' ||
+    key === 'asada res o pollo'
+  ) {
+    return {
+      id: 'asada',
+      label: 'Asada',
+      surcharge,
+      choices: [
+        { label: 'Res', value: withSurcharge('Bistec Asado', surcharge) },
+        { label: 'Pollo', value: withSurcharge('Pechuga Asada', surcharge) },
+      ],
+    };
+  }
+
+  if (key === 'enchiladas verdes o rojas' || key === 'enchiladas verde o roja') {
+    return {
+      id: 'enchiladas',
+      label: 'Enchiladas',
+      surcharge,
+      choices: [
+        { label: 'Verdes', value: withSurcharge('Enchiladas Verdes', surcharge) },
+        { label: 'Rojas', value: withSurcharge('Enchiladas Rojas', surcharge) },
+      ],
+    };
+  }
+
+  if (key === 'chilaquiles verdes o rojos' || key === 'chilaquiles verde o rojo') {
+    return {
+      id: 'chilaquiles',
+      label: 'Chilaquiles',
+      surcharge,
+      choices: [
+        { label: 'Verdes', value: withSurcharge('Chilaquiles Verdes', surcharge) },
+        { label: 'Rojos', value: withSurcharge('Chilaquiles Rojos', surcharge) },
+      ],
+    };
+  }
+
+  return {
+    id: normalizeDishKey(base).replace(/\s+/g, '-') || `especialidad-${Math.random()}`,
+    label: base,
+    surcharge,
+    choices: [],
+    directValue: explicit !== null ? rawOption.trim() : withSurcharge(base, surcharge),
+  };
 };
 
 const ChoiceButton: React.FC<{
@@ -94,6 +157,7 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({ isOp
   const [segundoTiempo, setSegundoTiempo] = useState('');
   const [tercerTiempo, setTercerTiempo] = useState('');
   const [extraAgrega, setExtraAgrega] = useState('Sin extra');
+  const [expandedAlternativeId, setExpandedAlternativeId] = useState<string | null>(null);
 
   useEffect(() => {
     setDailyMenu(getDailyMenuConfig());
@@ -109,19 +173,25 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({ isOp
   }, []);
 
   useEffect(() => {
-    if (isOpen) setExtraAgrega('Sin extra');
+    if (isOpen) {
+      setExtraAgrega('Sin extra');
+      setExpandedAlternativeId(null);
+    }
   }, [isOpen]);
 
   const primerTiempoOptions = useMemo(() => {
     if (!dailyMenu.entrada?.trim()) {
       return ['Consomé de pollo con menudencias o verduras', 'Sopa de verduras', 'Crema o sopa aguada del día'];
     }
-    const parts = dailyMenu.entrada.split(/\s*(?:\/|\n|,| o | O | u | U )\s*/).map((v) => v.trim()).filter(Boolean);
+    const parts = dailyMenu.entrada
+      .split(/\s*(?:\/|\n|,| o | O | u | U )\s*/)
+      .map((value) => value.trim())
+      .filter(Boolean);
     return parts.length ? parts : [dailyMenu.entrada.trim()];
   }, [dailyMenu.entrada]);
 
   const segundoTiempoOptions = useMemo(() => {
-    const clean = (dailyMenu.guarniciones || []).map((v) => v.trim()).filter(Boolean);
+    const clean = (dailyMenu.guarniciones || []).map((value) => value.trim()).filter(Boolean);
     return clean.length ? clean : ['Arroz rojo', 'Pasta o espagueti'];
   }, [dailyMenu.guarniciones]);
 
@@ -142,44 +212,48 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({ isOp
     [dailyMenu.opcionesAlternativas]
   );
 
-  const alternativeOptions = useMemo(() => {
+  const alternativeGroups = useMemo<AlternativeGroup[]>(() => {
     const configured = (dailyMenu.opcionesAlternativas || [])
       .filter((option) => !option.startsWith(ALT_SURCHARGE_MARKER))
-      .flatMap(expandAlternativeOption)
-      .map((v) => v.trim())
+      .map((option) => option.trim())
       .filter(Boolean);
 
     const fallback = [
-      'Enchiladas Suizas (+$10)',
-      'Bistec Asado (+$5)',
-      'Pechuga Asada (+$5)',
-      'Enchiladas Verdes',
-      'Enchiladas Rojas',
-      'Milanesa de Res',
-      'Milanesa de Pollo',
-      'Tacos Dorados',
+      'Enchiladas verdes o rojas (+$5)',
+      'Milanesa de res o pollo (+$5)',
+      'Tacos dorados (+$5)',
+      'Bistec o pechuga asada (+$5)',
+      'Enchiladas suizas (+$10)',
     ];
 
+    const source = configured.length ? configured : fallback;
     const seen = new Set<string>();
     const dailyKeys = new Set(dailyGuisadoOptions.map(normalizeDishKey));
-    return [...(configured.length ? configured : fallback), ...fallback].filter((option) => {
-      const key = normalizeDishKey(option);
-      if (!key || seen.has(key) || dailyKeys.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }, [dailyMenu.opcionesAlternativas, dailyGuisadoOptions]);
 
-  const getAlternativeDisplayLabel = (option: string) => {
-    const explicit = getExplicitSurcharge(option);
-    return explicit !== null ? option : `${option} (+$${formatSurcharge(alternativeDefaultSurcharge)})`;
-  };
+    return source
+      .map((option) => buildAlternativeGroup(option, alternativeDefaultSurcharge))
+      .filter((group) => {
+        const key = normalizeDishKey(group.label);
+        if (!key || seen.has(key) || dailyKeys.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [dailyMenu.opcionesAlternativas, dailyGuisadoOptions, alternativeDefaultSurcharge]);
+
+  const alternativeValues = useMemo(
+    () => new Set(
+      alternativeGroups.flatMap((group) =>
+        group.directValue ? [group.directValue] : group.choices.map((choice) => choice.value)
+      )
+    ),
+    [alternativeGroups]
+  );
 
   const selectedThirdSurcharge = useMemo(() => {
     const explicit = getExplicitSurcharge(tercerTiempo);
     if (explicit !== null) return explicit;
-    return alternativeOptions.includes(tercerTiempo) ? alternativeDefaultSurcharge : 0;
-  }, [tercerTiempo, alternativeOptions, alternativeDefaultSurcharge]);
+    return alternativeValues.has(tercerTiempo) ? alternativeDefaultSurcharge : 0;
+  }, [tercerTiempo, alternativeValues, alternativeDefaultSurcharge]);
 
   useEffect(() => {
     if (!primerTiempoOptions.includes(primerTiempo)) setPrimerTiempo(primerTiempoOptions[0] || '');
@@ -190,23 +264,30 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({ isOp
   }, [segundoTiempoOptions, segundoTiempo]);
 
   useEffect(() => {
-    const all = [...dailyGuisadoOptions, ...alternativeOptions];
+    const alternativeList = Array.from(alternativeValues);
+    const all = [...dailyGuisadoOptions, ...alternativeList];
     if (!all.includes(tercerTiempo)) setTercerTiempo(dailyGuisadoOptions[0] || all[0] || '');
-  }, [dailyGuisadoOptions, alternativeOptions, tercerTiempo]);
+  }, [dailyGuisadoOptions, alternativeValues, tercerTiempo]);
 
   if (!isOpen) return null;
 
   const baseMenuPrice = Number(dailyMenu.price) > 0 ? Number(dailyMenu.price) : 90;
   const finalUnitPrice = baseMenuPrice + selectedThirdSurcharge + (extraAgrega === 'Sin extra' ? 0 : 10);
-  const selectedThirdDisplay = alternativeOptions.includes(tercerTiempo)
-    ? getAlternativeDisplayLabel(tercerTiempo)
-    : tercerTiempo;
+
+  const handleAlternativeGroupClick = (group: AlternativeGroup) => {
+    if (group.directValue) {
+      setTercerTiempo(group.directValue);
+      setExpandedAlternativeId(null);
+      return;
+    }
+    setExpandedAlternativeId((current) => current === group.id ? null : group.id);
+  };
 
   const handleAdd = () => {
     const customComidaCorrida: ComidaCorridaCustomization = {
       primerTiempo: primerTiempo || primerTiempoOptions[0] || 'Sopa del día',
       segundoTiempo: segundoTiempo || segundoTiempoOptions[0] || 'Arroz del día',
-      tercerTiempo: selectedThirdDisplay || dailyGuisadoOptions[0] || 'Guisado del día',
+      tercerTiempo: tercerTiempo || dailyGuisadoOptions[0] || 'Guisado del día',
       extraAgrega: extraAgrega !== 'Sin extra' ? extraAgrega : undefined,
     };
 
@@ -230,6 +311,7 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({ isOp
 
     onAddToCart(cartItem);
     setExtraAgrega('Sin extra');
+    setExpandedAlternativeId(null);
     onClose();
   };
 
@@ -260,17 +342,17 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({ isOp
           <section>
             <h3 className="text-xs font-bold uppercase text-[#3A2418] mb-2 flex items-center gap-1.5"><Soup className="w-4 h-4 text-[#A86B3D]" />1er Tiempo</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {primerTiempoOptions.map((opt) => <ChoiceButton key={opt} active={primerTiempo === opt} label={opt} onClick={() => setPrimerTiempo(opt)} />)}
+              {primerTiempoOptions.map((option) => <ChoiceButton key={option} active={primerTiempo === option} label={option} onClick={() => setPrimerTiempo(option)} />)}
             </div>
           </section>
 
           <section>
             <h3 className="text-xs font-bold uppercase text-[#3A2418] mb-2 flex items-center gap-1.5"><Utensils className="w-4 h-4 text-[#A86B3D]" />2do Tiempo</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {segundoTiempoOptions.map((opt) => (
-                <ChoiceButton key={opt} active={segundoTiempo === opt} label={opt} onClick={() => {
-                  if (opt !== segundoTiempo) setExtraAgrega('Sin extra');
-                  setSegundoTiempo(opt);
+              {segundoTiempoOptions.map((option) => (
+                <ChoiceButton key={option} active={segundoTiempo === option} label={option} onClick={() => {
+                  if (option !== segundoTiempo) setExtraAgrega('Sin extra');
+                  setSegundoTiempo(option);
                 }} />
               ))}
             </div>
@@ -278,17 +360,68 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({ isOp
 
           <section className="space-y-3">
             <h3 className="text-xs font-bold uppercase text-[#3A2418] flex items-center gap-1.5"><Flame className="w-4 h-4 text-[#A86B3D]" />3er Tiempo · Plato Fuerte</h3>
+
             <div>
               <span className="text-[11px] font-bold text-[#A86B3D] uppercase">✨ Guisados del Día</span>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1.5">
-                {dailyGuisadoOptions.map((opt) => <ChoiceButton key={opt} active={tercerTiempo === opt} label={opt} onClick={() => setTercerTiempo(opt)} />)}
+                {dailyGuisadoOptions.map((option) => <ChoiceButton key={option} active={tercerTiempo === option} label={option} onClick={() => setTercerTiempo(option)} />)}
               </div>
             </div>
-            {alternativeOptions.length > 0 && (
+
+            {alternativeGroups.length > 0 && (
               <div>
                 <span className="text-[11px] font-semibold text-[#6B4028] uppercase">Otras Especialidades y Clásicos</span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1.5">
-                  {alternativeOptions.map((opt) => <ChoiceButton key={opt} active={tercerTiempo === opt} label={getAlternativeDisplayLabel(opt)} onClick={() => setTercerTiempo(opt)} />)}
+                  {alternativeGroups.map((group) => {
+                    const selectedChoice = group.choices.find((choice) => choice.value === tercerTiempo);
+                    const directSelected = group.directValue === tercerTiempo;
+                    const active = Boolean(selectedChoice || directSelected);
+                    const expanded = expandedAlternativeId === group.id;
+
+                    return (
+                      <div key={group.id} className={`rounded-xl border overflow-hidden ${active ? 'border-[#A86B3D] bg-[#C77B4A]/10' : 'border-[#F4E3C8] bg-[#FFF7EA]'}`}>
+                        <button
+                          type="button"
+                          onClick={() => handleAlternativeGroupClick(group)}
+                          className="w-full p-3 text-left flex items-center justify-between gap-2"
+                        >
+                          <div>
+                            <span className="block text-xs font-bold text-[#3A2418]">{group.label}</span>
+                            <span className="block text-[10px] text-[#A86B3D] mt-0.5">
+                              {selectedChoice ? selectedChoice.label : `+$${formatSurcharge(group.surcharge)}`}
+                            </span>
+                          </div>
+                          {group.choices.length > 0 ? (
+                            <ChevronDown className={`w-4 h-4 text-[#A86B3D] transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                          ) : directSelected ? (
+                            <Check className="w-4 h-4 text-[#A86B3D]" />
+                          ) : null}
+                        </button>
+
+                        {group.choices.length > 0 && expanded && (
+                          <div className="px-3 pb-3 grid grid-cols-2 gap-2">
+                            {group.choices.map((choice) => (
+                              <button
+                                key={choice.value}
+                                type="button"
+                                onClick={() => {
+                                  setTercerTiempo(choice.value);
+                                  setExpandedAlternativeId(null);
+                                }}
+                                className={`py-2 px-3 rounded-lg border text-[11px] font-bold ${
+                                  tercerTiempo === choice.value
+                                    ? 'bg-[#3A2418] border-[#3A2418] text-[#FFF7EA]'
+                                    : 'bg-white border-[#DEC8AE] text-[#5C3825]'
+                                }`}
+                              >
+                                {choice.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -297,8 +430,8 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({ isOp
           <section>
             <h3 className="text-xs font-bold uppercase text-[#3A2418] mb-2">Agrega a tu Guarnición (+ $10)</h3>
             <div className="grid grid-cols-3 gap-2">
-              {['Sin extra', 'Agrega Huevo (+ $10)', 'Agrega Plátano (+ $10)'].map((opt) => (
-                <button key={opt} type="button" onClick={() => setExtraAgrega(opt)} className={`p-2.5 rounded-xl border text-xs font-semibold ${extraAgrega === opt ? 'bg-[#3A2418] text-[#FFF7EA]' : 'bg-[#FFF7EA] border-[#F4E3C8] text-[#3A2418]'}`}>{opt}</button>
+              {['Sin extra', 'Agrega Huevo (+ $10)', 'Agrega Plátano (+ $10)'].map((option) => (
+                <button key={option} type="button" onClick={() => setExtraAgrega(option)} className={`p-2.5 rounded-xl border text-xs font-semibold ${extraAgrega === option ? 'bg-[#3A2418] text-[#FFF7EA]' : 'bg-[#FFF7EA] border-[#F4E3C8] text-[#3A2418]'}`}>{option}</button>
               ))}
             </div>
           </section>
@@ -307,7 +440,7 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({ isOp
             <h4 className="font-bold flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-[#C9974D]" />Tu Menú Incluye</h4>
             <p>• 1er Tiempo: <strong>{primerTiempo}</strong></p>
             <p>• 2do Tiempo: <strong>{segundoTiempo}</strong> {extraAgrega !== 'Sin extra' && `(${extraAgrega})`}</p>
-            <p>• 3er Tiempo: <strong>{selectedThirdDisplay}</strong></p>
+            <p>• 3er Tiempo: <strong>{tercerTiempo}</strong></p>
           </div>
         </div>
 
