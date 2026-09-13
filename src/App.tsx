@@ -388,6 +388,9 @@ export default function App() {
           onOpenComidaCorrida={() => {
             setIsComidaCorridaBuilderOpen(true);
           }}
+          onOpenSaladBuilder={() => {
+            setIsSaladBuilderOpen(true);
+          }}
           onPersonSelectionChange={setSelectedTablePerson}
         />
       )}
@@ -502,7 +505,7 @@ export default function App() {
             </p>
           </div>
 
-          {(activeCategory === 'all' || activeCategory === 'ensaladas' || activeCategory === 'comida-corrida') && (
+          {!customerTableNumber && (activeCategory === 'all' || activeCategory === 'ensaladas' || activeCategory === 'comida-corrida') && (
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setIsComidaCorridaBuilderOpen(true)}
