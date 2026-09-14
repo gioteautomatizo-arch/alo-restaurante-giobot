@@ -8,6 +8,24 @@
   }
 }
 
+/*
+ * Vista previa del gestor de menú: replica la composición horizontal que ve el cliente.
+ * El selector está limitado a la tarjeta clicable de foto del administrador para no
+ * afectar otros botones o galerías de la aplicación.
+ */
+button[class*="aspect-[4/3]"][class*="text-left"] {
+  aspect-ratio: 16 / 10 !important;
+  padding: 0 !important;
+}
+
+button[class*="aspect-[4/3]"][class*="text-left"] > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover !important;
+  object-position: center;
+  border-radius: 0 !important;
+}
+
 /* Custom warm scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
