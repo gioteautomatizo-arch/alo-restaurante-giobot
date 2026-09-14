@@ -19,19 +19,18 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, onSelectItem }
       className="group bg-[#FFFDF9] rounded-2xl border border-[#DEC8AE] shadow-2xs hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between hover:border-[#A86B3D]/70 cursor-pointer active:scale-[0.99]"
     >
       <div>
-        {/* La interfaz conserva su espacio visual, pero solo muestra fotos reales subidas a Cloudinary. */}
-        <div className="relative aspect-[4/3] w-full bg-[#F4E3C8]/40 overflow-hidden">
+        <div className="relative aspect-[4/3] w-full bg-[#F4E3C8]/35 overflow-hidden p-1.5">
           {realPhoto ? (
             <img
               src={realPhoto}
               alt={item.name}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+              className="w-full h-full object-contain rounded-xl"
               loading="lazy"
               decoding="async"
               fetchPriority="low"
             />
           ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#FFF7EA] to-[#F4E3C8] text-[#6B4028] px-4 text-center">
+            <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#FFF7EA] to-[#F4E3C8] text-[#6B4028] px-4 text-center rounded-xl">
               <div className="w-10 h-10 rounded-full border border-[#C9974D]/50 bg-white/70 flex items-center justify-center">
                 <Utensils className="w-5 h-5 text-[#A86B3D]" />
               </div>
@@ -40,7 +39,6 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, onSelectItem }
             </div>
           )}
 
-          {/* Editorial Badges Overlay */}
           <div className="absolute top-2.5 left-2.5 flex flex-wrap gap-1.5 z-10">
             {item.popular && (
               <span className="px-2 py-0.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider bg-[#C9974D] text-[#3A2418] rounded-full shadow-xs flex items-center gap-1 border border-[#A86B3D]/40">
@@ -54,7 +52,6 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, onSelectItem }
             )}
           </div>
 
-          {/* Price Tag Overlay */}
           <div className="absolute bottom-2.5 right-2.5 bg-[#3A2418]/95 backdrop-blur-md px-2.5 py-1 rounded-xl font-serif font-black text-xs sm:text-sm text-[#F4E3C8] shadow-sm border border-[#C9974D]/30">
             ${item.price}
             {item.sizes && item.sizes.length > 0 && (
@@ -63,7 +60,6 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, onSelectItem }
           </div>
         </div>
 
-        {/* Editorial Content */}
         <div className="p-3.5 sm:p-4">
           <h3 className="font-serif font-bold text-sm sm:text-base text-[#2B1B13] leading-snug group-hover:text-[#6B4028] transition-colors">
             {item.name}
@@ -74,7 +70,6 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, onSelectItem }
         </div>
       </div>
 
-      {/* Direct Quick Action Button */}
       <div className="p-3.5 sm:p-4 pt-0">
         <button
           type="button"
