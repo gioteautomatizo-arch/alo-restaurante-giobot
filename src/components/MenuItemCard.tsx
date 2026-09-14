@@ -19,18 +19,19 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, onSelectItem }
       className="group bg-[#FFFDF9] rounded-2xl border border-[#DEC8AE] shadow-2xs hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between hover:border-[#A86B3D]/70 cursor-pointer active:scale-[0.99]"
     >
       <div>
-        <div className="relative aspect-[4/3] w-full bg-[#F4E3C8]/35 overflow-hidden p-1.5">
+        {/* Formato horizontal: aprovecha todo el ancho y evita el exceso de aire de object-contain. */}
+        <div className="relative aspect-[16/10] w-full bg-[#F4E3C8]/35 overflow-hidden">
           {realPhoto ? (
             <img
               src={realPhoto}
               alt={item.name}
-              className="w-full h-full object-contain rounded-xl"
+              className="w-full h-full object-cover object-center"
               loading="lazy"
               decoding="async"
               fetchPriority="low"
             />
           ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#FFF7EA] to-[#F4E3C8] text-[#6B4028] px-4 text-center rounded-xl">
+            <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#FFF7EA] to-[#F4E3C8] text-[#6B4028] px-4 text-center">
               <div className="w-10 h-10 rounded-full border border-[#C9974D]/50 bg-white/70 flex items-center justify-center">
                 <Utensils className="w-5 h-5 text-[#A86B3D]" />
               </div>
