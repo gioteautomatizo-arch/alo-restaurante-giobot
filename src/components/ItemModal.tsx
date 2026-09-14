@@ -169,25 +169,21 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
       <div className="bg-[#FFFDF9] w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-[#DEC8AE] flex flex-col max-h-[90vh]">
         <div className="relative bg-[#3A2418] text-[#FFF7EA] p-5 flex items-start justify-between border-b border-[#4E3222]">
           <div>
-            <span className="text-[10px] uppercase font-black tracking-widest text-[#C9974D] bg-[#4A2E1F] px-2.5 py-0.5 rounded-full border border-[#C9974D]/40">
-              Personaliza tu orden
-            </span>
+            <span className="text-[10px] uppercase font-black tracking-widest text-[#C9974D] bg-[#4A2E1F] px-2.5 py-0.5 rounded-full border border-[#C9974D]/40">Personaliza tu orden</span>
             <h2 className="text-xl sm:text-2xl font-black font-serif text-[#FFF7EA] mt-1">{item.name}</h2>
             <p className="text-xs text-[#EAD9C4] mt-0.5">{item.description}</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-full bg-[#4A2E1F] hover:bg-[#5C3825] text-[#C9974D] transition-colors cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
+          <button onClick={onClose} className="p-1.5 rounded-full bg-[#4A2E1F] hover:bg-[#5C3825] text-[#C9974D] transition-colors cursor-pointer"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="p-5 space-y-5 overflow-y-auto flex-1">
           {item.sizes && item.sizes.length > 0 && (
             <div className="space-y-3">
               {displayImage ? (
-                <div className="relative overflow-hidden rounded-2xl border border-[#DEC8AE] bg-[#F4E3C8]/35">
-                  <img src={displayImage} alt={`${item.name}${selectedSize ? ` ${selectedSize.name}` : ''}`} className="w-full aspect-[16/9] object-cover" />
+                <div className="relative overflow-hidden rounded-2xl border border-[#DEC8AE] bg-[#F4E3C8]/30 p-2">
+                  <img src={displayImage} alt={`${item.name}${selectedSize ? ` ${selectedSize.name}` : ''}`} className="w-full aspect-[16/9] object-contain rounded-xl" />
                   {selectedSize && (
-                    <span className="absolute bottom-2 left-2 rounded-lg bg-[#3A2418]/95 px-2.5 py-1 text-[10px] font-black text-[#FFF7EA]">
+                    <span className="absolute bottom-3 left-3 rounded-lg bg-[#3A2418]/95 px-2.5 py-1 text-[10px] font-black text-[#FFF7EA]">
                       {selectedSize.name} · ${selectedSize.price}
                     </span>
                   )}
@@ -207,11 +203,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
                     const selected = selectedSize?.name === s.name;
                     return (
                       <button key={s.name} type="button" onClick={() => setSelectedSize(s)} className={`overflow-hidden rounded-xl border text-xs font-bold transition-all text-center flex flex-col cursor-pointer ${selected ? 'bg-[#3A2418] text-[#FFF7EA] border-[#3A2418] shadow-sm' : 'bg-[#FFF7EA] border-[#DEC8AE] text-[#6B4028] hover:bg-[#F4E3C8]'}`}>
-                        {sizeImage && <img src={sizeImage} alt={`${item.name} ${s.name}`} className="w-full aspect-[4/3] object-cover" loading="lazy" />}
-                        <span className="py-2 px-1 flex flex-col items-center">
-                          <span>{s.name}</span>
-                          <span className="text-[11px] opacity-90">${s.price}</span>
-                        </span>
+                        {sizeImage && <div className="aspect-[4/3] bg-[#F4E3C8]/25 p-1"><img src={sizeImage} alt={`${item.name} ${s.name}`} className="w-full h-full object-contain rounded-lg" loading="lazy" /></div>}
+                        <span className="py-2 px-1 flex flex-col items-center"><span>{s.name}</span><span className="text-[11px] opacity-90">${s.price}</span></span>
                       </button>
                     );
                   })}
@@ -224,12 +217,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
             <div>
               <label className="block text-sm font-black uppercase tracking-wider text-[#3A2418] mb-2 font-serif">1. Elige la salsa *</label>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setSelectedSauce('Verde')} className={`py-3 px-3 rounded-xl border text-sm font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${selectedSauce === 'Verde' ? 'bg-emerald-700 text-white border-emerald-800 shadow-sm' : 'bg-emerald-50 border-emerald-300 text-emerald-900 hover:bg-emerald-100'}`}>
-                  <span aria-hidden="true">🟢</span><span>VERDE</span>{selectedSauce === 'Verde' && <Check className="w-4 h-4 shrink-0" />}
-                </button>
-                <button type="button" onClick={() => setSelectedSauce('Roja')} className={`py-3 px-3 rounded-xl border text-sm font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${selectedSauce === 'Roja' ? 'bg-rose-700 text-white border-rose-800 shadow-sm' : 'bg-rose-50 border-rose-300 text-rose-900 hover:bg-rose-100'}`}>
-                  <span aria-hidden="true">🔴</span><span>ROJA</span>{selectedSauce === 'Roja' && <Check className="w-4 h-4 shrink-0" />}
-                </button>
+                <button type="button" onClick={() => setSelectedSauce('Verde')} className={`py-3 px-3 rounded-xl border text-sm font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${selectedSauce === 'Verde' ? 'bg-emerald-700 text-white border-emerald-800 shadow-sm' : 'bg-emerald-50 border-emerald-300 text-emerald-900 hover:bg-emerald-100'}`}><span aria-hidden="true">🟢</span><span>VERDE</span>{selectedSauce === 'Verde' && <Check className="w-4 h-4 shrink-0" />}</button>
+                <button type="button" onClick={() => setSelectedSauce('Roja')} className={`py-3 px-3 rounded-xl border text-sm font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${selectedSauce === 'Roja' ? 'bg-rose-700 text-white border-rose-800 shadow-sm' : 'bg-rose-50 border-rose-300 text-rose-900 hover:bg-rose-100'}`}><span aria-hidden="true">🔴</span><span>ROJA</span>{selectedSauce === 'Roja' && <Check className="w-4 h-4 shrink-0" />}</button>
               </div>
               {!selectedSauce && <p className="text-[11px] font-bold text-rose-700 mt-2">Selecciona Verde o Roja para continuar.</p>}
             </div>
@@ -258,13 +247,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
                   return (
                     <button key={extra.id} type="button" onClick={() => toggleExtra(extra)} className={`w-full p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${isChecked ? 'bg-[#F4E3C8]/70 border-[#A86B3D] text-[#3A2418]' : 'bg-[#FFF7EA] border-[#DEC8AE] text-[#6B4028] hover:bg-[#F4E3C8]'}`}>
                       <div className="flex items-center gap-2 min-w-0">
-                        <div className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 ${isChecked ? 'bg-[#3A2418] border-[#3A2418] text-[#C9974D]' : 'border-[#DEC8AE] bg-white'}`}>
-                          {isChecked && <Check className="w-3 h-3" />}
-                        </div>
-                        <div className="text-left">
-                          <span className="block">{isBreakfastPackage ? 'Paquete desayuno' : extra.name}</span>
-                          {isBreakfastPackage && <span className="block text-[10px] font-normal opacity-80 mt-0.5">Elige 1 complemento + 1 bebida caliente</span>}
-                        </div>
+                        <div className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 ${isChecked ? 'bg-[#3A2418] border-[#3A2418] text-[#C9974D]' : 'border-[#DEC8AE] bg-white'}`}>{isChecked && <Check className="w-3 h-3" />}</div>
+                        <div className="text-left"><span className="block">{isBreakfastPackage ? 'Paquete desayuno' : extra.name}</span>{isBreakfastPackage && <span className="block text-[10px] font-normal opacity-80 mt-0.5">Elige 1 complemento + 1 bebida caliente</span>}</div>
                       </div>
                       <span className="font-bold text-[#A86B3D] shrink-0">+${extra.price}</span>
                     </button>
@@ -276,97 +260,33 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
 
           {item.isComboAvailable && item.comboPrice && !(item.category === 'desayunos' && breakfastPackageExtraInCatalog) && (
             <div className="bg-[#F4E3C8]/50 border border-[#DEC8AE] rounded-2xl p-3.5 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-[#3A2418] text-[#C9974D] rounded-xl"><PackageCheck className="w-5 h-5" /></div>
-                <div>
-                  <h4 className="text-xs font-bold text-[#3A2418] font-serif">¡Hazlo Paquete Especial!</h4>
-                  <p className="text-[11px] text-[#6B4028]">{item.category === 'desayunos' ? 'Elige Jugo o Fruta + Café de Olla o Té (+ $20)' : item.category === 'hamburguesas' ? 'Incluye Papas a la Francesa y Refresco (+ $35)' : 'Incluye complemento y bebida'}</p>
-                </div>
-              </div>
-              <button type="button" onClick={toggleCombo} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${makeCombo ? 'bg-[#3A2418] text-[#FFF7EA] shadow-sm' : 'bg-[#FFFDF9] text-[#3A2418] border border-[#DEC8AE] hover:bg-[#F4E3C8]'}`}>
-                {makeCombo ? '✓ Agregado' : `+ $${item.comboPrice}`}
-              </button>
+              <div className="flex items-center gap-3"><div className="p-2 bg-[#3A2418] text-[#C9974D] rounded-xl"><PackageCheck className="w-5 h-5" /></div><div><h4 className="text-xs font-bold text-[#3A2418] font-serif">¡Hazlo Paquete Especial!</h4><p className="text-[11px] text-[#6B4028]">{item.category === 'desayunos' ? 'Elige Jugo o Fruta + Café de Olla o Té (+ $20)' : item.category === 'hamburguesas' ? 'Incluye Papas a la Francesa y Refresco (+ $35)' : 'Incluye complemento y bebida'}</p></div></div>
+              <button type="button" onClick={toggleCombo} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${makeCombo ? 'bg-[#3A2418] text-[#FFF7EA] shadow-sm' : 'bg-[#FFFDF9] text-[#3A2418] border border-[#DEC8AE] hover:bg-[#F4E3C8]'}`}>{makeCombo ? '✓ Agregado' : `+ $${item.comboPrice}`}</button>
             </div>
           )}
 
           {breakfastPackageSelected && (
             <div className="rounded-2xl border-2 border-[#C9974D] bg-[#FFF7EA] p-4 space-y-4">
-              <div>
-                <h4 className="text-sm font-black text-[#3A2418] font-serif">Completa tu paquete *</h4>
-                <p className="text-[11px] text-[#6B4028] mt-0.5">Elige una opción en cada apartado.</p>
-              </div>
-
-              <div>
-                <p className="text-xs font-black uppercase tracking-wide text-[#6B4028] mb-2">Complemento</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['Jugo', 'Fruta'] as const).map((choice) => (
-                    <button key={choice} type="button" onClick={() => setBreakfastColdChoice(choice)} className={`py-3 px-3 rounded-xl border text-sm font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${breakfastColdChoice === choice ? 'bg-[#3A2418] text-white border-[#3A2418]' : 'bg-white text-[#5C3825] border-[#DEC8AE] hover:bg-[#F4E3C8]'}`}>
-                      <span>{choice}</span>{breakfastColdChoice === choice && <Check className="w-4 h-4 shrink-0" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <p className="text-xs font-black uppercase tracking-wide text-[#6B4028] mb-2">Bebida caliente</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['Café de olla', 'Té'] as const).map((choice) => (
-                    <button key={choice} type="button" onClick={() => setBreakfastHotChoice(choice)} className={`py-3 px-3 rounded-xl border text-sm font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${breakfastHotChoice === choice ? 'bg-[#3A2418] text-white border-[#3A2418]' : 'bg-white text-[#5C3825] border-[#DEC8AE] hover:bg-[#F4E3C8]'}`}>
-                      <span>{choice}</span>{breakfastHotChoice === choice && <Check className="w-4 h-4 shrink-0" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
+              <div><h4 className="text-sm font-black text-[#3A2418] font-serif">Completa tu paquete *</h4><p className="text-[11px] text-[#6B4028] mt-0.5">Elige una opción en cada apartado.</p></div>
+              <div><p className="text-xs font-black uppercase tracking-wide text-[#6B4028] mb-2">Complemento</p><div className="grid grid-cols-2 gap-2">{(['Jugo', 'Fruta'] as const).map((choice) => <button key={choice} type="button" onClick={() => setBreakfastColdChoice(choice)} className={`py-3 px-3 rounded-xl border text-sm font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${breakfastColdChoice === choice ? 'bg-[#3A2418] text-white border-[#3A2418]' : 'bg-white text-[#5C3825] border-[#DEC8AE] hover:bg-[#F4E3C8]'}`}><span>{choice}</span>{breakfastColdChoice === choice && <Check className="w-4 h-4 shrink-0" />}</button>)}</div></div>
+              <div><p className="text-xs font-black uppercase tracking-wide text-[#6B4028] mb-2">Bebida caliente</p><div className="grid grid-cols-2 gap-2">{(['Café de olla', 'Té'] as const).map((choice) => <button key={choice} type="button" onClick={() => setBreakfastHotChoice(choice)} className={`py-3 px-3 rounded-xl border text-sm font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${breakfastHotChoice === choice ? 'bg-[#3A2418] text-white border-[#3A2418]' : 'bg-white text-[#5C3825] border-[#DEC8AE] hover:bg-[#F4E3C8]'}`}><span>{choice}</span>{breakfastHotChoice === choice && <Check className="w-4 h-4 shrink-0" />}</button>)}</div></div>
               {!breakfastPackageComplete && <p className="text-[11px] font-bold text-rose-700">Selecciona un complemento y una bebida para continuar.</p>}
             </div>
           )}
 
           {breakfastPackageSelected ? (
             <div className="grid grid-cols-1 gap-3">
-              <div>
-                <label className="block text-xs font-black uppercase tracking-wider text-[#6B4028] mb-1 flex items-center gap-1 font-serif">
-                  <MessageSquare className="w-3.5 h-3.5 text-[#A86B3D]" /> Indicaciones para Cocina (Opcional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ej: Huevo bien cocido, sin cebolla, poca crema..."
-                  value={kitchenInstructions}
-                  onChange={(e) => setKitchenInstructions(e.target.value)}
-                  className="w-full px-3 py-2.5 text-xs bg-[#FFF7EA] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-black uppercase tracking-wider text-[#6B4028] mb-1 flex items-center gap-1 font-serif">
-                  <MessageSquare className="w-3.5 h-3.5 text-[#A86B3D]" /> Indicaciones para Cafetería (Opcional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ej: Café tibio, jugo sin hielo, té con poca azúcar..."
-                  value={cafeteriaInstructions}
-                  onChange={(e) => setCafeteriaInstructions(e.target.value)}
-                  className="w-full px-3 py-2.5 text-xs bg-[#FFF7EA] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]"
-                />
-              </div>
+              <div><label className="block text-xs font-black uppercase tracking-wider text-[#6B4028] mb-1 flex items-center gap-1 font-serif"><MessageSquare className="w-3.5 h-3.5 text-[#A86B3D]" /> Indicaciones para Cocina (Opcional)</label><input type="text" placeholder="Ej: Huevo bien cocido, sin cebolla, poca crema..." value={kitchenInstructions} onChange={(e) => setKitchenInstructions(e.target.value)} className="w-full px-3 py-2.5 text-xs bg-[#FFF7EA] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]" /></div>
+              <div><label className="block text-xs font-black uppercase tracking-wider text-[#6B4028] mb-1 flex items-center gap-1 font-serif"><MessageSquare className="w-3.5 h-3.5 text-[#A86B3D]" /> Indicaciones para Cafetería (Opcional)</label><input type="text" placeholder="Ej: Café tibio, jugo sin hielo, té con poca azúcar..." value={cafeteriaInstructions} onChange={(e) => setCafeteriaInstructions(e.target.value)} className="w-full px-3 py-2.5 text-xs bg-[#FFF7EA] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]" /></div>
             </div>
           ) : (
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-1 flex items-center gap-1 font-serif"><MessageSquare className="w-3.5 h-3.5 text-[#A86B3D]" />Instrucciones Especiales (Opcional)</label>
-              <input type="text" placeholder="Ej: Sin cebolla, poca crema, sin queso, frijoles aparte..." value={specialInstructions} onChange={(e) => setSpecialInstructions(e.target.value)} className="w-full px-3 py-2 text-xs bg-[#FFF7EA] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]" />
-            </div>
+            <div><label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-1 flex items-center gap-1 font-serif"><MessageSquare className="w-3.5 h-3.5 text-[#A86B3D]" />Instrucciones Especiales (Opcional)</label><input type="text" placeholder="Ej: Sin cebolla, poca crema, sin queso, frijoles aparte..." value={specialInstructions} onChange={(e) => setSpecialInstructions(e.target.value)} className="w-full px-3 py-2 text-xs bg-[#FFF7EA] border border-[#DEC8AE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A86B3D] text-[#2B1B13]" /></div>
           )}
         </div>
 
         <div className="bg-[#FFF7EA] p-4 border-t border-[#DEC8AE] flex items-center justify-between gap-4">
-          <div className="flex items-center border border-[#DEC8AE] rounded-xl bg-[#FFFDF9] p-1">
-            <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="p-1.5 text-[#6B4028] hover:bg-[#F4E3C8] rounded-lg transition-colors cursor-pointer"><Minus className="w-4 h-4" /></button>
-            <span className="w-8 text-center font-black text-sm text-[#2B1B13]">{quantity}</span>
-            <button onClick={() => setQuantity(quantity + 1)} className="p-1.5 text-[#6B4028] hover:bg-[#F4E3C8] rounded-lg transition-colors cursor-pointer"><Plus className="w-4 h-4" /></button>
-          </div>
-
-          <button onClick={handleAdd} disabled={!canAdd} className="flex-1 py-3 px-4 bg-[#3A2418] hover:bg-[#4A2E1F] text-[#FFF7EA] rounded-xl font-bold text-sm shadow-md transition-all active:scale-98 flex items-center justify-between cursor-pointer border border-[#C9974D]/30 disabled:opacity-45 disabled:cursor-not-allowed">
-            <span>{addButtonLabel}</span><span className="font-black text-base font-serif text-[#C9974D]">${totalPrice}</span>
-          </button>
+          <div className="flex items-center border border-[#DEC8AE] rounded-xl bg-[#FFFDF9] p-1"><button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="p-1.5 text-[#6B4028] hover:bg-[#F4E3C8] rounded-lg transition-colors cursor-pointer"><Minus className="w-4 h-4" /></button><span className="w-8 text-center font-black text-sm text-[#2B1B13]">{quantity}</span><button onClick={() => setQuantity(quantity + 1)} className="p-1.5 text-[#6B4028] hover:bg-[#F4E3C8] rounded-lg transition-colors cursor-pointer"><Plus className="w-4 h-4" /></button></div>
+          <button onClick={handleAdd} disabled={!canAdd} className="flex-1 py-3 px-4 bg-[#3A2418] hover:bg-[#4A2E1F] text-[#FFF7EA] rounded-xl font-bold text-sm shadow-md transition-all active:scale-98 flex items-center justify-between cursor-pointer border border-[#C9974D]/30 disabled:opacity-45 disabled:cursor-not-allowed"><span>{addButtonLabel}</span><span className="font-black text-base font-serif text-[#C9974D]">${totalPrice}</span></button>
         </div>
       </div>
     </div>
