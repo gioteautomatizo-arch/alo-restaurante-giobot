@@ -9,20 +9,23 @@
 }
 
 /*
- * Vista previa del gestor de menú: replica la composición horizontal que ve el cliente.
- * El selector está limitado a la tarjeta clicable de foto del administrador para no
- * afectar otros botones o galerías de la aplicación.
+ * Vista previa del gestor de menú.
+ * Mantiene intacta la cuadrícula/tamaño de las tarjetas y solo ajusta el encuadre
+ * de la foto para acercarlo a la experiencia del cliente.
  */
 button[class*="aspect-[4/3]"][class*="text-left"] {
   aspect-ratio: 16 / 10 !important;
   padding: 0 !important;
+  background: linear-gradient(135deg, rgba(255,247,234,.95), rgba(244,227,200,.85));
 }
 
 button[class*="aspect-[4/3]"][class*="text-left"] > img {
   width: 100%;
   height: 100%;
-  object-fit: cover !important;
+  object-fit: contain !important;
   object-position: center;
+  transform: scale(1.08);
+  transform-origin: center;
   border-radius: 0 !important;
 }
 
