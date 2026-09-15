@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { ArrowRight, Crown, Gift, Sparkles, Star, Utensils } from 'lucide-react';
 import { MenuItem, VipProfile } from '../types';
 import { getRestaurantInfo } from '../lib/adminStorage';
+import { ProductImageFrame } from './ProductImageFrame';
 
 interface PublicHomeHighlightsProps {
   vipProfile: VipProfile | null;
@@ -106,7 +107,7 @@ export const PublicHomeHighlights: React.FC<PublicHomeHighlightsProps> = ({
                 >
                   <div className={`relative ${single ? 'h-40 sm:h-full sm:min-h-[165px]' : 'h-28 sm:h-32'} bg-gradient-to-br from-[#FFF7EA] to-[#F4E3C8] overflow-hidden`}>
                     {realPhoto ? (
-                      <img src={realPhoto} alt={item.name} className="w-full h-full object-cover" loading="lazy" />
+                      <ProductImageFrame src={realPhoto} alt={item.name} />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <div className="w-10 h-10 rounded-full bg-white/70 border border-[#C9974D]/40 flex items-center justify-center">
@@ -114,10 +115,10 @@ export const PublicHomeHighlights: React.FC<PublicHomeHighlightsProps> = ({
                         </div>
                       </div>
                     )}
-                    <span className="absolute top-2 left-2 px-2 py-1 rounded-full bg-[#C9974D] text-[#3A2418] text-[9px] font-black uppercase flex items-center gap-1">
+                    <span className="absolute top-2 left-2 px-2 py-1 rounded-full bg-[#C9974D] text-[#3A2418] text-[9px] font-black uppercase flex items-center gap-1 z-10">
                       <Star className="w-2.5 h-2.5 fill-[#3A2418]" /> Estrella
                     </span>
-                    <span className="absolute bottom-2 right-2 px-2 py-1 rounded-lg bg-[#3A2418]/95 text-[#FFF7EA] text-xs font-black">${item.price}</span>
+                    <span className="absolute bottom-2 right-2 px-2 py-1 rounded-lg bg-[#3A2418]/95 text-[#FFF7EA] text-xs font-black z-10">${item.price}</span>
                   </div>
                   <div className={`${single ? 'p-4 sm:p-5 sm:flex sm:flex-col sm:justify-center' : 'p-3'}`}>
                     <strong className={`block font-serif ${single ? 'text-base sm:text-xl' : 'text-sm sm:text-base'} text-[#2B1B13] line-clamp-1`}>{item.name}</strong>
