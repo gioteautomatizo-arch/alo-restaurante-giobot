@@ -1,6 +1,7 @@
 import React from 'react';
 import { MenuItem } from '../types';
 import { Plus, Sparkles, Utensils } from 'lucide-react';
+import { ProductImageFrame } from './ProductImageFrame';
 
 interface MenuItemCardProps {
   item: MenuItem;
@@ -19,17 +20,9 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, onSelectItem }
       className="group bg-[#FFFDF9] rounded-2xl border border-[#DEC8AE] shadow-2xs hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between hover:border-[#A86B3D]/70 cursor-pointer active:scale-[0.99]"
     >
       <div>
-        {/* Formato horizontal: aprovecha todo el ancho y evita el exceso de aire de object-contain. */}
         <div className="relative aspect-[16/10] w-full bg-[#F4E3C8]/35 overflow-hidden">
           {realPhoto ? (
-            <img
-              src={realPhoto}
-              alt={item.name}
-              className="w-full h-full object-cover object-center"
-              loading="lazy"
-              decoding="async"
-              fetchPriority="low"
-            />
+            <ProductImageFrame src={realPhoto} alt={item.name} />
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#FFF7EA] to-[#F4E3C8] text-[#6B4028] px-4 text-center">
               <div className="w-10 h-10 rounded-full border border-[#C9974D]/50 bg-white/70 flex items-center justify-center">
@@ -53,7 +46,7 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, onSelectItem }
             )}
           </div>
 
-          <div className="absolute bottom-2.5 right-2.5 bg-[#3A2418]/95 backdrop-blur-md px-2.5 py-1 rounded-xl font-serif font-black text-xs sm:text-sm text-[#F4E3C8] shadow-sm border border-[#C9974D]/30">
+          <div className="absolute bottom-2.5 right-2.5 bg-[#3A2418]/95 backdrop-blur-md px-2.5 py-1 rounded-xl font-serif font-black text-xs sm:text-sm text-[#F4E3C8] shadow-sm border border-[#C9974D]/30 z-10">
             ${item.price}
             {item.sizes && item.sizes.length > 0 && (
               <span className="text-[10px] font-sans font-normal text-[#D8C4B4]"> (desde)</span>
