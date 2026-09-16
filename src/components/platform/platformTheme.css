@@ -1,32 +1,47 @@
 .giote-platform-theme {
-  --giote-bg: #f5ebdd;
-  --giote-surface: #fffdf9;
-  --giote-surface-soft: #fff7ea;
-  --giote-brown: #3a2418;
-  --giote-brown-2: #5c3825;
-  --giote-caramel: #a86b3d;
-  --giote-gold: #c9974d;
-  --giote-border: #dec8ae;
-  --giote-text: #2b1b13;
-  --giote-muted: #7a5a45;
+  --giote-bg: #050505;
+  --giote-surface: #111111;
+  --giote-surface-soft: #1a1a1a;
+  --giote-gold: #d6a34a;
+  --giote-gold-dark: #b8822d;
+  --giote-gold-soft: #e3bc6b;
+  --giote-silver: #c8c8c8;
+  --giote-white: #f7f7f7;
+  --giote-muted: #b7b7b7;
+  --giote-border: #3a3022;
+  --giote-black: #000000;
+  min-height: 100vh;
+  background: var(--giote-bg);
+  color: var(--giote-white);
 }
 
-/* La plataforma nace con la identidad de Gioteautomatizo. */
+/* Firma visual de plataforma: Gioteautomatizo es la marca madre. */
+.giote-platform-theme::before {
+  content: '';
+  display: block;
+  width: min(180px, 42vw);
+  aspect-ratio: 1;
+  margin: 18px auto 8px;
+  background: url('/brand/gioteautomatizo-logo.svg') center / contain no-repeat;
+  border-radius: 26px;
+  box-shadow: 0 14px 45px rgb(0 0 0 / 0.28);
+}
+
 .giote-platform-theme [class~="bg-[#0F172A]"],
 .giote-platform-theme [class~="bg-[#0B1220]"] {
   background-color: var(--giote-bg) !important;
 }
 
 .giote-platform-theme [class~="bg-[#111827]"] {
-  background-color: var(--giote-brown) !important;
+  background-color: var(--giote-surface) !important;
 }
 
 .giote-platform-theme [class~="bg-gradient-to-br"][class~="from-[#111827]"] {
-  background-image: linear-gradient(135deg, #3a2418 0%, #5c3825 58%, #a86b3d 100%) !important;
+  background-image: linear-gradient(135deg, #050505 0%, #111111 55%, #24190c 100%) !important;
 }
 
 .giote-platform-theme [class~="text-amber-300"] {
-  color: var(--giote-gold) !important;
+  color: var(--giote-gold-soft) !important;
 }
 
 .giote-platform-theme [class~="bg-amber-300"] {
@@ -38,60 +53,102 @@
 }
 
 .giote-platform-theme [class~="ring-amber-300/20"] {
-  --tw-ring-color: rgb(201 151 77 / 0.22) !important;
+  --tw-ring-color: rgb(214 163 74 / 0.24) !important;
 }
 
-/* El alta de negocio es clara y cálida, no una segunda marca oscura. */
-.giote-platform-theme .platform-onboarding > [class~="min-h-screen"] {
-  background: linear-gradient(180deg, #f5ebdd 0%, #fff7ea 48%, #f5ebdd 100%) !important;
-  color: var(--giote-text) !important;
+/* Portal general */
+.giote-platform-theme [class~="bg-[#F5F1EA]"],
+.giote-platform-theme [class~="bg-[#FFFDF9]"],
+.giote-platform-theme [class~="bg-[#FFF7EA]"] {
+  background-color: var(--giote-surface) !important;
 }
 
-.giote-platform-theme .platform-onboarding [class~="border-white/10"] {
+.giote-platform-theme [class~="text-[#201610]"],
+.giote-platform-theme [class~="text-[#2B1B13]"],
+.giote-platform-theme [class~="text-[#3A2418]"] {
+  color: var(--giote-white) !important;
+}
+
+.giote-platform-theme [class~="text-[#6B4028]"],
+.giote-platform-theme [class~="text-[#8A6A55]"] {
+  color: var(--giote-muted) !important;
+}
+
+.giote-platform-theme [class~="border-[#D9C5AC]"],
+.giote-platform-theme [class~="border-[#E5D6C4]"],
+.giote-platform-theme [class~="border-[#E8D8C4]"],
+.giote-platform-theme [class~="border-[#DEC8AE]"] {
   border-color: var(--giote-border) !important;
 }
 
+/* Alta de negocio con identidad Gioteautomatizo. */
+.giote-platform-theme .platform-onboarding > [class~="min-h-screen"] {
+  background:
+    radial-gradient(circle at 50% -15%, rgb(214 163 74 / 0.13), transparent 38%),
+    linear-gradient(180deg, #050505 0%, #0b0b0b 55%, #050505 100%) !important;
+  color: var(--giote-white) !important;
+}
+
+.giote-platform-theme .platform-onboarding [class~="border-white/10"] {
+  border-color: rgb(214 163 74 / 0.22) !important;
+}
+
 .giote-platform-theme .platform-onboarding [class~="border-white/20"] {
-  border-color: #cfae83 !important;
+  border-color: rgb(214 163 74 / 0.4) !important;
 }
 
 .giote-platform-theme .platform-onboarding [class~="bg-white/5"] {
-  background-color: rgb(255 253 249 / 0.9) !important;
+  background-color: rgb(255 255 255 / 0.045) !important;
 }
 
 .giote-platform-theme .platform-onboarding [class~="bg-white/10"] {
-  background-color: #fff7ea !important;
+  background-color: rgb(255 255 255 / 0.075) !important;
 }
 
 .giote-platform-theme .platform-onboarding [class~="bg-amber-300/10"] {
-  background-color: rgb(201 151 77 / 0.12) !important;
+  background-color: rgb(214 163 74 / 0.12) !important;
 }
 
 .giote-platform-theme .platform-onboarding [class~="text-slate-200"],
 .giote-platform-theme .platform-onboarding [class~="text-slate-300"] {
-  color: #5c3825 !important;
+  color: #e7e7e7 !important;
 }
 
 .giote-platform-theme .platform-onboarding [class~="text-slate-400"] {
-  color: #6f5140 !important;
+  color: #c4c4c4 !important;
 }
 
 .giote-platform-theme .platform-onboarding [class~="text-slate-500"] {
-  color: #8a6a55 !important;
+  color: #999999 !important;
 }
 
 .giote-platform-theme .platform-onboarding [class~="bg-gradient-to-br"][class~="from-amber-300"] {
-  background-image: linear-gradient(135deg, #c9974d 0%, #a86b3d 100%) !important;
+  background-image: linear-gradient(135deg, #e3bc6b 0%, #d6a34a 48%, #b8822d 100%) !important;
 }
 
 .giote-platform-theme .platform-onboarding [class~="text-[#111827]"] {
-  color: #2b1b13 !important;
+  color: #050505 !important;
 }
 
 .giote-platform-theme .platform-onboarding input {
-  color: var(--giote-text);
+  color: var(--giote-white);
 }
 
 .giote-platform-theme .platform-onboarding input::placeholder {
-  color: #a18470;
+  color: #878787;
+}
+
+.giote-platform-theme button:focus-visible,
+.giote-platform-theme input:focus-visible {
+  outline: 2px solid var(--giote-gold);
+  outline-offset: 2px;
+}
+
+/* Base preparada para personalización futura por negocio. */
+.business-custom-theme {
+  --tenant-primary: var(--business-primary, var(--giote-gold));
+  --tenant-background: var(--business-background, var(--giote-bg));
+  --tenant-surface: var(--business-surface, var(--giote-surface));
+  --tenant-text: var(--business-text, var(--giote-white));
+  --tenant-accent: var(--business-accent, var(--giote-gold-soft));
 }
