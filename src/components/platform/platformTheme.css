@@ -1,0 +1,97 @@
+.giote-platform-theme {
+  --giote-bg: #f5ebdd;
+  --giote-surface: #fffdf9;
+  --giote-surface-soft: #fff7ea;
+  --giote-brown: #3a2418;
+  --giote-brown-2: #5c3825;
+  --giote-caramel: #a86b3d;
+  --giote-gold: #c9974d;
+  --giote-border: #dec8ae;
+  --giote-text: #2b1b13;
+  --giote-muted: #7a5a45;
+}
+
+/* La plataforma nace con la identidad de Gioteautomatizo. */
+.giote-platform-theme [class~="bg-[#0F172A]"],
+.giote-platform-theme [class~="bg-[#0B1220]"] {
+  background-color: var(--giote-bg) !important;
+}
+
+.giote-platform-theme [class~="bg-[#111827]"] {
+  background-color: var(--giote-brown) !important;
+}
+
+.giote-platform-theme [class~="bg-gradient-to-br"][class~="from-[#111827]"] {
+  background-image: linear-gradient(135deg, #3a2418 0%, #5c3825 58%, #a86b3d 100%) !important;
+}
+
+.giote-platform-theme [class~="text-amber-300"] {
+  color: var(--giote-gold) !important;
+}
+
+.giote-platform-theme [class~="bg-amber-300"] {
+  background-color: var(--giote-gold) !important;
+}
+
+.giote-platform-theme [class~="border-amber-300"] {
+  border-color: var(--giote-gold) !important;
+}
+
+.giote-platform-theme [class~="ring-amber-300/20"] {
+  --tw-ring-color: rgb(201 151 77 / 0.22) !important;
+}
+
+/* El alta de negocio es clara y cálida, no una segunda marca oscura. */
+.giote-platform-theme .platform-onboarding > [class~="min-h-screen"] {
+  background: linear-gradient(180deg, #f5ebdd 0%, #fff7ea 48%, #f5ebdd 100%) !important;
+  color: var(--giote-text) !important;
+}
+
+.giote-platform-theme .platform-onboarding [class~="border-white/10"] {
+  border-color: var(--giote-border) !important;
+}
+
+.giote-platform-theme .platform-onboarding [class~="border-white/20"] {
+  border-color: #cfae83 !important;
+}
+
+.giote-platform-theme .platform-onboarding [class~="bg-white/5"] {
+  background-color: rgb(255 253 249 / 0.9) !important;
+}
+
+.giote-platform-theme .platform-onboarding [class~="bg-white/10"] {
+  background-color: #fff7ea !important;
+}
+
+.giote-platform-theme .platform-onboarding [class~="bg-amber-300/10"] {
+  background-color: rgb(201 151 77 / 0.12) !important;
+}
+
+.giote-platform-theme .platform-onboarding [class~="text-slate-200"],
+.giote-platform-theme .platform-onboarding [class~="text-slate-300"] {
+  color: #5c3825 !important;
+}
+
+.giote-platform-theme .platform-onboarding [class~="text-slate-400"] {
+  color: #6f5140 !important;
+}
+
+.giote-platform-theme .platform-onboarding [class~="text-slate-500"] {
+  color: #8a6a55 !important;
+}
+
+.giote-platform-theme .platform-onboarding [class~="bg-gradient-to-br"][class~="from-amber-300"] {
+  background-image: linear-gradient(135deg, #c9974d 0%, #a86b3d 100%) !important;
+}
+
+.giote-platform-theme .platform-onboarding [class~="text-[#111827]"] {
+  color: #2b1b13 !important;
+}
+
+.giote-platform-theme .platform-onboarding input {
+  color: var(--giote-text);
+}
+
+.giote-platform-theme .platform-onboarding input::placeholder {
+  color: #a18470;
+}
