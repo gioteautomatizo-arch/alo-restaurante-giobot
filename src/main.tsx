@@ -5,6 +5,7 @@ import { AdminTabOrderManager } from './components/admin/AdminTabOrderManager';
 import { AdminOwnerTitaGate } from './components/admin/AdminOwnerTitaGate';
 import { BusinessPortal } from './components/platform/BusinessPortal';
 import { BusinessOnboardingDemo } from './components/platform/BusinessOnboardingDemo';
+import './components/platform/platformTheme.css';
 import './index.css';
 
 function RootRouter() {
@@ -17,11 +18,11 @@ function RootRouter() {
   }, []);
 
   if (hash === '#business-new') {
-    return <BusinessOnboardingDemo />;
+    return <div className="giote-platform-theme platform-onboarding"><BusinessOnboardingDemo /></div>;
   }
 
   if (hash === '#business') {
-    return <BusinessPortal />;
+    return <div className="giote-platform-theme"><BusinessPortal /></div>;
   }
 
   return (
