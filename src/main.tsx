@@ -4,6 +4,7 @@ import App from './App.tsx';
 import { AdminTabOrderManager } from './components/admin/AdminTabOrderManager';
 import { AdminOwnerTitaGate } from './components/admin/AdminOwnerTitaGate';
 import { BusinessPortal } from './components/platform/BusinessPortal';
+import { BusinessOnboardingDemo } from './components/platform/BusinessOnboardingDemo';
 import './index.css';
 
 function RootRouter() {
@@ -14,6 +15,10 @@ function RootRouter() {
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
+
+  if (hash === '#business-new') {
+    return <BusinessOnboardingDemo />;
+  }
 
   if (hash === '#business') {
     return <BusinessPortal />;
