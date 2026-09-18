@@ -22,7 +22,7 @@
   width: min(180px, 42vw);
   aspect-ratio: 1;
   margin: 18px auto 8px;
-  background: url('/brand/gioteautomatizo-logo.svg') center / contain no-repeat;
+  background: url('/brand/gioteautomatizo-logo.webp') center / contain no-repeat;
   border-radius: 26px;
   box-shadow: 0 14px 45px rgb(0 0 0 / 0.28);
 }
