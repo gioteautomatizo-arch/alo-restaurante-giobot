@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDocs,
+  onSnapshot,
   query,
   setDoc,
   where,
@@ -20,6 +21,31 @@ import { sanitizeFirestorePayload } from './firestoreService';
 
 export const SALE_RECEIPTS_COLLECTION = 'sale_receipts';
 export const RESTAURANT_ID = 'alo-restaurante' as const;
+
+export function subscribeToSaleReceipts(
+  callback: (receipts: SaleReceipt[]) => void
+): () => void {
+  const q = query(
+    collection(db, SALE_RECEIPTS_COLLECTION),
+    where('restaurantId', '==', RESTAURANT_ID)
+  );
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const receipts = snapshot.docs.map((snap) => ({
+        ...(snap.data() as SaleReceipt),
+        id: snap.id,
+      }));
+      receipts.sort((a, b) => (Date.parse(b.closedAt) || 0) - (Date.parse(a.closedAt) || 0));
+      callback(receipts);
+    },
+    (error) => {
+      console.warn('[saleReceiptsService] listener error:', error);
+      callback([]);
+    }
+  );
+}
 
 function receiptCode(tableNumber: number): string {
   const now = new Date();
