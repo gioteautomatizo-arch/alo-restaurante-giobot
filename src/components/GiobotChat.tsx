@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage, CartItem, MenuItem, TableSessionPerson } from '../types';
+import { ChatMessage, CartItem, MenuItem, PublicTableOrder, TableSessionPerson } from '../types';
 import { Send, X } from 'lucide-react';
 import { getDailyMenuConfig, getRestaurantInfo } from '../lib/adminStorage';
 import { getTableSession } from '../lib/tableSessionsService';
 import { subscribeToMenuCatalog } from '../lib/menuCatalogService';
+import { subscribeToPublicTableOrders } from '../lib/ordersService';
 
 interface GiobotChatProps {
   isOpen: boolean;
@@ -34,6 +35,7 @@ const GENERAL_SUGGESTIONS = [
 ];
 
 const TABLE_SUGGESTIONS = [
+  '🧾 ¿Cuánto llevo de cuenta?',
   '🍽️ ¿Qué me recomiendas de la carta?',
   '☕ ¿Qué bebida me recomiendas?',
   '🙋 ¿Cómo llamo a mi mesero?',
@@ -94,9 +96,18 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isThinking, setIsThinking] = useState<boolean>(false);
   const [liveMenuItems, setLiveMenuItems] = useState<MenuItem[]>(menuItems);
+  const [tableOrders, setTableOrders] = useState<PublicTableOrder[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const effectiveTableNumber = tableNumber ?? readTableNumberFromUrl();
+
+  useEffect(() => {
+    if (!effectiveTableNumber) {
+      setTableOrders([]);
+      return;
+    }
+    return subscribeToPublicTableOrders(effectiveTableNumber, setTableOrders);
+  }, [effectiveTableNumber]);
 
   useEffect(() => {
     if (menuItems.length > 0) {
@@ -245,6 +256,8 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
         tableSessionPayload = session
           ? {
               tableNumber: effectiveTableNumber,
+              sessionId: session.id,
+              openedAt: session.openedAt,
               status: session.status,
               guestCount: session.guestCount,
               accountMode: session.accountMode,
@@ -259,6 +272,38 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
         tableSessionPayload = { tableNumber: effectiveTableNumber, status: 'NO_DISPONIBLE' };
       }
     }
+
+    const currentSessionOrders = tableSessionPayload && effectiveTableNumber
+      ? tableOrders.filter((order) => {
+          if (order.status === 'CANCELADO') return false;
+          const openedAt = Date.parse(tableSessionPayload.openedAt || '') || 0;
+          const createdAt = Date.parse(order.createdAt || '') || 0;
+          if (openedAt && createdAt < openedAt) return false;
+          if (tableSessionPayload.sessionId && order.tableSessionId && order.tableSessionId !== tableSessionPayload.sessionId) return false;
+          return true;
+        })
+      : [];
+
+    const sessionConsumptionItems = currentSessionOrders.flatMap((order) =>
+      order.items.map((item) => ({
+        orderCode: order.code,
+        name: item.name,
+        quantity: item.quantity,
+        totalPrice: item.totalPrice,
+        personId: item.personId,
+        personLabel: item.personLabel,
+        selectedSize: item.selectedSize,
+        selectedOption: item.selectedOption,
+        extras: item.extras || [],
+      }))
+    );
+
+    const sessionTotal = currentSessionOrders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+    const selectedPersonTotal = selectedPerson
+      ? sessionConsumptionItems
+          .filter((item) => item.personId === selectedPerson.id)
+          .reduce((sum, item) => sum + Number(item.totalPrice || 0), 0)
+      : 0;
 
     const menuCatalogPayload = liveMenuItems.slice(0, 120).map((item) => ({
       id: item.id,
@@ -289,6 +334,26 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
         items: cartPayload,
         itemCount: cartItems.reduce((sum, item) => sum + item.quantity, 0),
         total: cartItems.reduce((sum, item) => sum + item.totalPrice, 0),
+      },
+      consumption: {
+        orders: currentSessionOrders.map((order) => ({
+          code: order.code,
+          createdAt: order.createdAt,
+          total: order.total,
+          items: order.items.map((item) => ({
+            name: item.name,
+            quantity: item.quantity,
+            totalPrice: item.totalPrice,
+            personId: item.personId,
+            personLabel: item.personLabel,
+            selectedSize: item.selectedSize,
+            selectedOption: item.selectedOption,
+            extras: item.extras || [],
+          })),
+        })),
+        total: sessionTotal,
+        selectedPersonTotal,
+        selectedPersonLabel: selectedPerson?.label || null,
       },
     };
 
