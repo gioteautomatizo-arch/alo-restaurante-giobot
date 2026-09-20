@@ -7,6 +7,7 @@ import {
   setServiceMode,
 } from '../../lib/adminStorage';
 import { MenuCatalogManagerView } from './MenuCatalogManagerView';
+import { getComidaCorridaStatus, getMexicoCityDateKey } from '../../lib/comidaCorridaAvailability';
 import {
   Cake,
   CheckCircle2,
@@ -128,7 +129,7 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
 
   const [isAvailable, setIsAvailable] = useState<boolean>(config.isAvailable);
   const [availabilityStatus, setAvailabilityStatus] = useState<ComidaCorridaAvailabilityStatus>(
-    config.availabilityStatus || (config.isAvailable === false ? 'AGOTADA' : 'DISPONIBLE')
+    getComidaCorridaStatus(config)
   );
   const [availableWeekdays, setAvailableWeekdays] = useState<number[]>(
     config.availableWeekdays?.length ? config.availableWeekdays : [1, 2, 3, 4, 5]
@@ -152,7 +153,7 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
       const latest = getDailyMenuConfig();
       setConfig(latest);
       setIsAvailable(latest.isAvailable);
-      setAvailabilityStatus(latest.availabilityStatus || (latest.isAvailable === false ? 'AGOTADA' : 'DISPONIBLE'));
+      setAvailabilityStatus(getComidaCorridaStatus(latest));
       setAvailableWeekdays(latest.availableWeekdays?.length ? latest.availableWeekdays : [1, 2, 3, 4, 5]);
       setQuickAlternativesText((latest.quickAlternatives || []).join('\n'));
       setPrice(latest.price);
@@ -195,6 +196,7 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
         {
           isAvailable: availabilityStatus === 'DISPONIBLE' || availabilityStatus === 'ULTIMAS_PORCIONES',
           availabilityStatus,
+          availabilityStatusDate: getMexicoCityDateKey(),
           availableWeekdays,
           quickAlternatives: quickAlternativesText
             .split(/\n|,/)
@@ -217,7 +219,7 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
 
       setConfig(updated);
       setIsAvailable(updated.isAvailable);
-      setAvailabilityStatus(updated.availabilityStatus || (updated.isAvailable === false ? 'AGOTADA' : 'DISPONIBLE'));
+      setAvailabilityStatus(getComidaCorridaStatus(updated));
       setAvailableWeekdays(updated.availableWeekdays?.length ? updated.availableWeekdays : [1, 2, 3, 4, 5]);
       setQuickAlternativesText((updated.quickAlternatives || []).join('\n'));
       setAlternativePrices(buildAlternativePriceRows(updated.opcionesAlternativas));
