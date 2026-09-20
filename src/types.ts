@@ -421,7 +421,7 @@ export type RestaurantOrderSource = 'CLIENTE_QR' | 'MESERO' | 'CAJA';
 
 export interface PublicTableOrder {
   id?: string;
-  orderId: string;
+  orderId?: string;
   code: string;
   restaurantId: 'alo-restaurante';
   tableNumber: number;
