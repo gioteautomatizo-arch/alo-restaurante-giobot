@@ -419,6 +419,25 @@ export interface RestaurantOrderItem {
 export type RestaurantOrderBillingStatus = 'PENDIENTE' | 'PAGADO';
 export type RestaurantOrderSource = 'CLIENTE_QR' | 'MESERO' | 'CAJA';
 
+export interface PublicTableOrder {
+  id?: string;
+  orderId: string;
+  code: string;
+  restaurantId: 'alo-restaurante';
+  tableNumber: number;
+  tableSessionId?: string;
+  accountId?: string;
+  accountLabel?: string;
+  orderSource?: RestaurantOrderSource;
+  items: RestaurantOrderItem[];
+  total: number;
+  status: RestaurantOrderStatus;
+  billingStatus?: RestaurantOrderBillingStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+
 export interface RestaurantOrder {
   id?: string;
   code: string;
