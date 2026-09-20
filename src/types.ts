@@ -525,3 +525,49 @@ export interface TablePayment {
   chargedById: string;
   chargedByName: string;
 }
+
+export interface SaleReceiptOrderSnapshot {
+  orderId?: string;
+  code: string;
+  orderSource?: RestaurantOrderSource;
+  capturedByName?: string;
+  createdAt: string;
+  items: RestaurantOrderItem[];
+  total: number;
+}
+
+export interface SaleReceiptPaymentSnapshot {
+  paymentId?: string;
+  code: string;
+  total: number;
+  discountAmount: number;
+  tipAmount: number;
+  paymentMethod: TablePaymentMethod | 'MIXTO';
+  paymentBreakdown?: TablePaymentBreakdownItem[];
+  createdAt: string;
+  chargedByName: string;
+}
+
+export interface SaleReceipt {
+  id?: string;
+  code: string;
+  restaurantId: 'alo-restaurante';
+  tableNumber: number;
+  tableSessionId?: string;
+  guestCount: number;
+  waiterId?: string;
+  waiterName?: string;
+  openedAt: string;
+  closedAt: string;
+  closedById: string;
+  closedByName: string;
+  orderIds: string[];
+  paymentIds: string[];
+  orders: SaleReceiptOrderSnapshot[];
+  payments: SaleReceiptPaymentSnapshot[];
+  subtotal: number;
+  discountAmount: number;
+  tipAmount: number;
+  totalPaid: number;
+  status: 'PAGADO';
+}
