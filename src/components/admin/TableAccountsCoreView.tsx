@@ -37,6 +37,7 @@ import {
 } from '../../lib/paymentsService';
 import { subscribeToTableSession } from '../../lib/tableSessionsService';
 import { addActivityLog } from '../../lib/adminStorage';
+import { createFinalSaleReceipt } from '../../lib/saleReceiptsService';
 
 interface TableAccountsViewProps {
   currentUser: StaffUser;
@@ -293,6 +294,36 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
       const remainingOrders = selectedAllOrders.filter((order) => !order.id || !paidIds.has(order.id));
       try {
         if (remainingOrders.length === 0) {
+          const session = sessionsByNumber[selectedTable.tableNumber];
+          if (session) {
+            const sessionOrders = orders.filter((order) =>
+              order.orderType === 'dine_in' &&
+              order.tableNumber === selectedTable.tableNumber &&
+              order.tableSessionId === session.id
+            );
+            const sessionPayments = [
+              ...payments,
+              payment,
+            ].filter((candidate, index, all) =>
+              candidate.tableNumber === selectedTable.tableNumber &&
+              candidate.tableSessionId === session.id &&
+              candidate.status === 'PAGADO' &&
+              all.findIndex((item) => (item.id || item.code) === (candidate.id || candidate.code)) === index
+            );
+
+            try {
+              await createFinalSaleReceipt({
+                tableNumber: selectedTable.tableNumber,
+                session,
+                orders: sessionOrders,
+                payments: sessionPayments,
+                user: currentUser,
+              });
+            } catch (receiptErr) {
+              console.warn('[TableAccountsView] pago guardado, no se pudo generar ticket final:', receiptErr);
+            }
+          }
+
           await setTableStatus(selectedTable.tableId, 'LIMPIEZA', {
             id: currentUser.id,
             name: currentUser.name,
