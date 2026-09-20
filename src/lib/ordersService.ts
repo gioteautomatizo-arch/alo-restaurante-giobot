@@ -125,7 +125,12 @@ export async function createRestaurantOrder(
       createdAt: payload.createdAt,
       updatedAt: payload.updatedAt,
     };
-    await setDoc(doc(db, PUBLIC_TABLE_ORDERS_COLLECTION, ref.id), sanitizeFirestorePayload(publicPayload));
+    await setDoc(
+      doc(db, PUBLIC_TABLE_ORDERS_COLLECTION, ref.id),
+      sanitizeFirestorePayload(publicPayload)
+    ).catch((error) => {
+      console.warn('[ordersService] comanda creada, no se pudo publicar resumen de mesa:', error);
+    });
   }
 
   return { ...payload, id: ref.id } as RestaurantOrder;
