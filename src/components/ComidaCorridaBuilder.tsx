@@ -3,6 +3,12 @@ import { MENU_ITEMS } from '../data/menu';
 import { CartItem, ComidaCorridaCustomization, DailyMenuConfig } from '../types';
 import { getDailyMenuConfig } from '../lib/adminStorage';
 import { subscribeToCache } from '../lib/firestoreService';
+import {
+  getComidaCorridaStatus,
+  getComidaCorridaStatusLabel,
+  getComidaCorridaStatusMessage,
+  isComidaCorridaOrderable,
+} from '../lib/comidaCorridaAvailability';
 import { AlertCircle, Cake, Check, ChevronDown, Flame, GlassWater, Soup, Sparkles, Utensils, X } from 'lucide-react';
 
 interface ComidaCorridaBuilderProps {
@@ -271,6 +277,8 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({ isOp
 
   if (!isOpen) return null;
 
+  const corridaStatus = getComidaCorridaStatus(dailyMenu);
+  const corridaOrderable = isComidaCorridaOrderable(dailyMenu);
   const baseMenuPrice = Number(dailyMenu.price) > 0 ? Number(dailyMenu.price) : 90;
   const finalUnitPrice = baseMenuPrice + selectedThirdSurcharge + (extraAgrega === 'Sin extra' ? 0 : 10);
 
@@ -284,6 +292,8 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({ isOp
   };
 
   const handleAdd = () => {
+    if (!corridaOrderable) return;
+
     const customComidaCorrida: ComidaCorridaCustomization = {
       primerTiempo: primerTiempo || primerTiempoOptions[0] || 'Sopa del día',
       segundoTiempo: segundoTiempo || segundoTiempoOptions[0] || 'Arroz del día',
@@ -328,6 +338,23 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({ isOp
         </div>
 
         <div className="p-5 space-y-5 overflow-y-auto flex-1">
+          {corridaStatus !== 'DISPONIBLE' && (
+            <div className={`p-3 rounded-2xl border text-xs ${
+              corridaStatus === 'ULTIMAS_PORCIONES'
+                ? 'bg-amber-50 border-amber-200 text-amber-900'
+                : 'bg-rose-50 border-rose-200 text-rose-900'
+            }`}>
+              <strong className="block">{getComidaCorridaStatusLabel(corridaStatus)}</strong>
+              <span className="block mt-1">{getComidaCorridaStatusMessage(corridaStatus)}</span>
+              {!corridaOrderable && (dailyMenu.quickAlternatives || []).length > 0 && (
+                <div className="mt-2">
+                  <span className="font-bold">Alternativas rápidas:</span>{' '}
+                  {(dailyMenu.quickAlternatives || []).join(', ')}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 rounded-2xl bg-[#F4E3C8]/40 border border-[#C9974D]/30">
             <div className="flex items-center gap-2.5 text-xs"><GlassWater className="w-4 h-4 text-[#A86B3D]" /><strong>{dailyMenu.aguaDelDia || 'Agua fresca del día'} · 1/2 L</strong></div>
             <div className="flex items-center gap-2.5 text-xs"><Cake className="w-4 h-4 text-[#A86B3D]" /><strong>{dailyMenu.postreDelDia || 'Postre casero del día'}</strong></div>
@@ -446,7 +473,7 @@ export const ComidaCorridaBuilder: React.FC<ComidaCorridaBuilderProps> = ({ isOp
 
         <div className="bg-[#FFF7EA] p-4 border-t border-[#F4E3C8] flex items-center justify-between gap-4">
           <div><span className="text-xs text-[#6B4028] font-bold uppercase">Precio Total: </span><span className="text-xl font-black text-[#3A2418] font-serif">${finalUnitPrice}</span></div>
-          <button onClick={handleAdd} className="py-3 px-6 bg-gradient-to-r from-[#C77B4A] to-[#A86B3D] text-white rounded-xl font-bold text-sm shadow-md flex items-center gap-2"><Sparkles className="w-4 h-4" />Agregar Comida Corrida (${finalUnitPrice})</button>
+          <button onClick={handleAdd} disabled={!corridaOrderable} className="py-3 px-6 bg-gradient-to-r from-[#C77B4A] to-[#A86B3D] text-white rounded-xl font-bold text-sm shadow-md flex items-center gap-2"><Sparkles className="w-4 h-4" />{corridaOrderable ? 'Agregar Comida Corrida' : 'Comida corrida no disponible'} (${finalUnitPrice})</button>
         </div>
       </div>
     </div>
