@@ -26,7 +26,7 @@ import {
   Check,
   ShieldAlert,
 } from 'lucide-react';
-import { TableRecord, TableStatus, TableCourse, StaffUser, TableServiceRequest, TableServiceRequestType, TableSession, RestaurantOrder } from '../../types';
+import { TableRecord, TableStatus, TableCourse, StaffUser, TableServiceRequest, TableServiceRequestType, TableSession, RestaurantOrder, PublicTableOrder } from '../../types';
 import {
   subscribeToTables,
   occupyTable,
@@ -55,9 +55,46 @@ import {
   assignWaiterToTableSession,
 } from '../../lib/tableSessionsService';
 import { subscribeToRestaurantOrders } from '../../lib/ordersService';
+import { TableSessionConsumption } from '../public/TableSessionConsumption';
 
 interface TablesViewProps {
   currentUser: StaffUser;
+}
+
+function getSessionConsumptionOrders(
+  orders: RestaurantOrder[],
+  tableNumber: number,
+  session: TableSession | null | undefined
+): PublicTableOrder[] {
+  if (!session || session.status === 'CERRADA') return [];
+  const openedAt = Date.parse(session.openedAt || '') || 0;
+
+  return orders
+    .filter((order) =>
+      order.orderType === 'dine_in' &&
+      order.tableNumber === tableNumber &&
+      order.status !== 'CANCELADO' &&
+      (Date.parse(order.createdAt || '') || 0) >= openedAt &&
+      (!order.tableSessionId || !session.id || order.tableSessionId === session.id)
+    )
+    .sort((a, b) => (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0))
+    .map((order) => ({
+      id: order.id,
+      orderId: order.id,
+      code: order.code,
+      restaurantId: order.restaurantId,
+      tableNumber,
+      tableSessionId: order.tableSessionId,
+      accountId: order.accountId,
+      accountLabel: order.accountLabel,
+      orderSource: order.orderSource,
+      items: order.items,
+      total: Number(order.total || 0),
+      status: order.status,
+      billingStatus: order.billingStatus,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+    }));
 }
 
 export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
@@ -1629,6 +1666,44 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
 
             {/* Contenido Operativo Scrollable */}
             <div className="p-4 sm:p-6 overflow-y-auto space-y-6">
+              {(() => {
+                const session = tableSessionsByNumber[selectedTable.tableNumber];
+                if (!session || session.status === 'CERRADA') return null;
+                const sessionOrders = getSessionConsumptionOrders(
+                  restaurantOrders,
+                  selectedTable.tableNumber,
+                  session
+                );
+                const sessionTotal = sessionOrders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+
+                return (
+                  <details className="bg-white rounded-2xl border-2 border-[#C9974D]/35 overflow-hidden">
+                    <summary className="list-none cursor-pointer p-4 flex items-center justify-between gap-3 bg-[#FFF9F0]">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider font-black text-[#A86B3D]">Sesión actual</div>
+                        <div className="font-serif font-black text-[#2B1B13]">Ver consumo completo</div>
+                        <div className="text-[10px] text-[#7A5A45] mt-1">
+                          {sessionOrders.length} comanda(s) · {session.guestCount} {session.guestCount === 1 ? 'persona' : 'personas'}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[9px] uppercase tracking-wider font-bold text-[#A86B3D]">Lleva</div>
+                        <div className="font-serif font-black text-xl text-[#2B1B13]">
+                          ${sessionTotal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                    </summary>
+                    <div className="p-4 border-t border-[#E8D4BE]">
+                      <TableSessionConsumption
+                        session={session}
+                        orders={sessionOrders}
+                        showSelectedPersonSummary={false}
+                      />
+                    </div>
+                  </details>
+                );
+              })()}
+
               {/* ESTADO GENERAL DE LA MESA */}
               <div>
                 <label className="text-xs font-bold uppercase tracking-wider text-[#5C3825] block mb-2">
