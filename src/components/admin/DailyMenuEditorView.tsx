@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StaffUser, DailyMenuConfig, ServiceMode } from '../../types';
+import { StaffUser, DailyMenuConfig, ServiceMode, ComidaCorridaAvailabilityStatus } from '../../types';
 import {
   getDailyMenuConfig,
   saveDailyMenuConfig,
@@ -127,6 +127,15 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const [isAvailable, setIsAvailable] = useState<boolean>(config.isAvailable);
+  const [availabilityStatus, setAvailabilityStatus] = useState<ComidaCorridaAvailabilityStatus>(
+    config.availabilityStatus || (config.isAvailable === false ? 'AGOTADA' : 'DISPONIBLE')
+  );
+  const [availableWeekdays, setAvailableWeekdays] = useState<number[]>(
+    config.availableWeekdays?.length ? config.availableWeekdays : [1, 2, 3, 4, 5]
+  );
+  const [quickAlternativesText, setQuickAlternativesText] = useState<string>(
+    (config.quickAlternatives || []).join('\n')
+  );
   const [price, setPrice] = useState<number>(config.price);
   const [entrada, setEntrada] = useState<string>(config.entrada);
   const [platoFuerte, setPlatoFuerte] = useState<string>(config.platoFuerte);
@@ -143,6 +152,9 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
       const latest = getDailyMenuConfig();
       setConfig(latest);
       setIsAvailable(latest.isAvailable);
+      setAvailabilityStatus(latest.availabilityStatus || (latest.isAvailable === false ? 'AGOTADA' : 'DISPONIBLE'));
+      setAvailableWeekdays(latest.availableWeekdays?.length ? latest.availableWeekdays : [1, 2, 3, 4, 5]);
+      setQuickAlternativesText((latest.quickAlternatives || []).join('\n'));
       setPrice(latest.price);
       setEntrada(latest.entrada);
       setPlatoFuerte(latest.platoFuerte);
@@ -181,7 +193,14 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
     try {
       const updated = await saveDailyMenuConfig(
         {
-          isAvailable,
+          isAvailable: availabilityStatus === 'DISPONIBLE' || availabilityStatus === 'ULTIMAS_PORCIONES',
+          availabilityStatus,
+          availableWeekdays,
+          quickAlternatives: quickAlternativesText
+            .split(/\n|,/)
+            .map((value) => value.trim())
+            .filter(Boolean)
+            .slice(0, 6),
           price: Number(price),
           entrada: entrada.trim(),
           platoFuerte: platoFuerte.trim(),
@@ -197,6 +216,10 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
       );
 
       setConfig(updated);
+      setIsAvailable(updated.isAvailable);
+      setAvailabilityStatus(updated.availabilityStatus || (updated.isAvailable === false ? 'AGOTADA' : 'DISPONIBLE'));
+      setAvailableWeekdays(updated.availableWeekdays?.length ? updated.availableWeekdays : [1, 2, 3, 4, 5]);
+      setQuickAlternativesText((updated.quickAlternatives || []).join('\n'));
       setAlternativePrices(buildAlternativePriceRows(updated.opcionesAlternativas));
       setSuccessMsg('¡Menú del Día publicado en tiempo real para clientes y Tita!');
       window.setTimeout(() => setSuccessMsg(null), 3500);
@@ -293,22 +316,100 @@ export const DailyMenuEditorView: React.FC<DailyMenuEditorViewProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 bg-[#FFF7EA] px-4 py-2.5 rounded-2xl border border-[#F4E3C8]">
-                <span className="text-xs font-bold text-[#2B1B13]">Estado del Menú:</span>
-                <button
-                  type="button"
-                  onClick={() => setIsAvailable(!isAvailable)}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    isAvailable ? 'bg-emerald-600 text-white shadow-xs' : 'bg-rose-600 text-white shadow-xs'
-                  }`}
-                >
-                  {isAvailable ? '✅ Disponible' : '❌ Agotado / Inactivo'}
-                </button>
+              <div className="flex flex-col gap-2 bg-[#FFF7EA] px-4 py-3 rounded-2xl border border-[#F4E3C8] min-w-[260px]">
+                <span className="text-xs font-bold text-[#2B1B13]">Estado de la Comida Corrida</span>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {([
+                    ['DISPONIBLE', '✅ Disponible'],
+                    ['ULTIMAS_PORCIONES', '⚠️ Últimas'],
+                    ['AGOTADA', '❌ Agotada'],
+                    ['NO_DISPONIBLE', '🚫 Hoy no hay'],
+                  ] as Array<[ComidaCorridaAvailabilityStatus, string]>).map(([status, label]) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => {
+                        setAvailabilityStatus(status);
+                        setIsAvailable(status === 'DISPONIBLE' || status === 'ULTIMAS_PORCIONES');
+                      }}
+                      className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black border transition-all ${
+                        availabilityStatus === status
+                          ? status === 'DISPONIBLE'
+                            ? 'bg-emerald-600 border-emerald-600 text-white'
+                            : status === 'ULTIMAS_PORCIONES'
+                            ? 'bg-amber-500 border-amber-500 text-white'
+                            : 'bg-rose-600 border-rose-600 text-white'
+                          : 'bg-white border-[#DEC8AE] text-[#5C3825]'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
 
           <form onSubmit={handleSave} className="bg-white rounded-3xl border border-[#F4E3C8] p-6 sm:p-8 shadow-xs space-y-5">
+            <div className="rounded-2xl border border-[#DEC8AE] bg-[#FFF9F0] p-4 space-y-4">
+              <div>
+                <h3 className="font-serif font-black text-[#2B1B13]">Disponibilidad semanal</h3>
+                <p className="text-[11px] text-[#6B4028] mt-1">
+                  Activa sólo los días en que normalmente ofreces comida corrida. El estado de arriba manda en tiempo real durante el servicio.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+                {[
+                  [1, 'Lun'],
+                  [2, 'Mar'],
+                  [3, 'Mié'],
+                  [4, 'Jue'],
+                  [5, 'Vie'],
+                  [6, 'Sáb'],
+                  [0, 'Dom'],
+                ].map(([day, label]) => {
+                  const active = availableWeekdays.includes(day as number);
+                  return (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() =>
+                        setAvailableWeekdays((current) =>
+                          active
+                            ? current.filter((value) => value !== day)
+                            : [...current, day as number].sort((a, b) => a - b)
+                        )
+                      }
+                      className={`py-2 rounded-xl border text-[11px] font-black ${
+                        active
+                          ? 'bg-[#3A2418] border-[#3A2418] text-[#FFF7EA]'
+                          : 'bg-white border-[#DEC8AE] text-[#7A5A45]'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#2B1B13] uppercase tracking-wider mb-1.5 font-serif">
+                  Alternativas rápidas si se termina
+                </label>
+                <textarea
+                  rows={3}
+                  value={quickAlternativesText}
+                  onChange={(event) => setQuickAlternativesText(event.target.value)}
+                  placeholder={'Ej. Enchiladas Verdes\nPechuga Asada\nArma tu Ensalada'}
+                  className="w-full px-4 py-2.5 bg-white rounded-xl border border-[#DEC8AE] text-xs text-[#2B1B13] focus:border-[#C9974D] focus:outline-hidden"
+                />
+                <p className="text-[10px] text-[#A86B3D] mt-1">
+                  Escríbelas una por línea. El cliente las verá cuando la comida corrida esté agotada o no disponible.
+                </p>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-bold text-[#2B1B13] uppercase tracking-wider mb-1.5 flex items-center gap-1.5 font-serif">
