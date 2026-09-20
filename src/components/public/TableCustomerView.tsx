@@ -30,6 +30,7 @@ interface Props {
   onSelectCategory?: (category: CategoryId) => void;
   onOpenComidaCorrida?: () => void;
   onOpenSaladBuilder?: () => void;
+  onOpenTita?: () => void;
   onPersonSelectionChange?: (person: TableSessionPerson | null) => void;
 }
 
@@ -54,6 +55,7 @@ export const TableCustomerView: React.FC<Props> = ({
   onSelectCategory,
   onOpenComidaCorrida,
   onOpenSaladBuilder,
+  onOpenTita,
   onPersonSelectionChange,
 }) => {
   const [session, setSession] = useState<TableSession | null>(null);
@@ -320,6 +322,30 @@ export const TableCustomerView: React.FC<Props> = ({
         </div>
 
         {feedbackMessage && <div className="bg-emerald-600 text-white px-3 py-2 rounded-xl text-center text-xs font-bold"><Check className="w-3.5 h-3.5 inline mr-1"/>{feedbackMessage}</div>}
+
+        {!isStaffOrder && (
+          <div className="bg-white rounded-xl border border-[#DEC8AE] p-2.5">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-[#A86B3D] mb-2">¿Cómo quieres que te atendamos?</div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={onOpenTita}
+                className="min-h-[46px] rounded-xl bg-[#3A2418] text-white border border-[#3A2418] text-xs font-bold flex items-center justify-center gap-2"
+              >
+                <img src="/tita.png" alt="Tita" className="w-5 h-5 object-contain" />
+                Atención con Tita
+              </button>
+              <button
+                type="button"
+                disabled={submittingType === 'LLAMAR_MESERO' || pendingTypes.has('LLAMAR_MESERO')}
+                onClick={() => request('LLAMAR_MESERO')}
+                className="min-h-[46px] rounded-xl bg-[#FFF7EA] text-[#3A2418] border border-[#DEC8AE] text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                🙋 {pendingTypes.has('LLAMAR_MESERO') ? 'Mesero avisado ✓' : 'Atención con mesero'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {session.guestCount > 1 && <div className="bg-white rounded-xl border border-[#DEC8AE] p-2.5"><div className="flex justify-between text-[10px] font-bold uppercase mb-2"><span>{isStaffOrder ? '¿Para quién es este pedido?' : '¿Quién está ordenando?'}</span><span>{session.guestCount} personas</span></div><div className="flex flex-wrap gap-1.5">{getSessionPersons(session).map((person) => <button key={person.id} onClick={() => choosePerson(person)} className={`px-3 py-1.5 rounded-lg border text-xs font-bold ${selectedPersonId === person.id ? 'bg-emerald-700 border-emerald-700 text-white' : 'bg-[#FFF7EA] border-[#DEC8AE]'}`}>{selectedPersonId === person.id ? '✓ ' : ''}{person.label}</button>)}</div></div>}
 
