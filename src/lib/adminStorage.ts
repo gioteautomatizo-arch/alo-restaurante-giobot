@@ -292,6 +292,9 @@ const INITIAL_INVENTORY_ITEMS: Omit<InventoryItem, 'id' | 'lastUpdated'>[] = [
 // -------------------------------------------------------------
 const INITIAL_DAILY_MENU: DailyMenuConfig = {
   isAvailable: true,
+  availabilityStatus: 'DISPONIBLE',
+  availableWeekdays: [1, 2, 3, 4, 5],
+  quickAlternatives: ['Enchiladas Verdes', 'Pechuga Asada', 'Arma tu Ensalada'],
   price: 90,
   entrada: 'Consomé de pollo con menudencias o verduras / Sopa de verduras / Crema o sopa aguada del día',
   platoFuerte: 'Pechuga a la plancha / Enchiladas verdes con queso gratinado / Milanesa de pollo',
