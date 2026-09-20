@@ -129,11 +129,11 @@ function kitchenCourseParts(value?: string): {
   return { first, second, third, extra };
 }
 
-function sortOldestFirst(list: RestaurantOrder[]): RestaurantOrder[] {
+function sortNewestFirst(list: RestaurantOrder[]): RestaurantOrder[] {
   return [...list].sort((a, b) => {
-    const byCreatedAt = (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0);
+    const byCreatedAt = (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0);
     if (byCreatedAt !== 0) return byCreatedAt;
-    return String(a.id || a.code || '').localeCompare(String(b.id || b.code || ''));
+    return String(b.id || b.code || '').localeCompare(String(a.id || a.code || ''));
   });
 }
 
@@ -177,7 +177,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
 
   const visibleOrders = useMemo(() => {
     if (filter === 'ACTIVAS') {
-      return sortOldestFirst(
+      return sortNewestFirst(
         dayOrders.filter((order) =>
           !['CANCELADO', 'ENTREGADO'].includes(order.status)
         )
@@ -185,10 +185,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
     }
 
     if (filter === 'ENTREGADO' || filter === 'CANCELADO') {
-      return sortOldestFirst(dayOrders.filter((order) => order.status === filter));
+      return sortNewestFirst(dayOrders.filter((order) => order.status === filter));
     }
 
-    return sortOldestFirst(
+    return sortNewestFirst(
       dayOrders.filter((order) => getRestaurantOrderStationStatus(order, activeStation) === filter)
     );
   }, [dayOrders, activeStation, filter]);
@@ -300,7 +300,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
             {selectedDateIsToday ? 'Hoy · ' : ''}{formatOperationalDate(selectedDate)}
           </p>
           <p className="text-[11px] text-[#7A5A45] mt-0.5">
-            {dayOrders.length} comanda{dayOrders.length === 1 ? '' : 's'} · ordenadas de la primera registrada a la última.
+            {dayOrders.length} comanda{dayOrders.length === 1 ? '' : 's'} · las más recientes aparecen arriba.
           </p>
         </div>
 
