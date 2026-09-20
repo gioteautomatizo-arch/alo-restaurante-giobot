@@ -391,6 +391,7 @@ export default function App() {
           onOpenSaladBuilder={() => {
             setIsSaladBuilderOpen(true);
           }}
+          onOpenTita={() => setIsGiobotOpen(true)}
           onPersonSelectionChange={setSelectedTablePerson}
         />
       )}
