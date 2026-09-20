@@ -4,6 +4,7 @@ import {
   onSnapshot,
   query,
   runTransaction,
+  updateDoc,
   where,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -124,7 +125,7 @@ export async function settleTableAccount(
 
   const paymentRef = doc(collection(db, TABLE_PAYMENTS_COLLECTION));
 
-  return runTransaction(db, async (transaction) => {
+  const payment = await runTransaction(db, async (transaction) => {
     const freshOrders: RestaurantOrder[] = [];
     for (const orderId of candidateOrderIds) {
       const orderRef = doc(db, 'restaurant_orders', orderId);
@@ -215,12 +216,19 @@ export async function settleTableAccount(
         paymentId: paymentRef.id,
         updatedAt: now,
       }));
-      transaction.update(doc(db, PUBLIC_TABLE_ORDERS_COLLECTION, order.id), sanitizeFirestorePayload({
-        billingStatus: 'PAGADO',
-        updatedAt: now,
-      }));
     });
 
     return payment as TablePayment;
   });
+
+  await Promise.all(
+    candidateOrderIds.map((orderId) =>
+      updateDoc(doc(db, PUBLIC_TABLE_ORDERS_COLLECTION, orderId), sanitizeFirestorePayload({
+        billingStatus: 'PAGADO',
+        updatedAt: new Date().toISOString(),
+      })).catch(() => {})
+    )
+  );
+
+  return payment;
 }
