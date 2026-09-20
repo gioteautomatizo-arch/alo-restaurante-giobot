@@ -273,6 +273,29 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /sale_receipts/{receiptId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidRestaurant(request.resource.data)
+        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && request.resource.data.tableSessionId is string
+        && request.resource.data.orderIds is list
+        && request.resource.data.paymentIds is list
+        && request.resource.data.orders is list
+        && request.resource.data.payments is list
+        && request.resource.data.subtotal is number
+        && request.resource.data.discountAmount is number
+        && request.resource.data.tipAmount is number
+        && request.resource.data.totalPaid is number
+        && request.resource.data.status == 'PAGADO'
+        && request.resource.data.openedAt is string
+        && request.resource.data.closedAt is string
+        && request.resource.data.closedById is string
+        && request.resource.data.closedByName is string;
+
+      allow update, delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
