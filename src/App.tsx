@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MENU_ITEMS } from './data/menu';
-import { MenuItem, CategoryId, CartItem, VipProfile, StaffUser, TableSessionPerson } from './types';
+import { MenuItem, CategoryId, CartItem, VipProfile, StaffUser, TableSessionPerson, DailyMenuConfig } from './types';
 import { getVipProfile, refreshCloudVipProfile, VIP_DATA_EVENT } from './lib/vipStorage';
-import { getAuthSession, logoutStaff } from './lib/adminStorage';
+import { getAuthSession, logoutStaff, getDailyMenuConfig } from './lib/adminStorage';
 import { subscribeToMenuCatalog } from './lib/menuCatalogService';
+import { subscribeToCache } from './lib/firestoreService';
+import { isComidaCorridaOrderable, getComidaCorridaStatusLabel, getComidaCorridaStatus } from './lib/comidaCorridaAvailability';
 import type { ManagedMenuItem } from './lib/menuCatalogService';
 import { getTableSession, updateTableSessionGuestCountByStaff } from './lib/tableSessionsService';
 import { updateTableGuestCount } from './lib/tablesService';
@@ -77,6 +79,7 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [showAllCatalog, setShowAllCatalog] = useState<boolean>(false);
   const [menuItems, setMenuItems] = useState<MenuItem[]>(MENU_ITEMS);
+  const [dailyMenuConfig, setDailyMenuConfig] = useState<DailyMenuConfig>(getDailyMenuConfig());
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [isSaladBuilderOpen, setIsSaladBuilderOpen] = useState<boolean>(false);
@@ -156,6 +159,21 @@ export default function App() {
         setIsAdminLoginModalOpen(true);
       }
     }
+  }, []);
+
+  useEffect(() => {
+    setDailyMenuConfig(getDailyMenuConfig());
+    const unsubCache = subscribeToCache((cache) => {
+      if (cache.dailyMenu) setDailyMenuConfig(cache.dailyMenu);
+    });
+    const refresh = () => setDailyMenuConfig(getDailyMenuConfig());
+    window.addEventListener('alo_admin_data_updated', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      unsubCache();
+      window.removeEventListener('alo_admin_data_updated', refresh);
+      window.removeEventListener('storage', refresh);
+    };
   }, []);
 
   useEffect(() => {
@@ -509,11 +527,26 @@ export default function App() {
           {!customerTableNumber && (activeCategory === 'all' || activeCategory === 'ensaladas' || activeCategory === 'comida-corrida') && (
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setIsComidaCorridaBuilderOpen(true)}
-                className="px-3 py-1.5 rounded-xl bg-[#F4E3C8] hover:bg-[#ebdcc8] text-[#3A2418] font-serif font-bold text-xs border border-[#A86B3D]/30 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                onClick={() => {
+                  if (isComidaCorridaOrderable(dailyMenuConfig)) {
+                    setIsComidaCorridaBuilderOpen(true);
+                  } else {
+                    setActiveCategory('all');
+                    setShowAllCatalog(true);
+                  }
+                }}
+                className={`px-3 py-1.5 rounded-xl font-serif font-bold text-xs border transition-colors flex items-center gap-1.5 shadow-xs ${
+                  isComidaCorridaOrderable(dailyMenuConfig)
+                    ? 'bg-[#F4E3C8] hover:bg-[#ebdcc8] text-[#3A2418] border-[#A86B3D]/30 cursor-pointer'
+                    : 'bg-rose-50 text-rose-700 border-rose-200 cursor-pointer'
+                }`}
               >
-                <Utensils className="w-3.5 h-3.5 text-[#C9974D]" />
-                <span>Armar Corrida ($90)</span>
+                <Utensils className="w-3.5 h-3.5" />
+                <span>
+                  {isComidaCorridaOrderable(dailyMenuConfig)
+                    ? `Armar Corrida (${dailyMenuConfig.price || 90})`
+                    : getComidaCorridaStatusLabel(getComidaCorridaStatus(dailyMenuConfig))}
+                </span>
               </button>
               <button
                 onClick={() => setIsSaladBuilderOpen(true)}
@@ -537,7 +570,12 @@ export default function App() {
                     if (itemToSelect.id === 'arma-ensalada') {
                       setIsSaladBuilderOpen(true);
                     } else if (itemToSelect.id === 'comida-corrida') {
-                      setIsComidaCorridaBuilderOpen(true);
+                      if (isComidaCorridaOrderable(dailyMenuConfig)) {
+                        setIsComidaCorridaBuilderOpen(true);
+                      } else {
+                        setActiveCategory('all');
+                        setShowAllCatalog(true);
+                      }
                     } else {
                       setSelectedItem(itemToSelect);
                     }
