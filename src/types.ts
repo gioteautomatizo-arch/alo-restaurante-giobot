@@ -228,9 +228,17 @@ export interface ActivityLog {
 
 export type ServiceMode = 'AUTO' | 'DESAYUNO' | 'COMIDA';
 export type EffectiveService = 'DESAYUNO' | 'COMIDA';
+export type ComidaCorridaAvailabilityStatus =
+  | 'DISPONIBLE'
+  | 'ULTIMAS_PORCIONES'
+  | 'AGOTADA'
+  | 'NO_DISPONIBLE';
 
 export interface DailyMenuConfig {
   isAvailable: boolean;
+  availabilityStatus?: ComidaCorridaAvailabilityStatus;
+  availableWeekdays?: number[];
+  quickAlternatives?: string[];
   price: number;
   entrada: string;
   platoFuerte: string;
