@@ -5,6 +5,7 @@ import { getDailyMenuConfig, getRestaurantInfo } from '../lib/adminStorage';
 import { getTableSession } from '../lib/tableSessionsService';
 import { subscribeToMenuCatalog } from '../lib/menuCatalogService';
 import { subscribeToPublicTableOrders } from '../lib/ordersService';
+import { getComidaCorridaStatus, isComidaCorridaOrderable } from '../lib/comidaCorridaAvailability';
 
 interface GiobotChatProps {
   isOpen: boolean;
@@ -198,6 +199,7 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
       const menuConfig = getDailyMenuConfig();
       if (menuConfig) {
         const guarns = Array.isArray(menuConfig.guarniciones) ? menuConfig.guarniciones.filter(Boolean) : [];
+        const resolvedCorridaStatus = getComidaCorridaStatus(menuConfig);
         dailyMenuPayload = {
           price: Number(menuConfig.price) || 90,
           entrada: menuConfig.entrada || '',
@@ -207,8 +209,9 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
           guarnicion2: guarns[1] || '',
           aguaDelDia: menuConfig.aguaDelDia || '',
           postreDelDia: menuConfig.postreDelDia || '',
-          isAvailable: menuConfig.isAvailable !== false,
-          availabilityStatus: menuConfig.availabilityStatus || (menuConfig.isAvailable === false ? 'AGOTADA' : 'DISPONIBLE'),
+          isAvailable: isComidaCorridaOrderable(menuConfig),
+          availabilityStatus: resolvedCorridaStatus,
+          availabilityStatusDate: menuConfig.availabilityStatusDate || null,
           availableWeekdays: menuConfig.availableWeekdays || [1, 2, 3, 4, 5],
           quickAlternatives: menuConfig.quickAlternatives || [],
         };
