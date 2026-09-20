@@ -153,7 +153,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
   const normalizedRole = String(currentUser.role || '').trim().toUpperCase();
   const kitchenMode = normalizedRole === 'COCINA';
   const [selectedStation, setSelectedStation] = useState<PreparationStation>('COCINA');
-  const activeStation: PreparationStation = kitchenMode ? 'COCINA' : selectedStation;
+  const activeStation: PreparationStation = selectedStation;
   const stationLabel = activeStation === 'COCINA' ? 'Cocina' : 'Cafetería';
 
   useEffect(() => {
@@ -202,7 +202,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
   const selectedDateIsToday = selectedDate === todayDateKey();
 
   const canKitchen = ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'COCINA', 'EMPLEADO'].includes(normalizedRole);
-  const canCafeteria = ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'EMPLEADO'].includes(normalizedRole);
+  const canCafeteria = ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'COCINA', 'EMPLEADO'].includes(normalizedRole);
   const canPrepareStation = activeStation === 'COCINA' ? canKitchen : canCafeteria;
   const canDeliver = ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'EMPLEADO'].includes(normalizedRole);
   const canCancel = ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'].includes(normalizedRole);
@@ -242,8 +242,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
 
   return (
     <div className={`space-y-5 pb-20 ${kitchenMode ? 'max-w-[1500px] mx-auto' : ''}`}>
-      {!kitchenMode && (
-        <div className="bg-white rounded-2xl border border-[#E8D4BE] p-2 inline-flex gap-2">
+      <div className="bg-white rounded-2xl border border-[#E8D4BE] p-2 inline-flex gap-2">
           <button
             type="button"
             onClick={() => setSelectedStation('COCINA')}
@@ -259,7 +258,6 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
             <Coffee className="w-4 h-4" /> Cafetería
           </button>
         </div>
-      )}
 
       <div className="bg-[#3A2418] text-[#FFF7EA] rounded-3xl p-5 sm:p-6 border border-[#C9974D]/30 shadow-md">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
