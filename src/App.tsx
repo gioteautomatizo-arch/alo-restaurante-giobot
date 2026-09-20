@@ -667,6 +667,9 @@ export default function App() {
         onClose={() => setIsGiobotOpen(false)}
         onOpenSaladBuilder={() => setIsSaladBuilderOpen(true)}
         onOpenComidaCorridaBuilder={() => setIsComidaCorridaBuilderOpen(true)}
+        tableNumber={customerTableNumber}
+        selectedPerson={selectedTablePerson}
+        cartItems={cartItems}
         menuItems={menuItems}
       />
 
