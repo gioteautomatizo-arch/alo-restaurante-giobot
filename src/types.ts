@@ -237,6 +237,7 @@ export type ComidaCorridaAvailabilityStatus =
 export interface DailyMenuConfig {
   isAvailable: boolean;
   availabilityStatus?: ComidaCorridaAvailabilityStatus;
+  availabilityStatusDate?: string;
   availableWeekdays?: number[];
   quickAlternatives?: string[];
   price: number;
