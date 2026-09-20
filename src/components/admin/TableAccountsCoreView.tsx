@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import {
   RestaurantOrder,
+  SaleReceipt,
   StaffUser,
   TablePayment,
   TablePaymentMethod,
@@ -37,7 +38,7 @@ import {
 } from '../../lib/paymentsService';
 import { subscribeToTableSession } from '../../lib/tableSessionsService';
 import { addActivityLog } from '../../lib/adminStorage';
-import { createFinalSaleReceipt } from '../../lib/saleReceiptsService';
+import { createFinalSaleReceipt, subscribeToSaleReceipts } from '../../lib/saleReceiptsService';
 
 interface TableAccountsViewProps {
   currentUser: StaffUser;
@@ -119,6 +120,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
   const [tables, setTables] = useState<TableRecord[]>([]);
   const [sessionsByNumber, setSessionsByNumber] = useState<Record<number, TableSession | null>>({});
   const [payments, setPayments] = useState<TablePayment[]>([]);
+  const [receipts, setReceipts] = useState<SaleReceipt[]>([]);
   const [requests, setRequests] = useState<TableServiceRequest[]>([]);
   const [selectedTable, setSelectedTable] = useState<TableRecord | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
@@ -142,6 +144,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     );
     const unsubOrders = subscribeToRestaurantOrders(setOrders);
     const unsubPayments = subscribeToTablePayments(setPayments);
+    const unsubReceipts = subscribeToSaleReceipts(setReceipts);
     const unsubRequests = subscribeToPendingTableRequests(setRequests);
 
     return () => {
@@ -150,6 +153,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
       sessionUnsubs.forEach((unsubscribe) => unsubscribe());
       unsubOrders();
       unsubPayments();
+      unsubReceipts();
       unsubRequests();
     };
   }, []);
@@ -487,6 +491,68 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
           );
         })}
       </div>
+
+      <section className="bg-white rounded-3xl border border-[#F4E3C8] overflow-hidden">
+        <div className="px-4 sm:px-5 py-4 border-b border-[#F4E3C8] flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider font-black text-[#A86B3D]">Historial de venta</div>
+            <h3 className="font-serif font-black text-xl text-[#2B1B13]">Tickets cerrados</h3>
+            <p className="text-[11px] text-[#7A5A45] mt-1">Se genera uno automáticamente cuando la mesa queda liquidada.</p>
+          </div>
+          <ReceiptText className="w-5 h-5 text-[#C9974D]" />
+        </div>
+
+        {receipts.length === 0 ? (
+          <div className="px-5 py-7 text-center text-xs text-[#7A5A45]">Todavía no hay tickets finales registrados.</div>
+        ) : (
+          <div className="divide-y divide-[#F4E3C8]">
+            {receipts.slice(0, 20).map((receipt) => (
+              <details key={receipt.id || receipt.code} className="group">
+                <summary className="list-none cursor-pointer px-4 sm:px-5 py-4 flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <strong className="font-serif text-[#2B1B13]">Mesa {receipt.tableNumber}</strong>
+                      <span className="text-[9px] font-black px-2 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">PAGADO</span>
+                    </div>
+                    <div className="text-[10px] text-[#7A5A45] mt-1">{receipt.code} · {new Date(receipt.closedAt).toLocaleString('es-MX')}</div>
+                    <div className="text-[10px] text-[#A86B3D] mt-1">{receipt.waiterName ? ('Mesero: ' + receipt.waiterName) : 'Sin mesero'} · {receipt.orders.length} comanda(s)</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="font-serif font-black text-lg text-[#2B1B13]">{money(receipt.totalPaid)}</div>
+                    <div className="text-[9px] text-[#7A5A45]">Ver detalle</div>
+                  </div>
+                </summary>
+
+                <div className="px-4 sm:px-5 pb-5 space-y-3">
+                  {receipt.orders.map((order) => (
+                    <div key={order.orderId || order.code} className="rounded-2xl bg-[#FFF9F0] border border-[#F4E3C8] p-3">
+                      <div className="flex justify-between gap-3 text-[11px] font-bold text-[#5C3825]">
+                        <span>#{order.code}</span>
+                        <span>{money(order.total)}</span>
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        {order.items.map((item, index) => (
+                          <div key={order.code + '-' + item.productId + '-' + index} className="flex justify-between gap-3 text-[11px] text-[#6B4028]">
+                            <span>{item.quantity}× {item.name}{item.personLabel ? (' · ' + item.personLabel) : ''}</span>
+                            <span>{money(item.totalPrice)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="rounded-2xl bg-[#3A2418] text-[#FFF7EA] p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div><span className="block text-[#C9974D] text-[9px] uppercase">Subtotal</span><strong>{money(receipt.subtotal)}</strong></div>
+                    <div><span className="block text-[#C9974D] text-[9px] uppercase">Descuento</span><strong>{money(receipt.discountAmount)}</strong></div>
+                    <div><span className="block text-[#C9974D] text-[9px] uppercase">Propina</span><strong>{money(receipt.tipAmount)}</strong></div>
+                    <div><span className="block text-[#C9974D] text-[9px] uppercase">Total pagado</span><strong>{money(receipt.totalPaid)}</strong></div>
+                  </div>
+                </div>
+              </details>
+            ))}
+          </div>
+        )}
+      </section>
 
       {selectedTable && (
         <div className="fixed inset-0 z-[100] bg-black/55 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
