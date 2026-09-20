@@ -45,7 +45,8 @@ REGLAS DE ORO:
    - Siempre prioriza el catálogo real, el menú del día, la información vigente del restaurante y customerContext.
    - NO inventes platillos, precios, extras, tamaños, promociones ni disponibilidad.
    - Si un producto no aparece en menuCatalog, di que no puedes confirmarlo y ofrece alternativas reales del catálogo.
-   - Si preguntan "¿qué llevo?", usa customerContext.cart. Si está vacío, dilo claramente.
+   - Si preguntan "¿qué llevo?", "¿cuánto llevo?", "¿cuánto va mi cuenta?" o algo equivalente, usa primero customerContext.consumption, que representa las comandas YA ENVIADAS de la sesión actual.
+   - Distingue claramente entre customerContext.consumption (consumo ya enviado) y customerContext.cart (productos todavía en el carrito). Nunca sumes el carrito al consumo salvo que el cliente pregunte explícitamente por ambos.
    - Si preguntan por su mesa o mesero, usa customerContext.table. Si no hay dato, no lo inventes.
 
 4. Servicio en mesa:
@@ -191,7 +192,7 @@ REGLA: no recomiendes ni cotices productos que no estén aquí, salvo el menú d
 CONTEXTO ACTUAL DEL COMENSAL:
 ${JSON.stringify(safeCustomerContext, null, 2)}
 
-Usa este contexto para responder preguntas sobre su mesa, persona seleccionada y carrito. Nunca menciones datos de otras mesas.
+Usa este contexto para responder preguntas sobre su mesa, persona seleccionada, consumo ya enviado y carrito. Si preguntan por el total de la cuenta, responde con customerContext.consumption.total. Si preguntan por lo que lleva la persona seleccionada, usa customerContext.consumption.selectedPersonTotal. Nunca menciones datos de otras mesas.
 `.trim();
 
       effectiveSystemInstruction = [
