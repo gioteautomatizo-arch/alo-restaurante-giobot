@@ -9,19 +9,20 @@ import {
   setTablePersonSelection,
   subscribeToTableSession,
 } from '../../lib/tableSessionsService';
-import { subscribeToTableOrders } from '../../lib/ordersService';
+import { subscribeToPublicTableOrders } from '../../lib/ordersService';
+import { TableSessionConsumption } from './TableSessionConsumption';
 import { getEffectiveService } from '../../lib/adminStorage';
 import { occupyTableFromPublicQR, subscribeToTables } from '../../lib/tablesService';
 import {
   CategoryId,
   EffectiveService,
-  RestaurantOrder,
+  PublicTableOrder,
   TableRecord,
   TableServiceRequestType,
   TableSession,
   TableSessionPerson,
 } from '../../types';
-import { Bell, Check, Loader2, ReceiptText, Utensils, X } from 'lucide-react';
+import { Bell, Check, Loader2, ReceiptText, Utensils, X, ListOrdered } from 'lucide-react';
 
 interface Props {
   tableNumber: number;
@@ -60,7 +61,8 @@ export const TableCustomerView: React.FC<Props> = ({
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [isOperationalModalOpen, setIsOperationalModalOpen] = useState(false);
-  const [tableOrders, setTableOrders] = useState<RestaurantOrder[]>([]);
+  const [isConsumptionModalOpen, setIsConsumptionModalOpen] = useState(false);
+  const [tableOrders, setTableOrders] = useState<PublicTableOrder[]>([]);
   const [effectiveService, setEffectiveService] = useState<EffectiveService>(() => getEffectiveService());
   const [submittingType, setSubmittingType] = useState<TableServiceRequestType | null>(null);
   const [pendingTypes, setPendingTypes] = useState<Set<TableServiceRequestType>>(new Set());
@@ -130,7 +132,7 @@ export const TableCustomerView: React.FC<Props> = ({
     });
   }, [tableNumber]);
 
-  useEffect(() => subscribeToTableOrders(tableNumber, setTableOrders), [tableNumber]);
+  useEffect(() => subscribeToPublicTableOrders(tableNumber, setTableOrders), [tableNumber]);
 
   useEffect(() => {
     const hideDuplicatedBuilders = () => {
@@ -340,11 +342,37 @@ export const TableCustomerView: React.FC<Props> = ({
           </div>
         </div>
 
-        {!isStaffOrder && <div className="grid grid-cols-2 gap-2 pt-1">
-          <button onClick={() => setIsOperationalModalOpen(true)} className="min-h-[48px] rounded-xl bg-white border border-[#DEC8AE] text-xs font-bold flex items-center justify-center gap-2"><Bell className="w-4 h-4 text-[#C9974D]"/>Necesito algo</button>
-          <button disabled={submittingType === 'PEDIR_CUENTA' || billAttended} onClick={() => request('PEDIR_CUENTA')} className={`min-h-[48px] rounded-xl border text-xs font-bold flex items-center justify-center gap-2 ${billPending || billAttended ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-[#3A2418] border-[#3A2418] text-white'}`}><ReceiptText className="w-4 h-4"/>{billAttended ? 'Cuenta atendida' : billPending ? 'Cuenta solicitada ✓' : 'Pedir cuenta'}</button>
-        </div>}
+        <div className={`grid gap-2 pt-1 ${isStaffOrder ? 'grid-cols-1' : 'grid-cols-3'}`}>
+          <button onClick={() => setIsConsumptionModalOpen(true)} className="min-h-[48px] rounded-xl bg-white border border-[#DEC8AE] text-xs font-bold flex items-center justify-center gap-2">
+            <ListOrdered className="w-4 h-4 text-[#C9974D]"/>{isStaffOrder ? 'Ver sesión completa' : 'Ver mi consumo'}
+          </button>
+          {!isStaffOrder && <>
+            <button onClick={() => setIsOperationalModalOpen(true)} className="min-h-[48px] rounded-xl bg-white border border-[#DEC8AE] text-xs font-bold flex items-center justify-center gap-2"><Bell className="w-4 h-4 text-[#C9974D]"/>Necesito algo</button>
+            <button disabled={submittingType === 'PEDIR_CUENTA' || billAttended} onClick={() => request('PEDIR_CUENTA')} className={`min-h-[48px] rounded-xl border text-xs font-bold flex items-center justify-center gap-2 ${billPending || billAttended ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-[#3A2418] border-[#3A2418] text-white'}`}><ReceiptText className="w-4 h-4"/>{billAttended ? 'Cuenta atendida' : billPending ? 'Cuenta solicitada ✓' : 'Pedir cuenta'}</button>
+          </>}
+        </div>
       </div>
+
+      {isConsumptionModalOpen && session && <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-3" onClick={() => setIsConsumptionModalOpen(false)}>
+        <div className="bg-[#FFFDF9] w-full sm:max-w-2xl max-h-[92vh] rounded-t-3xl sm:rounded-3xl border-2 border-[#C9974D]/50 overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="p-4 bg-[#3A2418] text-white flex items-center justify-between">
+            <div>
+              <div className="text-[10px] uppercase tracking-wider font-bold text-[#C9974D]">{isStaffOrder ? 'Sesión completa' : 'Tu consumo en tiempo real'}</div>
+              <h3 className="font-serif font-bold">Mesa {tableNumber}</h3>
+              <p className="text-[11px] opacity-80">{session.guestCount} {session.guestCount === 1 ? 'persona' : 'personas'} · {waiterName ? `Mesero: ${waiterName}` : 'Mesero por asignar'}</p>
+            </div>
+            <button onClick={() => setIsConsumptionModalOpen(false)} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center"><X className="w-4 h-4"/></button>
+          </div>
+          <div className="p-4 overflow-y-auto">
+            <TableSessionConsumption
+              session={session}
+              orders={tableOrders}
+              selectedPersonId={selectedPersonId}
+              showSelectedPersonSummary={!isStaffOrder}
+            />
+          </div>
+        </div>
+      </div>}
 
       {!isStaffOrder && isOperationalModalOpen && <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3"><div className="bg-[#FFFDF9] w-full max-w-lg rounded-3xl border-2 border-[#C9974D]/50 overflow-hidden">
         <div className="p-4 bg-[#3A2418] text-white flex items-center justify-between"><div><h3 className="font-serif font-bold">Atención en Mesa {tableNumber}</h3><p className="text-[11px] opacity-80">El personal recibirá tu aviso de inmediato</p></div><button onClick={() => setIsOperationalModalOpen(false)} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center"><X className="w-4 h-4"/></button></div>
