@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  CalendarDays,
   ChefHat,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   Clock3,
   Coffee,
@@ -48,6 +51,42 @@ function formatAge(iso: string): string {
   return `hace ${hours} h ${minutes % 60} min`;
 }
 
+function dateKeyFromDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function orderDateKey(iso?: string): string {
+  if (!iso) return '';
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return dateKeyFromDate(parsed);
+}
+
+function todayDateKey(): string {
+  return dateKeyFromDate(new Date());
+}
+
+function shiftDateKey(dateKey: string, amount: number): string {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const base = new Date(year, month - 1, day, 12, 0, 0, 0);
+  base.setDate(base.getDate() + amount);
+  return dateKeyFromDate(base);
+}
+
+function formatOperationalDate(dateKey: string): string {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+  return new Intl.DateTimeFormat('es-MX', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(date);
+}
+
 function orderOriginLabel(order: RestaurantOrder) {
   if (order.orderType === 'dine_in') return order.tableNumber ? `MESA ${order.tableNumber}` : 'EN SUCURSAL';
   if (order.orderType === 'pickup') return 'PARA LLEVAR';
@@ -91,7 +130,11 @@ function kitchenCourseParts(value?: string): {
 }
 
 function sortOldestFirst(list: RestaurantOrder[]): RestaurantOrder[] {
-  return [...list].sort((a, b) => (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0));
+  return [...list].sort((a, b) => {
+    const byCreatedAt = (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0);
+    if (byCreatedAt !== 0) return byCreatedAt;
+    return String(a.id || a.code || '').localeCompare(String(b.id || b.code || ''));
+  });
 }
 
 function stationStatusAsOrderStatus(status: PreparationStationStatus): RestaurantOrderStatus {
@@ -104,6 +147,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string>(todayDateKey);
   const [, setClockTick] = useState(0);
 
   const normalizedRole = String(currentUser.role || '').trim().toUpperCase();
@@ -126,29 +170,36 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
     [orders, activeStation]
   );
 
+  const dayOrders = useMemo(
+    () => stationOrders.filter((order) => orderDateKey(order.createdAt) === selectedDate),
+    [stationOrders, selectedDate]
+  );
+
   const visibleOrders = useMemo(() => {
     if (filter === 'ACTIVAS') {
       return sortOldestFirst(
-        stationOrders.filter((order) =>
+        dayOrders.filter((order) =>
           !['CANCELADO', 'ENTREGADO'].includes(order.status)
         )
       );
     }
 
     if (filter === 'ENTREGADO' || filter === 'CANCELADO') {
-      return sortOldestFirst(stationOrders.filter((order) => order.status === filter)).slice(0, filter === 'ENTREGADO' ? 40 : 100);
+      return sortOldestFirst(dayOrders.filter((order) => order.status === filter));
     }
 
     return sortOldestFirst(
-      stationOrders.filter((order) => getRestaurantOrderStationStatus(order, activeStation) === filter)
+      dayOrders.filter((order) => getRestaurantOrderStationStatus(order, activeStation) === filter)
     );
-  }, [stationOrders, activeStation, filter]);
+  }, [dayOrders, activeStation, filter]);
 
   const counts = useMemo(() => ({
-    NUEVO: stationOrders.filter((order) => getRestaurantOrderStationStatus(order, activeStation) === 'NUEVO' && !['CANCELADO', 'ENTREGADO'].includes(order.status)).length,
-    PREPARANDO: stationOrders.filter((order) => getRestaurantOrderStationStatus(order, activeStation) === 'PREPARANDO' && !['CANCELADO', 'ENTREGADO'].includes(order.status)).length,
-    LISTO: stationOrders.filter((order) => getRestaurantOrderStationStatus(order, activeStation) === 'LISTO' && order.status !== 'ENTREGADO' && order.status !== 'CANCELADO').length,
-  }), [stationOrders, activeStation]);
+    NUEVO: dayOrders.filter((order) => getRestaurantOrderStationStatus(order, activeStation) === 'NUEVO' && !['CANCELADO', 'ENTREGADO'].includes(order.status)).length,
+    PREPARANDO: dayOrders.filter((order) => getRestaurantOrderStationStatus(order, activeStation) === 'PREPARANDO' && !['CANCELADO', 'ENTREGADO'].includes(order.status)).length,
+    LISTO: dayOrders.filter((order) => getRestaurantOrderStationStatus(order, activeStation) === 'LISTO' && order.status !== 'ENTREGADO' && order.status !== 'CANCELADO').length,
+  }), [dayOrders, activeStation]);
+
+  const selectedDateIsToday = selectedDate === todayDateKey();
 
   const canKitchen = ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'COCINA', 'EMPLEADO'].includes(normalizedRole);
   const canCafeteria = ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'EMPLEADO'].includes(normalizedRole);
@@ -241,6 +292,55 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ currentUser }) => {
       </div>
 
       {error && <div className="rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 text-xs font-medium">{error}</div>}
+
+      <div className="bg-white border border-[#E8D4BE] rounded-2xl p-3 sm:p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[#A86B3D] text-[10px] font-black uppercase tracking-wider">
+            <CalendarDays className="w-4 h-4" /> Comandas por día
+          </div>
+          <p className="mt-1 font-serif font-black text-[#2B1B13] capitalize">
+            {selectedDateIsToday ? 'Hoy · ' : ''}{formatOperationalDate(selectedDate)}
+          </p>
+          <p className="text-[11px] text-[#7A5A45] mt-0.5">
+            {dayOrders.length} comanda{dayOrders.length === 1 ? '' : 's'} · ordenadas de la primera registrada a la última.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setSelectedDate((date) => shiftDateKey(date, -1))}
+            className="w-10 h-10 rounded-xl border border-[#DEC8AE] bg-white text-[#5C3825] flex items-center justify-center hover:bg-[#FFF7EA]"
+            aria-label="Día anterior"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(event) => event.target.value && setSelectedDate(event.target.value)}
+            className="h-10 rounded-xl border border-[#DEC8AE] bg-white px-3 text-xs font-bold text-[#3A2418] outline-none focus:border-[#C9974D]"
+            aria-label="Fecha de comandas"
+          />
+          <button
+            type="button"
+            onClick={() => setSelectedDate((date) => shiftDateKey(date, 1))}
+            className="w-10 h-10 rounded-xl border border-[#DEC8AE] bg-white text-[#5C3825] flex items-center justify-center hover:bg-[#FFF7EA]"
+            aria-label="Día siguiente"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          {!selectedDateIsToday && (
+            <button
+              type="button"
+              onClick={() => setSelectedDate(todayDateKey())}
+              className="h-10 rounded-xl bg-[#3A2418] px-4 text-xs font-black text-[#FFF7EA] hover:bg-[#5C3825]"
+            >
+              Hoy
+            </button>
+          )}
+        </div>
+      </div>
 
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
         {([
