@@ -14,6 +14,7 @@ import {
   TablePaymentMethod,
 } from '../types';
 import { sanitizeFirestorePayload } from './firestoreService';
+import { PUBLIC_TABLE_ORDERS_COLLECTION } from './ordersService';
 
 export const TABLE_PAYMENTS_COLLECTION = 'table_payments';
 export const TABLE_PAYMENTS_EVENT = 'alo_table_payments_updated';
@@ -212,6 +213,10 @@ export async function settleTableAccount(
         billingStatus: 'PAGADO',
         paidAt: now,
         paymentId: paymentRef.id,
+        updatedAt: now,
+      }));
+      transaction.update(doc(db, PUBLIC_TABLE_ORDERS_COLLECTION, order.id), sanitizeFirestorePayload({
+        billingStatus: 'PAGADO',
         updatedAt: now,
       }));
     });
