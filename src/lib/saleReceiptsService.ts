@@ -1,7 +1,7 @@
 import {
   collection,
   doc,
-  getDocs,
+  getDoc,
   onSnapshot,
   query,
   setDoc,
@@ -45,6 +45,11 @@ export function subscribeToSaleReceipts(
       callback([]);
     }
   );
+}
+
+function receiptDocumentId(session: TableSession): string {
+  const stamp = Date.parse(session.openedAt || '') || Date.now();
+  return `${session.id || `table-${session.tableNumber}`}-${stamp}`;
 }
 
 function receiptCode(tableNumber: number): string {
@@ -96,23 +101,21 @@ export async function createFinalSaleReceipt(input: {
     throw new Error('La mesa no tiene una sesión válida para generar el ticket final.');
   }
 
-  const existingQuery = query(
-    collection(db, SALE_RECEIPTS_COLLECTION),
-    where('restaurantId', '==', RESTAURANT_ID),
-    where('tableSessionId', '==', sessionId)
-  );
-  const existing = await getDocs(existingQuery);
-  if (!existing.empty) {
-    const snap = existing.docs[0];
-    return { ...(snap.data() as SaleReceipt), id: snap.id };
+  const receiptRef = doc(db, SALE_RECEIPTS_COLLECTION, receiptDocumentId(input.session));
+  const existing = await getDoc(receiptRef);
+  if (existing.exists()) {
+    return { ...(existing.data() as SaleReceipt), id: existing.id };
   }
+
+  const openedAtMs = Date.parse(input.session.openedAt || '') || 0;
 
   const validOrders = input.orders
     .filter((order) =>
       order.orderType === 'dine_in' &&
       order.tableNumber === input.tableNumber &&
       order.tableSessionId === sessionId &&
-      order.status !== 'CANCELADO'
+      order.status !== 'CANCELADO' &&
+      (Date.parse(order.createdAt || '') || 0) >= openedAtMs
     )
     .sort((a, b) => (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0));
 
@@ -120,7 +123,8 @@ export async function createFinalSaleReceipt(input: {
     .filter((payment) =>
       payment.status === 'PAGADO' &&
       payment.tableNumber === input.tableNumber &&
-      payment.tableSessionId === sessionId
+      payment.tableSessionId === sessionId &&
+      (Date.parse(payment.createdAt || '') || 0) >= openedAtMs
     )
     .sort((a, b) => (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0));
 
@@ -153,7 +157,6 @@ export async function createFinalSaleReceipt(input: {
     status: 'PAGADO',
   };
 
-  const ref = doc(collection(db, SALE_RECEIPTS_COLLECTION));
-  await setDoc(ref, sanitizeFirestorePayload(receipt));
-  return { ...receipt, id: ref.id };
+  await setDoc(receiptRef, sanitizeFirestorePayload(receipt));
+  return { ...receipt, id: receiptRef.id };
 }
