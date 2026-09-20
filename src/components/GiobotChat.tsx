@@ -208,6 +208,9 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
           aguaDelDia: menuConfig.aguaDelDia || '',
           postreDelDia: menuConfig.postreDelDia || '',
           isAvailable: menuConfig.isAvailable !== false,
+          availabilityStatus: menuConfig.availabilityStatus || (menuConfig.isAvailable === false ? 'AGOTADA' : 'DISPONIBLE'),
+          availableWeekdays: menuConfig.availableWeekdays || [1, 2, 3, 4, 5],
+          quickAlternatives: menuConfig.quickAlternatives || [],
         };
       }
     } catch (err) {
