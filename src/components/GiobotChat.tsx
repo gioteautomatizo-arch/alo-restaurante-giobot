@@ -273,7 +273,7 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
       }
     }
 
-    const currentSessionOrders = tableSessionPayload && effectiveTableNumber
+    const currentSessionOrders = tableSessionPayload?.sessionId && effectiveTableNumber
       ? tableOrders.filter((order) => {
           if (order.status === 'CANCELADO') return false;
           const openedAt = Date.parse(tableSessionPayload.openedAt || '') || 0;
