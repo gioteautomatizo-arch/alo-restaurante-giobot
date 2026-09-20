@@ -4,11 +4,13 @@ import {
   doc,
   onSnapshot,
   query,
+  setDoc,
   updateDoc,
   where,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import {
+  PublicTableOrder,
   RestaurantOrder,
   RestaurantOrderStatus,
   StaffUser,
@@ -16,6 +18,7 @@ import {
 import { sanitizeFirestorePayload } from './firestoreService';
 
 export const ORDERS_COLLECTION = 'restaurant_orders';
+export const PUBLIC_TABLE_ORDERS_COLLECTION = 'public_table_orders';
 export const ORDERS_EVENT = 'alo_orders_updated';
 export const RESTAURANT_ID = 'alo-restaurante' as const;
 
@@ -104,6 +107,27 @@ export async function createRestaurantOrder(
   }) as Omit<RestaurantOrder, 'id'>;
 
   const ref = await addDoc(collection(db, ORDERS_COLLECTION), payload);
+
+  if (payload.orderType === 'dine_in' && payload.tableNumber) {
+    const publicPayload: Omit<PublicTableOrder, 'id'> = {
+      orderId: ref.id,
+      code: payload.code,
+      restaurantId: RESTAURANT_ID,
+      tableNumber: payload.tableNumber,
+      tableSessionId: payload.tableSessionId,
+      accountId: payload.accountId,
+      accountLabel: payload.accountLabel,
+      orderSource: payload.orderSource,
+      items: payload.items,
+      total: Number(payload.total || 0),
+      status: payload.status,
+      billingStatus: payload.billingStatus,
+      createdAt: payload.createdAt,
+      updatedAt: payload.updatedAt,
+    };
+    await setDoc(doc(db, PUBLIC_TABLE_ORDERS_COLLECTION, ref.id), sanitizeFirestorePayload(publicPayload));
+  }
+
   return { ...payload, id: ref.id } as RestaurantOrder;
 }
 
@@ -173,6 +197,43 @@ export function subscribeToTableOrders(
     },
     (error) => {
       console.warn(`[ordersService] listener error para mesa ${tableNumber}:`, error);
+      callback([]);
+    }
+  );
+}
+
+
+export function subscribeToPublicTableOrders(
+  tableNumber: number,
+  callback: (orders: PublicTableOrder[]) => void
+): () => void {
+  if (!tableNumber || isNaN(tableNumber)) {
+    callback([]);
+    return () => {};
+  }
+
+  const q = query(
+    collection(db, PUBLIC_TABLE_ORDERS_COLLECTION),
+    where('restaurantId', '==', RESTAURANT_ID),
+    where('tableNumber', '==', tableNumber)
+  );
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const orders: PublicTableOrder[] = [];
+      snapshot.forEach((snap) => {
+        orders.push({ ...(snap.data() as PublicTableOrder), id: snap.id });
+      });
+      orders.sort((a, b) => {
+        const aTime = Date.parse(a.createdAt || '') || 0;
+        const bTime = Date.parse(b.createdAt || '') || 0;
+        return aTime - bTime;
+      });
+      callback(orders);
+    },
+    (error) => {
+      console.warn('[ordersService] public table listener error:', error);
       callback([]);
     }
   );
@@ -256,6 +317,12 @@ export async function updateRestaurantOrderStationStatus(
   if (allReady) patch.readyAt = now;
 
   await updateDoc(doc(db, ORDERS_COLLECTION, order.id), sanitizeFirestorePayload(patch));
+  if (order.orderType === 'dine_in' && order.tableNumber) {
+    await updateDoc(doc(db, PUBLIC_TABLE_ORDERS_COLLECTION, order.id), sanitizeFirestorePayload({
+      status: globalStatus,
+      updatedAt: now,
+    })).catch(() => {});
+  }
 }
 
 export async function updateRestaurantOrderStatus(
@@ -281,4 +348,8 @@ export async function updateRestaurantOrderStatus(
   }
 
   await updateDoc(doc(db, ORDERS_COLLECTION, orderId), sanitizeFirestorePayload(patch));
+  await updateDoc(doc(db, PUBLIC_TABLE_ORDERS_COLLECTION, orderId), sanitizeFirestorePayload({
+    status,
+    updatedAt: now,
+  })).catch(() => {});
 }
