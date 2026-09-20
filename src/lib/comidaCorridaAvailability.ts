@@ -2,6 +2,26 @@ import { ComidaCorridaAvailabilityStatus, DailyMenuConfig } from '../types';
 
 export const WEEKDAY_LABELS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'] as const;
 
+export function getMexicoCityDateKey(date: Date = new Date()): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Mexico_City',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+    const year = parts.find((part) => part.type === 'year')?.value || '';
+    const month = parts.find((part) => part.type === 'month')?.value || '';
+    const day = parts.find((part) => part.type === 'day')?.value || '';
+    return `${year}-${month}-${day}`;
+  } catch {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+}
+
 export function getMexicoCityWeekday(date: Date = new Date()): number {
   try {
     const weekday = new Intl.DateTimeFormat('en-US', {
@@ -31,8 +51,13 @@ export function getComidaCorridaStatus(config: DailyMenuConfig, date: Date = new
   const today = getMexicoCityWeekday(date);
   if (!enabledDays.includes(today)) return 'NO_DISPONIBLE';
 
-  if (config.availabilityStatus) return config.availabilityStatus;
-  return config.isAvailable === false ? 'AGOTADA' : 'DISPONIBLE';
+  const todayKey = getMexicoCityDateKey(date);
+  const hasFreshManualStatus =
+    !!config.availabilityStatus &&
+    (!config.availabilityStatusDate || config.availabilityStatusDate === todayKey);
+
+  if (hasFreshManualStatus) return config.availabilityStatus as ComidaCorridaAvailabilityStatus;
+  return 'DISPONIBLE';
 }
 
 export function isComidaCorridaOrderable(config: DailyMenuConfig, date: Date = new Date()): boolean {
