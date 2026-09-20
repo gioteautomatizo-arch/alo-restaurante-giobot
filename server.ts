@@ -158,8 +158,13 @@ Guarniciones: ${guarniciones || 'No especificadas'}
 Agua: ${dailyMenu.aguaDelDia || 'Agua fresca del día'}
 Postre: ${dailyMenu.postreDelDia || 'Postre del día'}
 Disponible: ${isAvailable ? 'Sí' : 'No'}
+Estado operativo: ${dailyMenu.availabilityStatus || (isAvailable ? 'DISPONIBLE' : 'AGOTADA')}
+Días habituales: ${Array.isArray(dailyMenu.availableWeekdays) ? dailyMenu.availableWeekdays.join(', ') : '1, 2, 3, 4, 5'}
+Alternativas rápidas si se termina: ${Array.isArray(dailyMenu.quickAlternatives) && dailyMenu.quickAlternatives.length ? dailyMenu.quickAlternatives.join(', ') : 'No configuradas'}
 
 Usa únicamente estos datos si preguntan por el menú del día.
+Si el estado es AGOTADA o NO_DISPONIBLE, no ofrezcas armar comida corrida y dirige al cliente a las alternativas rápidas configuradas.
+Si el estado es ULTIMAS_PORCIONES, dilo claramente antes de recomendar la comida corrida.
 `.trim();
       }
 
