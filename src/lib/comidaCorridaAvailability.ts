@@ -48,15 +48,22 @@ export function getComidaCorridaStatus(config: DailyMenuConfig, date: Date = new
     ? config.availableWeekdays
     : [1, 2, 3, 4, 5];
 
+  const todayKey = getMexicoCityDateKey(date);
+
+  // El estado manual del día tiene prioridad sobre la programación semanal.
+  // Ejemplo: si normalmente no hay corrida en domingo, pero hoy la dueña marca
+  // "Disponible", debe poder venderse sólo hoy sin activar todos los domingos.
+  const hasTodayManualOverride =
+    !!config.availabilityStatus &&
+    config.availabilityStatusDate === todayKey;
+
+  if (hasTodayManualOverride) {
+    return config.availabilityStatus as ComidaCorridaAvailabilityStatus;
+  }
+
   const today = getMexicoCityWeekday(date);
   if (!enabledDays.includes(today)) return 'NO_DISPONIBLE';
 
-  const todayKey = getMexicoCityDateKey(date);
-  const hasFreshManualStatus =
-    !!config.availabilityStatus &&
-    (!config.availabilityStatusDate || config.availabilityStatusDate === todayKey);
-
-  if (hasFreshManualStatus) return config.availabilityStatus as ComidaCorridaAvailabilityStatus;
   return 'DISPONIBLE';
 }
 
