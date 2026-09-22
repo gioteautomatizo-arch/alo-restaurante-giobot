@@ -194,7 +194,7 @@ export const BusinessPortal: React.FC = () => {
       <main className="mx-auto max-w-6xl px-4 py-7 sm:py-10">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <div><span className="text-xs font-black uppercase tracking-[0.14em] text-[#A86B3D]">Cuenta de negocio</span><h2 className="mt-1 font-serif text-3xl font-black">¿Qué quieres administrar?</h2><p className="mt-2 max-w-2xl text-sm text-[#6B4028]">Cada negocio abre su propia página, POS, inventario, clientes e IA según los módulos que tenga activos.</p></div>
-          <button type="button" onClick={() => { setShowTemplates(true); setSelectedTemplate(null); }} className="rounded-2xl bg-[#111827] px-4 py-3 text-sm font-black text-white flex items-center justify-center gap-2"><Plus className="w-4 h-4 text-amber-300" /> Crear nuevo negocio</button>
+          <button type="button" onClick={() => { window.location.hash = '#business-new'; }} className="rounded-2xl bg-[#111827] px-4 py-3 text-sm font-black text-white flex items-center justify-center gap-2"><Plus className="w-4 h-4 text-amber-300" /> Crear nuevo negocio</button>
         </div>
 
         <section className="mt-7 grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
