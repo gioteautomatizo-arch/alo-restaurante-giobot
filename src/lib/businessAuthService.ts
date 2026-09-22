@@ -65,8 +65,30 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
     throw new Error('Ese nombre de negocio ya está en uso. Elige otro.');
   }
 
-  const credential = await createUserWithEmailAndPassword(auth, input.email, input.password);
-  const userId = credential.user.uid;
+  let userId: string;
+
+  try {
+    const credential = await createUserWithEmailAndPassword(auth, input.email, input.password);
+    userId = credential.user.uid;
+  } catch (err: any) {
+    if (err?.code !== 'auth/email-already-in-use') {
+      throw err;
+    }
+
+    const normalizedEmail = input.email.trim().toLowerCase();
+    const currentUser = auth.currentUser;
+
+    if (currentUser?.email?.trim().toLowerCase() === normalizedEmail) {
+      userId = currentUser.uid;
+    } else {
+      try {
+        const credential = await signInWithEmailAndPassword(auth, input.email, input.password);
+        userId = credential.user.uid;
+      } catch {
+        throw new Error('Este correo ya está registrado. Usa la contraseña de esa cuenta o utiliza otro correo.');
+      }
+    }
+  }
 
   const tenant = createRestaurantTenant({
     restaurantId: businessId,
