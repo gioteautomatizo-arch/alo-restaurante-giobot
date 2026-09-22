@@ -23,6 +23,7 @@ export interface DemoBusinessProfile {
   type: string;
   typeLabel: string;
   email: string;
+  password: string;
   assistantName: string;
   assistantMode: 'GIOBOT_BASE' | 'CUSTOM_AVATAR';
   logoDataUrl?: string;
@@ -108,6 +109,7 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
       type: businessType,
       typeLabel: template.name,
       email: email.trim().toLowerCase(),
+      password,
       assistantName: assistantMode === 'GIOBOT_BASE' ? 'Giobot' : assistantName.trim(),
       assistantMode,
       logoDataUrl,
