@@ -16,6 +16,7 @@ import {
   UtensilsCrossed,
 } from 'lucide-react';
 import { normalizeRestaurantSlug } from '../../lib/restaurantCore';
+import { uploadBusinessLogo } from '../../lib/menuImagesService';
 
 export interface DemoBusinessProfile {
   name: string;
@@ -31,7 +32,7 @@ export interface DemoBusinessProfile {
 
 interface BusinessOnboardingProps {
   onCancel: () => void;
-  onComplete: (profile: DemoBusinessProfile) => void;
+  onComplete: (profile: DemoBusinessProfile) => void | Promise<void>;
 }
 
 type BusinessTemplate = {
@@ -61,6 +62,9 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [logoDataUrl, setLogoDataUrl] = useState<string | undefined>();
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [isFinishing, setIsFinishing] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
   const [assistantMode, setAssistantMode] = useState<'GIOBOT_BASE' | 'CUSTOM_AVATAR'>('GIOBOT_BASE');
   const [assistantName, setAssistantName] = useState('Giobot');
 
@@ -95,6 +99,7 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
   const handleLogo = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !file.type.startsWith('image/')) return;
+    setLogoFile(file);
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') setLogoDataUrl(reader.result);
@@ -102,18 +107,31 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
     reader.readAsDataURL(file);
   };
 
-  const finish = () => {
-    onComplete({
-      name: businessName.trim(),
-      handle: normalizeRestaurantSlug(handle),
-      type: businessType,
-      typeLabel: template.name,
-      email: email.trim().toLowerCase(),
-      password,
-      assistantName: assistantMode === 'GIOBOT_BASE' ? 'Giobot' : assistantName.trim(),
-      assistantMode,
-      logoDataUrl,
-    });
+  const finish = async () => {
+    if (isFinishing) return;
+    setFinishError(null);
+    setIsFinishing(true);
+    try {
+      let uploadedLogoUrl: string | undefined;
+      if (logoFile) {
+        uploadedLogoUrl = await uploadBusinessLogo(normalizeRestaurantSlug(handle) || 'negocio', logoFile);
+      }
+      await onComplete({
+        name: businessName.trim(),
+        handle: normalizeRestaurantSlug(handle),
+        type: businessType,
+        typeLabel: template.name,
+        email: email.trim().toLowerCase(),
+        password,
+        assistantName: assistantMode === 'GIOBOT_BASE' ? 'Giobot' : assistantName.trim(),
+        assistantMode,
+        logoDataUrl: uploadedLogoUrl,
+      });
+    } catch (err: any) {
+      setFinishError(err?.message || 'No se pudo guardar tu negocio. Intenta de nuevo.');
+    } finally {
+      setIsFinishing(false);
+    }
   };
 
   return (
@@ -199,7 +217,7 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
             <section>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-300">Paso 3</p>
               <h1 className="mt-2 text-3xl font-black">Crea tu acceso.</h1>
-              <p className="mt-2 text-sm text-slate-400">El correo será la cuenta principal del dueño. En esta primera versión el registro todavía es de demostración.</p>
+              <p className="mt-2 text-sm text-slate-400">El correo será la cuenta principal del dueño.</p>
               <div className="mt-7 space-y-4">
                 <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 focus-within:border-amber-300">
                   <Mail className="w-5 h-5 text-amber-300" />
@@ -222,7 +240,7 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
                 {logoDataUrl ? <img src={logoDataUrl} alt="Vista previa del negocio" className="w-full h-full object-cover" /> : <div className="text-center"><Camera className="w-10 h-10 mx-auto text-amber-300" /><span className="mt-3 block text-sm font-bold">Agregar foto</span><span className="mt-1 block text-xs text-slate-500">JPG o PNG</span></div>}
                 <input type="file" accept="image/*" onChange={handleLogo} className="sr-only" />
               </label>
-              {logoDataUrl && <button type="button" onClick={() => setLogoDataUrl(undefined)} className="mt-4 text-xs font-bold text-slate-400 underline">Quitar foto</button>}
+              {logoDataUrl && <button type="button" onClick={() => { setLogoDataUrl(undefined); setLogoFile(null); }} className="mt-4 text-xs font-bold text-slate-400 underline">Quitar foto</button>}
             </section>
           )}
 
@@ -265,10 +283,13 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
 
       <footer className="px-5 pb-6 pt-3">
         <div className="mx-auto max-w-xl">
+          {finishError && (
+            <div className="mb-3 rounded-2xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-xs font-semibold text-rose-200">{finishError}</div>
+          )}
           {step < TOTAL_STEPS ? (
             <button type="button" onClick={goNext} disabled={!canContinue} className="w-full rounded-2xl bg-amber-300 px-5 py-4 text-sm font-black text-[#111827] disabled:opacity-35 flex items-center justify-center gap-2 active:scale-[0.99]">Siguiente <ArrowRight className="w-4 h-4" /></button>
           ) : (
-            <button type="button" onClick={finish} className="w-full rounded-2xl bg-emerald-400 px-5 py-4 text-sm font-black text-[#052e1a] flex items-center justify-center gap-2 active:scale-[0.99]">Entrar a mi espacio <ArrowRight className="w-4 h-4" /></button>
+            <button type="button" onClick={finish} disabled={isFinishing} className="w-full rounded-2xl bg-emerald-400 px-5 py-4 text-sm font-black text-[#052e1a] flex items-center justify-center gap-2 active:scale-[0.99] disabled:opacity-60">{isFinishing ? 'Guardando…' : 'Entrar a mi espacio'} <ArrowRight className="w-4 h-4" /></button>
           )}
           {step === 4 && <button type="button" onClick={goNext} className="mt-3 w-full py-2 text-xs font-bold text-slate-400">Omitir por ahora</button>}
         </div>
