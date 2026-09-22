@@ -45,6 +45,21 @@ function membershipRef(businessId: string, userId: string) {
   return doc(db, MEMBERSHIPS_COLLECTION, `${businessId}_${userId}`);
 }
 
+function removeUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => removeUndefinedDeep(item)) as T;
+  }
+
+  if (value && typeof value === 'object') {
+    const cleanEntries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .map(([key, entryValue]) => [key, removeUndefinedDeep(entryValue)]);
+    return Object.fromEntries(cleanEntries) as T;
+  }
+
+  return value;
+}
+
 /**
  * Registra un negocio nuevo de punta a punta:
  * 1) Crea la cuenta de acceso del dueño en Firebase Auth.
@@ -90,12 +105,12 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
     }
   }
 
-  const tenant = createRestaurantTenant({
+  const tenant = removeUndefinedDeep(createRestaurantTenant({
     restaurantId: businessId,
     restaurantName: input.businessName,
     publicSlug: businessId,
     logoUrl: input.logoUrl,
-  });
+  }));
 
   const membership: RestaurantMembership = {
     restaurantId: businessId,
