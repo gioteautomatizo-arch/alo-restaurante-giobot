@@ -3,9 +3,21 @@ import { db } from './firebase';
 import { CategoryId, StaffUser } from '../types';
 import { ORIGINAL_MENU_CATALOG } from '../data/originalMenuCatalog';
 
-export const MENU_CATALOG_DOC_PATH = ['daily_menu', 'menu_catalog'] as const;
 export const MENU_CATALOG_VERSION = 1;
+
+/**
+ * ID del negocio original (Restaurante Calientito).
+ * Se conserva como valor por defecto para que nada se rompa mientras
+ * conectamos negocios nuevos al modelo businesses/{businessId}/...
+ */
 export const RESTAURANT_ID = 'alo-restaurante';
+
+/**
+ * Ubicación ORIGINAL del catálogo de Calientito. No se toca ni se migra
+ * en este paso: Calientito sigue leyendo y escribiendo exactamente aquí.
+ */
+const LEGACY_CATALOG_PATH = ['daily_menu', 'menu_catalog'] as const;
+export const MENU_CATALOG_DOC_PATH = LEGACY_CATALOG_PATH;
 
 const PACKAGE_ONLY_ITEM_IDS = new Set(['paquete-desayuno', 'paquete-hamburguesa']);
 
@@ -22,7 +34,7 @@ export interface ManagedMenuExtra {
 
 export interface ManagedMenuItem {
   id: string;
-  restaurantId: typeof RESTAURANT_ID;
+  restaurantId: string;
   name: string;
   category: CategoryId;
   description: string;
@@ -47,7 +59,7 @@ export interface ManagedMenuItem {
 }
 
 export interface MenuCatalogDocument {
-  restaurantId: typeof RESTAURANT_ID;
+  restaurantId: string;
   version: number;
   sourceLabel: string;
   items: ManagedMenuItem[];
@@ -55,17 +67,31 @@ export interface MenuCatalogDocument {
   updatedBy: string;
 }
 
-const catalogRef = () => doc(db, MENU_CATALOG_DOC_PATH[0], MENU_CATALOG_DOC_PATH[1]);
+/**
+ * Ubicación del catálogo, según el negocio.
+ * - Calientito (RESTAURANT_ID): sigue usando su documento original, intacto.
+ * - Cualquier otro negocio: usa su propia carpeta businesses/{businessId}/...
+ */
+function catalogRef(businessId: string = RESTAURANT_ID) {
+  if (businessId === RESTAURANT_ID) {
+    return doc(db, LEGACY_CATALOG_PATH[0], LEGACY_CATALOG_PATH[1]);
+  }
+  return doc(db, 'businesses', businessId, 'catalog', 'menu_catalog');
+}
 
 type CatalogSubscriber = {
   callback: (catalog: MenuCatalogDocument | null) => void;
   onError?: (error: unknown) => void;
 };
 
-const catalogSubscribers = new Set<CatalogSubscriber>();
-let catalogFirestoreUnsubscribe: (() => void) | null = null;
-let catalogCache: MenuCatalogDocument | null = null;
-let catalogHasSnapshot = false;
+// NOTA: esta caché es compartida por documento (businessId). Hoy la app solo
+// mira un negocio a la vez, así que es seguro. Si en el futuro una misma
+// pantalla necesita ver el catálogo de dos negocios distintos al mismo
+// tiempo, esto habrá que ajustarlo entonces.
+const catalogSubscribersByBusiness = new Map<string, Set<CatalogSubscriber>>();
+const catalogUnsubscribeByBusiness = new Map<string, () => void>();
+const catalogCacheByBusiness = new Map<string, MenuCatalogDocument | null>();
+const catalogHasSnapshotByBusiness = new Map<string, boolean>();
 
 function cleanArray<T>(value: T[] | undefined): T[] | undefined {
   if (!value || value.length === 0) return undefined;
@@ -99,10 +125,10 @@ function enrichPackageExtras(item: ManagedMenuItem, extras: ManagedMenuExtra[]):
   return next;
 }
 
-function sanitizeItem(item: ManagedMenuItem): ManagedMenuItem {
+function sanitizeItem(item: ManagedMenuItem, businessId: string): ManagedMenuItem {
   const clean: ManagedMenuItem = {
     ...item,
-    restaurantId: RESTAURANT_ID,
+    restaurantId: businessId,
     name: item.name.trim(),
     description: item.description.trim(),
     imageUrls: Array.from(new Set((item.imageUrls || []).map((url) => url.trim()).filter(Boolean))),
@@ -163,53 +189,56 @@ function sanitizeItem(item: ManagedMenuItem): ManagedMenuItem {
   return clean;
 }
 
-function sanitizeCatalog(items: ManagedMenuItem[], userName: string): MenuCatalogDocument {
+function sanitizeCatalog(items: ManagedMenuItem[], userName: string, businessId: string): MenuCatalogDocument {
   return {
-    restaurantId: RESTAURANT_ID,
+    restaurantId: businessId,
     version: MENU_CATALOG_VERSION,
-    sourceLabel: 'Menú completo original de Restaurante Calientito',
-    items: items.map(sanitizeItem).sort((a, b) => a.sortOrder - b.sortOrder),
+    sourceLabel: businessId === RESTAURANT_ID ? 'Menú completo original de Restaurante Calientito' : 'Catálogo del negocio',
+    items: items.map((item) => sanitizeItem(item, businessId)).sort((a, b) => a.sortOrder - b.sortOrder),
     updatedAt: new Date().toISOString(),
     updatedBy: userName,
   };
 }
 
-function normalizeCatalog(data: MenuCatalogDocument): MenuCatalogDocument {
+function normalizeCatalog(data: MenuCatalogDocument, businessId: string): MenuCatalogDocument {
   return {
     ...data,
-    restaurantId: RESTAURANT_ID,
+    restaurantId: businessId,
     items: Array.isArray(data.items)
       ? data.items
-          .map(sanitizeItem)
+          .map((item) => sanitizeItem(item, businessId))
           .filter((item) => !PACKAGE_ONLY_ITEM_IDS.has(item.id))
       : [],
   };
 }
 
-function notifyCatalogSubscribers(catalog: MenuCatalogDocument | null) {
-  catalogCache = catalog;
-  catalogHasSnapshot = true;
-  [...catalogSubscribers].forEach((subscriber) => subscriber.callback(catalog));
+function notifyCatalogSubscribers(businessId: string, catalog: MenuCatalogDocument | null) {
+  catalogCacheByBusiness.set(businessId, catalog);
+  catalogHasSnapshotByBusiness.set(businessId, true);
+  const subs = catalogSubscribersByBusiness.get(businessId);
+  if (subs) [...subs].forEach((subscriber) => subscriber.callback(catalog));
 }
 
-function ensureCatalogListener() {
-  if (catalogFirestoreUnsubscribe) return;
+function ensureCatalogListener(businessId: string) {
+  if (catalogUnsubscribeByBusiness.has(businessId)) return;
 
-  catalogFirestoreUnsubscribe = onSnapshot(
-    catalogRef(),
+  const unsubscribe = onSnapshot(
+    catalogRef(businessId),
     (snapshot) => {
       if (!snapshot.exists()) {
-        notifyCatalogSubscribers(null);
+        notifyCatalogSubscribers(businessId, null);
         return;
       }
-      notifyCatalogSubscribers(normalizeCatalog(snapshot.data() as MenuCatalogDocument));
+      notifyCatalogSubscribers(businessId, normalizeCatalog(snapshot.data() as MenuCatalogDocument, businessId));
     },
     (error) => {
       console.error('Error leyendo catálogo de menú:', error);
-      [...catalogSubscribers].forEach((subscriber) => subscriber.onError?.(error));
-      catalogFirestoreUnsubscribe = null;
+      const subs = catalogSubscribersByBusiness.get(businessId);
+      if (subs) [...subs].forEach((subscriber) => subscriber.onError?.(error));
+      catalogUnsubscribeByBusiness.delete(businessId);
     }
   );
+  catalogUnsubscribeByBusiness.set(businessId, unsubscribe);
 }
 
 export function createMenuItemId(name: string): string {
@@ -228,42 +257,58 @@ export function createMenuItemId(name: string): string {
  * Suscripción compartida al catálogo.
  * App, portada y cualquier otro consumidor reutilizan un único onSnapshot,
  * evitando listeners duplicados de Firestore.
+ *
+ * businessId es opcional: si no se indica, usa Calientito (comportamiento
+ * actual, sin cambios).
  */
 export function subscribeToMenuCatalog(
   callback: (catalog: MenuCatalogDocument | null) => void,
-  onError?: (error: unknown) => void
+  onError?: (error: unknown) => void,
+  businessId: string = RESTAURANT_ID
 ): () => void {
   const subscriber: CatalogSubscriber = { callback, onError };
-  catalogSubscribers.add(subscriber);
+  if (!catalogSubscribersByBusiness.has(businessId)) {
+    catalogSubscribersByBusiness.set(businessId, new Set());
+  }
+  catalogSubscribersByBusiness.get(businessId)!.add(subscriber);
 
-  if (catalogHasSnapshot) callback(catalogCache);
-  ensureCatalogListener();
+  if (catalogHasSnapshotByBusiness.get(businessId)) {
+    callback(catalogCacheByBusiness.get(businessId) ?? null);
+  }
+  ensureCatalogListener(businessId);
 
   return () => {
-    catalogSubscribers.delete(subscriber);
-    if (catalogSubscribers.size === 0 && catalogFirestoreUnsubscribe) {
-      catalogFirestoreUnsubscribe();
-      catalogFirestoreUnsubscribe = null;
-      catalogCache = null;
-      catalogHasSnapshot = false;
+    const subs = catalogSubscribersByBusiness.get(businessId);
+    subs?.delete(subscriber);
+    if (subs && subs.size === 0) {
+      const unsubscribe = catalogUnsubscribeByBusiness.get(businessId);
+      if (unsubscribe) {
+        unsubscribe();
+        catalogUnsubscribeByBusiness.delete(businessId);
+      }
+      catalogCacheByBusiness.delete(businessId);
+      catalogHasSnapshotByBusiness.delete(businessId);
     }
   };
 }
 
-export async function initializeMenuCatalogFromOriginal(user: StaffUser): Promise<MenuCatalogDocument> {
+export async function initializeMenuCatalogFromOriginal(
+  user: StaffUser,
+  businessId: string = RESTAURANT_ID
+): Promise<MenuCatalogDocument> {
   const now = new Date().toISOString();
   const originalItems: ManagedMenuItem[] = ORIGINAL_MENU_CATALOG.map((item, index) => sanitizeItem({
     ...item,
-    restaurantId: RESTAURANT_ID,
+    restaurantId: businessId,
     sortOrder: Number.isFinite(item.sortOrder) ? item.sortOrder : index,
     updatedAt: now,
     updatedBy: user.name,
-  }));
+  }, businessId));
 
-  const payload = sanitizeCatalog(originalItems, user.name);
+  const payload = sanitizeCatalog(originalItems, user.name, businessId);
 
   await runTransaction(db, async (tx) => {
-    const ref = catalogRef();
+    const ref = catalogRef(businessId);
     const current = await tx.get(ref);
     if (current.exists()) {
       throw new Error('El catálogo ya fue inicializado. No se sobrescribió ningún dato.');
@@ -274,50 +319,59 @@ export async function initializeMenuCatalogFromOriginal(user: StaffUser): Promis
   return payload;
 }
 
-export async function saveMenuCatalog(items: ManagedMenuItem[], user: StaffUser): Promise<MenuCatalogDocument> {
-  const payload = sanitizeCatalog(items, user.name);
-  await setDoc(catalogRef(), payload, { merge: false });
+export async function saveMenuCatalog(
+  items: ManagedMenuItem[],
+  user: StaffUser,
+  businessId: string = RESTAURANT_ID
+): Promise<MenuCatalogDocument> {
+  const payload = sanitizeCatalog(items, user.name, businessId);
+  await setDoc(catalogRef(businessId), payload, { merge: false });
   return payload;
 }
 
 export async function upsertManagedMenuItem(
   item: ManagedMenuItem,
-  user: StaffUser
+  user: StaffUser,
+  businessId: string = RESTAURANT_ID
 ): Promise<void> {
   await runTransaction(db, async (tx) => {
-    const ref = catalogRef();
+    const ref = catalogRef(businessId);
     const current = await tx.get(ref);
     if (!current.exists()) {
       throw new Error('Primero carga el menú original para inicializar el catálogo.');
     }
 
     const data = current.data() as MenuCatalogDocument;
-    const items = Array.isArray(data.items) ? data.items.map(sanitizeItem) : [];
+    const items = Array.isArray(data.items) ? data.items.map((it) => sanitizeItem(it, businessId)) : [];
     const nextItem = sanitizeItem({
       ...item,
-      restaurantId: RESTAURANT_ID,
+      restaurantId: businessId,
       updatedAt: new Date().toISOString(),
       updatedBy: user.name,
-    });
+    }, businessId);
     const index = items.findIndex((candidate) => candidate.id === nextItem.id);
     if (index >= 0) items[index] = nextItem;
     else items.push(nextItem);
 
-    tx.set(ref, sanitizeCatalog(items, user.name));
+    tx.set(ref, sanitizeCatalog(items, user.name, businessId));
   });
 }
 
-export async function deleteManagedMenuItem(itemId: string, user: StaffUser): Promise<void> {
+export async function deleteManagedMenuItem(
+  itemId: string,
+  user: StaffUser,
+  businessId: string = RESTAURANT_ID
+): Promise<void> {
   await runTransaction(db, async (tx) => {
-    const ref = catalogRef();
+    const ref = catalogRef(businessId);
     const current = await tx.get(ref);
     if (!current.exists()) return;
 
     const data = current.data() as MenuCatalogDocument;
     const items = (Array.isArray(data.items) ? data.items : [])
-      .map(sanitizeItem)
+      .map((it) => sanitizeItem(it, businessId))
       .filter((item) => item.id !== itemId);
 
-    tx.set(ref, sanitizeCatalog(items, user.name));
+    tx.set(ref, sanitizeCatalog(items, user.name, businessId));
   });
 }
