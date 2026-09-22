@@ -150,3 +150,12 @@ export async function deleteMenuImageByUrl(url: string): Promise<void> {
   if (!url) return;
   return;
 }
+
+/**
+ * Sube el logo de un negocio a Cloudinary, reutilizando la misma
+ * optimización y subida que ya se usa para las fotos del menú.
+ */
+export async function uploadBusinessLogo(businessId: string, file: File): Promise<string> {
+  const optimizedFile = await optimizeMenuImage(file);
+  return uploadToCloudinary(optimizedFile);
+}
