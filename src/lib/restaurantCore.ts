@@ -123,8 +123,8 @@ export function createRestaurantTenant(input: {
     branding: {
       restaurantName: input.restaurantName.trim(),
       publicSlug: slug,
-      logoUrl: input.logoUrl,
-      primaryColor: input.primaryColor,
+      ...(input.logoUrl ? { logoUrl: input.logoUrl } : {}),
+      ...(input.primaryColor ? { primaryColor: input.primaryColor } : {}),
     },
     assistant: {
       ...DEFAULT_GIOBOT_ASSISTANT,
