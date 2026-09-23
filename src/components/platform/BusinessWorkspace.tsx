@@ -128,9 +128,14 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
 
             <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {modules.map(([title, description, enabled]) => (
-                <button key={title} type="button" disabled={!enabled} className="rounded-2xl border border-[#DEC8AE] bg-white p-5 text-left transition hover:border-[#C9974D] disabled:cursor-default disabled:opacity-55">
-                  <span className="text-[10px] font-black uppercase tracking-wide text-[#A86B3D]">{enabled ? 'Módulo' : 'Próximamente'}</span>
-                  <strong className="mt-2 block font-serif text-lg">{title}</strong>
+                <button
+                  key={title}
+                  type="button"
+                  disabled={!enabled}
+                  className="rounded-2xl border border-[#DEC8AE] bg-[#FFFDF9] p-5 text-left transition hover:border-[#C9974D] hover:bg-[#FFF7EA] disabled:cursor-default disabled:opacity-60 disabled:hover:border-[#DEC8AE] disabled:hover:bg-[#FFFDF9]"
+                >
+                  <span className="text-[10px] font-black uppercase tracking-wide text-[#A86B3D]">{enabled ? 'Módulo disponible' : 'Próximamente'}</span>
+                  <strong className="mt-2 block font-serif text-lg text-[#2B1B13]">{title}</strong>
                   <span className="mt-1 block text-xs leading-relaxed text-[#6B4028]">{description}</span>
                 </button>
               ))}
