@@ -1,6 +1,30 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    match /businesses/{businessId} {
+      allow read: if true;
+
+      allow create: if request.auth != null
+        && request.resource.data.restaurantId == businessId
+        && !exists(/databases/$(database)/documents/businesses/$(businessId));
+
+      allow update, delete: if request.auth != null
+        && exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role == 'OWNER';
+    }
+
+    match /businessMemberships/{membershipId} {
+      allow read: if request.auth != null
+        && resource.data.userId == request.auth.uid;
+
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.role == 'OWNER';
+
+      allow update, delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
+    }
+
     
     function isValidRestaurant(data) {
       return data.restaurantId == 'alo-restaurante';
