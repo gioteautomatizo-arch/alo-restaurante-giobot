@@ -1,80 +1,72 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ArrowRight,
   Bot,
-  Coffee,
   Eye,
   EyeOff,
   LockKeyhole,
   Mail,
-  Palette,
-  Pizza,
   Plus,
-  ShoppingBag,
   Sparkles,
   Store,
-  UtensilsCrossed,
 } from 'lucide-react';
 import { loginStaff } from '../../lib/adminStorage';
-import { CALIENTITO_TENANT } from '../../lib/restaurantCore';
-
-const DEMO_EMAIL = 'demo@calientito.mx';
-const DEMO_PASSWORD = 'calientito2026';
-const PORTAL_SESSION_KEY = 'giote_business_demo_session_v1';
-
-type BusinessTemplate = {
-  id: string;
-  name: string;
-  description: string;
-  icon: React.ComponentType<{ className?: string }>;
-};
-
-const BUSINESS_TEMPLATES: BusinessTemplate[] = [
-  { id: 'restaurant', name: 'Restaurante', description: 'Menú, mesas, cocina, POS, inventario e IA.', icon: UtensilsCrossed },
-  { id: 'pizzeria', name: 'Pizzería', description: 'Pedidos, tamaños, extras, delivery y cocina.', icon: Pizza },
-  { id: 'creperia', name: 'Crepería / Cafetería', description: 'Bebidas, combos, recetas, barra y pedidos.', icon: Coffee },
-  { id: 'perfumes', name: 'Perfumes y decants', description: 'Catálogo, inventario, clientes, POS y asesor IA.', icon: ShoppingBag },
-  { id: 'design', name: 'Diseño gráfico', description: 'Clientes, cotizaciones, proyectos, anticipos e IA.', icon: Palette },
-  { id: 'other', name: 'Otro negocio', description: 'Empieza con el Business Core y activa solo lo que necesites.', icon: Store },
-];
-
-function hasPortalSession(): boolean {
-  try {
-    return localStorage.getItem(PORTAL_SESSION_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
+import { CALIENTITO_TENANT, RestaurantTenant } from '../../lib/restaurantCore';
+import { subscribeToAuth } from '../../lib/firebase';
+import {
+  getBusinessesForUser,
+  loginBusinessOwner,
+  logoutBusinessOwner,
+} from '../../lib/businessAuthService';
+import type { User as FirebaseUser } from 'firebase/auth';
 
 export const BusinessPortal: React.FC = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(hasPortalSession);
+  const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showTemplates, setShowTemplates] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  const selectedTemplateInfo = useMemo(
-    () => BUSINESS_TEMPLATES.find((template) => template.id === selectedTemplate) || null,
-    [selectedTemplate]
-  );
+  const [myBusinesses, setMyBusinesses] = useState<RestaurantTenant[]>([]);
+  const [loadingBusinesses, setLoadingBusinesses] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  const handleLogin = (event: React.FormEvent) => {
-    event.preventDefault();
-    setError(null);
+  useEffect(() => {
+    const unsubscribe = subscribeToAuth((user) => {
+      setAuthUser(user);
+      setAuthChecked(true);
+    });
+    return unsubscribe;
+  }, []);
 
-    if (email.trim().toLowerCase() !== DEMO_EMAIL || password !== DEMO_PASSWORD) {
-      setError('Correo o contraseña incorrectos para este entorno demo.');
+  useEffect(() => {
+    if (!authUser) {
+      setMyBusinesses([]);
       return;
     }
+    setLoadingBusinesses(true);
+    getBusinessesForUser(authUser.uid)
+      .then((businesses) => setMyBusinesses(businesses))
+      .catch((err) => {
+        console.warn('No se pudieron cargar tus negocios:', err);
+        setMyBusinesses([]);
+      })
+      .finally(() => setLoadingBusinesses(false));
+  }, [authUser]);
 
+  const handleLogin = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    setIsLoggingIn(true);
     try {
-      localStorage.setItem(PORTAL_SESSION_KEY, '1');
-    } catch {
-      // El demo también funciona si el navegador bloquea almacenamiento local.
+      await loginBusinessOwner(email.trim(), password);
+    } catch (err: any) {
+      setError('Correo o contraseña incorrectos.');
+    } finally {
+      setIsLoggingIn(false);
     }
-    setIsLoggedIn(true);
   };
 
   const openCalientito = () => {
@@ -84,7 +76,6 @@ export const BusinessPortal: React.FC = () => {
       setError(result.error || 'No pudimos preparar la sesión demo de Calientito.');
       return;
     }
-
     window.location.hash = '#admin';
   };
 
@@ -92,20 +83,32 @@ export const BusinessPortal: React.FC = () => {
     window.location.hash = '';
   };
 
-  const closeDemoSession = () => {
+  const openNewBusinessComingSoon = () => {
+    setNotice('Los módulos (POS, catálogo, panel) de este negocio se están conectando. Muy pronto podrás abrirlo desde aquí.');
+    window.setTimeout(() => setNotice(null), 4000);
+  };
+
+  const goToCreateBusiness = () => {
+    window.location.hash = '#business-new';
+  };
+
+  const handleSignOut = async () => {
     try {
-      localStorage.removeItem(PORTAL_SESSION_KEY);
+      await logoutBusinessOwner();
     } catch {
       // ignore
     }
-    setShowTemplates(false);
-    setSelectedTemplate(null);
-    setEmail('');
-    setPassword('');
-    setIsLoggedIn(false);
   };
 
-  if (!isLoggedIn) {
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-[#0F172A] flex items-center justify-center text-white text-sm">
+        Cargando…
+      </div>
+    );
+  }
+
+  if (!authUser) {
     return (
       <div className="min-h-screen bg-[#0F172A] text-white flex items-center justify-center px-4 py-8">
         <div className="w-full max-w-5xl grid lg:grid-cols-[1.1fr_0.9fr] overflow-hidden rounded-[2rem] border border-white/10 bg-white shadow-2xl">
@@ -119,7 +122,6 @@ export const BusinessPortal: React.FC = () => {
                 Inicia sesión, abre tu negocio y administra ventas, catálogo, inventario, clientes y asistentes inteligentes desde una sola plataforma.
               </p>
             </div>
-
             <div className="grid grid-cols-2 gap-3 text-sm">
               {['POS integrado', 'IA por negocio', 'Catálogo visual', 'Inventario', 'Clientes', 'Operación'].map((label) => (
                 <div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-3 font-semibold text-slate-200">{label}</div>
@@ -139,11 +141,11 @@ export const BusinessPortal: React.FC = () => {
                 </div>
               </div>
 
-              <p className="mt-5 text-sm text-[#6B4028]">Escribe el correo de tu negocio y contraseña para abrir tu espacio de trabajo.</p>
+              <p className="mt-5 text-sm text-[#6B4028]">Escribe el correo y contraseña con los que registraste tu negocio.</p>
 
               <form onSubmit={handleLogin} className="mt-6 space-y-4">
                 <div>
-                  <label className="mb-1.5 flex items-center gap-2 text-xs font-black uppercase tracking-wide text-[#6B4028]"><Mail className="w-4 h-4 text-[#C9974D]" /> Correo del negocio</label>
+                  <label className="mb-1.5 flex items-center gap-2 text-xs font-black uppercase tracking-wide text-[#6B4028]"><Mail className="w-4 h-4 text-[#C9974D]" /> Correo</label>
                   <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="negocio@correo.com" autoComplete="username" className="w-full rounded-2xl border border-[#DEC8AE] bg-white px-4 py-3.5 text-sm outline-none focus:border-[#C9974D] focus:ring-2 focus:ring-[#C9974D]/20" />
                 </div>
 
@@ -159,19 +161,16 @@ export const BusinessPortal: React.FC = () => {
 
                 {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-800">{error}</div>}
 
-                <button type="submit" className="w-full rounded-2xl bg-[#3A2418] px-4 py-4 text-sm font-black text-[#FFF7EA] shadow-lg transition hover:bg-[#4A2E1F] active:scale-[0.99] flex items-center justify-center gap-2">
-                  Entrar a mi negocio <ArrowRight className="w-4 h-4 text-[#C9974D]" />
+                <button type="submit" disabled={isLoggingIn} className="w-full rounded-2xl bg-[#3A2418] px-4 py-4 text-sm font-black text-[#FFF7EA] shadow-lg transition hover:bg-[#4A2E1F] active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-60">
+                  {isLoggingIn ? 'Entrando…' : 'Entrar a mi negocio'} <ArrowRight className="w-4 h-4 text-[#C9974D]" />
                 </button>
               </form>
 
-              <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-950">
-                <strong className="block mb-1">Acceso demo de Calientito</strong>
-                <div>Correo: <span className="font-mono font-bold">{DEMO_EMAIL}</span></div>
-                <div>Contraseña: <span className="font-mono font-bold">{DEMO_PASSWORD}</span></div>
-                <button type="button" onClick={() => { setEmail(DEMO_EMAIL); setPassword(DEMO_PASSWORD); setError(null); }} className="mt-3 font-black text-amber-900 underline underline-offset-2">Usar datos demo</button>
-              </div>
+              <button type="button" onClick={goToCreateBusiness} className="mt-5 w-full rounded-2xl border border-[#DEC8AE] bg-white px-4 py-3.5 text-sm font-black text-[#5C3825] flex items-center justify-center gap-2">
+                <Plus className="w-4 h-4 text-[#A86B3D]" /> Registrar un negocio nuevo
+              </button>
 
-              <p className="mt-5 text-[10px] leading-relaxed text-[#8A6A55]">Esta pantalla es una simulación de producto. La autenticación real por cuenta de negocio se conectará después a Firebase Auth.</p>
+              <p className="mt-5 text-[10px] leading-relaxed text-[#8A6A55]">Tu acceso se guarda con Firebase Auth. Restaurante Calientito conserva su propio acceso de personal.</p>
             </div>
           </section>
         </div>
@@ -187,15 +186,22 @@ export const BusinessPortal: React.FC = () => {
             <div className="w-10 h-10 rounded-2xl bg-[#111827] text-amber-300 flex items-center justify-center"><Bot className="w-5 h-5" /></div>
             <div><p className="text-[10px] uppercase tracking-[0.15em] font-black text-[#A86B3D]">Gioteautomatizo</p><h1 className="font-serif font-black text-lg">Mis negocios</h1></div>
           </div>
-          <button type="button" onClick={closeDemoSession} className="rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-xs font-bold text-[#6B4028]">Cerrar demo</button>
+          <button type="button" onClick={handleSignOut} className="rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-xs font-bold text-[#6B4028]">Cerrar sesión</button>
         </div>
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-7 sm:py-10">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <div><span className="text-xs font-black uppercase tracking-[0.14em] text-[#A86B3D]">Cuenta de negocio</span><h2 className="mt-1 font-serif text-3xl font-black">¿Qué quieres administrar?</h2><p className="mt-2 max-w-2xl text-sm text-[#6B4028]">Cada negocio abre su propia página, POS, inventario, clientes e IA según los módulos que tenga activos.</p></div>
-          <button type="button" onClick={() => { window.location.hash = '#business-new'; }} className="rounded-2xl bg-[#111827] px-4 py-3 text-sm font-black text-white flex items-center justify-center gap-2"><Plus className="w-4 h-4 text-amber-300" /> Crear nuevo negocio</button>
+          <button type="button" onClick={goToCreateBusiness} className="rounded-2xl bg-[#111827] px-4 py-3 text-sm font-black text-white flex items-center justify-center gap-2"><Plus className="w-4 h-4 text-amber-300" /> Crear nuevo negocio</button>
         </div>
+
+        {notice && (
+          <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900">{notice}</div>
+        )}
+        {error && (
+          <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-800">{error}</div>
+        )}
 
         <section className="mt-7 grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
           <article className="rounded-[2rem] border border-[#D9C5AC] bg-white overflow-hidden shadow-sm">
@@ -210,8 +216,6 @@ export const BusinessPortal: React.FC = () => {
                   <img src="/tita.png" alt="Tita" className="w-11 h-11 rounded-xl object-contain bg-white" />
                   <div><span className="text-[10px] font-black uppercase tracking-wide text-[#A86B3D]">Asistente del negocio</span><strong className="block text-sm">{CALIENTITO_TENANT.assistant.name} · Avatar personalizado</strong></div>
                 </div>
-
-                {error && <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-800">{error}</div>}
 
                 <div className="mt-5 grid sm:grid-cols-2 gap-3">
                   <button type="button" onClick={openCalientito} className="rounded-2xl bg-[#3A2418] px-4 py-3.5 text-sm font-black text-white flex items-center justify-center gap-2">Abrir negocio / POS <ArrowRight className="w-4 h-4 text-[#C9974D]" /></button>
@@ -229,21 +233,33 @@ export const BusinessPortal: React.FC = () => {
           </aside>
         </section>
 
-        {showTemplates && (
-          <section className="mt-8 rounded-[2rem] border border-[#D9C5AC] bg-white p-5 sm:p-7 shadow-sm">
-            <div className="flex items-start justify-between gap-4"><div><span className="text-[10px] uppercase tracking-[0.15em] font-black text-[#A86B3D]">Nuevo negocio</span><h3 className="font-serif text-2xl font-black mt-1">¿Qué negocio quieres abrir?</h3><p className="text-sm text-[#6B4028] mt-1">La plantilla define los módulos iniciales; después podrás activarlos o quitarlos.</p></div><button type="button" onClick={() => { setShowTemplates(false); setSelectedTemplate(null); }} className="text-xs font-bold text-[#6B4028]">Cerrar</button></div>
+        {loadingBusinesses && (
+          <p className="mt-8 text-sm text-[#6B4028]">Cargando tus negocios…</p>
+        )}
 
-            <div className="mt-5 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {BUSINESS_TEMPLATES.map((template) => {
-                const Icon = template.icon;
-                const selected = selectedTemplate === template.id;
-                return <button key={template.id} type="button" onClick={() => setSelectedTemplate(template.id)} className={`rounded-2xl border p-4 text-left transition ${selected ? 'border-[#A86B3D] bg-[#FFF7EA] ring-2 ring-[#C9974D]/20' : 'border-[#E8D8C4] bg-white hover:border-[#C9974D]'}`}><div className="w-10 h-10 rounded-xl bg-[#111827] text-amber-300 flex items-center justify-center"><Icon className="w-5 h-5" /></div><strong className="block mt-3 text-sm">{template.name}</strong><span className="block mt-1 text-xs leading-relaxed text-[#6B4028]">{template.description}</span></button>;
-              })}
+        {!loadingBusinesses && myBusinesses.length > 0 && (
+          <section className="mt-8">
+            <h3 className="font-serif text-xl font-black text-[#2B1B13] mb-4">Tus otros negocios</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {myBusinesses.map((tenant) => (
+                <article key={tenant.restaurantId} className="rounded-[2rem] border border-[#D9C5AC] bg-white p-6 shadow-sm">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-2xl bg-[#FFF7EA] overflow-hidden flex items-center justify-center shrink-0">
+                      {tenant.branding.logoUrl ? (
+                        <img src={tenant.branding.logoUrl} alt={tenant.branding.restaurantName} className="w-full h-full object-cover" />
+                      ) : (
+                        <Store className="w-7 h-7 text-[#A86B3D]" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <span className="rounded-full bg-[#FFF7EA] px-2.5 py-1 text-[10px] font-black uppercase text-[#A86B3D]">@{tenant.branding.publicSlug}</span>
+                      <h4 className="mt-1 font-serif text-lg font-black truncate">{tenant.branding.restaurantName}</h4>
+                    </div>
+                  </div>
+                  <button type="button" onClick={openNewBusinessComingSoon} className="mt-5 w-full rounded-2xl bg-[#3A2418] px-4 py-3 text-sm font-black text-white">Abrir negocio</button>
+                </article>
+              ))}
             </div>
-
-            {selectedTemplateInfo && (
-              <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><strong>{selectedTemplateInfo.name}</strong><span className="block mt-1 text-xs">Esta plantilla ya forma parte del roadmap del Business Core. Por ahora Calientito es el negocio funcional de referencia mientras conectamos creación real, autenticación y datos separados por negocio.</span></div>
-            )}
           </section>
         )}
       </main>
