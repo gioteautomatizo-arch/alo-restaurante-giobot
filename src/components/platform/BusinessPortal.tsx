@@ -83,9 +83,10 @@ export const BusinessPortal: React.FC = () => {
     window.location.hash = '';
   };
 
-  const openNewBusinessComingSoon = () => {
-    setNotice('Los módulos (POS, catálogo, panel) de este negocio se están conectando. Muy pronto podrás abrirlo desde aquí.');
-    window.setTimeout(() => setNotice(null), 4000);
+  const openBusiness = (tenant: RestaurantTenant) => {
+    setError(null);
+    setNotice(null);
+    window.location.hash = `#business/${encodeURIComponent(tenant.restaurantId)}`;
   };
 
   const goToCreateBusiness = () => {
@@ -256,7 +257,7 @@ export const BusinessPortal: React.FC = () => {
                       <h4 className="mt-1 font-serif text-lg font-black truncate">{tenant.branding.restaurantName}</h4>
                     </div>
                   </div>
-                  <button type="button" onClick={openNewBusinessComingSoon} className="mt-5 w-full rounded-2xl bg-[#3A2418] px-4 py-3 text-sm font-black text-white">Abrir negocio</button>
+                  <button type="button" onClick={() => openBusiness(tenant)} className="mt-5 w-full rounded-2xl bg-[#3A2418] px-4 py-3 text-sm font-black text-white">Abrir negocio</button>
                 </article>
               ))}
             </div>
