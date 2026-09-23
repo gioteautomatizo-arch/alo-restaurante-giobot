@@ -4,6 +4,7 @@ import App from './App.tsx';
 import { AdminTabOrderManager } from './components/admin/AdminTabOrderManager';
 import { AdminOwnerTitaGate } from './components/admin/AdminOwnerTitaGate';
 import { BusinessPortal } from './components/platform/BusinessPortal';
+import { BusinessWorkspace } from './components/platform/BusinessWorkspace';
 import { BusinessOnboardingDemo } from './components/platform/BusinessOnboardingDemo';
 import './components/platform/platformTheme.css';
 import './index.css';
@@ -19,6 +20,11 @@ function RootRouter() {
 
   if (hash === '#business-new') {
     return <div className="giote-platform-theme platform-onboarding"><BusinessOnboardingDemo /></div>;
+  }
+
+  const businessMatch = hash.match(/^#business\/([^/]+)$/);
+  if (businessMatch) {
+    return <div className="giote-platform-theme"><BusinessWorkspace businessId={decodeURIComponent(businessMatch[1])} /></div>;
   }
 
   if (hash === '#business') {
