@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Bot, Store } from 'lucide-react';
+import { BusinessCatalogEditor } from './BusinessCatalogEditor';
 import type { RestaurantTenant } from '../../lib/restaurantCore';
 import { getBusinessForUser } from '../../lib/businessAuthService';
 import { subscribeToAuth } from '../../lib/firebase';
@@ -10,6 +11,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const [business, setBusiness] = useState<RestaurantTenant | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<'workspace' | 'catalog'>('workspace');
 
   useEffect(() => subscribeToAuth((user) => setAuthUser(user)), []);
 
@@ -39,6 +41,10 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const back = () => {
     window.location.hash = '#business';
   };
+
+  if (view === 'catalog' && business) {
+    return <BusinessCatalogEditor businessId={businessId} businessName={business.branding.restaurantName} onBack={() => setView('workspace')} />;
+  }
 
   if (loading) {
     return (
@@ -131,7 +137,8 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
                 <button
                   key={title}
                   type="button"
-                  disabled={!enabled}
+                  disabled={!enabled || title !== 'Catálogo'}
+                  onClick={() => title === 'Catálogo' && setView('catalog')}
                   className="rounded-2xl border border-[#DEC8AE] bg-[#FFFDF9] p-5 text-left transition hover:border-[#C9974D] hover:bg-[#FFF7EA] disabled:cursor-default disabled:opacity-60 disabled:hover:border-[#DEC8AE] disabled:hover:bg-[#FFFDF9]"
                 >
                   <span className="text-[10px] font-black uppercase tracking-wide text-[#A86B3D]">{enabled ? 'Módulo disponible' : 'Próximamente'}</span>
