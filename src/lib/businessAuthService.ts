@@ -60,15 +60,6 @@ function removeUndefinedDeep<T>(value: T): T {
   return value;
 }
 
-/**
- * Registra un negocio nuevo de punta a punta:
- * 1) Crea la cuenta de acceso del dueño en Firebase Auth.
- * 2) Crea el negocio (tenant) en Firestore, en businesses/{businessId}.
- * 3) Crea la membresía que vincula a ese usuario con ese negocio como OWNER.
- *
- * Si el nombre de usuario (handle) ya está tomado, no se crea nada y se
- * lanza un error legible para mostrar en el formulario.
- */
 export async function registerBusiness(input: RegisterBusinessInput): Promise<RegisterBusinessResult> {
   const businessId = normalizeRestaurantSlug(input.handle || input.businessName);
   if (!businessId) {
@@ -132,9 +123,6 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
   return { tenant, membership };
 }
 
-/**
- * Inicia sesión de un dueño de negocio ya registrado.
- */
 export async function loginBusinessOwner(email: string, password: string): Promise<FirebaseUser> {
   const credential = await signInWithEmailAndPassword(auth, email, password);
   return credential.user;
@@ -144,10 +132,6 @@ export async function logoutBusinessOwner(): Promise<void> {
   await firebaseSignOut(auth);
 }
 
-/**
- * Devuelve los negocios a los que pertenece un usuario ya autenticado
- * (para mostrar "Mis negocios" en el portal).
- */
 export async function getBusinessesForUser(userId: string): Promise<RestaurantTenant[]> {
   const membershipsQuery = query(
     collection(db, MEMBERSHIPS_COLLECTION),
@@ -165,4 +149,22 @@ export async function getBusinessesForUser(userId: string): Promise<RestaurantTe
     if (snap.exists()) tenants.push(snap.data() as RestaurantTenant);
   }
   return tenants;
+}
+
+/**
+ * Obtiene un negocio concreto validando primero que el usuario autenticado
+ * tenga una membresía activa sobre ese tenant.
+ */
+export async function getBusinessForUser(
+  userId: string,
+  businessId: string
+): Promise<RestaurantTenant | null> {
+  const membershipSnap = await getDoc(membershipRef(businessId, userId));
+  if (!membershipSnap.exists()) return null;
+
+  const membership = membershipSnap.data() as RestaurantMembership;
+  if (membership.userId !== userId || !membership.active) return null;
+
+  const businessSnap = await getDoc(businessRef(businessId));
+  return businessSnap.exists() ? (businessSnap.data() as RestaurantTenant) : null;
 }
