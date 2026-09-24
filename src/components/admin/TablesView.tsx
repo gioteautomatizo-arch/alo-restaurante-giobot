@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Users,
   Clock,
@@ -54,7 +54,7 @@ import {
   setTableSessionStatusByStaff,
   assignWaiterToTableSession,
 } from '../../lib/tableSessionsService';
-import { subscribeToRestaurantOrders } from '../../lib/ordersService';
+import { subscribeToTableOrders } from '../../lib/ordersService';
 import { TableSessionConsumption } from '../public/TableSessionConsumption';
 
 interface TablesViewProps {
@@ -133,11 +133,9 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
       setQrRequests(requests);
     });
 
-    // Respaldo operacional: las comandas activas también prueban que una mesa está en servicio.
-    // Esto evita que el croquis muestre LIBRE si por cualquier motivo la sesión QR no llegó al listener.
-    const unsubOrders = subscribeToRestaurantOrders((orders) => {
-      setRestaurantOrders(orders);
-    });
+    // No descargamos todas las comandas del restaurante para pintar el croquis.
+    // Las comandas se escuchan únicamente cuando se abre una mesa concreta.
+    // Esto reduce lecturas y trabajo de React/Firestore en el panel principal.
 
     // Escuchar también las sesiones QR. Una sesión ACTIVA debe reflejar la mesa como
     // ocupada en el panel aunque el registro operativo de `tables` siga en LIBRE.
@@ -154,10 +152,18 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
       unsubFirestore();
       unsubTables();
       unsubQr();
-      unsubOrders();
       sessionUnsubs.forEach((unsub) => unsub());
     };
   }, []);
+
+  // Las comandas administrativas se escuchan sólo para la mesa que el usuario abrió.
+  useEffect(() => {
+    if (!selectedTable) {
+      setRestaurantOrders([]);
+      return;
+    }
+    return subscribeToTableOrders(selectedTable.tableNumber, setRestaurantOrders);
+  }, [selectedTable?.tableNumber]);
 
   // Regla: Las mesas operativas son exactamente 8 (Mesa 1, 2, 4, 5, 6, 7, 8 y 9)
   // Mesa 3 físicamente corresponde al área de Pantalla (no operativa)
@@ -169,7 +175,7 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
   // - LIMPIEZA siempre tiene prioridad para no reabrir visualmente una mesa ya cobrada;
   // - si la sesión está CERRADA o no existe sesión, la mesa permanece LIBRE;
   // - el número de personas viene de la sesión digital mientras siga activa.
-  const operationalTables = baseOperationalTables.map((table) => {
+  const operationalTables = useMemo(() => baseOperationalTables.map((table) => {
     const session = tableSessionsByNumber[table.tableNumber];
 
     let effectiveStatus: TableStatus = table.status;
@@ -225,6 +231,8 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
     };
   });
 
+  }), [baseOperationalTables, tableSessionsByNumber]);
+
   // Si el panel de una mesa está abierto, mantenerlo sincronizado con el estado efectivo
   // calculado arriba (por ejemplo, LIBRE -> OCUPADA al entrar clientes por QR).
   useEffect(() => {
@@ -244,7 +252,7 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
       }
       return effective;
     });
-  }, [tables, tableSessionsByNumber, restaurantOrders]);
+  }, [tables, tableSessionsByNumber]);
 
   // Helper para verificar si una mesa tiene algún pendiente interno o por QR
   const checkTableHasPending = (t: TableRecord) => {
