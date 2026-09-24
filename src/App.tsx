@@ -79,9 +79,9 @@ const normalizeSearchText = (value: string): string =>
   value
     .toLocaleLowerCase('es-MX')
     .normalize('NFD')
-    .replace(/[\\u0300-\\u036f]/g, '')
-    .replace(/[^\\p{L}\\p{N}\\s]/gu, ' ')
-    .replace(/\\s+/g, ' ')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 
 const levenshteinDistance = (a: string, b: string): number => {
