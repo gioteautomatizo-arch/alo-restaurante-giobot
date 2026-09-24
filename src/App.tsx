@@ -75,6 +75,72 @@ const toPublicMenuItem = (item: ManagedMenuItem): MenuItem | null => {
   };
 };
 
+const normalizeSearchText = (value: string): string =>
+  value
+    .toLocaleLowerCase('es-MX')
+    .normalize('NFD')
+    .replace(/[\\u0300-\\u036f]/g, '')
+    .replace(/[^\\p{L}\\p{N}\\s]/gu, ' ')
+    .replace(/\\s+/g, ' ')
+    .trim();
+
+const levenshteinDistance = (a: string, b: string): number => {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  const current = new Array<number>(b.length + 1);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    current[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const substitutionCost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(
+        current[j - 1] + 1,
+        previous[j] + 1,
+        previous[j - 1] + substitutionCost
+      );
+    }
+    for (let j = 0; j <= b.length; j += 1) previous[j] = current[j];
+  }
+
+  return previous[b.length];
+};
+
+const searchTokenMatches = (token: string, words: string[]): boolean => {
+  if (!token) return true;
+  if (words.some((word) => word.includes(token))) return true;
+
+  // Tolerancia pequeña para errores de dedo, sin convertir búsquedas cortas en falsos positivos.
+  if (token.length < 4) return false;
+  const maxDistance = token.length >= 7 ? 2 : 1;
+  return words.some((word) =>
+    Math.abs(word.length - token.length) <= maxDistance &&
+    levenshteinDistance(token, word) <= maxDistance
+  );
+};
+
+const matchesMenuSearch = (item: MenuItem, searchTerm: string): boolean => {
+  const normalizedQuery = normalizeSearchText(searchTerm);
+  if (!normalizedQuery) return true;
+
+  const searchableText = normalizeSearchText([
+    item.name,
+    item.description,
+    ...(item.options || []),
+    ...(item.extras || []).map((extra) => extra.name),
+  ].join(' '));
+
+  const words = searchableText.split(' ').filter(Boolean);
+  const queryTokens = normalizedQuery.split(' ').filter(Boolean);
+
+  // Cada palabra buscada debe aparecer (o aproximarse) en el nombre, descripción,
+  // opciones o extras. Así "chilaquiles pollo" encuentra el platillo aunque no
+  // exista esa frase exacta dentro del menú.
+  return queryTokens.every((token) => searchTokenMatches(token, words));
+};
+
 export default function App() {
   const [activeCategory, setActiveCategory] = useState<CategoryId>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -390,14 +456,7 @@ export default function App() {
     const matchesCategory =
       activeCategory === 'all' || item.category === activeCategory;
 
-    const query = searchTerm.toLowerCase().trim();
-    const matchesSearch =
-      !query ||
-      item.name.toLowerCase().includes(query) ||
-      item.description.toLowerCase().includes(query) ||
-      (item.options && item.options.some((o) => o.toLowerCase().includes(query)));
-
-    return matchesCategory && matchesSearch;
+    return matchesCategory && matchesMenuSearch(item, searchTerm);
   });
 
   const isInitialCatalogView = activeCategory === 'all' && !searchTerm.trim() && !showAllCatalog;
