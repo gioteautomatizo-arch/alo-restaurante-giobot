@@ -94,9 +94,15 @@ function orderOriginLabel(order: RestaurantOrder) {
 }
 
 function sourceLabel(order: RestaurantOrder): string {
-  if (order.orderSource === 'CLIENTE_QR') return 'QR CLIENTE';
+  if (order.orderOrigin === 'QR_EXTERNO') {
+    return order.qrSource ? `QR · ${order.qrSource}` : 'QR · EXTERNO';
+  }
+  if (order.orderOrigin === 'MESA_QR') {
+    return order.tableNumber ? `QR · MESA ${order.tableNumber}` : 'QR · MESA';
+  }
   if (order.orderSource === 'MESERO') return 'MESERO';
   if (order.orderSource === 'CAJA') return 'CAJA';
+  if (order.orderSource === 'CLIENTE_QR') return 'QR CLIENTE';
   return order.orderType === 'delivery' ? 'DOMICILIO' : 'APP';
 }
 
