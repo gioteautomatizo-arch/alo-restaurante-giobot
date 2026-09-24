@@ -18,6 +18,7 @@ interface CartDrawerProps {
   setBringOwnContainer: (value: boolean) => void;
   onOpenVipModal: () => void;
   tableNumber?: number | null;
+  qrSource?: string | null;
 }
 
 const RESTAURANT_PHONE = '525574411437'; // 55 7441 1437
@@ -34,6 +35,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   setBringOwnContainer,
   onOpenVipModal,
   tableNumber = null,
+  qrSource = null,
 }) => {
   const [restaurantInfo, setRestaurantInfo] = useState(getRestaurantInfo());
   const [orderType, setOrderType] = useState<OrderType>('delivery');
@@ -279,7 +281,15 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
         accountLabel: tableContext?.accountLabel,
         orderSource: orderType === 'dine_in' && tableNumber
           ? (isStaffOrder ? 'MESERO' : 'CLIENTE_QR')
+          : qrSource
+          ? 'CLIENTE_QR'
           : undefined,
+        orderOrigin: tableNumber && orderType === 'dine_in'
+          ? 'MESA_QR'
+          : qrSource
+          ? 'QR_EXTERNO'
+          : 'DIRECTO',
+        qrSource: qrSource || undefined,
         customerName: effectiveCustomerName,
         phone: phone.trim() || undefined,
         address: orderType === 'delivery' ? address.trim() : undefined,
@@ -293,6 +303,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
         deliveryFee,
         total,
       });
+
+      // La comanda ya está confirmada en Firestore: el borrador local de 3 minutos se elimina.
+      onClearCart();
 
       // Fidelidad se actualiza únicamente después de que Firestore confirma la comanda.
       const newVip = addStampToVip({
