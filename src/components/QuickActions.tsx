@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Crown, Gift, Sparkles, Star, Utensils } from 'lucide-react';
-import { VipProfile } from '../types';
+import { MenuItem, VipProfile } from '../types';
 import { getVipProfile, VIP_DATA_EVENT } from '../lib/vipStorage';
 import { ADMIN_DATA_EVENT, getRestaurantInfo } from '../lib/adminStorage';
 import { ManagedMenuItem, subscribeToMenuCatalog } from '../lib/menuCatalogService';
@@ -10,6 +10,7 @@ interface QuickActionsProps {
   onScrollToMenu: () => void;
   onOpenDeliveryOrder: () => void;
   onOpenGiobot: () => void;
+  onSelectItem: (item: MenuItem) => void;
 }
 
 const itemPrice = (item: ManagedMenuItem): number | null => {
@@ -31,6 +32,7 @@ const formatCustomerName = (name: string): string =>
 export const QuickActions: React.FC<QuickActionsProps> = ({
   onScrollToMenu,
   onOpenDeliveryOrder,
+  onSelectItem,
 }) => {
   const [vipProfile, setVipProfile] = useState<VipProfile | null>(() => getVipProfile());
   const [vipOpen, setVipOpen] = useState(false);
@@ -99,35 +101,18 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
   const progress = Math.min(100, (stamps / goal) * 100);
   const formattedName = vipProfile ? formatCustomerName(vipProfile.customerName) : '';
 
-  const clickRenderedDish = (dishName: string): boolean => {
-    const cards = Array.from(document.querySelectorAll<HTMLElement>('article'));
-    const target = cards.find((card) => card.textContent?.includes(dishName));
-    if (!target) return false;
-    target.click();
-    return true;
-  };
+  const toMenuItem = (item: ManagedMenuItem): MenuItem => ({
+    id: item.id, name: item.name, category: item.category, description: item.description,
+    price: itemPrice(item) as number,
+    ...(item.sizes?.length ? { sizes: item.sizes.filter((size) => typeof size.price === 'number').map((size) => ({ name: size.name, price: size.price })) } : {}),
+    ...(item.options?.length ? { options: item.options } : {}),
+    ...(item.extras?.length ? { extras: item.extras.map((extra) => ({ id: extra.id, name: extra.name, price: extra.price })) } : {}),
+    ...(item.primaryImageUrl ? { image: item.primaryImageUrl } : {}),
+    popular: item.popular,
+    ...(item.weekendOnly ? { weekendOnly: item.weekendOnly } : {}),
+  });
 
-  const openFeaturedItem = (item: ManagedMenuItem) => {
-    if (clickRenderedDish(item.name)) return;
-
-    const menu = document.getElementById('menu-section');
-    const showAllButton = menu
-      ? Array.from(menu.querySelectorAll<HTMLButtonElement>('button')).find((button) =>
-          (button.textContent || '').includes('Ver los') && (button.textContent || '').includes('platillos')
-        )
-      : undefined;
-
-    if (showAllButton) {
-      showAllButton.click();
-      window.setTimeout(() => {
-        if (!clickRenderedDish(item.name)) onScrollToMenu();
-      }, 150);
-      return;
-    }
-
-    onScrollToMenu();
-    window.setTimeout(() => clickRenderedDish(item.name), 200);
-  };
+  const openFeaturedItem = (item: ManagedMenuItem) => onSelectItem(toMenuItem(item));
 
   return (
     <div className="space-y-4 sm:space-y-5 w-full">
@@ -212,7 +197,7 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
                   <div className={`${single ? 'p-4 sm:p-5 sm:flex sm:flex-col sm:justify-center' : 'p-3'}`}>
                     <strong className={`block font-serif ${single ? 'text-base sm:text-xl' : 'text-sm sm:text-base'} text-[#2B1B13] line-clamp-1`}>{item.name}</strong>
                     <span className={`block ${single ? 'text-xs sm:text-sm' : 'text-[10px] sm:text-[11px]'} text-[#6B4028] mt-1 line-clamp-2`}>{item.description}</span>
-                    <span className="mt-3 inline-flex items-center gap-1 text-[10px] sm:text-xs font-black text-[#A86B3D]">Abrir platillo <ArrowRight className="w-3 h-3" /></span>
+                    <span className="mt-3 inline-flex items-center gap-1 text-[10px] sm:text-xs font-black text-[#A86B3D]">Agregar / Personalizar <ArrowRight className="w-3 h-3" /></span>
                   </div>
                 </button>
               );
