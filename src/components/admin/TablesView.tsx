@@ -229,8 +229,6 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
       waiterId: effectiveWaiterId,
       waiterName: effectiveWaiterName,
     };
-  });
-
   }), [baseOperationalTables, tableSessionsByNumber]);
 
   // Si el panel de una mesa está abierto, mantenerlo sincronizado con el estado efectivo
