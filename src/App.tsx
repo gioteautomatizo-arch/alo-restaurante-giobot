@@ -30,6 +30,7 @@ import { AdminDashboard } from './components/admin/AdminDashboard';
 import { AdminLoginModal } from './components/admin/AdminLoginModal';
 import { TableCustomerView } from './components/public/TableCustomerView';
 import { isValidTableNumber } from './lib/tableRequestsService';
+import { buildCustomerCartDraftKey, loadCustomerCartDraft, saveCustomerCartDraft, clearCustomerCartDraft } from './lib/customerCartDraft';
 import { Bot, Utensils, Sparkles, ArrowRight, ChevronUp, Lock, Users } from 'lucide-react';
 
 const toPublicMenuItem = (item: ManagedMenuItem): MenuItem | null => {
@@ -91,6 +92,7 @@ export default function App() {
   const [vipProfile, setVipProfile] = useState<VipProfile | null>(null);
   const [isContactVisible, setIsContactVisible] = useState<boolean>(false);
   const [customerTableNumber, setCustomerTableNumber] = useState<number | null>(null);
+  const [qrSource, setQrSource] = useState<string | null>(null);
   const [selectedTablePerson, setSelectedTablePerson] = useState<TableSessionPerson | null>(null);
   const [isTableEditModalOpen, setIsTableEditModalOpen] = useState<boolean>(false);
   const [tableEditGuestCount, setTableEditGuestCount] = useState<number>(1);
@@ -127,11 +129,15 @@ export default function App() {
     try {
       const searchParams = new URLSearchParams(window.location.search);
       const tableParam = searchParams.get('table');
+      const qrParam = searchParams.get('qr')?.trim().toLowerCase() || null;
       if (tableParam) {
         const parsed = parseInt(tableParam, 10);
         if (isValidTableNumber(parsed)) {
           setCustomerTableNumber(parsed);
         }
+      }
+      if (qrParam && !tableParam) {
+        setQrSource(qrParam);
       }
     } catch {
       // ignore
@@ -160,6 +166,21 @@ export default function App() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    const contextKey = buildCustomerCartDraftKey(customerTableNumber, qrSource);
+    const draft = loadCustomerCartDraft(contextKey);
+    if (draft) setCartItems(draft.items);
+    else setCartItems([]);
+  }, [customerTableNumber, qrSource]);
+
+  useEffect(() => {
+    if (cartItems.length > 0) {
+      saveCustomerCartDraft(buildCustomerCartDraftKey(customerTableNumber, qrSource), cartItems);
+    } else {
+      clearCustomerCartDraft(buildCustomerCartDraftKey(customerTableNumber, qrSource));
+    }
+  }, [cartItems, customerTableNumber, qrSource]);
 
   useEffect(() => {
     setDailyMenuConfig(getDailyMenuConfig());
@@ -287,6 +308,7 @@ export default function App() {
 
   const handleClearCart = () => {
     setCartItems([]);
+    clearCustomerCartDraft(buildCustomerCartDraftKey(customerTableNumber, qrSource));
   };
 
   const scrollToMenu = () => {
@@ -723,6 +745,7 @@ export default function App() {
         setBringOwnContainer={setBringOwnContainer}
         onOpenVipModal={() => setIsVipModalOpen(true)}
         tableNumber={customerTableNumber}
+        qrSource={qrSource}
       />
 
       <VipCardModal
