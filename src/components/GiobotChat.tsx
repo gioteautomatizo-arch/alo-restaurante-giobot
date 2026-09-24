@@ -152,12 +152,12 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
     );
   }, [menuItems]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
+    messagesEndRef.current?.scrollIntoView({ behavior, block: 'nearest' });
   };
 
   useEffect(() => {
-    if (isOpen) scrollToBottom();
+    if (isOpen) scrollToBottom('auto');
   }, [messages, isThinking, isOpen]);
 
   useEffect(() => {
@@ -193,6 +193,23 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
 
     let botMsgId: string | null = null;
     let accumulatedText = '';
+    let streamUpdateTimer: ReturnType<typeof setTimeout> | null = null;
+    let pendingStreamText: string | null = null;
+
+    const flushStreamUpdate = () => {
+      if (!botMsgId || pendingStreamText === null) return;
+      const nextText = pendingStreamText;
+      pendingStreamText = null;
+      setMessages((prev) => prev.map((msg) => (msg.id === botMsgId ? { ...msg, text: nextText } : msg)));
+    };
+
+    const scheduleStreamUpdate = () => {
+      if (streamUpdateTimer !== null) return;
+      streamUpdateTimer = setTimeout(() => {
+        streamUpdateTimer = null;
+        flushStreamUpdate();
+      }, 60);
+    };
 
     let dailyMenuPayload: any = null;
     try {
@@ -311,7 +328,9 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
           .reduce((sum, item) => sum + Number(item.totalPrice || 0), 0)
       : 0;
 
-    const menuCatalogPayload = liveMenuItems.slice(0, 120).map((item) => ({
+    // Mantener el contexto de Tita compacto reduce tiempo de procesamiento sin perder
+    // la información necesaria para recomendar y cotizar productos.
+    const menuCatalogPayload = liveMenuItems.slice(0, 90).map((item) => ({
       id: item.id,
       name: item.name,
       category: item.category,
@@ -369,7 +388,7 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode: 'customer',
-          messages: newMessages.slice(-8),
+          messages: newMessages.slice(-6),
           userPrompt: prompt,
           dailyMenu: dailyMenuPayload,
           restaurantInfo: restaurantInfoPayload,
@@ -404,9 +423,16 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
             },
           ]);
         } else {
-          setMessages((prev) => prev.map((msg) => (msg.id === botMsgId ? { ...msg, text: accumulatedText } : msg)));
+          pendingStreamText = accumulatedText;
+          scheduleStreamUpdate();
         }
       }
+
+      if (streamUpdateTimer !== null) {
+        clearTimeout(streamUpdateTimer);
+        streamUpdateTimer = null;
+      }
+      flushStreamUpdate();
 
       if (!botMsgId) {
         setIsThinking(false);
