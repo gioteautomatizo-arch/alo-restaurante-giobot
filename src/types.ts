@@ -427,6 +427,7 @@ export interface RestaurantOrderItem {
 
 export type RestaurantOrderBillingStatus = 'PENDIENTE' | 'PAGADO';
 export type RestaurantOrderSource = 'CLIENTE_QR' | 'MESERO' | 'CAJA';
+export type RestaurantOrderOrigin = 'MESA_QR' | 'QR_EXTERNO' | 'DIRECTO';
 
 export interface PublicTableOrder {
   id?: string;
@@ -438,6 +439,8 @@ export interface PublicTableOrder {
   accountId?: string;
   accountLabel?: string;
   orderSource?: RestaurantOrderSource;
+  orderOrigin?: RestaurantOrderOrigin;
+  qrSource?: string;
   items: RestaurantOrderItem[];
   total: number;
   status: RestaurantOrderStatus;
@@ -457,6 +460,8 @@ export interface RestaurantOrder {
   accountId?: string;
   accountLabel?: string;
   orderSource?: RestaurantOrderSource;
+  orderOrigin?: RestaurantOrderOrigin;
+  qrSource?: string;
   capturedById?: string;
   capturedByName?: string;
   customerName: string;
