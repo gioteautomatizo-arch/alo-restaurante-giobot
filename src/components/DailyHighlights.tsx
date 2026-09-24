@@ -57,9 +57,18 @@ export const DailyHighlights: React.FC<DailyHighlightsProps> = ({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
         {/* 1. Comida Corrida dinámica */}
         <div
+          role={corridaOrderable ? 'button' : undefined}
+          tabIndex={corridaOrderable ? 0 : undefined}
+          onClick={corridaOrderable ? onOpenComidaCorrida : undefined}
+          onKeyDown={corridaOrderable ? (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              onOpenComidaCorrida();
+            }
+          } : undefined}
           className={`p-3.5 rounded-2xl border text-left transition-all shadow-2xs flex flex-col justify-between ${
             corridaOrderable
-              ? 'bg-[#FFFDF9] border-[#DEC8AE] hover:border-[#A86B3D]/70'
+              ? 'bg-[#FFFDF9] border-[#DEC8AE] hover:border-[#A86B3D]/70 hover:shadow-sm active:scale-[0.99] cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#C9974D]/50'
               : 'bg-rose-50/50 border-rose-200'
           }`}
         >
@@ -111,7 +120,10 @@ export const DailyHighlights: React.FC<DailyHighlightsProps> = ({
           {corridaOrderable ? (
             <button
               type="button"
-              onClick={onOpenComidaCorrida}
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenComidaCorrida();
+              }}
               className="mt-2.5 text-[10px] font-bold text-[#A86B3D] flex items-center gap-1 text-left"
             >
               Armar mi menú <ArrowRight className="w-3 h-3" />
