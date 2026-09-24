@@ -103,18 +103,20 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
   const effectiveTableNumber = tableNumber ?? readTableNumberFromUrl();
 
   useEffect(() => {
-    if (!effectiveTableNumber) {
+    // No mantener un listener de Firestore mientras Tita está cerrada.
+    if (!isOpen || !effectiveTableNumber) {
       setTableOrders([]);
       return;
     }
     return subscribeToPublicTableOrders(effectiveTableNumber, setTableOrders);
-  }, [effectiveTableNumber]);
+  }, [isOpen, effectiveTableNumber]);
 
   useEffect(() => {
     if (menuItems.length > 0) {
       setLiveMenuItems(menuItems);
       return;
     }
+    if (!isOpen) return;
 
     return subscribeToMenuCatalog(
       (catalog) => {
@@ -150,7 +152,7 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
       },
       (error) => console.warn('No se pudo sincronizar catálogo para Tita:', error)
     );
-  }, [menuItems]);
+  }, [isOpen, menuItems]);
 
   const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
     messagesEndRef.current?.scrollIntoView({ behavior, block: 'nearest' });
@@ -275,7 +277,22 @@ export const GiobotChat: React.FC<GiobotChatProps> = ({
     let tableSessionPayload: any = null;
     if (effectiveTableNumber) {
       try {
-        const session = await getTableSession(effectiveTableNumber);
+        // La sesión cambia poco comparada con la frecuencia de mensajes.
+        // Reutilizamos la lectura durante 30 s para evitar una consulta a Firestore
+        // cada vez que el cliente escribe a Tita.
+        const sessionCacheKey = `tita-table-session-${effectiveTableNumber}`;
+        const cached = sessionStorage.getItem(sessionCacheKey);
+        const cachedAt = Number(sessionStorage.getItem(`${sessionCacheKey}-at`) || 0);
+        const cacheIsFresh = cached && Date.now() - cachedAt < 30_000;
+        const session = cacheIsFresh
+          ? JSON.parse(cached)
+          : await getTableSession(effectiveTableNumber);
+
+        if (!cacheIsFresh && session) {
+          sessionStorage.setItem(sessionCacheKey, JSON.stringify(session));
+          sessionStorage.setItem(`${sessionCacheKey}-at`, String(Date.now()));
+        }
+
         tableSessionPayload = session
           ? {
               tableNumber: effectiveTableNumber,
