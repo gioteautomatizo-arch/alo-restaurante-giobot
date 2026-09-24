@@ -452,6 +452,7 @@ export default function App() {
       {!customerTableNumber && (
         <Banner
           onOpenGiobot={() => setIsGiobotOpen(true)}
+            onSelectItem={(item) => setSelectedItem(item)}
           onOpenComidaCorrida={() => setIsComidaCorridaBuilderOpen(true)}
           onOpenEnsalada={() => setIsSaladBuilderOpen(true)}
           onScrollToMenu={scrollToMenu}
