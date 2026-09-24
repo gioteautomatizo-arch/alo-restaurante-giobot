@@ -101,18 +101,29 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
   const progress = Math.min(100, (stamps / goal) * 100);
   const formattedName = vipProfile ? formatCustomerName(vipProfile.customerName) : '';
 
-  const toMenuItem = (item: ManagedMenuItem): MenuItem => ({
-    id: item.id, name: item.name, category: item.category, description: item.description,
-    price: itemPrice(item) as number,
-    ...(item.sizes?.length ? { sizes: item.sizes.filter((size) => typeof size.price === 'number').map((size) => ({ name: size.name, price: size.price })) } : {}),
-    ...(item.options?.length ? { options: item.options } : {}),
-    ...(item.extras?.length ? { extras: item.extras.map((extra) => ({ id: extra.id, name: extra.name, price: extra.price })) } : {}),
-    ...(item.primaryImageUrl ? { image: item.primaryImageUrl } : {}),
-    popular: item.popular,
-    ...(item.weekendOnly ? { weekendOnly: item.weekendOnly } : {}),
-  });
+  const openFeaturedItem = (item: ManagedMenuItem) => {
+    // Reutiliza exactamente el flujo del menú público para que
+    // comida corrida/chilaquiles y sus opciones se resuelvan igual.
+    const menu = document.getElementById('menu-section');
+    if (!menu) {
+      onScrollToMenu();
+      return;
+    }
 
-  const openFeaturedItem = (item: ManagedMenuItem) => onSelectItem(toMenuItem(item));
+    const cards = Array.from(menu.querySelectorAll<HTMLElement>('article'));
+    const target = cards.find((card) => card.textContent?.includes(item.name));
+    if (target) {
+      target.click();
+      return;
+    }
+
+    onScrollToMenu();
+    window.setTimeout(() => {
+      const retryCards = Array.from(document.querySelectorAll<HTMLElement>('#menu-section article'));
+      const retry = retryCards.find((card) => card.textContent?.includes(item.name));
+      retry?.click();
+    }, 250);
+  };
 
   return (
     <div className="space-y-4 sm:space-y-5 w-full">
