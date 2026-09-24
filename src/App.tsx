@@ -473,6 +473,7 @@ export default function App() {
             onScrollToMenu={scrollToMenu}
             onOpenDeliveryOrder={() => setIsCartOpen(true)}
             onOpenGiobot={() => setIsGiobotOpen(true)}
+            onSelectItem={(item) => setSelectedItem(item)}
           />
 
           <DailyHighlights
