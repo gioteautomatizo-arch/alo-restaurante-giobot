@@ -18,6 +18,7 @@ import {
   TableSession,
 } from '../types';
 import { sanitizeFirestorePayload } from './firestoreService';
+import { getActiveRestaurantId } from './restaurantContext';
 
 export const SALE_RECEIPTS_COLLECTION = 'sale_receipts';
 export const RESTAURANT_ID = 'alo-restaurante' as const;
@@ -27,7 +28,7 @@ export function subscribeToSaleReceipts(
 ): () => void {
   const q = query(
     collection(db, SALE_RECEIPTS_COLLECTION),
-    where('restaurantId', '==', RESTAURANT_ID)
+    where('restaurantId', '==', getActiveRestaurantId())
   );
 
   return onSnapshot(
@@ -136,7 +137,7 @@ export async function createFinalSaleReceipt(input: {
 
   const receipt: SaleReceipt = {
     code: receiptCode(input.tableNumber),
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
     tableNumber: input.tableNumber,
     tableSessionId: sessionId,
     guestCount: Number(input.session.guestCount || 0),
