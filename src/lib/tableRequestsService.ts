@@ -1,4 +1,5 @@
 import {
+import { getActiveRestaurantId } from './restaurantContext';
   collection,
   doc,
   setDoc,
@@ -193,7 +194,7 @@ export async function createPublicServiceRequest(
     tableNumber,
     requestType,
     status: 'PENDIENTE',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
     createdAt: new Date().toISOString(),
   };
 
@@ -205,7 +206,7 @@ export async function createPublicServiceRequest(
       tableNumber: newRequest.tableNumber,
       requestType: newRequest.requestType,
       status: 'PENDIENTE',
-      restaurantId: RESTAURANT_ID,
+      restaurantId: getActiveRestaurantId(),
       createdAt: newRequest.createdAt,
     });
 
@@ -276,7 +277,7 @@ export function subscribeToTableRequestsForTable(
               tableNumber: data.tableNumber,
               requestType: data.requestType,
               status: 'PENDIENTE',
-              restaurantId: RESTAURANT_ID,
+              restaurantId: getActiveRestaurantId(),
               createdAt: data.createdAt,
             });
           }
