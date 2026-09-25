@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { sanitizeFirestorePayload } from './firestoreService';
+import { getActiveRestaurantId } from './restaurantContext';
 import { StaffUser } from '../types';
 
 const RESTAURANT_ID = 'alo-restaurante' as const;
@@ -109,7 +110,7 @@ export async function createTransferPaymentIntent(input: {
   if (input.receiptDataUrl.length > MAX_RECEIPT_DATA_URL_LENGTH) throw new Error('El comprobante es demasiado grande.');
 
   const payload: Omit<TablePaymentIntent, 'id'> = {
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
     tableNumber: input.tableNumber,
     tableSessionId: input.tableSessionId,
     accountId: input.accountId,
@@ -133,7 +134,7 @@ export function subscribeToPendingTransferIntents(
 ): () => void {
   const q = query(
     collection(db, TABLE_PAYMENT_INTENTS_COLLECTION),
-    where('restaurantId', '==', RESTAURANT_ID),
+    where('restaurantId', '==', getActiveRestaurantId()),
     where('status', '==', 'PENDIENTE')
   );
 
