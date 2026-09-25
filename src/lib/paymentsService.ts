@@ -15,6 +15,7 @@ import {
   TablePaymentMethod,
 } from '../types';
 import { sanitizeFirestorePayload } from './firestoreService';
+import { getActiveRestaurantId } from './restaurantContext';
 import { PUBLIC_TABLE_ORDERS_COLLECTION } from './ordersService';
 
 export const TABLE_PAYMENTS_COLLECTION = 'table_payments';
@@ -44,7 +45,7 @@ export function subscribeToTablePayments(
 ): () => void {
   const q = query(
     collection(db, TABLE_PAYMENTS_COLLECTION),
-    where('restaurantId', '==', RESTAURANT_ID)
+    where('restaurantId', '==', getActiveRestaurantId())
   );
 
   return onSnapshot(
@@ -184,7 +185,7 @@ export async function settleTableAccount(
     const payment = {
       id: paymentRef.id,
       code: buildPaymentCode(),
-      restaurantId: RESTAURANT_ID,
+      restaurantId: getActiveRestaurantId(),
       tableNumber: input.tableNumber,
       tableSessionId: input.tableSessionId,
       accountId: input.accountId,
