@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BusinessOnboarding, DemoBusinessProfile } from './BusinessOnboarding';
 import { registerBusiness } from '../../lib/businessAuthService';
+import { getBusinessTemplateConfig } from '../../data/businessTemplates';
 
 export const BusinessOnboardingDemo: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
@@ -22,6 +23,8 @@ export const BusinessOnboardingDemo: React.FC = () => {
         email: profile.email,
         password: profile.password,
         logoUrl: profile.logoDataUrl,
+        templateId: profile.type,
+        capabilities: getBusinessTemplateConfig(profile.type).capabilities,
       });
       window.location.hash = '#business';
     } catch (err: any) {
