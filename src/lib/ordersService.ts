@@ -16,6 +16,7 @@ import {
   StaffUser,
 } from '../types';
 import { sanitizeFirestorePayload } from './firestoreService';
+import { getActiveRestaurantId } from './restaurantContext';
 
 export const ORDERS_COLLECTION = 'restaurant_orders';
 export const PUBLIC_TABLE_ORDERS_COLLECTION = 'public_table_orders';
@@ -54,7 +55,7 @@ function ensureRestaurantOrdersListener() {
 
   const q = query(
     collection(db, ORDERS_COLLECTION),
-    where('restaurantId', '==', RESTAURANT_ID)
+    where('restaurantId', '==', getActiveRestaurantId())
   );
 
   restaurantOrdersFirestoreUnsubscribe = onSnapshot(
@@ -99,7 +100,7 @@ export async function createRestaurantOrder(
   const payload = sanitizeFirestorePayload({
     ...order,
     code: buildOrderCode(),
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
     status: 'NUEVO' as RestaurantOrderStatus,
     billingStatus: 'PENDIENTE',
     createdAt: now,
@@ -112,7 +113,7 @@ export async function createRestaurantOrder(
     const publicPayload: Omit<PublicTableOrder, 'id'> = {
       orderId: ref.id,
       code: payload.code,
-      restaurantId: RESTAURANT_ID,
+      restaurantId: getActiveRestaurantId(),
       tableNumber: payload.tableNumber,
       tableSessionId: payload.tableSessionId,
       accountId: payload.accountId,
@@ -179,7 +180,7 @@ export function subscribeToTableOrders(
 
   const q = query(
     collection(db, ORDERS_COLLECTION),
-    where('restaurantId', '==', RESTAURANT_ID),
+    where('restaurantId', '==', getActiveRestaurantId()),
     where('tableNumber', '==', tableNumber)
   );
 
@@ -219,7 +220,7 @@ export function subscribeToPublicTableOrders(
 
   const q = query(
     collection(db, PUBLIC_TABLE_ORDERS_COLLECTION),
-    where('restaurantId', '==', RESTAURANT_ID),
+    where('restaurantId', '==', getActiveRestaurantId()),
     where('tableNumber', '==', tableNumber)
   );
 

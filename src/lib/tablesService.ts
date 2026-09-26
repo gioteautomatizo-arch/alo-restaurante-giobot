@@ -10,9 +10,14 @@ import {
 } from 'firebase/firestore';
 import { db, isUserAuthenticated, subscribeToAuth } from './firebase';
 import { TableRecord, TableStatus, TableCourse } from '../types';
+import { getActiveRestaurantId } from './restaurantContext';
 
 export const RESTAURANT_ID = 'alo-restaurante';
-const STORAGE_KEY_TABLES = 'alo_admin_tables_v1';
+const STORAGE_KEY_TABLES_BASE = 'alo_admin_tables_v1';
+
+function getTablesStorageKey(): string {
+  return `${STORAGE_KEY_TABLES_BASE}_${getActiveRestaurantId()}`;
+}
 export const TABLES_DATA_EVENT = 'alo_admin_tables_updated';
 
 // Mesas iniciales predeterminadas configurables
@@ -33,7 +38,7 @@ export const DEFAULT_TABLES: TableRecord[] = [
     updatedAt: new Date().toISOString(),
     updatedBy: 'sistema',
     updatedByName: 'Sistema',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
     capacity: 4,
     location: 'salon',
   },
@@ -53,7 +58,7 @@ export const DEFAULT_TABLES: TableRecord[] = [
     updatedAt: new Date().toISOString(),
     updatedBy: 'sistema',
     updatedByName: 'Sistema',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
     capacity: 4,
     location: 'salon',
   },
@@ -73,7 +78,7 @@ export const DEFAULT_TABLES: TableRecord[] = [
     updatedAt: new Date().toISOString(),
     updatedBy: 'sistema',
     updatedByName: 'Sistema',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
     capacity: 4,
     location: 'salon',
   },
@@ -93,7 +98,7 @@ export const DEFAULT_TABLES: TableRecord[] = [
     updatedAt: new Date().toISOString(),
     updatedBy: 'sistema',
     updatedByName: 'Sistema',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
     capacity: 4,
     location: 'salon',
   },
@@ -113,7 +118,7 @@ export const DEFAULT_TABLES: TableRecord[] = [
     updatedAt: new Date().toISOString(),
     updatedBy: 'sistema',
     updatedByName: 'Sistema',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
     capacity: 6,
     location: 'salon',
   },
@@ -133,7 +138,7 @@ export const DEFAULT_TABLES: TableRecord[] = [
     updatedAt: new Date().toISOString(),
     updatedBy: 'sistema',
     updatedByName: 'Sistema',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
     capacity: 4,
     location: 'terraza',
   },
@@ -153,7 +158,7 @@ export const DEFAULT_TABLES: TableRecord[] = [
     updatedAt: new Date().toISOString(),
     updatedBy: 'sistema',
     updatedByName: 'Sistema',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
     capacity: 4,
     location: 'barra',
   },
@@ -173,7 +178,7 @@ export const DEFAULT_TABLES: TableRecord[] = [
     updatedAt: new Date().toISOString(),
     updatedBy: 'sistema',
     updatedByName: 'Sistema',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
     capacity: 4,
     location: 'salon',
   },
@@ -188,7 +193,7 @@ let realtimeSyncConsumers = 0;
 
 function loadFromLocalStorage(): TableRecord[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_TABLES);
+    const raw = localStorage.getItem(getTablesStorageKey());
     if (raw) {
       let parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -202,7 +207,7 @@ function loadFromLocalStorage(): TableRecord[] {
             parsed.push(defTable);
           }
         }
-        localStorage.setItem(STORAGE_KEY_TABLES, JSON.stringify(parsed));
+        localStorage.setItem(getTablesStorageKey(), JSON.stringify(parsed));
         return parsed.sort((a, b) => a.tableNumber - b.tableNumber);
       }
     }
@@ -218,7 +223,7 @@ function saveToLocalStorage(tables: TableRecord[]) {
     const sanitized = tables.filter((t) => t.tableId !== 'table-3' && t.tableNumber !== 3);
     const sorted = sanitized.sort((a, b) => a.tableNumber - b.tableNumber);
     cachedTables = sorted;
-    localStorage.setItem(STORAGE_KEY_TABLES, JSON.stringify(sorted));
+    localStorage.setItem(getTablesStorageKey(), JSON.stringify(sorted));
     notifyListeners();
   } catch (e) {
     console.warn('Error al guardar mesas en localStorage:', e);
@@ -239,7 +244,7 @@ function notifyListeners() {
 // Sincronización multi-pestaña limpia vía evento nativo storage (solo dispara en otras pestañas)
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
-    if (e.key === STORAGE_KEY_TABLES) {
+    if (e.key === getTablesStorageKey()) {
       cachedTables = loadFromLocalStorage();
       notifyListeners();
     }
@@ -261,7 +266,7 @@ function startFirestoreTablesListener(): void {
   try {
     const q = query(
       collection(db, 'tables'),
-      where('restaurantId', '==', RESTAURANT_ID)
+      where('restaurantId', '==', getActiveRestaurantId())
     );
 
     firestoreUnsubscribe = onSnapshot(
@@ -300,7 +305,7 @@ function startFirestoreTablesListener(): void {
               updatedAt: data.updatedAt || new Date().toISOString(),
               updatedBy: data.updatedBy || 'remoto',
               updatedByName: data.updatedByName || '',
-              restaurantId: RESTAURANT_ID,
+              restaurantId: getActiveRestaurantId(),
               capacity: data.capacity || 4,
               location: data.location || 'salon',
             });
@@ -327,7 +332,7 @@ function startFirestoreTablesListener(): void {
               updatedAt: new Date().toISOString(),
               updatedBy: 'sistema',
               updatedByName: 'Sistema',
-              restaurantId: RESTAURANT_ID,
+              restaurantId: getActiveRestaurantId(),
               capacity: 4,
               location: 'salon',
             };
@@ -397,7 +402,7 @@ async function seedDefaultTablesToFirestore() {
   try {
     for (const t of cachedTables.length > 0 ? cachedTables : DEFAULT_TABLES) {
       const docRef = doc(db, 'tables', t.tableId);
-      await setDoc(docRef, { ...t, restaurantId: RESTAURANT_ID }, { merge: true });
+      await setDoc(docRef, { ...t, restaurantId: getActiveRestaurantId() }, { merge: true });
     }
   } catch (e) {
     console.warn('Aviso: Siembra automática de mesas en Firestore pospuesta:', e);
@@ -446,7 +451,7 @@ async function syncTableToFirestoreAndLocal(table: TableRecord) {
     try {
       const docRef = doc(db, 'tables', table.tableId);
       // Limpiar campos undefined antes de mandar a Firestore
-      const cleanData: Record<string, any> = JSON.parse(JSON.stringify({ ...table, restaurantId: RESTAURANT_ID }));
+      const cleanData: Record<string, any> = JSON.parse(JSON.stringify({ ...table, restaurantId: getActiveRestaurantId() }));
       // Si la mesa se libera, garantizar que se limpien explícitamente en Firestore
       if (table.status === 'LIBRE') {
         cleanData.openedAt = null;
@@ -500,7 +505,7 @@ export async function occupyTable(
     updatedAt: now.toISOString(),
     updatedBy: user?.id || 'staff',
     updatedByName: user?.name || params.waiterName || 'Personal',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
   };
 
   await syncTableToFirestoreAndLocal(updated);
@@ -542,7 +547,7 @@ export async function occupyTableFromPublicQR(
     updatedAt: now.toISOString(),
     updatedBy: 'qr_cliente',
     updatedByName: 'Cliente QR',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
   };
 
   // 1. Actualizar caché local
@@ -589,7 +594,7 @@ export async function assignWaiterToTable(
     updatedAt: now.toISOString(),
     updatedBy: user?.id || waiter.id,
     updatedByName: user?.name || waiter.name,
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
   };
 
   await syncTableToFirestoreAndLocal(updated);
@@ -624,7 +629,7 @@ export async function freeTable(
     updatedAt: now.toISOString(),
     updatedBy: user?.id || 'staff',
     updatedByName: user?.name || 'Personal',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
   };
 
   await syncTableToFirestoreAndLocal(updated);
@@ -660,7 +665,7 @@ export async function setTableStatus(
     updatedAt: now.toISOString(),
     updatedBy: user?.id || 'staff',
     updatedByName: user?.name || 'Personal',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
   };
 
   await syncTableToFirestoreAndLocal(updated);
@@ -688,7 +693,7 @@ export async function setTableCourse(
     updatedAt: now.toISOString(),
     updatedBy: user?.id || 'staff',
     updatedByName: user?.name || 'Personal',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
   };
 
   await syncTableToFirestoreAndLocal(updated);
@@ -713,7 +718,7 @@ export async function toggleTablePending(
     updatedAt: now.toISOString(),
     updatedBy: user?.id || 'staff',
     updatedByName: user?.name || 'Personal',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
   };
 
   await syncTableToFirestoreAndLocal(updated);
@@ -737,7 +742,7 @@ export async function updateTableNotes(
     updatedAt: now.toISOString(),
     updatedBy: user?.id || 'staff',
     updatedByName: user?.name || 'Personal',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
   };
 
   await syncTableToFirestoreAndLocal(updated);
@@ -761,7 +766,7 @@ export async function updateTableGuestCount(
     updatedAt: now.toISOString(),
     updatedBy: user?.id || 'staff',
     updatedByName: user?.name || 'Personal',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
   };
 
   await syncTableToFirestoreAndLocal(updated);
@@ -804,7 +809,7 @@ export async function addTable(
     updatedAt: now.toISOString(),
     updatedBy: user?.id || 'staff',
     updatedByName: user?.name || 'Personal',
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
     capacity,
     location,
   };

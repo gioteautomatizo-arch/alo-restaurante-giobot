@@ -19,6 +19,7 @@ import {
   TableSessionStatus,
 } from '../types';
 import { sanitizeFirestorePayload } from './firestoreService';
+import { getActiveRestaurantId } from './restaurantContext';
 import { occupyTableFromPublicQR } from './tablesService';
 
 export const TABLE_SESSIONS_COLLECTION = 'table_sessions';
@@ -98,7 +99,7 @@ function normalizeSession(id: string, data: Partial<TableSession>): TableSession
 
   return {
     id,
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
     tableNumber,
     guestCount: Math.max(1, Number(data.guestCount || 1)),
     accountMode,
@@ -127,7 +128,7 @@ export function subscribeToRestaurantTableSessions(
 ): () => void {
   const sessionsQuery = query(
     collection(db, TABLE_SESSIONS_COLLECTION),
-    where('restaurantId', '==', RESTAURANT_ID)
+    where('restaurantId', '==', getActiveRestaurantId())
   );
 
   return onSnapshot(
@@ -202,7 +203,7 @@ export async function activatePublicTableSession(
   const createdAt = nowIso();
   const safeGuestCount = Math.max(1, Math.min(20, Math.round(guestCount || 1)));
   const payload: Omit<TableSession, 'id'> = {
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
     tableNumber,
     guestCount: safeGuestCount,
     accountMode: 'GENERAL',
@@ -247,7 +248,7 @@ export async function ensureStaffTableSession(
 
   const createdAt = nowIso();
   const payload: Omit<TableSession, 'id'> = {
-    restaurantId: RESTAURANT_ID,
+    restaurantId: getActiveRestaurantId(),
     tableNumber,
     guestCount: Math.max(1, Math.min(20, Math.round(guestCount || 1))),
     accountMode: 'GENERAL',
@@ -413,7 +414,7 @@ export async function closeAndArchiveTableSession(
     await setDoc(
       ref,
       sanitizeFirestorePayload({
-        restaurantId: RESTAURANT_ID,
+        restaurantId: getActiveRestaurantId(),
         tableNumber,
         guestCount: 0,
         accountMode: 'GENERAL',

@@ -380,7 +380,7 @@ export interface TableRecord {
   updatedAt: string;
   updatedBy: string;
   updatedByName?: string;
-  restaurantId: 'alo-restaurante';
+  restaurantId: string;
   capacity?: number;
   location?: 'salon' | 'terraza' | 'barra';
 }
@@ -398,7 +398,7 @@ export interface TableServiceRequest {
   tableNumber: number;
   requestType: TableServiceRequestType;
   status: 'PENDIENTE';
-  restaurantId: 'alo-restaurante';
+  restaurantId: string;
   createdAt: string;
 }
 
@@ -433,7 +433,7 @@ export interface PublicTableOrder {
   id?: string;
   orderId?: string;
   code: string;
-  restaurantId: 'alo-restaurante';
+  restaurantId: string;
   tableNumber: number;
   tableSessionId?: string;
   accountId?: string;
@@ -453,7 +453,7 @@ export interface PublicTableOrder {
 export interface RestaurantOrder {
   id?: string;
   code: string;
-  restaurantId: 'alo-restaurante';
+  restaurantId: string;
   orderType: OrderType;
   tableNumber?: number;
   tableSessionId?: string;
@@ -510,7 +510,7 @@ export interface TableSessionPerson {
 
 export interface TableSession {
   id?: string;
-  restaurantId: 'alo-restaurante';
+  restaurantId: string;
   tableNumber: number;
   guestCount: number;
   accountMode: TableAccountMode;
@@ -539,7 +539,7 @@ export interface TablePaymentBreakdownItem {
 export interface TablePayment {
   id?: string;
   code: string;
-  restaurantId: 'alo-restaurante';
+  restaurantId: string;
   tableNumber: number;
   tableSessionId?: string;
   accountId?: string;
@@ -584,7 +584,7 @@ export interface SaleReceiptPaymentSnapshot {
 export interface SaleReceipt {
   id?: string;
   code: string;
-  restaurantId: 'alo-restaurante';
+  restaurantId: string;
   tableNumber: number;
   tableSessionId?: string;
   guestCount: number;
