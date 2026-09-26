@@ -40,6 +40,8 @@ export interface RestaurantFeatureFlags {
 
 export interface RestaurantTenant {
   restaurantId: string;
+  templateId?: string;
+  capabilities?: string[];
   branding: RestaurantBranding;
   assistant: RestaurantAssistantProfile;
   features: RestaurantFeatureFlags;
@@ -109,6 +111,8 @@ export function normalizeRestaurantSlug(value: string): string {
 
 export function createRestaurantTenant(input: {
   restaurantId: string;
+  templateId?: string;
+  capabilities?: string[];
   restaurantName: string;
   publicSlug?: string;
   logoUrl?: string;
@@ -120,6 +124,8 @@ export function createRestaurantTenant(input: {
 
   return {
     restaurantId: input.restaurantId.trim(),
+    templateId: input.templateId,
+    capabilities: input.capabilities,
     branding: {
       restaurantName: input.restaurantName.trim(),
       publicSlug: slug,
