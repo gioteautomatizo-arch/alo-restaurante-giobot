@@ -207,7 +207,7 @@ function loadFromLocalStorage(): TableRecord[] {
             parsed.push(defTable);
           }
         }
-        localStorage.setItem(STORAGE_KEY_TABLES, JSON.stringify(parsed));
+        localStorage.setItem(getTablesStorageKey(), JSON.stringify(parsed));
         return parsed.sort((a, b) => a.tableNumber - b.tableNumber);
       }
     }
@@ -244,7 +244,7 @@ function notifyListeners() {
 // Sincronización multi-pestaña limpia vía evento nativo storage (solo dispara en otras pestañas)
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
-    if (e.key === STORAGE_KEY_TABLES) {
+    if (e.key === getTablesStorageKey()) {
       cachedTables = loadFromLocalStorage();
       notifyListeners();
     }
