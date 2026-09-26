@@ -14,6 +14,8 @@ import {
   where,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { saveBusinessCatalog } from './businessCatalogService';
+import { getBusinessCatalogTemplate } from '../data/businessCatalogTemplates';
 import {
   createRestaurantTenant,
   normalizeRestaurantSlug,
@@ -123,6 +125,23 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
     tx.set(ref, tenant);
     tx.set(membershipRef(businessId, userId), membership);
   });
+
+  const catalogTemplate = input.templateId ? getBusinessCatalogTemplate(input.templateId) : null;
+  if (catalogTemplate) {
+    try {
+      await saveBusinessCatalog(
+        businessId,
+        catalogTemplate.items.map((item, index) => ({
+          ...item,
+          id: `${item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}-${index + 1}`,
+          available: true,
+        })),
+        input.businessName
+      );
+    } catch (error) {
+      console.warn('El negocio fue creado, pero no se pudo sembrar el catálogo de la plantilla:', error);
+    }
+  }
 
   return { tenant, membership };
 }
