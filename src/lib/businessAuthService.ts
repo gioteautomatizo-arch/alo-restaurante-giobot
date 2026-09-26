@@ -30,6 +30,8 @@ export interface RegisterBusinessInput {
   email: string;
   password: string;
   logoUrl?: string;
+  templateId?: string;
+  capabilities?: string[];
 }
 
 export interface RegisterBusinessResult {
@@ -101,6 +103,8 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
     restaurantName: input.businessName,
     publicSlug: businessId,
     logoUrl: input.logoUrl,
+    templateId: input.templateId,
+    capabilities: input.capabilities,
   }));
 
   const membership: RestaurantMembership = {
