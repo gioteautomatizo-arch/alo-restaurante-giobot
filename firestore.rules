@@ -13,16 +13,39 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role == 'OWNER';
     }
 
+
+    match /businesses/{businessId}/catalog/{catalogDoc} {
+      allow read: if request.auth != null
+        && exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true;
+
+      allow create, update: if request.auth != null
+        && request.resource.data.businessId == businessId
+        && exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true;
+
+      allow delete: if request.auth != null
+        && exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true;
+    }
+
     match /businessMemberships/{membershipId} {
       allow read: if request.auth != null
         && resource.data.userId == request.auth.uid;
 
       allow create: if request.auth != null
         && request.resource.data.userId == request.auth.uid
-        && request.resource.data.role == 'OWNER';
+        && request.resource.data.role == 'OWNER'
+        && request.resource.data.active == true
+        && request.resource.data.restaurantId is string
+        && request.resource.data.restaurantId != 'alo-restaurante'
+        && membershipId == request.resource.data.restaurantId + '_' + request.auth.uid
+        && exists(/databases/$(database)/documents/businesses/$(request.resource.data.restaurantId));
 
       allow update, delete: if request.auth != null
-        && resource.data.userId == request.auth.uid;
+        && resource.data.userId == request.auth.uid
+        && resource.data.restaurantId is string
+        && membershipId == resource.data.restaurantId + '_' + request.auth.uid;
     }
 
     
@@ -60,8 +83,7 @@ service cloud.firestore {
 
     match /staff_users/{userId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn()
-        && isKnownRestaurant(request.resource.data) 
+      allow create, update: if isAuthorizedRestaurant(request.resource.data) 
         && request.resource.data.name is string 
         && request.resource.data.role in ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'COCINA', 'EMPLEADO'];
       allow delete: if isAuthorizedRestaurant(resource.data);
@@ -69,8 +91,7 @@ service cloud.firestore {
 
     match /shifts/{shiftId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn()
-        && isKnownRestaurant(request.resource.data)
+      allow create, update: if isAuthorizedRestaurant(request.resource.data)
         && request.resource.data.status in ['abierto', 'cerrado']
         && request.resource.data.initialCashFund is number;
       allow delete: if isAuthorizedRestaurant(resource.data);
@@ -78,8 +99,7 @@ service cloud.firestore {
 
     match /expenses/{expenseId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn()
-        && isKnownRestaurant(request.resource.data)
+      allow create, update: if isAuthorizedRestaurant(request.resource.data)
         && request.resource.data.concept is string
         && request.resource.data.amount is number
         && request.resource.data.amount >= 0;
@@ -88,8 +108,7 @@ service cloud.firestore {
 
     match /cxc_records/{cxcId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn()
-        && isKnownRestaurant(request.resource.data)
+      allow create, update: if isAuthorizedRestaurant(request.resource.data)
         && request.resource.data.person is string
         && request.resource.data.amount is number
         && request.resource.data.status in ['Pendiente', 'Pagado', 'Anulado'];
@@ -98,16 +117,14 @@ service cloud.firestore {
 
     match /inventory_items/{itemId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn()
-        && isKnownRestaurant(request.resource.data)
+      allow create, update: if isAuthorizedRestaurant(request.resource.data)
         && request.resource.data.name is string;
       allow delete: if isAuthorizedRestaurant(resource.data);
     }
 
     match /sobre_movements/{movementId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn()
-        && isKnownRestaurant(request.resource.data)
+      allow create, update: if isAuthorizedRestaurant(request.resource.data)
         && request.resource.data.amount is number;
       allow delete: if isAuthorizedRestaurant(resource.data);
     }
@@ -120,8 +137,7 @@ service cloud.firestore {
 
     match /activity_logs/{logId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn()
-        && isKnownRestaurant(request.resource.data)
+      allow create: if isAuthorizedRestaurant(request.resource.data)
         && request.resource.data.action is string;
       allow update, delete: if false;
     }
@@ -163,8 +179,7 @@ service cloud.firestore {
     match /tables/{tableId} {
       allow get: if true;
       allow list: if isSignedIn();
-      allow create: if isSignedIn()
-        && isKnownRestaurant(request.resource.data)
+      allow create: if isAuthorizedRestaurant(request.resource.data)
         && request.resource.data.status in ['LIBRE', 'OCUPADA', 'CUENTA', 'LIMPIEZA'];
       allow update: if (
         request.auth == null
@@ -329,8 +344,7 @@ service cloud.firestore {
 
     match /table_payments/{paymentId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn()
-        && isKnownRestaurant(request.resource.data)
+      allow create: if isAuthorizedRestaurant(request.resource.data)
         && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
         && request.resource.data.orderIds is list
         && request.resource.data.orderIds.size() > 0
@@ -350,8 +364,7 @@ service cloud.firestore {
 
     match /sale_receipts/{receiptId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn()
-        && isKnownRestaurant(request.resource.data)
+      allow create: if isAuthorizedRestaurant(request.resource.data)
         && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
         && request.resource.data.tableSessionId is string
         && request.resource.data.orderIds is list
