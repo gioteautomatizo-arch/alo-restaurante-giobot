@@ -3,6 +3,7 @@ import { ArrowLeft, Bot, Store } from 'lucide-react';
 import { BusinessCatalogEditor } from './BusinessCatalogEditor';
 import { BusinessOperationsView } from './BusinessOperationsView';
 import { BusinessMenuImport } from './BusinessMenuImport';
+import { BusinessModulesView } from './BusinessModulesView';
 import { getBusinessTemplateConfig } from '../../data/businessTemplates';
 import type { RestaurantTenant } from '../../lib/restaurantCore';
 import { getBusinessForUser } from '../../lib/businessAuthService';
@@ -14,7 +15,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const [business, setBusiness] = useState<RestaurantTenant | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<'workspace' | 'catalog' | 'operations' | 'menuImport'>('workspace');
+  const [view, setView] = useState<'workspace' | 'catalog' | 'operations' | 'menuImport' | 'modules'>('workspace');
 
   useEffect(() => subscribeToAuth((user) => setAuthUser(user)), []);
 
@@ -44,6 +45,14 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const back = () => {
     window.location.hash = '#business';
   };
+
+  if (view === 'modules' && business) {
+    return <BusinessModulesView businessName={business.branding.restaurantName} templateName={template.name} modules={template.modules} enabledCapabilities={business.capabilities || []} onBack={() => setView('workspace')} onOpen={(module) => {
+      if (module.capability === 'CATALOG') setView('catalog');
+      else if (module.capability === 'POS' || module.capability === 'ORDERS' || module.capability === 'ORDER_QUEUE') setView('operations');
+      else if (module.capability === 'MENU_IMPORT') setView('menuImport');
+    }} />;
+  }
 
   if (view === 'menuImport' && business) {
     return <BusinessMenuImport businessId={businessId} businessName={business.branding.restaurantName} onBack={() => setView('workspace')} />;
@@ -83,6 +92,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
 
   const template = getBusinessTemplateConfig(business.templateId || 'other');
   const quickModules = [
+    ['Ecosistema completo', 'Todos los módulos de esta plantilla', true, 'modules'],
     ['Operación', 'POS, ventas y operación diaria', business.features.pos, 'operations'],
     ['Catálogo', 'Productos, precios y menú', business.features.publicMenu, 'catalog'],
     ['Sube tu menú', 'Foto + análisis asistido por Giobot', true, 'menuImport'],
@@ -153,7 +163,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
                   key={title}
                   type="button"
                   disabled={!enabled || action === 'disabled'}
-                  onClick={() => action === 'catalog' ? setView('catalog') : action === 'operations' ? setView('operations') : action === 'menuImport' ? setView('menuImport') : undefined}
+                  onClick={() => action === 'catalog' ? setView('catalog') : action === 'operations' ? setView('operations') : action === 'menuImport' ? setView('menuImport') : action === 'modules' ? setView('modules') : undefined}
                   className="rounded-2xl border border-[#DEC8AE] bg-[#FFFDF9] p-5 text-left transition hover:border-[#C9974D] hover:bg-[#FFF7EA] disabled:cursor-default disabled:opacity-60 disabled:hover:border-[#DEC8AE] disabled:hover:bg-[#FFFDF9]"
                 >
                   <span className="text-[10px] font-black uppercase tracking-wide text-[#A86B3D]">{enabled ? 'Módulo disponible' : 'Próximamente'}</span>
