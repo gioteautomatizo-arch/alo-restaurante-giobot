@@ -180,17 +180,17 @@ export const BusinessOperationsView: React.FC<{
           </button>
           <div className="text-right">
             <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[#A86B3D]">Operación</p>
-            <strong className="text-sm">{businessName}</strong>
+            <strong className="text-sm text-[#2B1B13]">{businessName}</strong>
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:py-8">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><ClipboardList className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl">{todayOrders.length}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Pedidos hoy</span></div>
-          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><PackagePlus className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl">{activeOrders.length}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">En operación</span></div>
-          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><ShoppingCart className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl">{money(todayOrders.reduce((sum, order) => sum + Number(order.total || 0), 0))}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Venta registrada</span></div>
-          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><CheckCircle2 className="w-5 h-5 text-emerald-600" /><strong className="mt-2 block text-2xl">{paidLikeOrders.length}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Pagados</span></div>
+          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><ClipboardList className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{todayOrders.length}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Pedidos hoy</span></div>
+          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><PackagePlus className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{activeOrders.length}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">En operación</span></div>
+          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><ShoppingCart className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{money(todayOrders.reduce((sum, order) => sum + Number(order.total || 0), 0))}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Venta registrada</span></div>
+          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><CheckCircle2 className="w-5 h-5 text-emerald-600" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{paidLikeOrders.length}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Pagados</span></div>
         </div>
 
         <div className="mt-6 flex gap-2 rounded-2xl border border-[#DEC8AE] bg-white p-2 w-fit">
@@ -204,14 +204,14 @@ export const BusinessOperationsView: React.FC<{
           <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_360px]">
             <section className="rounded-[2rem] border border-[#D9C5AC] bg-white p-5 sm:p-6">
               <div className="flex flex-col sm:flex-row gap-3">
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto..." className="flex-1 rounded-xl border border-[#DEC8AE] px-4 py-3 text-sm outline-none focus:border-[#A86B3D]" />
-                <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Cliente (opcional)" className="sm:w-56 rounded-xl border border-[#DEC8AE] px-4 py-3 text-sm outline-none focus:border-[#A86B3D]" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto..." className="flex-1 rounded-xl border border-[#DEC8AE] px-4 py-3 text-sm text-[#2B1B13] placeholder:text-[#A86B3D]/70 outline-none focus:border-[#A86B3D]" />
+                <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Cliente (opcional)" className="sm:w-56 rounded-xl border border-[#DEC8AE] px-4 py-3 text-sm text-[#2B1B13] placeholder:text-[#A86B3D]/70 outline-none focus:border-[#A86B3D]" />
               </div>
               <div className="mt-5 grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
                 {availableCatalog.map((item) => (
                   <button key={item.id} onClick={() => addToCart(item)} className="rounded-2xl border border-[#E8D8C4] bg-[#FFFDF9] p-4 text-left hover:border-[#C9974D]">
                     <span className="text-[10px] font-bold uppercase text-[#A86B3D]">{item.category}</span>
-                    <strong className="mt-1 block text-sm">{item.name}</strong>
+                    <strong className="mt-1 block text-sm text-[#2B1B13]">{item.name}</strong>
                     <span className="mt-2 block font-black text-[#3A2418]">{money(Number(item.price || 0))}</span>
                   </button>
                 ))}
@@ -254,7 +254,7 @@ export const BusinessOperationsView: React.FC<{
           </div>
         ) : (
           <section className="mt-6 rounded-[2rem] border border-[#D9C5AC] bg-white overflow-hidden">
-            <div className="px-5 py-4 border-b border-[#E8D8C4]"><h2 className="font-serif text-xl font-black">Pedidos activos</h2></div>
+            <div className="px-5 py-4 border-b border-[#E8D8C4]"><h2 className="font-serif text-xl font-black text-[#2B1B13]">Pedidos activos</h2></div>
             {activeOrders.length === 0 ? (
               <div className="p-10 text-center text-sm text-[#6B4028]">No hay pedidos activos.</div>
             ) : (
@@ -265,18 +265,18 @@ export const BusinessOperationsView: React.FC<{
                     <div key={order.id || order.code} className="p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <strong className="text-base">{order.code}</strong>
+                          <strong className="text-base text-[#2B1B13]">{order.code}</strong>
                           <span className="rounded-full bg-[#FFF7EA] px-2 py-1 text-[10px] font-black text-[#A86B3D]">{STATUS_LABELS[order.status]}</span>
                         </div>
                         <p className="mt-1 text-sm text-[#6B4028]">{order.customerName} · {order.orderType === 'pickup' ? 'Mostrador' : order.orderType}</p>
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {order.items.map((item, index) => (
-                            <span key={item.productId + '-' + index} className="rounded-lg bg-[#FFFDF9] border border-[#E8D8C4] px-2 py-1 text-[11px]">{item.quantity}× {item.name}</span>
+                            <span key={item.productId + '-' + index} className="rounded-lg bg-[#FFFDF9] border border-[#E8D8C4] px-2 py-1 text-[11px] text-[#2B1B13]">{item.quantity}× {item.name}</span>
                           ))}
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <strong className="text-lg">{money(Number(order.total || 0))}</strong>
+                        <strong className="text-lg text-[#2B1B13]">{money(Number(order.total || 0))}</strong>
                         {nextStatus && <button onClick={() => advanceStatus(order)} className="rounded-xl bg-[#3A2418] px-3 py-2 text-xs font-black text-white">{STATUS_LABELS[nextStatus]}</button>}
                         <button onClick={() => cancelOrder(order)} className="rounded-xl border border-red-200 p-2 text-red-700" title="Cancelar"><XCircle className="w-4 h-4" /></button>
                       </div>

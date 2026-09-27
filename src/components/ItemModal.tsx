@@ -177,24 +177,28 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
         </div>
 
         <div className="p-5 space-y-5 overflow-y-auto flex-1">
+          {displayImage ? (
+            <div className="relative overflow-hidden rounded-2xl border border-[#DEC8AE] bg-[#F4E3C8]/30 p-1 flex items-center justify-center">
+              <img
+                src={displayImage}
+                alt={`${item.name}${selectedSize ? ` ${selectedSize.name}` : ''}`}
+                className="w-full aspect-[16/9] object-contain rounded-xl transform scale-[1.10] origin-center"
+              />
+              {selectedSize && (
+                <span className="absolute bottom-3 left-3 rounded-lg bg-[#3A2418]/95 px-2.5 py-1 text-[10px] font-black text-[#FFF7EA]">
+                  {selectedSize.name} · ${selectedSize.price}
+                </span>
+              )}
+            </div>
+          ) : item.sizes && item.sizes.length > 0 ? (
+            <div className="rounded-2xl border border-dashed border-[#DEC8AE] bg-[#FFF7EA] p-4 text-center text-[#A86B3D]">
+              <ImageIcon className="w-5 h-5 mx-auto mb-1" />
+              <span className="text-[10px] font-bold">Imagen del tamaño próximamente</span>
+            </div>
+          ) : null}
+
           {item.sizes && item.sizes.length > 0 && (
             <div className="space-y-3">
-              {displayImage ? (
-                <div className="relative overflow-hidden rounded-2xl border border-[#DEC8AE] bg-[#F4E3C8]/30 p-2">
-                  <img src={displayImage} alt={`${item.name}${selectedSize ? ` ${selectedSize.name}` : ''}`} className="w-full aspect-[16/9] object-contain rounded-xl" />
-                  {selectedSize && (
-                    <span className="absolute bottom-3 left-3 rounded-lg bg-[#3A2418]/95 px-2.5 py-1 text-[10px] font-black text-[#FFF7EA]">
-                      {selectedSize.name} · ${selectedSize.price}
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-[#DEC8AE] bg-[#FFF7EA] p-4 text-center text-[#A86B3D]">
-                  <ImageIcon className="w-5 h-5 mx-auto mb-1" />
-                  <span className="text-[10px] font-bold">Imagen del tamaño próximamente</span>
-                </div>
-              )}
-
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-[#6B4028] mb-2 font-serif">Selecciona el Tamaño</label>
                 <div className="grid grid-cols-3 gap-2">
@@ -203,7 +207,16 @@ export const ItemModal: React.FC<ItemModalProps> = ({ item, onClose, onAddToCart
                     const selected = selectedSize?.name === s.name;
                     return (
                       <button key={s.name} type="button" onClick={() => setSelectedSize(s)} className={`overflow-hidden rounded-xl border text-xs font-bold transition-all text-center flex flex-col cursor-pointer ${selected ? 'bg-[#3A2418] text-[#FFF7EA] border-[#3A2418] shadow-sm' : 'bg-[#FFF7EA] border-[#DEC8AE] text-[#6B4028] hover:bg-[#F4E3C8]'}`}>
-                        {sizeImage && <div className="aspect-[4/3] bg-[#F4E3C8]/25 p-1"><img src={sizeImage} alt={`${item.name} ${s.name}`} className="w-full h-full object-contain rounded-lg" loading="lazy" /></div>}
+                        {sizeImage && (
+                          <div className="aspect-[4/3] bg-[#F4E3C8]/25 p-0.5 flex items-center justify-center overflow-hidden">
+                            <img
+                              src={sizeImage}
+                              alt={`${item.name} ${s.name}`}
+                              className="w-full h-full object-contain rounded-lg transform scale-[1.10] origin-center"
+                              loading="lazy"
+                            />
+                          </div>
+                        )}
                         <span className="py-2 px-1 flex flex-col items-center"><span>{s.name}</span><span className="text-[11px] opacity-90">${s.price}</span></span>
                       </button>
                     );

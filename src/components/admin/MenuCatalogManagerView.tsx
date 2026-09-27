@@ -453,9 +453,9 @@ export const MenuCatalogManagerView: React.FC<MenuCatalogManagerViewProps> = ({ 
                 const itemBusy = busyItemId === item.id;
                 return (
                   <article key={item.id} className="bg-[#FFFDF9] rounded-2xl border border-[#DEC8AE] overflow-hidden shadow-xs flex flex-col">
-                    <button type="button" disabled={itemBusy} onClick={() => openQuickPhotoPicker(item)} className="relative aspect-[4/3] w-full bg-[#F4E3C8]/35 overflow-hidden p-1.5 text-left disabled:opacity-60 group">
+                    <button type="button" disabled={itemBusy} onClick={() => openQuickPhotoPicker(item)} className="relative aspect-[4/3] w-full bg-[#F4E3C8]/35 overflow-hidden p-1 text-left disabled:opacity-60 group flex items-center justify-center">
                       {item.primaryImageUrl ? (
-                        <img src={item.primaryImageUrl} alt={item.name} className="w-full h-full object-contain rounded-xl" />
+                        <img src={item.primaryImageUrl} alt={item.name} className="w-full h-full object-contain rounded-xl transform scale-[1.12] origin-center transition-transform group-hover:scale-[1.16]" />
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center text-[#A86B3D] gap-2 bg-gradient-to-br from-[#FFF7EA] to-[#F4E3C8] rounded-xl">
                           <ImageIcon className="w-7 h-7" />
@@ -554,7 +554,7 @@ export const MenuCatalogManagerView: React.FC<MenuCatalogManagerViewProps> = ({ 
                       const image = editingItem.sizeImageUrls?.[size.name] || editingItem.primaryImageUrl;
                       return (
                         <button key={size.name} type="button" disabled={photoBusy || !isPersistedItem(editingItem)} onClick={() => openSizePhotoPicker(size.name)} className="rounded-xl border overflow-hidden bg-[#FFF7EA] text-left disabled:opacity-50">
-                          {image ? <div className="aspect-[4/3] p-1 bg-[#F4E3C8]/30"><img src={image} alt={size.name} className="w-full h-full object-contain rounded-lg" /></div> : <div className="aspect-[4/3] flex items-center justify-center"><Camera className="w-5 h-5 text-[#A86B3D]" /></div>}
+                          {image ? <div className="aspect-[4/3] p-0.5 bg-[#F4E3C8]/30 flex items-center justify-center overflow-hidden"><img src={image} alt={size.name} className="w-full h-full object-contain rounded-lg transform scale-[1.10] origin-center" /></div> : <div className="aspect-[4/3] flex items-center justify-center"><Camera className="w-5 h-5 text-[#A86B3D]" /></div>}
                           <div className="p-2"><strong className="block text-[10px]">{size.name}</strong><span className="text-[9px] text-[#6B4028]">{size.price == null ? 'Precio pendiente' : `$${size.price}`} · Cambiar foto</span></div>
                         </button>
                       );
@@ -576,7 +576,7 @@ export const MenuCatalogManagerView: React.FC<MenuCatalogManagerViewProps> = ({ 
                       const primary = editingItem.primaryImageUrl === url;
                       return (
                         <div key={url} className={`relative rounded-xl overflow-hidden border-2 bg-[#F4E3C8]/30 ${primary ? 'border-[#C9974D]' : 'border-transparent'}`}>
-                          <div className="aspect-[4/3] p-1"><img src={url} alt={editingItem.name} className="w-full h-full object-contain rounded-lg" /></div>
+                          <div className="aspect-[4/3] p-0.5 flex items-center justify-center overflow-hidden"><img src={url} alt={editingItem.name} className="w-full h-full object-contain rounded-lg transform scale-[1.10] origin-center" /></div>
                           {primary && <span className="absolute top-1 left-1 bg-[#3A2418] text-white text-[8px] px-1.5 py-1 rounded">Principal</span>}
                           <div className="absolute bottom-1 inset-x-1 grid grid-cols-2 gap-1">
                             <button type="button" disabled={primary || photoBusy} onClick={() => void setPrimaryPhoto(url)} className="bg-white text-[8px] py-1 rounded">Principal</button>
