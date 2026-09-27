@@ -46,7 +46,9 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     window.location.hash = '#business';
   };
 
-  if (view === 'modules' && business) {
+  const template = business ? getBusinessTemplateConfig(business.templateId || 'other') : null;
+
+  if (view === 'modules' && business && template) {
     return <BusinessModulesView businessName={business.branding.restaurantName} templateName={template.name} modules={template.modules} enabledCapabilities={business.capabilities || []} onBack={() => setView('workspace')} onOpen={(module) => {
       if (module.capability === 'CATALOG') setView('catalog');
       else if (module.capability === 'POS' || module.capability === 'ORDERS' || module.capability === 'ORDER_QUEUE') setView('operations');
@@ -68,11 +70,11 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#F5F1EA] flex items-center justify-center text-[#2B1B13]">
+      <div className="min-h-screen bg-[#F5F1EA] flex items-center justify-center text-[#111111]">
         <div className="text-center">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-[#111827] text-amber-300 flex items-center justify-center"><Bot className="w-7 h-7" /></div>
+          <div className="mx-auto w-14 h-14 rounded-2xl bg-black text-[#D4AF37] flex items-center justify-center"><Bot className="w-7 h-7" /></div>
           <h1 className="mt-5 font-serif text-2xl font-black">Abriendo tu negocio…</h1>
-          <p className="mt-2 text-sm text-[#6B4028]">Validando tu acceso y cargando el espacio de trabajo.</p>
+          <p className="mt-2 text-sm text-[#333333]">Validando tu acceso y cargando el espacio de trabajo.</p>
         </div>
       </div>
     );
@@ -81,16 +83,15 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   if (error || !business) {
     return (
       <div className="min-h-screen bg-[#F5F1EA] flex items-center justify-center px-4">
-        <div className="w-full max-w-md rounded-[2rem] border border-[#D9C5AC] bg-white p-7 text-center shadow-sm">
+        <div className="w-full max-w-md rounded-[2rem] border border-black/10 bg-white p-7 text-center shadow-sm">
           <h1 className="font-serif text-2xl font-black">No pudimos abrir este negocio</h1>
           <p className="mt-2 text-sm text-[#6B4028]">{error || 'El negocio no está disponible.'}</p>
-          <button type="button" onClick={back} className="mt-6 rounded-2xl bg-[#3A2418] px-5 py-3 text-sm font-black text-white">Volver a mis negocios</button>
+          <button type="button" onClick={back} className="mt-6 rounded-2xl bg-black px-5 py-3 text-sm font-black text-white">Volver a mis negocios</button>
         </div>
       </div>
     );
   }
 
-  const template = getBusinessTemplateConfig(business.templateId || 'other');
   const quickModules = [
     ['Ecosistema completo', 'Todos los módulos de esta plantilla', true, 'modules'],
     ['Operación', 'POS, ventas y operación diaria', business.features.pos, 'operations'],
@@ -103,14 +104,14 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   ] as const;
 
   return (
-    <div className="min-h-screen bg-[#F5F1EA] text-[#201610]">
-      <header className="border-b border-[#E5D6C4] bg-white/95 px-4 py-4 shadow-sm">
+    <div className="min-h-screen bg-white text-[#111111]">
+      <header className="border-b border-black/10 bg-white/95 px-4 py-4 shadow-sm">
         <div className="mx-auto max-w-6xl flex items-center justify-between gap-4">
-          <button type="button" onClick={back} className="rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-xs font-bold text-[#6B4028] flex items-center gap-2">
+          <button type="button" onClick={back} className="rounded-xl border border-black/15 bg-white px-3 py-2 text-xs font-bold text-[#6B4028] flex items-center gap-2">
             <ArrowLeft className="w-4 h-4" /> Mis negocios
           </button>
           <div className="flex items-center gap-2">
-            <Bot className="w-5 h-5 text-[#A86B3D]" />
+            <Bot className="w-5 h-5 text-[#B88917]" />
             <span className="text-xs font-black uppercase tracking-wide text-[#6B4028]">Gioteautomatizo Business</span>
           </div>
         </div>
@@ -143,15 +144,15 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
                 ['Inventario', business.features.inventory],
                 ['Clientes + IA', business.features.customerAssistant],
               ].map(([label, enabled]) => (
-                <div key={String(label)} className="rounded-2xl border border-[#E8D8C4] bg-[#FFFDF9] p-4">
+                <div key={String(label)} className="rounded-2xl border border-black/10 bg-white p-4">
                   <span className="text-[10px] font-black uppercase tracking-wide text-[#A86B3D]">{enabled ? 'Disponible' : 'Próximamente'}</span>
                   <strong className="mt-1 block text-sm">{label}</strong>
                 </div>
               ))}
             </div>
 
-            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <p className="text-xs font-black uppercase tracking-wide text-amber-900">Giobot</p>
+            <div className="mt-6 rounded-2xl border border-[#D4AF37]/30 bg-[#FBF7EA] p-4">
+              <p className="text-xs font-black uppercase tracking-wide text-[#5A4815]">Giobot</p>
               <p className="mt-1 text-sm text-amber-900">Tu asistente <strong>{business.assistant.name}</strong> está asociado exclusivamente a este negocio.</p>
             </div>
 
@@ -164,7 +165,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
                   type="button"
                   disabled={!enabled || action === 'disabled'}
                   onClick={() => action === 'catalog' ? setView('catalog') : action === 'operations' ? setView('operations') : action === 'menuImport' ? setView('menuImport') : action === 'modules' ? setView('modules') : undefined}
-                  className="rounded-2xl border border-[#DEC8AE] bg-[#FFFDF9] p-5 text-left transition hover:border-[#C9974D] hover:bg-[#FFF7EA] disabled:cursor-default disabled:opacity-60 disabled:hover:border-[#DEC8AE] disabled:hover:bg-[#FFFDF9]"
+                  className="rounded-2xl border border-[#DEC8AE] bg-[#FFFDF9] p-5 text-left transition hover:border-[#C9974D] hover:bg-[#FBF7EA] disabled:cursor-default disabled:opacity-60 disabled:hover:border-[#DEC8AE] disabled:hover:bg-[#FFFDF9]"
                 >
                   <span className="text-[10px] font-black uppercase tracking-wide text-[#A86B3D]">{enabled ? 'Módulo disponible' : 'Próximamente'}</span>
                   <strong className="mt-2 block font-serif text-lg text-[#2B1B13]">{title}</strong>
