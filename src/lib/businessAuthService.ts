@@ -10,7 +10,7 @@ import {
   getDoc,
   getDocs,
   query,
-  runTransaction,
+  setDoc,
   where,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
@@ -110,15 +110,26 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
     active: true,
   };
 
-  await runTransaction(db, async (tx) => {
-    const ref = businessRef(businessId);
-    const current = await tx.get(ref);
-    if (current.exists()) {
-      throw new Error('Ese nombre de negocio ya está en uso. Elige otro.');
-    }
-    tx.set(ref, tenant);
-    tx.set(membershipRef(businessId, userId), membership);
-  });
+  // Crear primero el negocio y después su membresía.
+  // Esto mantiene el alta compatible con las reglas de Firestore que
+  // requieren que businesses/{businessId} exista antes de crear
+  // businessMemberships/{businessId}_{userId}.
+  const ref = businessRef(businessId);
+  const current = await getDoc(ref);
+  if (current.exists()) {
+    throw new Error('Ese nombre de negocio ya está en uso. Elige otro.');
+  }
+
+  await setDoc(ref, tenant);
+
+  try {
+    await setDoc(membershipRef(businessId, userId), membership);
+  } catch (err) {
+    console.error('El negocio se creó, pero no se pudo crear la membresía del propietario:', err);
+    throw new Error(
+      'El negocio se creó, pero no pudimos asignarte como propietario. No vuelvas a registrarlo todavía; revisaremos los permisos de Firebase.'
+    );
+  }
 
   return { tenant, membership };
 }
