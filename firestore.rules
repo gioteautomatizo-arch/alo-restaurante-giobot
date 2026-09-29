@@ -42,7 +42,7 @@ service cloud.firestore {
         && request.resource.data.restaurantId is string
         && request.resource.data.restaurantId != 'alo-restaurante'
         && membershipId == request.resource.data.restaurantId + '_' + request.auth.uid
-        && exists(/databases/$(database)/documents/businesses/$(request.resource.data.restaurantId));
+        && existsAfter(/databases/$(database)/documents/businesses/$(request.resource.data.restaurantId));
 
       allow update, delete: if request.auth != null
         && resource.data.userId == request.auth.uid
