@@ -1,5 +1,7 @@
 export type AssistantPlan = 'GIOBOT_BASE' | 'GIOBOT_PREMIUM' | 'CUSTOM_AVATAR';
 
+export type BusinessType = 'restaurant' | 'pizzeria' | 'creperia' | 'perfumes' | 'design' | 'other';
+
 export type AssistantPersonality =
   | 'AMABLE'
   | 'PROFESIONAL'
@@ -59,6 +61,15 @@ export const DEFAULT_GIOBOT_ASSISTANT: RestaurantAssistantProfile = {
   plan: 'GIOBOT_BASE',
   personality: 'AMABLE',
   enabled: true,
+};
+
+export const BUSINESS_FEATURE_PRESETS: Record<BusinessType, RestaurantFeatureFlags> = {
+  restaurant: { publicMenu: true, qrTables: true, pos: true, kitchenStations: true, inventory: true, vip: true, promotions: true, customerAssistant: true, adminAssistant: true, delivery: true, reservations: false },
+  pizzeria: { publicMenu: true, qrTables: true, pos: true, kitchenStations: true, inventory: true, vip: false, promotions: true, customerAssistant: true, adminAssistant: true, delivery: true, reservations: false },
+  creperia: { publicMenu: true, qrTables: true, pos: true, kitchenStations: true, inventory: true, vip: false, promotions: true, customerAssistant: true, adminAssistant: true, delivery: true, reservations: false },
+  perfumes: { publicMenu: true, qrTables: false, pos: true, kitchenStations: false, inventory: true, vip: true, promotions: true, customerAssistant: true, adminAssistant: true, delivery: true, reservations: false },
+  design: { publicMenu: true, qrTables: false, pos: true, kitchenStations: false, inventory: false, vip: false, promotions: true, customerAssistant: true, adminAssistant: true, delivery: false, reservations: false },
+  other: { publicMenu: true, qrTables: false, pos: true, kitchenStations: false, inventory: true, vip: false, promotions: true, customerAssistant: true, adminAssistant: true, delivery: true, reservations: false },
 };
 
 export const DEFAULT_RESTAURANT_FEATURES: RestaurantFeatureFlags = {
@@ -136,7 +147,7 @@ export function createRestaurantTenant(input: {
       ...(input.assistant || {}),
     },
     features: {
-      ...DEFAULT_RESTAURANT_FEATURES,
+      ...(BUSINESS_FEATURE_PRESETS[(input.businessType || 'restaurant') as BusinessType] || DEFAULT_RESTAURANT_FEATURES),
       ...(input.features || {}),
     },
   };
