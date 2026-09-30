@@ -9,6 +9,20 @@ export interface BusinessCatalogTemplate {
 }
 
 export const BUSINESS_CATALOG_TEMPLATES: Record<string, BusinessCatalogTemplate> = {
+  restaurant: {
+    id: 'restaurant',
+    label: 'Restaurante',
+    items: [
+      { name: 'Desayuno de la casa', description: 'Desayuno completo preparado al momento.', price: 85, category: 'Desayunos', sortOrder: 10, popular: true },
+      { name: 'Huevos al gusto', description: 'Huevos preparados a tu elección con guarnición.', price: 75, category: 'Desayunos', sortOrder: 20 },
+      { name: 'Comida corrida', description: 'Menú del día con opciones que pueden cambiar según disponibilidad.', price: 95, category: 'Comida', sortOrder: 30, popular: true },
+      { name: 'Platillo de la casa', description: 'Especialidad del restaurante preparada al momento.', price: 120, category: 'Platillos', sortOrder: 40, popular: true },
+      { name: 'Ensalada de la casa', description: 'Ensalada fresca con ingredientes seleccionados.', price: 85, category: 'Platillos', sortOrder: 50 },
+      { name: 'Café americano', description: 'Café caliente recién preparado.', price: 35, category: 'Bebidas', sortOrder: 60 },
+      { name: 'Licuado de fresa', description: 'Licuado de fresa preparado al momento.', price: 50, category: 'Bebidas', sortOrder: 70 },
+      { name: 'Jugo de naranja', description: 'Jugo de naranja natural.', price: 45, category: 'Bebidas', sortOrder: 80 },
+    ],
+  },
   creperia: {
     id: 'creperia',
     label: 'Crepas / Cafetería',
