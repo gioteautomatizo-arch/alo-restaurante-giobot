@@ -19,6 +19,7 @@ import { getBusinessCatalogTemplate } from '../data/businessCatalogTemplates';
 import {
   createRestaurantTenant,
   normalizeRestaurantSlug,
+  BusinessRole,
   RestaurantMembership,
   RestaurantTenant,
 } from './restaurantCore';
@@ -110,7 +111,7 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
   const membership: RestaurantMembership = {
     restaurantId: businessId,
     userId,
-    role: 'OWNER',
+    role: 'OWNER' as BusinessRole,
     active: true,
   };
 
@@ -194,4 +195,15 @@ export async function getBusinessForUser(
 
   const businessSnap = await getDoc(businessRef(businessId));
   return businessSnap.exists() ? (businessSnap.data() as RestaurantTenant) : null;
+}
+
+export async function getBusinessMembership(
+  userId: string,
+  businessId: string
+): Promise<RestaurantMembership | null> {
+  const snap = await getDoc(membershipRef(businessId, userId));
+  if (!snap.exists()) return null;
+  const membership = snap.data() as RestaurantMembership;
+  if (membership.userId !== userId || !membership.active) return null;
+  return membership;
 }
