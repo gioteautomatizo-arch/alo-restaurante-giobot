@@ -170,6 +170,11 @@ export const refreshCloudVipProfile = async (): Promise<VipProfile | null> => {
       saveLocalVipProfile(updated);
       return updated;
     }
+
+    // Firestore es la fuente de verdad: si la cuenta cloud fue eliminada,
+    // no debemos seguir mostrando una tarjeta VIP válida en este dispositivo.
+    clearVipProfile();
+    return null;
   } catch (err) {
     console.warn('No se pudo refrescar el perfil VIP desde la nube (modo offline):', err);
   }
