@@ -18,6 +18,7 @@ export const BusinessOnboardingDemo: React.FC = () => {
     try {
       await registerBusiness({
         businessName: profile.name,
+        businessType: profile.businessType,
         handle: profile.handle,
         email: profile.email,
         password: profile.password,
