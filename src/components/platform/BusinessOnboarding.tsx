@@ -45,6 +45,7 @@ type BusinessTemplate = {
 
 const BUSINESS_TEMPLATES: BusinessTemplate[] = [
   { id: 'restaurant', name: 'Restaurante', description: 'Menú, mesas, cocina, POS e inventario.', icon: UtensilsCrossed },
+  { id: 'ghost-kitchen', name: 'Ghost Kitchen', description: 'Cocina para pedidos y delivery sin salón para clientes.', icon: UtensilsCrossed },
   { id: 'pizzeria', name: 'Pizzería', description: 'Pedidos, tamaños, extras, delivery y cocina.', icon: Pizza },
   { id: 'creperia', name: 'Crepería / Cafetería', description: 'Bebidas, recetas, barra y pedidos.', icon: Coffee },
   { id: 'perfumes', name: 'Perfumes y decants', description: 'Catálogo, inventario, clientes y asesor IA.', icon: ShoppingBag },
