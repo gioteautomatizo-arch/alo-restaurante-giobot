@@ -14,6 +14,8 @@ import {
   where,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { saveBusinessCatalog, createCatalogItemId } from './businessCatalogService';
+import { getBusinessCatalogTemplate } from '../data/businessCatalogTemplates';
 import {
   createRestaurantTenant,
   normalizeRestaurantSlug,
@@ -26,6 +28,7 @@ const MEMBERSHIPS_COLLECTION = 'businessMemberships';
 
 export interface RegisterBusinessInput {
   businessName: string;
+  businessType?: string;
   handle: string;
   email: string;
   password: string;
@@ -99,6 +102,7 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
   const tenant = removeUndefinedDeep(createRestaurantTenant({
     restaurantId: businessId,
     restaurantName: input.businessName,
+    businessType: input.businessType || 'restaurant',
     publicSlug: businessId,
     logoUrl: input.logoUrl,
   }));
@@ -129,6 +133,18 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
     throw new Error(
       'El negocio se creó, pero no pudimos asignarte como propietario. No vuelvas a registrarlo todavía; revisaremos los permisos de Firebase.'
     );
+  }
+
+  // A business starts with a real, editable catalog instead of an empty shell.
+  // The template is structural starter data; the owner can replace it immediately.
+  const template = getBusinessCatalogTemplate(input.businessType || 'restaurant');
+  if (template?.items.length) {
+    const starterItems = template.items.map((item) => ({
+      ...item,
+      id: createCatalogItemId(item.name),
+      available: true,
+    }));
+    await saveBusinessCatalog(businessId, starterItems, input.businessName.trim());
   }
 
   return { tenant, membership };
