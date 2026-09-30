@@ -197,6 +197,25 @@ export async function getBusinessForUser(
   return businessSnap.exists() ? (businessSnap.data() as RestaurantTenant) : null;
 }
 
+
+export async function isPlatformAdmin(userId: string): Promise<boolean> {
+  if (!userId) return false;
+  const snap = await getDoc(doc(db, 'platformAdmins', userId));
+  if (!snap.exists()) return false;
+  const data = snap.data() as { active?: boolean };
+  return data.active !== false;
+}
+
+export async function getAllBusinesses(): Promise<RestaurantTenant[]> {
+  const snap = await getDocs(collection(db, BUSINESSES_COLLECTION));
+  return snap.docs
+    .map((docSnap) => docSnap.data() as RestaurantTenant)
+    .filter((tenant) => tenant.restaurantId !== 'alo-restaurante')
+    .sort((a, b) =>
+      a.branding.restaurantName.localeCompare(b.branding.restaurantName, 'es-MX')
+    );
+}
+
 export async function getBusinessMembership(
   userId: string,
   businessId: string
