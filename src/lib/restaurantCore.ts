@@ -1,6 +1,6 @@
 export type AssistantPlan = 'GIOBOT_BASE' | 'GIOBOT_PREMIUM' | 'CUSTOM_AVATAR';
 
-export type BusinessType = 'restaurant' | 'pizzeria' | 'creperia' | 'perfumes' | 'design' | 'other';
+export type BusinessType = 'restaurant' | 'ghost-kitchen' | 'pizzeria' | 'creperia' | 'perfumes' | 'design' | 'other';
 
 export type AssistantPersonality =
   | 'AMABLE'
@@ -43,7 +43,7 @@ export interface RestaurantFeatureFlags {
 export interface RestaurantTenant {
   restaurantId: string;
   /** Giro elegido al crear el negocio. Se usa para activar la plantilla/módulos correctos. */
-  businessType?: string;
+  businessType?: BusinessType;
   branding: RestaurantBranding;
   assistant: RestaurantAssistantProfile;
   features: RestaurantFeatureFlags;
@@ -65,6 +65,7 @@ export const DEFAULT_GIOBOT_ASSISTANT: RestaurantAssistantProfile = {
 
 export const BUSINESS_FEATURE_PRESETS: Record<BusinessType, RestaurantFeatureFlags> = {
   restaurant: { publicMenu: true, qrTables: true, pos: true, kitchenStations: true, inventory: true, vip: true, promotions: true, customerAssistant: true, adminAssistant: true, delivery: true, reservations: false },
+  'ghost-kitchen': { publicMenu: true, qrTables: false, pos: true, kitchenStations: true, inventory: true, vip: false, promotions: true, customerAssistant: true, adminAssistant: true, delivery: true, reservations: false },
   pizzeria: { publicMenu: true, qrTables: true, pos: true, kitchenStations: true, inventory: true, vip: false, promotions: true, customerAssistant: true, adminAssistant: true, delivery: true, reservations: false },
   creperia: { publicMenu: true, qrTables: true, pos: true, kitchenStations: true, inventory: true, vip: false, promotions: true, customerAssistant: true, adminAssistant: true, delivery: true, reservations: false },
   perfumes: { publicMenu: true, qrTables: false, pos: true, kitchenStations: false, inventory: true, vip: true, promotions: true, customerAssistant: true, adminAssistant: true, delivery: true, reservations: false },
@@ -124,7 +125,7 @@ export function normalizeRestaurantSlug(value: string): string {
 export function createRestaurantTenant(input: {
   restaurantId: string;
   restaurantName: string;
-  businessType?: string;
+  businessType?: BusinessType;
   publicSlug?: string;
   logoUrl?: string;
   primaryColor?: string;
@@ -135,7 +136,7 @@ export function createRestaurantTenant(input: {
 
   return {
     restaurantId: input.restaurantId.trim(),
-    businessType: input.businessType || 'restaurant',
+    businessType: (input.businessType as BusinessType) || 'restaurant',
     branding: {
       restaurantName: input.restaurantName.trim(),
       publicSlug: slug,
