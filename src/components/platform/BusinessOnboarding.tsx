@@ -22,6 +22,7 @@ export interface DemoBusinessProfile {
   name: string;
   handle: string;
   type: string;
+  businessType: string;
   typeLabel: string;
   email: string;
   password: string;
@@ -120,6 +121,7 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
         name: businessName.trim(),
         handle: normalizeRestaurantSlug(handle),
         type: businessType,
+        businessType,
         typeLabel: template.name,
         email: email.trim().toLowerCase(),
         password,
