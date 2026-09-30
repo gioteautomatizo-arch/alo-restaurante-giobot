@@ -17,14 +17,18 @@ service cloud.firestore {
 
 
     match /businesses/{businessId}/catalog/{catalogDoc} {
-      allow read: if request.auth != null
+      // El catálogo público también debe poder leerse antes de iniciar sesión.
+      // La escritura queda protegida por catalog.manage.
+      allow read: if true;
+
+      allow create, update: if request.auth != null
+        && request.resource.data.businessId == businessId
         && exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
         && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true;
 
-      allow create, update: if isBusinessPermission(businessId, 'catalog.manage')
-        && request.resource.data.businessId == businessId;
-
-      allow delete: if isBusinessPermission(businessId, 'catalog.manage');
+      allow delete: if request.auth != null
+        && exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true;
     }
 
     match /businessMemberships/{membershipId} {
@@ -53,18 +57,6 @@ service cloud.firestore {
 
     function isSignedIn() {
       return request.auth != null;
-    }
-
-    // Permisos mínimos del núcleo multi-negocio. La UI usa la misma matriz
-    // conceptual; aquí se aplica la autorización real en Firestore.
-    function isBusinessPermission(businessId, permission) {
-      return isSignedIn()
-        && exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
-        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true
-        && (
-          (permission == 'business.view' && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role in ['SUPER_ADMIN', 'OWNER', 'ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE', 'CLIENT'])
-          || (permission == 'catalog.manage' && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role in ['SUPER_ADMIN', 'OWNER', 'ADMIN', 'MANAGER'])
-        );
     }
 
     // Un tenant conocido puede operar con sus datos públicos (QR/cliente).
