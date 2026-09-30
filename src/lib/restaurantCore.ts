@@ -40,6 +40,8 @@ export interface RestaurantFeatureFlags {
 
 export interface RestaurantTenant {
   restaurantId: string;
+  /** Giro elegido al crear el negocio. Se usa para activar la plantilla/módulos correctos. */
+  businessType?: string;
   branding: RestaurantBranding;
   assistant: RestaurantAssistantProfile;
   features: RestaurantFeatureFlags;
@@ -80,6 +82,7 @@ export const DEFAULT_RESTAURANT_FEATURES: RestaurantFeatureFlags = {
  */
 export const CALIENTITO_TENANT: RestaurantTenant = {
   restaurantId: 'alo-restaurante',
+  businessType: 'restaurant',
   branding: {
     restaurantName: 'Restaurante Calientito',
     publicSlug: 'calientito',
@@ -110,6 +113,7 @@ export function normalizeRestaurantSlug(value: string): string {
 export function createRestaurantTenant(input: {
   restaurantId: string;
   restaurantName: string;
+  businessType?: string;
   publicSlug?: string;
   logoUrl?: string;
   primaryColor?: string;
@@ -120,6 +124,7 @@ export function createRestaurantTenant(input: {
 
   return {
     restaurantId: input.restaurantId.trim(),
+    businessType: input.businessType || 'restaurant',
     branding: {
       restaurantName: input.restaurantName.trim(),
       publicSlug: slug,
