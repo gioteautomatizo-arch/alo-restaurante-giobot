@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Bot, Store } from 'lucide-react';
 import { BusinessCatalogEditor } from './BusinessCatalogEditor';
+import { hasBusinessPermission } from '../../lib/restaurantCore';
 import type { BusinessRole, RestaurantTenant } from '../../lib/restaurantCore';
 import { getBusinessForUser, getBusinessMembership } from '../../lib/businessAuthService';
 import { subscribeToAuth } from '../../lib/firebase';
@@ -44,7 +45,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     window.location.hash = '#business';
   };
 
-  const canManageCatalog = !!role && ['SUPER_ADMIN','OWNER','ADMIN','MANAGER'].includes(role);
+  const canManageCatalog = !!role && hasBusinessPermission(role, 'catalog.manage');
 
   if (view === 'catalog' && business) {
     return <BusinessCatalogEditor businessId={businessId} businessName={business.branding.restaurantName} onBack={() => setView('workspace')} />;
