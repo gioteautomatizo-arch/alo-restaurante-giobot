@@ -23,6 +23,21 @@ export const BUSINESS_CATALOG_TEMPLATES: Record<string, BusinessCatalogTemplate>
       { name: 'Jugo de naranja', description: 'Jugo de naranja natural.', price: 45, category: 'Bebidas', sortOrder: 80 },
     ],
   },
+  pizzeria: { id: 'pizzeria', label: 'Pizzería', items: [
+    { name: 'Pizza clásica', description: 'Pizza con salsa de tomate y queso.', price: 120, category: 'Pizzas', sortOrder: 10, popular: true },
+    { name: 'Pizza especial', description: 'Pizza de la casa con ingredientes seleccionados.', price: 150, category: 'Pizzas', sortOrder: 20 },
+    { name: 'Refresco', description: 'Bebida fría.', price: 30, category: 'Bebidas', sortOrder: 30 },
+  ] },
+  perfumes: { id: 'perfumes', label: 'Perfumes y decants', items: [
+    { name: 'Decant 5 ml', description: 'Decant de 5 ml del perfume seleccionado.', price: 120, category: 'Decants', sortOrder: 10, popular: true },
+    { name: 'Perfume de diseñador', description: 'Fragancia original de diseñador.', price: 1200, category: 'Perfumes', sortOrder: 20 },
+    { name: 'Perfume árabe', description: 'Fragancia árabe seleccionada.', price: 900, category: 'Perfumes árabes', sortOrder: 30 },
+  ] },
+  design: { id: 'design', label: 'Diseño gráfico', items: [
+    { name: 'Diseño para redes', description: 'Diseño gráfico para publicación digital.', price: 250, category: 'Diseño', sortOrder: 10, popular: true },
+    { name: 'Logo básico', description: 'Diseño de logotipo para negocio.', price: 800, category: 'Identidad', sortOrder: 20 },
+  ] },
+  other: { id: 'other', label: 'Otro negocio', items: [] },
   creperia: {
     id: 'creperia',
     label: 'Crepas / Cafetería',
