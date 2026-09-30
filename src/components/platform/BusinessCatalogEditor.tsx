@@ -7,6 +7,8 @@ import {
   subscribeToBusinessCatalog,
 } from '../../lib/businessCatalogService';
 import { getBusinessCatalogTemplate } from '../../data/businessCatalogTemplates';
+import { getBusinessForUser } from '../../lib/businessAuthService';
+import { subscribeToAuth } from '../../lib/firebase';
 
 const emptyItem = (sortOrder: number): BusinessCatalogItem => ({
   id: createCatalogItemId('producto'),
@@ -28,6 +30,17 @@ export const BusinessCatalogEditor: React.FC<{
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [businessType, setBusinessType] = useState('restaurant');
+
+  useEffect(() => {
+    const unsubscribeAuth = subscribeToAuth((user) => {
+      if (!user) return;
+      getBusinessForUser(user.uid, businessId).then((tenant) => {
+        if (tenant?.businessType) setBusinessType(tenant.businessType);
+      }).catch(() => undefined);
+    });
+    return () => unsubscribeAuth();
+  }, [businessId]);
 
   useEffect(() => {
     return subscribeToBusinessCatalog(
@@ -59,7 +72,7 @@ export const BusinessCatalogEditor: React.FC<{
   };
 
   const loadTemplate = () => {
-    const template = getBusinessCatalogTemplate('creperia');
+    const template = getBusinessCatalogTemplate(businessType);
     if (!template) return;
     const nextItems = template.items.map((item) => ({
       ...item,
@@ -121,7 +134,7 @@ export const BusinessCatalogEditor: React.FC<{
             </div>
             <div className="flex gap-2">
               {items.length === 0 && (
-                <button onClick={loadTemplate} className="rounded-xl border border-[#DEC8AE] px-4 py-2 text-xs font-black text-[#6B4028]">Usar plantilla de crepería</button>
+                <button onClick={loadTemplate} className="rounded-xl border border-[#DEC8AE] px-4 py-2 text-xs font-black text-[#6B4028]">Usar plantilla de inicio</button>
               )}
               <button onClick={addItem} className="rounded-xl bg-[#A86B3D] px-4 py-2 text-xs font-black text-white flex items-center gap-2"><Plus className="w-4 h-4" /> Producto</button>
             </div>
@@ -133,7 +146,7 @@ export const BusinessCatalogEditor: React.FC<{
             <div className="mt-8 rounded-2xl border border-dashed border-[#D9C5AC] p-10 text-center">
               <Utensils className="mx-auto w-8 h-8 text-[#A86B3D]" />
               <p className="mt-3 font-serif text-xl font-black">Tu catálogo está vacío</p>
-              <p className="mt-1 text-sm text-[#6B4028]">Agrega tu primer producto o carga una plantilla.</p>
+              <p className="mt-1 text-sm text-[#6B4028]">Agrega tu primer producto o carga la plantilla inicial de este giro.</p>
             </div>
           ) : (
             <div className="mt-6 space-y-4">
