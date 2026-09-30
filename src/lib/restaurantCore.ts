@@ -2,6 +2,43 @@ export type AssistantPlan = 'GIOBOT_BASE' | 'GIOBOT_PREMIUM' | 'CUSTOM_AVATAR';
 
 export type BusinessType = 'restaurant' | 'ghost-kitchen' | 'pizzeria' | 'creperia' | 'perfumes' | 'design' | 'other';
 
+export type BusinessRole = 'SUPER_ADMIN' | 'OWNER' | 'ADMIN' | 'MANAGER' | 'CASHIER' | 'WAITER' | 'KITCHEN' | 'EMPLOYEE' | 'CLIENT';
+
+export type BusinessPermission =
+  | 'platform.manage'
+  | 'business.view'
+  | 'business.manage'
+  | 'catalog.view'
+  | 'catalog.manage'
+  | 'orders.view'
+  | 'orders.manage'
+  | 'pos.use'
+  | 'inventory.view'
+  | 'inventory.manage'
+  | 'customers.view'
+  | 'customers.manage'
+  | 'employees.view'
+  | 'employees.manage'
+  | 'ai.use'
+  | 'ai.manage'
+  | 'reports.view';
+
+export const ROLE_PERMISSIONS: Record<BusinessRole, BusinessPermission[]> = {
+  SUPER_ADMIN: ['platform.manage','business.view','business.manage','catalog.view','catalog.manage','orders.view','orders.manage','pos.use','inventory.view','inventory.manage','customers.view','customers.manage','employees.view','employees.manage','ai.use','ai.manage','reports.view'],
+  OWNER: ['business.view','business.manage','catalog.view','catalog.manage','orders.view','orders.manage','pos.use','inventory.view','inventory.manage','customers.view','customers.manage','employees.view','employees.manage','ai.use','ai.manage','reports.view'],
+  ADMIN: ['business.view','catalog.view','catalog.manage','orders.view','orders.manage','pos.use','inventory.view','inventory.manage','customers.view','customers.manage','employees.view','employees.manage','ai.use','reports.view'],
+  MANAGER: ['business.view','catalog.view','catalog.manage','orders.view','orders.manage','pos.use','inventory.view','inventory.manage','customers.view','customers.manage','employees.view','ai.use','reports.view'],
+  CASHIER: ['business.view','catalog.view','orders.view','orders.manage','pos.use','customers.view'],
+  WAITER: ['business.view','catalog.view','orders.view','orders.manage','pos.use','customers.view'],
+  KITCHEN: ['business.view','catalog.view','orders.view','orders.manage'],
+  EMPLOYEE: ['business.view','catalog.view','orders.view'],
+  CLIENT: ['business.view','catalog.view','orders.view','ai.use'],
+};
+
+export function hasBusinessPermission(role: BusinessRole, permission: BusinessPermission): boolean {
+  return ROLE_PERMISSIONS[role]?.includes(permission) ?? false;
+}
+
 export type AssistantPersonality =
   | 'AMABLE'
   | 'PROFESIONAL'
@@ -52,7 +89,7 @@ export interface RestaurantTenant {
 export interface RestaurantMembership {
   restaurantId: string;
   userId: string;
-  role: 'OWNER' | 'ADMIN' | 'MANAGER' | 'CASHIER' | 'WAITER' | 'KITCHEN' | 'EMPLOYEE';
+  role: BusinessRole;
   active: boolean;
 }
 
