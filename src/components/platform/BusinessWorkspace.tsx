@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Bot, Store } from 'lucide-react';
 import { BusinessCatalogEditor } from './BusinessCatalogEditor';
-import type { RestaurantTenant } from '../../lib/restaurantCore';
-import { getBusinessForUser } from '../../lib/businessAuthService';
+import type { BusinessRole, RestaurantTenant } from '../../lib/restaurantCore';
+import { getBusinessForUser, getBusinessMembership } from '../../lib/businessAuthService';
 import { subscribeToAuth } from '../../lib/firebase';
 import type { User as FirebaseUser } from 'firebase/auth';
 
 export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId }) => {
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
   const [business, setBusiness] = useState<RestaurantTenant | null>(null);
+  const [role, setRole] = useState<BusinessRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<'workspace' | 'catalog'>('workspace');
@@ -23,13 +24,14 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
 
     setLoading(true);
     setError(null);
-    getBusinessForUser(authUser.uid, businessId)
-      .then((tenant) => {
-        if (!tenant) {
+    Promise.all([getBusinessForUser(authUser.uid, businessId), getBusinessMembership(authUser.uid, businessId)])
+      .then(([tenant, membership]) => {
+        if (!tenant || !membership) {
           setError('No tienes acceso a este negocio o ya no existe.');
           return;
         }
         setBusiness(tenant);
+        setRole(membership.role);
       })
       .catch((err) => {
         console.warn('No se pudo abrir el negocio:', err);
@@ -41,6 +43,8 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const back = () => {
     window.location.hash = '#business';
   };
+
+  const canManageCatalog = !!role && ['SUPER_ADMIN','OWNER','ADMIN','MANAGER'].includes(role);
 
   if (view === 'catalog' && business) {
     return <BusinessCatalogEditor businessId={businessId} businessName={business.branding.restaurantName} onBack={() => setView('workspace')} />;
@@ -107,7 +111,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
               <div>
                 <span className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-300">Espacio de negocio</span>
                 <h1 className="mt-1 font-serif text-3xl font-black">{business.branding.restaurantName}</h1>
-                <p className="mt-1 text-sm text-slate-300">@{business.branding.publicSlug} · {business.assistant.name}</p>
+                <p className="mt-1 text-sm text-slate-300">@{business.branding.publicSlug} · {business.assistant.name} · Rol: {role || '…'}</p>
               </div>
             </div>
           </div>
@@ -137,7 +141,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
                 <button
                   key={title}
                   type="button"
-                  disabled={!enabled || title !== 'Catálogo'}
+                  disabled={!enabled || title !== 'Catálogo' || (title === 'Catálogo' && !canManageCatalog)}
                   onClick={() => title === 'Catálogo' && setView('catalog')}
                   className="rounded-2xl border border-[#DEC8AE] bg-[#FFFDF9] p-5 text-left transition hover:border-[#C9974D] hover:bg-[#FFF7EA] disabled:cursor-default disabled:opacity-60 disabled:hover:border-[#DEC8AE] disabled:hover:bg-[#FFFDF9]"
                 >
