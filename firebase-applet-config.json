@@ -1,11 +1,11 @@
 {
   "projectId": "gioteautomatizo-8e2f8",
-  "appId": "1:1087796829151:web:fe1ed009eced551949826a",
+  "appId": "1:1087796829151:web:d38758e2eff12e7849826a",
   "apiKey": "AIzaSyAP6QzP7GnOP8R6pIaGWQPcsk6yirVpatY",
   "authDomain": "gioteautomatizo-8e2f8.firebaseapp.com",
   "storageBucket": "gioteautomatizo-8e2f8.firebasestorage.app",
   "messagingSenderId": "1087796829151",
-  "measurementId": "G-YD1BB8PEWJ",
-  "oAuthClientId": "",
+  "measurementId": "",
+  "oAuthClientId": "1087796829151-of435t99behlosvll2oqh8aoln793rld.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

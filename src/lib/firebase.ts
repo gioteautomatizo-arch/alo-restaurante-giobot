@@ -17,13 +17,12 @@ import firebaseConfig from '../../firebase-applet-config.json';
 // Inicializar la aplicación Firebase si no está inicializada
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Inicializar Firestore con la base de datos específica o la default.
+// Inicializar Firestore siempre en la base de datos (default).
 // Ignorar campos undefined evita que datos opcionales (por ejemplo logoUrl)
 // rompan altas de negocio u otras escrituras parciales.
 export const db = initializeFirestore(
   app,
-  { ignoreUndefinedProperties: true },
-  firebaseConfig.firestoreDatabaseId || undefined
+  { ignoreUndefinedProperties: true }
 );
 
 // Inicializar Firebase Storage para las fotos del menú.
