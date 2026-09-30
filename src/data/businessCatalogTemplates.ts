@@ -23,6 +23,12 @@ export const BUSINESS_CATALOG_TEMPLATES: Record<string, BusinessCatalogTemplate>
       { name: 'Jugo de naranja', description: 'Jugo de naranja natural.', price: 45, category: 'Bebidas', sortOrder: 80 },
     ],
   },
+  'ghost-kitchen': { id: 'ghost-kitchen', label: 'Ghost Kitchen', items: [
+    { name: 'Platillo estrella', description: 'Producto principal de tu cocina para venta por pedido.', price: 100, category: 'Especialidades', sortOrder: 10, popular: true },
+    { name: 'Combo para compartir', description: 'Combinación pensada para pedidos y entrega a domicilio.', price: 160, category: 'Combos', sortOrder: 20 },
+    { name: 'Acompañamiento', description: 'Guarnición o complemento para tu pedido.', price: 45, category: 'Acompañamientos', sortOrder: 30 },
+    { name: 'Bebida', description: 'Bebida fría para acompañar tu pedido.', price: 30, category: 'Bebidas', sortOrder: 40 },
+  ] },
   pizzeria: { id: 'pizzeria', label: 'Pizzería', items: [
     { name: 'Pizza clásica', description: 'Pizza con salsa de tomate y queso.', price: 120, category: 'Pizzas', sortOrder: 10, popular: true },
     { name: 'Pizza especial', description: 'Pizza de la casa con ingredientes seleccionados.', price: 150, category: 'Pizzas', sortOrder: 20 },
