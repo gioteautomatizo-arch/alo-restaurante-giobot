@@ -1,5 +1,7 @@
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
+import { auth } from './firebase';
 import { db } from './firebase';
+import { BusinessRole } from './restaurantCore';
 
 export interface BusinessCatalogItem {
   id: string;
@@ -11,6 +13,22 @@ export interface BusinessCatalogItem {
   available: boolean;
   popular?: boolean;
   sortOrder: number;
+}
+
+
+async function assertCatalogManager(businessId: string): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Debes iniciar sesión para administrar el catálogo.');
+
+  const membershipId = `${businessId}_${user.uid}`;
+  const membershipSnap = await getDoc(doc(db, 'businessMemberships', membershipId));
+  if (!membershipSnap.exists()) throw new Error('No tienes acceso a este negocio.');
+
+  const membership = membershipSnap.data() as { userId?: string; role?: BusinessRole; active?: boolean };
+  const allowed: BusinessRole[] = ['SUPER_ADMIN', 'OWNER', 'ADMIN', 'MANAGER'];
+  if (membership.userId !== user.uid || membership.active !== true || !allowed.includes(membership.role as BusinessRole)) {
+    throw new Error('No tienes permiso para administrar el catálogo de este negocio.');
+  }
 }
 
 export interface BusinessCatalogDocument {
@@ -63,6 +81,7 @@ export async function saveBusinessCatalog(
   items: BusinessCatalogItem[],
   actorName: string
 ): Promise<BusinessCatalogDocument> {
+  await assertCatalogManager(businessId);
   const payload: BusinessCatalogDocument = {
     businessId,
     sourceLabel: 'Catálogo del negocio',
