@@ -1,7 +1,7 @@
 import { VipProfile, OrderType } from '../types';
 import { getRestaurantInfo } from './adminStorage';
 import { db } from './firebase';
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { normalizePhone, normalizePin, computeVipDocId, computePinHash } from './vipCrypto';
 
 const VIP_KEY = 'calientito_vip_profile';
@@ -429,6 +429,22 @@ export const adminFetchVipProfiles = async (): Promise<VipProfile[]> => {
   } catch (err) {
     console.error('Error fetching VIP profiles in admin:', err);
     throw err;
+  }
+};
+
+/**
+ * Elimina una tarjeta VIP desde administración.
+ * Firestore es la fuente de verdad; la copia local del mismo perfil también se invalida.
+ */
+export const adminDeleteVipProfile = async (profileId: string): Promise<void> => {
+  if (!profileId) throw new Error('No se proporcionó el ID de la tarjeta VIP.');
+
+  const docRef = doc(db, 'vip_profiles', profileId);
+  await deleteDoc(docRef);
+
+  const local = getVipProfile();
+  if (local?.id === profileId) {
+    clearVipProfile();
   }
 };
 
