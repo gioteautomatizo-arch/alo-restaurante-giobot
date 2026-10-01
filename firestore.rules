@@ -44,13 +44,24 @@ service cloud.firestore {
         && membershipId == request.resource.data.restaurantId + '_' + request.auth.uid
         && existsAfter(/databases/$(database)/documents/businesses/$(request.resource.data.restaurantId));
 
-      allow update, delete: if request.auth != null
+      // Un miembro no puede cambiar su propio rol ni elevar privilegios desde el cliente.
+      // La administración de roles se habilitará mediante el módulo administrativo correspondiente.
+      allow update: if false;
+
+      // Un usuario puede abandonar un negocio eliminando su propia membresía.
+      allow delete: if request.auth != null
         && resource.data.userId == request.auth.uid
         && resource.data.restaurantId is string
         && membershipId == resource.data.restaurantId + '_' + request.auth.uid;
     }
 
-    
+    // Administradores de plataforma: los documentos se crean fuera del cliente
+    // (setup seguro). El usuario solo puede consultar su propio estado.
+    match /platformAdmins/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create, update, delete: if false;
+    }
+
     function isValidRestaurant(data) {
       return data.restaurantId == 'alo-restaurante';
     }
