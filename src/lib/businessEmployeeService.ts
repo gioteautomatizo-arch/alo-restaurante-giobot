@@ -1,5 +1,5 @@
 import { initializeApp, deleteApp, getApps } from 'firebase/app';
-import { createUserWithEmailAndPassword, getAuth } from 'firebase/auth';
+import { createUserWithEmailAndPassword, getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import {
   collection,
   deleteDoc,
@@ -50,20 +50,54 @@ function secondaryAuthName(businessId: string) {
   return `employee-creator-${businessId}`;
 }
 
-async function createEmployeeAuth(email: string, password: string, businessId: string): Promise<string> {
+async function withSecondaryAuth<T>(
+  businessId: string,
+  action: (secondaryAuth: ReturnType<typeof getAuth>) => Promise<T>,
+): Promise<T> {
   const name = secondaryAuthName(businessId);
   const existing = getApps().find((app) => app.name === name);
   const app = existing || initializeApp(firebaseConfig, name);
   const secondaryAuth = getAuth(app);
 
   try {
-    const credential = await createUserWithEmailAndPassword(secondaryAuth, email.trim().toLowerCase(), password);
-    return credential.user.uid;
+    return await action(secondaryAuth);
   } finally {
     // Keep the primary app/auth session intact. The secondary app exists only
-    // long enough to create the employee account.
+    // long enough to create or authenticate the employee account.
     await deleteApp(app);
   }
+}
+
+async function createEmployeeAuth(email: string, password: string, businessId: string): Promise<string> {
+  return withSecondaryAuth(businessId, async (secondaryAuth) => {
+    const credential = await createUserWithEmailAndPassword(
+      secondaryAuth,
+      email.trim().toLowerCase(),
+      password,
+    );
+    return credential.user.uid;
+  });
+}
+
+async function findExistingEmployeeAuth(
+  email: string,
+  password: string,
+  businessId: string,
+): Promise<string> {
+  return withSecondaryAuth(businessId, async (secondaryAuth) => {
+    try {
+      const credential = await signInWithEmailAndPassword(
+        secondaryAuth,
+        email.trim().toLowerCase(),
+        password,
+      );
+      return credential.user.uid;
+    } catch {
+      throw new Error(
+        'No pudimos validar esa cuenta existente. Revisa el correo y la contraseña.',
+      );
+    }
+  });
 }
 
 export async function listBusinessEmployees(businessId: string): Promise<BusinessEmployee[]> {
@@ -84,6 +118,7 @@ export async function createBusinessEmployee(input: {
   email: string;
   password: string;
   role: BusinessRole;
+  accountMode?: 'new' | 'existing';
 }): Promise<BusinessEmployee> {
   if (!MANAGEABLE_EMPLOYEE_ROLES.includes(input.role)) {
     throw new Error('Ese rol no puede asignarse desde Empleados.');
@@ -94,7 +129,18 @@ export async function createBusinessEmployee(input: {
     throw new Error('Completa nombre, correo y una contraseña temporal de al menos 6 caracteres.');
   }
 
-  const userId = await createEmployeeAuth(email, input.password, input.businessId);
+  const userId = input.accountMode === 'existing'
+    ? await findExistingEmployeeAuth(email, input.password, input.businessId)
+    : await createEmployeeAuth(email, input.password, input.businessId);
+
+  const existingMembership = await getDocs(query(
+    collection(db, COLLECTION),
+    where('restaurantId', '==', input.businessId),
+    where('userId', '==', userId),
+  ));
+  if (!existingMembership.empty) {
+    throw new Error('Esta cuenta ya tiene acceso a este negocio.');
+  }
   const now = new Date().toISOString();
   const employee: BusinessEmployee = {
     id: `${input.businessId}_${userId}`,
