@@ -16,6 +16,39 @@ service cloud.firestore {
     }
 
 
+    match /businesses/{businessId}/employees/{employeeUserId} {
+      // Employee records are scoped inside their business so list queries can be
+      // authorized from the business path without exposing other tenants.
+      allow read: if canManageMembership(businessId);
+
+      allow create: if canManageMembership(businessId)
+        && request.resource.data.restaurantId == businessId
+        && request.resource.data.userId == employeeUserId
+        && request.resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+        && request.resource.data.active == true
+        && canAssignRole(
+          get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role,
+          request.resource.data.role
+        );
+
+      allow update: if canManageMembership(businessId)
+        && resource.data.restaurantId == businessId
+        && resource.data.userId == employeeUserId
+        && request.resource.data.restaurantId == businessId
+        && request.resource.data.userId == employeeUserId
+        && request.resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+        && request.resource.data.active is bool
+        && canAssignRole(
+          get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role,
+          request.resource.data.role
+        );
+
+      allow delete: if canManageMembership(businessId)
+        && resource.data.restaurantId == businessId
+        && resource.data.userId == employeeUserId
+        && resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE'];
+    }
+
     match /businesses/{businessId}/catalog/{catalogDoc} {
       // El catálogo público también debe poder leerse antes de iniciar sesión.
       // La escritura queda protegida por catalog.manage.
