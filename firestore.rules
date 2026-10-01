@@ -31,28 +31,77 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true;
     }
 
-    match /businessMemberships/{membershipId} {
-      allow read: if request.auth != null
-        && resource.data.userId == request.auth.uid;
+    function canManageMembership(businessId) {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role in ['OWNER', 'ADMIN', 'MANAGER'];
+    }
 
-      allow create: if request.auth != null
+    function canAssignRole(managerRole, targetRole) {
+      return managerRole in ['OWNER', 'ADMIN']
+        || (managerRole == 'MANAGER' && targetRole in ['CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']);
+    }
+
+    match /businessMemberships/{membershipId} {
+      // Un usuario puede consultar su membresía. Los responsables también pueden
+      // consultar las membresías de su propio negocio para administrar el equipo.
+      allow read: if request.auth != null
+        && (
+          resource.data.userId == request.auth.uid
+          || canManageMembership(resource.data.restaurantId)
+        );
+
+      // El alta del propietario solo puede crear su propia membresía.
+      // Los demás empleados son creados por el módulo de Empleados.
+      allow create: if (
+        request.auth != null
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.role == 'OWNER'
         && request.resource.data.active == true
         && request.resource.data.restaurantId is string
         && request.resource.data.restaurantId != 'alo-restaurante'
         && membershipId == request.resource.data.restaurantId + '_' + request.auth.uid
-        && existsAfter(/databases/$(database)/documents/businesses/$(request.resource.data.restaurantId));
+        && existsAfter(/databases/$(database)/documents/businesses/$(request.resource.data.restaurantId))
+      ) || (
+        request.auth != null
+        && request.resource.data.restaurantId is string
+        && request.resource.data.userId is string
+        && request.resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+        && request.resource.data.active == true
+        && membershipId == request.resource.data.restaurantId + '_' + request.resource.data.userId
+        && canManageMembership(request.resource.data.restaurantId)
+        && canAssignRole(
+          get(/databases/$(database)/documents/businessMemberships/$(request.resource.data.restaurantId + '_' + request.auth.uid)).data.role,
+          request.resource.data.role
+        )
+        && exists(/databases/$(database)/documents/businesses/$(request.resource.data.restaurantId))
+      );
 
-      // Un miembro no puede cambiar su propio rol ni elevar privilegios desde el cliente.
-      // La administración de roles se habilitará mediante el módulo administrativo correspondiente.
-      allow update: if false;
+      // Solo un responsable puede cambiar empleados. Nunca se permite modificar
+      // OWNER/SUPER_ADMIN ni cambiar el userId/restaurantId de una membresía.
+      allow update: if request.auth != null
+        && resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+        && canManageMembership(resource.data.restaurantId)
+        && resource.data.userId == request.resource.data.userId
+        && resource.data.restaurantId == request.resource.data.restaurantId
+        && request.resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+        && canAssignRole(
+          get(/databases/$(database)/documents/businessMemberships/$(resource.data.restaurantId + '_' + request.auth.uid)).data.role,
+          request.resource.data.role
+        )
+        && request.resource.data.active is bool;
 
-      // Un usuario puede abandonar un negocio eliminando su propia membresía.
-      allow delete: if request.auth != null
+      // Un empleado puede abandonar su propia membresía; un responsable puede
+      // retirar a un empleado, pero nunca OWNER/SUPER_ADMIN.
+      allow delete: if (
+        request.auth != null
         && resource.data.userId == request.auth.uid
-        && resource.data.restaurantId is string
-        && membershipId == resource.data.restaurantId + '_' + request.auth.uid;
+        && resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+      ) || (
+        resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+        && canManageMembership(resource.data.restaurantId)
+      );
     }
 
     // Administradores de plataforma: los documentos se crean fuera del cliente
