@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StaffUser, VipProfile } from '../../types';
-import { adminFetchVipProfiles, adminUpdateVipProfile, adminDeleteVipProfile } from '../../lib/vipStorage';
+import { adminFetchVipProfiles, adminUpdateVipProfile } from '../../lib/vipStorage';
 import { getRestaurantInfo, addActivityLog } from '../../lib/adminStorage';
 import { isUserAuthenticated, auth } from '../../lib/firebase';
 import {
@@ -22,7 +22,6 @@ import {
   Check,
   X,
   ShieldCheck,
-  Trash2,
 } from 'lucide-react';
 
 interface VipClientsAdminViewProps {
@@ -79,36 +78,6 @@ export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
   const showNotification = (msg: string) => {
     setSuccessMessage(msg);
     setTimeout(() => setSuccessMessage(null), 4000);
-  };
-
-  // Acción: Eliminar tarjeta VIP desde administración
-  const handleDeleteVip = async (profile: VipProfile) => {
-    if (!profile.id) return;
-    const confirmed = window.confirm(
-      `¿Eliminar la tarjeta VIP de ${profile.customerName}? Esta acción elimina su registro cloud y no se puede deshacer.`
-    );
-    if (!confirmed) return;
-
-    setUpdatingId(profile.id);
-    setErrorMessage(null);
-    try {
-      await adminDeleteVipProfile(profile.id);
-      addActivityLog({
-        userName: currentUser.name,
-        userId: currentUser.id,
-        userRole: currentUser.role,
-        action: 'VIP_DELETE',
-        category: 'turno',
-        details: `Se eliminó la tarjeta VIP de ${profile.customerName} (${profile.memberId}).`,
-      });
-      showNotification(`✓ Tarjeta VIP de ${profile.customerName} eliminada`);
-      await fetchProfiles();
-      if (onRefreshStats) onRefreshStats();
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Error al eliminar la tarjeta VIP.');
-    } finally {
-      setUpdatingId(null);
-    }
   };
 
   // Acción: Agregar 1 Sello
@@ -587,15 +556,6 @@ export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => handleDeleteVip(profile)}
-                      disabled={isBusy}
-                      className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer disabled:opacity-40"
-                      title="Eliminar tarjeta VIP"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Eliminar</span>
-                    </button>
                     {profile.rewardAvailable ? (
                       <button
                         onClick={() => handleToggleReward(profile, false)}
