@@ -14,6 +14,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<'workspace' | 'catalog'>('workspace');
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => subscribeToAuth((user) => setAuthUser(user)), []);
 
@@ -46,6 +47,12 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   };
 
   const canManageCatalog = !!role && hasBusinessPermission(role, 'catalog.manage');
+  const canManageBusiness = !!role && hasBusinessPermission(role, 'business.manage');
+  const canManageCustomers = !!role && hasBusinessPermission(role, 'customers.manage');
+  const canManageInventory = !!role && hasBusinessPermission(role, 'inventory.manage');
+  const canManageEmployees = !!role && hasBusinessPermission(role, 'employees.manage');
+  const canUseAi = !!role && hasBusinessPermission(role, 'ai.use');
+  const canViewReports = !!role && hasBusinessPermission(role, 'reports.view');
 
   if (view === 'catalog' && business) {
     return <BusinessCatalogEditor businessId={businessId} businessName={business.branding.restaurantName} onBack={() => setView('workspace')} />;
@@ -76,12 +83,14 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   }
 
   const modules = [
-    ['Operación', 'POS, ventas y operación diaria', business.features.pos],
-    ['Catálogo', 'Productos, precios y menú', business.features.publicMenu],
-    ['Inventario', 'Existencias y control', business.features.inventory],
-    ['Clientes', 'Clientes y relaciones', true],
-    ['Asistente IA', 'Atención con Giobot', business.features.customerAssistant],
-    ['Configuración', 'Identidad, módulos y negocio', true],
+    ['Operación', 'POS, ventas y operación diaria', business.features.pos, true],
+    ['Catálogo', 'Productos, precios y menú', business.features.publicMenu, canManageCatalog],
+    ['Inventario', 'Existencias y control', business.features.inventory, canManageInventory],
+    ['Clientes', 'Clientes y relaciones', true, canManageCustomers],
+    ['Asistente IA', 'Atención con Giobot', business.features.customerAssistant, canUseAi],
+    ['Configuración', 'Identidad, módulos y negocio', true, canManageBusiness],
+    ['Reportes', 'Ventas, actividad y métricas', true, canViewReports],
+    ['Empleados', 'Equipo y permisos del negocio', true, canManageEmployees],
   ] as const;
 
   return (
@@ -132,18 +141,23 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
               ))}
             </div>
 
+            {notice && <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">{notice}</div>}
+
             <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
               <p className="text-xs font-black uppercase tracking-wide text-amber-900">Giobot</p>
               <p className="mt-1 text-sm text-amber-900">Tu asistente <strong>{business.assistant.name}</strong> está asociado exclusivamente a este negocio.</p>
             </div>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {modules.map(([title, description, enabled]) => (
+              {modules.map(([title, description, enabled, allowed]) => (
                 <button
                   key={title}
                   type="button"
-                  disabled={!enabled || title !== 'Catálogo' || (title === 'Catálogo' && !canManageCatalog)}
-                  onClick={() => title === 'Catálogo' && setView('catalog')}
+                  disabled={!enabled || !allowed || title !== 'Catálogo'}
+                  onClick={() => {
+                    if (title === 'Catálogo') setView('catalog');
+                    else setNotice(`${title}: el módulo está preparado en el núcleo de permisos y será conectado en la siguiente etapa.`);
+                  }}
                   className="rounded-2xl border border-[#DEC8AE] bg-[#FFFDF9] p-5 text-left transition hover:border-[#C9974D] hover:bg-[#FFF7EA] disabled:cursor-default disabled:opacity-60 disabled:hover:border-[#DEC8AE] disabled:hover:bg-[#FFFDF9]"
                 >
                   <span className="text-[10px] font-black uppercase tracking-wide text-[#A86B3D]">{enabled ? 'Módulo disponible' : 'Próximamente'}</span>
