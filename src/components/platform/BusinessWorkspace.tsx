@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Bot, Store } from 'lucide-react';
 import { BusinessCatalogEditor } from './BusinessCatalogEditor';
+import { BusinessEmployeesView } from './BusinessEmployeesView';
 import { hasBusinessPermission } from '../../lib/restaurantCore';
 import type { BusinessRole, RestaurantTenant } from '../../lib/restaurantCore';
 import { getBusinessForUser, getBusinessMembership } from '../../lib/businessAuthService';
@@ -13,7 +14,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const [role, setRole] = useState<BusinessRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<'workspace' | 'catalog'>('workspace');
+  const [view, setView] = useState<'workspace' | 'catalog' | 'employees'>('workspace');
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => subscribeToAuth((user) => setAuthUser(user)), []);
@@ -56,6 +57,10 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
 
   if (view === 'catalog' && business) {
     return <BusinessCatalogEditor businessId={businessId} businessName={business.branding.restaurantName} onBack={() => setView('workspace')} />;
+  }
+
+  if (view === 'employees' && business && role) {
+    return <BusinessEmployeesView businessId={businessId} managerRole={role} onBack={() => setView('workspace')} />;
   }
 
   if (loading) {
@@ -153,9 +158,10 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
                 <button
                   key={title}
                   type="button"
-                  disabled={!enabled || !allowed || title !== 'Catálogo'}
+                  disabled={!enabled || !allowed || !['Catálogo', 'Empleados'].includes(title)}
                   onClick={() => {
                     if (title === 'Catálogo') setView('catalog');
+                    else if (title === 'Empleados') setView('employees');
                     else setNotice(`${title}: el módulo está preparado en el núcleo de permisos y será conectado en la siguiente etapa.`);
                   }}
                   className="rounded-2xl border border-[#DEC8AE] bg-[#FFFDF9] p-5 text-left transition hover:border-[#C9974D] hover:bg-[#FFF7EA] disabled:cursor-default disabled:opacity-60 disabled:hover:border-[#DEC8AE] disabled:hover:bg-[#FFFDF9]"
