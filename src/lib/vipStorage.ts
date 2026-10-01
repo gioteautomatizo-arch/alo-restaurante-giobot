@@ -270,6 +270,28 @@ export const migrateLocalVipProfileWithPin = async (pin: string): Promise<VipPro
 /**
  * Guardado local simple de respaldo (compatibilidad retroactiva)
  */
+/**
+ * Garantiza que un perfil VIP local pueda quedar respaldado en Firestore.
+ * Los perfiles que ya están sincronizados no se duplican.
+ */
+export const ensureVipProfileCloudSync = async (): Promise<VipProfile | null> => {
+  const local = getVipProfile();
+  if (!local) return null;
+
+  if (local.syncedWithCloud === true && local.id) {
+    return local;
+  }
+
+  if (!local.phone || normalizePhone(local.phone).length !== 10) {
+    return local;
+  }
+
+  // El perfil legacy/local necesita un PIN para poder generar su identificador cloud.
+  // No inventamos un PIN ni lo guardamos automáticamente: la migración segura
+  // se realiza mediante migrateLocalVipProfileWithPin().
+  return local;
+};
+
 export const saveVipProfile = (profileData: {
   customerName: string;
   phone: string;
