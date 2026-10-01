@@ -4,11 +4,13 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   query,
   setDoc,
   updateDoc,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -41,9 +43,14 @@ export const MANAGEABLE_EMPLOYEE_ROLES: BusinessRole[] = [
 ];
 
 const COLLECTION = 'businessMemberships';
+const EMPLOYEES_SUBCOLLECTION = 'employees';
 
 function membershipRef(businessId: string, userId: string) {
   return doc(db, COLLECTION, `${businessId}_${userId}`);
+}
+
+function employeeRef(businessId: string, userId: string) {
+  return doc(db, 'businesses', businessId, EMPLOYEES_SUBCOLLECTION, userId);
 }
 
 function secondaryAuthName(businessId: string) {
@@ -101,10 +108,10 @@ async function findExistingEmployeeAuth(
 }
 
 export async function listBusinessEmployees(businessId: string): Promise<BusinessEmployee[]> {
-  const snap = await getDocs(query(
-    collection(db, COLLECTION),
-    where('restaurantId', '==', businessId),
-  ));
+  // Read employees from a business-scoped subcollection. This lets Firestore
+  // authorize the query from the URL path instead of trying to prove access
+  // to a cross-business collection query with resource.data.
+  const snap = await getDocs(collection(db, 'businesses', businessId, EMPLOYEES_SUBCOLLECTION));
 
   return snap.docs
     .map((item) => ({ id: item.id, ...(item.data() as Omit<BusinessEmployee, 'id'>) }))
@@ -133,12 +140,8 @@ export async function createBusinessEmployee(input: {
     ? await findExistingEmployeeAuth(email, input.password, input.businessId)
     : await createEmployeeAuth(email, input.password, input.businessId);
 
-  const existingMembership = await getDocs(query(
-    collection(db, COLLECTION),
-    where('restaurantId', '==', input.businessId),
-    where('userId', '==', userId),
-  ));
-  if (!existingMembership.empty) {
+  const existingMembership = await getDoc(membershipRef(input.businessId, userId));
+  if (existingMembership.exists()) {
     throw new Error('Esta cuenta ya tiene acceso a este negocio.');
   }
   const now = new Date().toISOString();
@@ -155,7 +158,10 @@ export async function createBusinessEmployee(input: {
   };
 
   try {
-    await setDoc(membershipRef(input.businessId, userId), employee);
+    const batch = writeBatch(db);
+    batch.set(membershipRef(input.businessId, userId), employee);
+    batch.set(employeeRef(input.businessId, userId), employee);
+    await batch.commit();
   } catch (error) {
     throw new Error(
       'La cuenta de acceso se creó, pero no pudimos asignar el empleado al negocio. No vuelvas a registrarlo todavía; revisaremos los permisos de Firebase.'
@@ -174,15 +180,22 @@ export async function updateBusinessEmployee(
     throw new Error('No puedes asignar ese rol desde Empleados.');
   }
 
-  await updateDoc(membershipRef(businessId, userId), {
+  const changesToApply = {
     ...changes,
     ...(changes.name !== undefined ? { name: changes.name.trim() } : {}),
     updatedAt: new Date().toISOString(),
-  });
+  };
+  const batch = writeBatch(db);
+  batch.update(membershipRef(businessId, userId), changesToApply);
+  batch.update(employeeRef(businessId, userId), changesToApply);
+  await batch.commit();
 }
 
 export async function removeBusinessEmployee(businessId: string, userId: string): Promise<void> {
-  await deleteDoc(membershipRef(businessId, userId));
+  const batch = writeBatch(db);
+  batch.delete(membershipRef(businessId, userId));
+  batch.delete(employeeRef(businessId, userId));
+  await batch.commit();
 }
 
 export function getRolePermissions(role: BusinessRole): BusinessPermission[] {
