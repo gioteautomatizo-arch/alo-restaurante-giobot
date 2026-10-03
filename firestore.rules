@@ -11,14 +11,18 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/platformAdmins/$(request.auth.uid)).data.active != false;
     }
 
+    // Lee la membresía del usuario autenticado una sola vez por comprobación.
+    // Evitamos encadenar exists/get y volver a ejecutar hasActiveMembership()
+    // dentro de getCallerMembershipRole(), lo que provocaba permission-denied
+    // en consultas a subcolecciones.
     function hasActiveMembership(businessId) {
       return isSignedIn()
-        && exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
         && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true;
     }
 
     function getCallerMembershipRole(businessId) {
-      return hasActiveMembership(businessId)
+      return isSignedIn()
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true
         ? get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role
         : (isPlatformSuperAdmin() ? 'SUPER_ADMIN' : 'NONE');
     }
@@ -27,8 +31,8 @@ service cloud.firestore {
       return isSignedIn()
         && (
           (
-            hasActiveMembership(businessId)
-            && getCallerMembershipRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER']
+            get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true
+            && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role in ['OWNER', 'ADMIN', 'MANAGER']
           )
           || isPlatformSuperAdmin()
         );
