@@ -1,8 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { ShoppingBag, Star, MessageSquare, Instagram, Facebook, Clock, MapPin } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { ShoppingBag, Star, MessageSquare, Instagram, Facebook, Clock, MapPin, ChevronDown, X } from 'lucide-react';
 import { VipProfile } from '../types';
 import { Logo } from './Logo';
 import { getRestaurantInfo, ADMIN_DATA_EVENT } from '../lib/adminStorage';
+import {
+  DAY_KEYS,
+  DAY_LABELS,
+  resolveWeeklySchedule,
+  computeScheduleStatus,
+} from '../lib/scheduleService';
 
 interface HeaderProps {
   cartCount: number;
@@ -17,9 +23,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenVipModal,
   vipProfile,
 }) => {
-  // Check if currently open (9:00 AM - 5:30 PM local time)
-  const [isOpenNow, setIsOpenNow] = useState<boolean>(true);
-  const [restaurantInfo, setRestaurantInfo] = useState(getRestaurantInfo());
+  const [restaurantInfo, setRestaurantInfo] = useState(() => getRestaurantInfo());
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+  const [showScheduleModal, setShowScheduleModal] = useState<boolean>(false);
 
   useEffect(() => {
     const handleUpdate = () => {
@@ -33,26 +39,23 @@ export const Header: React.FC<HeaderProps> = ({
     };
   }, []);
 
-  const vipStampsReq = restaurantInfo.vipStampsRequired ?? 5;
-
   useEffect(() => {
-    const checkSchedule = () => {
-      const now = new Date();
-      const hours = now.getHours();
-      const minutes = now.getMinutes();
-      const currentTimeInMinutes = hours * 60 + minutes;
-      const openTimeInMinutes = 9 * 60; // 9:00 AM
-      const closeTimeInMinutes = 17 * 60 + 30; // 5:30 PM
-      setIsOpenNow(currentTimeInMinutes >= openTimeInMinutes && currentTimeInMinutes <= closeTimeInMinutes);
-    };
-
-    checkSchedule();
-    const interval = setInterval(checkSchedule, 60000);
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
+  const vipStampsReq = restaurantInfo.vipStampsRequired ?? 5;
+
+  const weeklySchedule = useMemo(() => resolveWeeklySchedule(restaurantInfo), [restaurantInfo]);
+  const scheduleStatus = useMemo(
+    () => computeScheduleStatus(weeklySchedule, currentTime),
+    [weeklySchedule, currentTime]
+  );
+
   return (
-    <header className="sticky top-0 z-40 bg-[#3A2418]/95 backdrop-blur-md text-[#FFF7EA] shadow-sm border-b border-[#4E3222] w-full overflow-x-hidden">
+    <header className="sticky top-0 z-40 bg-[#3A2418]/95 backdrop-blur-md text-[#FFF7EA] shadow-sm border-b border-[#4E3222] w-full">
       <div className="max-w-7xl mx-auto px-2.5 sm:px-6 py-1.5 sm:py-2 w-full">
         <div className="flex items-center justify-between gap-1.5 sm:gap-3 w-full">
           {/* Left: Brand Logo & Status */}
@@ -66,32 +69,47 @@ export const Header: React.FC<HeaderProps> = ({
             </a>
 
             <div className="flex flex-col justify-center min-w-0">
-              {/* Dynamic Status Badge - Single compact line */}
-              <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs whitespace-nowrap">
+              {/* Dynamic Status Badge - Single compact line with interactive weekly modal */}
+              <button
+                type="button"
+                onClick={() => setShowScheduleModal((prev) => !prev)}
+                className="flex items-center gap-1 sm:gap-1.5 text-[10px] sm:text-xs whitespace-nowrap cursor-pointer group text-left rounded-lg p-0.5 hover:bg-white/5 transition-colors"
+                title="Toca para ver los horarios de toda la semana"
+                aria-label={`Horario: ${scheduleStatus.statusText}. Toca para ver la semana completa.`}
+              >
                 <span
                   className={`inline-flex items-center gap-1 px-1.5 sm:px-2.5 py-0.5 rounded-full text-[9px] sm:text-[11px] font-bold tracking-wide shrink-0 ${
-                    isOpenNow
-                      ? 'bg-[#4E3222] text-[#F4E3C8] border border-[#C9974D]/40'
-                      : 'bg-[#4E3222] text-[#EAD9C4] border border-[#A86B3D]/30'
+                    scheduleStatus.isOpen
+                      ? 'bg-[#4E3222] text-[#F4E3C8] border border-[#C9974D]/40 group-hover:border-[#C9974D]'
+                      : 'bg-[#4E3222] text-[#EAD9C4] border border-[#A86B3D]/30 group-hover:border-[#A86B3D]'
                   }`}
                 >
                   <span
                     className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                      isOpenNow ? 'bg-[#C9974D] animate-pulse' : 'bg-rose-400'
+                      scheduleStatus.isOpen ? 'bg-[#C9974D] animate-pulse' : 'bg-rose-400'
                     }`}
                   />
-                  <span>{isOpenNow ? 'Abierto' : 'Cerrado'}</span>
+                  <span>{scheduleStatus.badgeText}</span>
                 </span>
 
-                <span className="text-[10px] sm:text-xs text-[#EAD9C4] font-light flex items-center gap-1 shrink-0">
+                <span className="text-[10px] sm:text-xs text-[#EAD9C4] font-medium flex items-center gap-1 shrink-0 group-hover:text-[#FFF7EA]">
                   <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-[#C9974D] shrink-0" />
-                  <span>9:00–17:30</span>
+                  <span>
+                    {scheduleStatus.isOpen
+                      ? `${scheduleStatus.todaySchedule.openTime}–${scheduleStatus.todaySchedule.closeTime}`
+                      : scheduleStatus.statusText.replace(/^Cerrado\s*·\s*/i, '')}
+                  </span>
+                  <ChevronDown
+                    className={`w-2.5 h-2.5 sm:w-3 sm:h-3 text-[#C9974D]/80 group-hover:text-[#C9974D] transition-transform duration-200 ${
+                      showScheduleModal ? 'rotate-180' : ''
+                    }`}
+                  />
                 </span>
-              </div>
+              </button>
 
               {/* Location micro text (Desktop only) */}
               <span className="hidden md:inline-flex items-center gap-1 text-[10px] text-[#D8C4B4] mt-0.5">
-                <MapPin className="w-2.5 h-2.5 text-[#C9974D]" /> Calle la Fama 12, Tlalpan CDMX
+                <MapPin className="w-2.5 h-2.5 text-[#C9974D]" /> {restaurantInfo.address || 'Calle la Fama 12, Tlalpan CDMX'}
               </span>
             </div>
           </div>
@@ -167,6 +185,113 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Modal de Horarios Semanales al tocar la insignia */}
+      {showScheduleModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          onClick={() => setShowScheduleModal(false)}
+        >
+          <div
+            className="bg-[#FFFDF9] text-[#2B1B13] border border-[#C9974D]/40 rounded-3xl p-5 sm:p-6 w-full max-w-md shadow-2xl space-y-4 animate-in fade-in zoom-in duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Cabecera del modal */}
+            <div className="flex items-center justify-between border-b border-[#F4E3C8] pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-[#3A2418] text-[#C9974D] flex items-center justify-center shrink-0">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-base sm:text-lg text-[#2B1B13]">
+                    Horario de atención
+                  </h3>
+                  <p className="text-[11px] text-[#8A6A55]">
+                    Hora oficial CDMX ({scheduleStatus.mexicoTimeText} hrs)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowScheduleModal(false)}
+                className="w-8 h-8 rounded-full bg-[#FFF7EA] text-[#6B4028] hover:bg-[#F4E3C8] flex items-center justify-center transition-colors cursor-pointer"
+                aria-label="Cerrar horario"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Estado actual */}
+            <div
+              className={`p-3 rounded-2xl text-xs font-semibold flex items-center justify-between ${
+                scheduleStatus.isOpen
+                  ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                  : 'bg-amber-50 text-amber-900 border border-amber-200'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    scheduleStatus.isOpen ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                  }`}
+                />
+                <span>{scheduleStatus.statusText}</span>
+              </div>
+            </div>
+
+            {/* Lista de 7 días */}
+            <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
+              {DAY_KEYS.map((key) => {
+                const day = weeklySchedule[key];
+                const isToday = scheduleStatus.todayKey === key;
+
+                return (
+                  <div
+                    key={key}
+                    className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs transition-colors ${
+                      isToday
+                        ? 'bg-[#3A2418] text-[#FFF7EA] font-bold shadow-xs'
+                        : 'bg-[#FFF7EA]/70 text-[#2B1B13]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>{DAY_LABELS[key]}</span>
+                      {isToday && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-[#C9974D] text-[#3A2418] font-black uppercase">
+                          Hoy
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      {day.closed ? (
+                        <span className={isToday ? 'text-rose-300 font-semibold' : 'text-rose-600 font-semibold'}>
+                          Cerrado
+                        </span>
+                      ) : (
+                        <span>
+                          {day.openTime} – {day.closeTime}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Botón de cierre */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowScheduleModal(false)}
+                className="w-full py-2.5 rounded-2xl bg-[#3A2418] hover:bg-[#2B1B13] text-[#FFF7EA] font-bold text-xs shadow-md transition-colors cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 };
+

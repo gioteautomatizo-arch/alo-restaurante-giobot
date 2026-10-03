@@ -4,6 +4,7 @@ import {
   Award,
   Bot,
   CheckCircle2,
+  Copy,
   Gift,
   Info,
   MapPin,
@@ -26,6 +27,15 @@ import {
   WeeklyPromotionMap,
 } from '../../lib/promotions';
 import { WeeklyPromotionsEditor } from './WeeklyPromotionsEditor';
+import {
+  DAY_KEYS,
+  DAY_LABELS,
+  DayKey,
+  WeeklySchedule,
+  resolveWeeklySchedule,
+  formatWeeklyScheduleSummary,
+  getMexicoCityDateTime,
+} from '../../lib/scheduleService';
 
 interface RestaurantInfoEditorViewProps {
   currentUser: StaffUser;
@@ -40,7 +50,9 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
   const initialInfo = useMemo(() => getRestaurantInfo(), []);
 
   const [address, setAddress] = useState(initialInfo.address);
-  const [openingHours, setOpeningHours] = useState(initialInfo.openingHours);
+  const [weeklySchedule, setWeeklySchedule] = useState<WeeklySchedule>(() =>
+    resolveWeeklySchedule(initialInfo)
+  );
   const [whatsapp, setWhatsapp] = useState(initialInfo.whatsapp);
   const [ecoDiscountPercent, setEcoDiscountPercent] = useState(initialInfo.ecoDiscountPercent ?? 10);
   const [ecoDiscountDescription, setEcoDiscountDescription] = useState(initialInfo.ecoDiscountDescription || DEFAULT_ECO);
@@ -58,7 +70,7 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
 
   const hydrate = (info: RestaurantInfo) => {
     setAddress(info.address);
-    setOpeningHours(info.openingHours);
+    setWeeklySchedule(resolveWeeklySchedule(info));
     setWhatsapp(info.whatsapp);
     setEcoDiscountPercent(info.ecoDiscountPercent ?? 10);
     setEcoDiscountDescription(info.ecoDiscountDescription || DEFAULT_ECO);
@@ -87,6 +99,44 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
 
   const previewWhatsappRaw = whatsapp.replace(/\D/g, '');
   const activePromotionsText = serializeWeeklyPromotions(weeklyPromotions);
+  const currentMexicoDay = useMemo(() => getMexicoCityDateTime().dayKey, []);
+
+  const handleToggleDayClosed = (day: DayKey, closed: boolean) => {
+    setWeeklySchedule((prev) => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        closed,
+      },
+    }));
+  };
+
+  const handleUpdateDayTime = (day: DayKey, field: 'openTime' | 'closeTime', value: string) => {
+    setWeeklySchedule((prev) => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleCopyDayToAll = (sourceDay: DayKey) => {
+    const source = weeklySchedule[sourceDay];
+    setWeeklySchedule((prev) => {
+      const next = { ...prev };
+      for (const key of DAY_KEYS) {
+        next[key] = {
+          closed: source.closed,
+          openTime: source.openTime,
+          closeTime: source.closeTime,
+        };
+      }
+      return next;
+    });
+    setSuccessMsg(`Horario de ${DAY_LABELS[sourceDay]} copiado a todos los días de la semana.`);
+    window.setTimeout(() => setSuccessMsg(null), 3000);
+  };
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -96,12 +146,12 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
     }
 
     const cleanAddress = address.trim();
-    const cleanHours = openingHours.trim();
     const cleanWhatsapp = whatsapp.trim();
     const cleanWhatsappRaw = cleanWhatsapp.replace(/\D/g, '');
+    const summaryOpeningHours = formatWeeklyScheduleSummary(weeklySchedule);
 
-    if (!cleanAddress || !cleanHours || cleanWhatsappRaw.length < 8) {
-      setErrorMsg('Revisa dirección, horario y WhatsApp antes de guardar.');
+    if (!cleanAddress || cleanWhatsappRaw.length < 8) {
+      setErrorMsg('Revisa dirección y WhatsApp antes de guardar.');
       return;
     }
 
@@ -114,7 +164,8 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
         {
           restaurantId: 'alo-restaurante',
           address: cleanAddress,
-          openingHours: cleanHours,
+          openingHours: summaryOpeningHours,
+          weeklySchedule: weeklySchedule,
           whatsapp: cleanWhatsapp,
           whatsappRaw: cleanWhatsappRaw,
           ecoDiscountPercent: Number(ecoDiscountPercent) || 0,
@@ -132,7 +183,7 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
 
       setLastSavedInfo(updated);
       hydrate(updated);
-      setSuccessMsg('Información y promociones actualizadas y sincronizadas');
+      setSuccessMsg('Información y horario semanal actualizados y sincronizados');
       window.setTimeout(() => setSuccessMsg(null), 4000);
       onRefreshStats?.();
     } catch (error: any) {
@@ -192,7 +243,115 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
             <h3 className="font-serif font-bold text-base text-[#2B1B13] flex items-center gap-2"><Store className="w-4 h-4 text-[#C9974D]" />1. Contacto y ubicación</h3>
           </div>
           <div className="space-y-1.5"><label className={labelClass}><MapPin className="w-4 h-4 text-[#C9974D]" />Dirección completa</label><input value={address} onChange={(e) => setAddress(e.target.value)} disabled={isSaving} className={inputClass} /></div>
-          <div className="space-y-1.5"><label className={labelClass}><Clock className="w-4 h-4 text-[#C9974D]" />Horario de atención</label><input value={openingHours} onChange={(e) => setOpeningHours(e.target.value)} disabled={isSaving} className={inputClass} /></div>
+          {/* Horario de atención semanal de 7 días */}
+          <div className="space-y-3 pt-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#F4E3C8] pb-2">
+              <div>
+                <label className={labelClass}>
+                  <Clock className="w-4 h-4 text-[#C9974D]" />
+                  Horario de atención por día (Lunes a Domingo)
+                </label>
+                <p className="text-xs text-[#6B4028] mt-0.5">
+                  Establece las horas de apertura y cierre para cada día o márcalo como cerrado.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {DAY_KEYS.map((dayKey) => {
+                const daySched = weeklySchedule[dayKey] || { closed: false, openTime: '09:00', closeTime: '17:30' };
+                const isToday = currentMexicoDay === dayKey;
+
+                return (
+                  <div
+                    key={dayKey}
+                    className={`p-3 sm:p-3.5 rounded-2xl border transition-all ${
+                      isToday
+                        ? 'bg-[#FFF9EE] border-[#C9974D]/50 shadow-xs ring-1 ring-[#C9974D]/30'
+                        : 'bg-[#FFFDF9] border-[#E7D7C4]'
+                    }`}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      {/* Día */}
+                      <div className="flex items-center gap-2 min-w-[110px]">
+                        <span className="font-serif font-bold text-sm text-[#2B1B13]">
+                          {DAY_LABELS[dayKey]}
+                        </span>
+                        {isToday && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#C9974D] text-[#FFF7EA]">
+                            Hoy
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Interruptor Cerrado */}
+                      <label className="inline-flex items-center gap-2 cursor-pointer shrink-0 select-none bg-white px-2.5 py-1.5 rounded-xl border border-[#E7D7C4]">
+                        <input
+                          type="checkbox"
+                          checked={daySched.closed}
+                          onChange={(e) => handleToggleDayClosed(dayKey, e.target.checked)}
+                          disabled={isSaving}
+                          className="w-4 h-4 rounded text-[#A86B3D] focus:ring-[#C9974D] border-gray-300 cursor-pointer"
+                        />
+                        <span
+                          className={`text-xs font-bold ${
+                            daySched.closed ? 'text-rose-600' : 'text-[#6B4028]'
+                          }`}
+                        >
+                          {daySched.closed ? 'Cerrado' : 'Abierto'}
+                        </span>
+                      </label>
+
+                      {/* Horas de apertura y cierre */}
+                      <div className="flex items-center gap-2 grow sm:justify-center">
+                        {daySched.closed ? (
+                          <span className="text-xs text-rose-500 font-semibold italic bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-200">
+                            Cerrado todo el día
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] text-[#8A6A55] font-medium">Apertura:</span>
+                              <input
+                                type="time"
+                                value={daySched.openTime}
+                                onChange={(e) => handleUpdateDayTime(dayKey, 'openTime', e.target.value)}
+                                disabled={isSaving || daySched.closed}
+                                className="bg-white border border-[#E7D7C4] rounded-xl px-2.5 py-1 text-xs font-semibold text-[#2B1B13] focus:ring-1 focus:ring-[#C9974D] focus:border-[#C9974D]"
+                              />
+                            </div>
+                            <span className="text-xs text-[#8A6A55]">—</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] text-[#8A6A55] font-medium">Cierre:</span>
+                              <input
+                                type="time"
+                                value={daySched.closeTime}
+                                onChange={(e) => handleUpdateDayTime(dayKey, 'closeTime', e.target.value)}
+                                disabled={isSaving || daySched.closed}
+                                className="bg-white border border-[#E7D7C4] rounded-xl px-2.5 py-1 text-xs font-semibold text-[#2B1B13] focus:ring-1 focus:ring-[#C9974D] focus:border-[#C9974D]"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Botón Copiar a todos los días */}
+                      <button
+                        type="button"
+                        onClick={() => handleCopyDayToAll(dayKey)}
+                        disabled={isSaving}
+                        title={`Copiar horario de ${DAY_LABELS[dayKey]} a toda la semana`}
+                        className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold text-[#6B4028] hover:text-[#2B1B13] hover:bg-[#FFF7EA] border border-[#E7D7C4] transition-colors shrink-0 cursor-pointer disabled:opacity-50"
+                      >
+                        <Copy className="w-3 h-3 text-[#C9974D]" />
+                        <span>Copiar a todos</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
           <div className="space-y-1.5"><label className={labelClass}><Phone className="w-4 h-4 text-[#C9974D]" />WhatsApp de pedidos</label><input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} disabled={isSaving} className={inputClass} /><p className="text-[10px] text-[#8A6A55]">Número normalizado: {previewWhatsappRaw || '—'}</p></div>
         </section>
 
@@ -232,7 +391,7 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
           <div className="flex items-center gap-2 text-xs font-bold text-[#A86B3D] uppercase"><Info className="w-3.5 h-3.5" />Vista previa del sistema</div>
           <div className="text-xs text-[#2B1B13] bg-white border border-[#F4E3C8]/70 rounded-xl p-3 space-y-1.5">
             <p>📍 <strong>Ubicación:</strong> {address || '—'}</p>
-            <p>🕒 <strong>Horario:</strong> {openingHours || '—'}</p>
+            <p>🕒 <strong>Horario:</strong> {formatWeeklyScheduleSummary(weeklySchedule)}</p>
             <p>🚚 <strong>Envío:</strong> ${deliveryFee} MXN</p>
             <p>⭐ <strong>VIP:</strong> {vipStampsRequired} sellos · {vipRewardDescription}</p>
             <p>🌿 <strong>Eco:</strong> {ecoDiscountPercent}% · {ecoDiscountDescription}</p>

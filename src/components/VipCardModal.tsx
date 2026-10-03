@@ -302,7 +302,7 @@ export const VipCardModal: React.FC<VipCardModalProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-black font-serif text-[#FFF7EA] flex items-center gap-1.5">
-                Tarjeta VIP Calientito
+                Tarjeta {restaurantInfo.loyaltyProgramName || 'Calientito VIP'}
               </h2>
               <p className="text-xs text-[#F4E3C8]">
                 Sellos de lealtad & Recompensas respaldadas en la nube
@@ -972,7 +972,7 @@ export const VipCardModal: React.FC<VipCardModalProps> = ({
           <div className="bg-[#3A2418] border border-[#4E3222] rounded-2xl p-3.5 text-xs text-[#EAD9C4] space-y-1.5">
             <h4 className="font-bold text-[#C9974D] flex items-center gap-1.5 font-serif">
               <ShieldCheck className="w-4 h-4 text-[#C9974D]" />
-              ¿Cómo funciona Calientito VIP Cloud?
+              ¿Cómo funciona {restaurantInfo.loyaltyProgramName || 'Calientito VIP'} Cloud?
             </h4>
             <p className="text-[11px] text-[#EAD9C4] leading-relaxed">
               1. <strong>Seguridad Determinística:</strong> Tu tarjeta se vincula a tu teléfono y PIN sin exponer datos sensibles.

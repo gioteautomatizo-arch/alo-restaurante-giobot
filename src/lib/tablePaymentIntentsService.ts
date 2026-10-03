@@ -19,7 +19,7 @@ export type TablePaymentIntentStatus = 'PENDIENTE' | 'CONFIRMADO' | 'RECHAZADO';
 
 export interface TablePaymentIntent {
   id?: string;
-  restaurantId: typeof RESTAURANT_ID;
+  restaurantId: string;
   tableNumber: number;
   tableSessionId: string;
   accountId?: string;

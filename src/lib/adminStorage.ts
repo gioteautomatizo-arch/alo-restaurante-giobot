@@ -40,6 +40,7 @@ import {
   migrateLocalStorageToFirestore,
   getDeviceIdentifier,
 } from './firestoreService';
+import { DEFAULT_WEEKLY_SCHEDULE } from './scheduleService';
 
 // Claves de almacenamiento local (mantenidas para arranque instantáneo y fallback offline)
 const STORAGE_KEYS = {
@@ -1383,6 +1384,9 @@ export const INITIAL_RESTAURANT_INFO: RestaurantInfo = {
   vipRewardDescription: 'Al acumular 5 sellos, el cliente obtiene gratis un café americano o postre del día.',
   servicePolicies: 'Servicio en comedor, para llevar y a domicilio. Formas de pago: efectivo, transferencia y tarjeta.',
   activePromotions: '10% de descuento por traer recipientes propios.',
+  loyaltyProgramName: 'Calientito VIP',
+  orderFolioPrefix: 'CAL',
+  weeklySchedule: DEFAULT_WEEKLY_SCHEDULE,
   updatedAt: '2026-09-03T00:00:00.000Z',
   updatedBy: 'Sistema',
 };
@@ -1411,6 +1415,7 @@ export function getRestaurantInfo(): RestaurantInfo {
       whatsapp: parsed.whatsapp || INITIAL_RESTAURANT_INFO.whatsapp,
       whatsappRaw: parsed.whatsappRaw || INITIAL_RESTAURANT_INFO.whatsappRaw,
       openingHours: parsed.openingHours || INITIAL_RESTAURANT_INFO.openingHours,
+      weeklySchedule: parsed.weeklySchedule || INITIAL_RESTAURANT_INFO.weeklySchedule,
       ecoDiscountPercent: typeof parsed.ecoDiscountPercent === 'number' ? parsed.ecoDiscountPercent : INITIAL_RESTAURANT_INFO.ecoDiscountPercent,
       ecoDiscountDescription: parsed.ecoDiscountDescription || INITIAL_RESTAURANT_INFO.ecoDiscountDescription,
       deliveryFee: typeof parsed.deliveryFee === 'number' ? parsed.deliveryFee : INITIAL_RESTAURANT_INFO.deliveryFee,
@@ -1418,6 +1423,8 @@ export function getRestaurantInfo(): RestaurantInfo {
       vipRewardDescription: parsed.vipRewardDescription || INITIAL_RESTAURANT_INFO.vipRewardDescription,
       servicePolicies: parsed.servicePolicies || INITIAL_RESTAURANT_INFO.servicePolicies,
       activePromotions: parsed.activePromotions || INITIAL_RESTAURANT_INFO.activePromotions,
+      loyaltyProgramName: parsed.loyaltyProgramName || INITIAL_RESTAURANT_INFO.loyaltyProgramName,
+      orderFolioPrefix: parsed.orderFolioPrefix || INITIAL_RESTAURANT_INFO.orderFolioPrefix,
       updatedAt: parsed.updatedAt || INITIAL_RESTAURANT_INFO.updatedAt,
       updatedBy: parsed.updatedBy || INITIAL_RESTAURANT_INFO.updatedBy,
     };
@@ -1441,6 +1448,7 @@ export async function saveRestaurantInfo(
     whatsapp,
     whatsappRaw,
     openingHours: (info.openingHours !== undefined ? info.openingHours : current.openingHours).trim(),
+    weeklySchedule: info.weeklySchedule !== undefined ? info.weeklySchedule : (current.weeklySchedule || INITIAL_RESTAURANT_INFO.weeklySchedule),
     ecoDiscountPercent: typeof info.ecoDiscountPercent === 'number' ? info.ecoDiscountPercent : current.ecoDiscountPercent ?? 10,
     ecoDiscountDescription: (info.ecoDiscountDescription !== undefined ? info.ecoDiscountDescription : (current.ecoDiscountDescription || INITIAL_RESTAURANT_INFO.ecoDiscountDescription!)).trim(),
     deliveryFee: typeof info.deliveryFee === 'number' ? info.deliveryFee : current.deliveryFee ?? 25,
@@ -1448,9 +1456,11 @@ export async function saveRestaurantInfo(
     vipRewardDescription: (info.vipRewardDescription !== undefined ? info.vipRewardDescription : (current.vipRewardDescription || INITIAL_RESTAURANT_INFO.vipRewardDescription!)).trim(),
     servicePolicies: (info.servicePolicies !== undefined ? info.servicePolicies : (current.servicePolicies || INITIAL_RESTAURANT_INFO.servicePolicies!)).trim(),
     activePromotions: (info.activePromotions !== undefined ? info.activePromotions : (current.activePromotions || INITIAL_RESTAURANT_INFO.activePromotions!)).trim(),
+    loyaltyProgramName: (info.loyaltyProgramName !== undefined ? info.loyaltyProgramName : (current.loyaltyProgramName || INITIAL_RESTAURANT_INFO.loyaltyProgramName!)).trim(),
+    orderFolioPrefix: (info.orderFolioPrefix !== undefined ? info.orderFolioPrefix : (current.orderFolioPrefix || INITIAL_RESTAURANT_INFO.orderFolioPrefix!)).trim(),
     restaurantId: 'alo-restaurante',
     updatedAt: new Date().toISOString(),
-    updatedBy: user?.name || 'Administración Aló',
+    updatedBy: user?.name || 'Administración Calientito',
   };
 
   await saveRestaurantInfoFirestore(updated, user);

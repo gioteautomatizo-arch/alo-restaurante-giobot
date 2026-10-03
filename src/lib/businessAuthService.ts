@@ -20,6 +20,7 @@ import {
   createRestaurantTenant,
   normalizeRestaurantSlug,
   BusinessRole,
+  BusinessType,
   RestaurantMembership,
   RestaurantTenant,
 } from './restaurantCore';
@@ -103,7 +104,7 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
   const tenant = removeUndefinedDeep(createRestaurantTenant({
     restaurantId: businessId,
     restaurantName: input.businessName,
-    businessType: input.businessType || 'restaurant',
+    businessType: (input.businessType as BusinessType) || 'restaurant',
     publicSlug: businessId,
     logoUrl: input.logoUrl,
   }));
@@ -198,23 +199,6 @@ export async function getBusinessForUser(
 }
 
 
-export async function isPlatformAdmin(userId: string): Promise<boolean> {
-  if (!userId) return false;
-  const snap = await getDoc(doc(db, 'platformAdmins', userId));
-  if (!snap.exists()) return false;
-  const data = snap.data() as { active?: boolean };
-  return data.active !== false;
-}
-
-export async function getAllBusinesses(): Promise<RestaurantTenant[]> {
-  const snap = await getDocs(collection(db, BUSINESSES_COLLECTION));
-  return snap.docs
-    .map((docSnap) => docSnap.data() as RestaurantTenant)
-    .filter((tenant) => tenant.restaurantId !== 'alo-restaurante')
-    .sort((a, b) =>
-      a.branding.restaurantName.localeCompare(b.branding.restaurantName, 'es-MX')
-    );
-}
 
 export async function getBusinessMembership(
   userId: string,
@@ -226,3 +210,44 @@ export async function getBusinessMembership(
   if (membership.userId !== userId || !membership.active) return null;
   return membership;
 }
+
+export const PLATFORM_ADMINS_COLLECTION = 'platformAdmins';
+
+/**
+ * Determina si el usuario autenticado está registrado como Super Admin en la plataforma.
+ */
+export async function isPlatformAdmin(userId: string): Promise<boolean> {
+  if (!userId) return false;
+  try {
+    const snap = await getDoc(doc(db, PLATFORM_ADMINS_COLLECTION, userId));
+    if (!snap.exists()) return false;
+    const data = snap.data();
+    return data?.active !== false;
+  } catch (err) {
+    console.warn('Error verificando platform admin:', err);
+    return false;
+  }
+}
+
+/**
+ * Obtiene todos los negocios registrados en la plataforma para el panel Super Admin.
+ * Excluye Calientito ya que es el tenant histórico predeterminado.
+ */
+export async function getAllBusinesses(): Promise<RestaurantTenant[]> {
+  try {
+    const snap = await getDocs(collection(db, BUSINESSES_COLLECTION));
+    const tenants: RestaurantTenant[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as RestaurantTenant;
+      // Mantener Calientito fuera de la lista de tenants nuevos porque es el tenant histórico
+      if (data.restaurantId && data.restaurantId !== 'alo-restaurante') {
+        tenants.push(data);
+      }
+    });
+    return tenants;
+  } catch (err) {
+    console.error('Error fetching all businesses for super admin:', err);
+    throw err;
+  }
+}
+

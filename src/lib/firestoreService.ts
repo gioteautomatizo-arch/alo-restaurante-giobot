@@ -1142,6 +1142,9 @@ export async function saveRestaurantInfoFirestore(
       whatsapp: (info.whatsapp || '55 7441 1437').trim(),
       whatsappRaw: (info.whatsappRaw || rawDigits || '5574411437').trim(),
       openingHours: (info.openingHours || 'Abiertos de 9:00 am a 5:30 pm').trim(),
+      weeklySchedule: info.weeklySchedule,
+      loyaltyProgramName: info.loyaltyProgramName,
+      orderFolioPrefix: info.orderFolioPrefix,
       ecoDiscountPercent: typeof info.ecoDiscountPercent === 'number' ? info.ecoDiscountPercent : 10,
       ecoDiscountDescription: (info.ecoDiscountDescription || '10% de descuento si el cliente trae sus propios recipientes o termo.').trim(),
       deliveryFee: typeof info.deliveryFee === 'number' ? info.deliveryFee : 25,
@@ -1150,7 +1153,7 @@ export async function saveRestaurantInfoFirestore(
       servicePolicies: (info.servicePolicies || 'Servicio en comedor, para llevar y a domicilio. Formas de pago: efectivo, transferencia y tarjeta.').trim(),
       activePromotions: (info.activePromotions || '10% de descuento por traer recipientes propios.').trim(),
       updatedAt: new Date().toISOString(),
-      updatedBy: user?.name || info.updatedBy || 'Sistema Aló',
+      updatedBy: user?.name || info.updatedBy || 'Sistema Calientito',
     }) as RestaurantInfo;
     const docRef = doc(collections.dailyMenu, 'restaurant_info');
     await setDoc(docRef, payload);

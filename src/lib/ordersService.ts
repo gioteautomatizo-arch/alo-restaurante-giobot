@@ -16,7 +16,8 @@ import {
   StaffUser,
 } from '../types';
 import { sanitizeFirestorePayload } from './firestoreService';
-import { getActiveRestaurantId } from './restaurantContext';
+import { getActiveRestaurantId, isCalientitoTenant } from './restaurantContext';
+import { getRestaurantInfo } from './adminStorage';
 
 export const ORDERS_COLLECTION = 'restaurant_orders';
 export const PUBLIC_TABLE_ORDERS_COLLECTION = 'public_table_orders';
@@ -90,7 +91,11 @@ function buildOrderCode(): string {
   const hh = String(now.getHours()).padStart(2, '0');
   const mm = String(now.getMinutes()).padStart(2, '0');
   const suffix = Math.floor(100 + Math.random() * 900);
-  return `ALO-${hh}${mm}-${suffix}`;
+  const info = getRestaurantInfo();
+  const activeId = getActiveRestaurantId();
+  const rawPrefix = info.orderFolioPrefix || (isCalientitoTenant() || activeId === 'alo-restaurante' ? 'CAL' : activeId.slice(0, 3));
+  const prefix = (rawPrefix || 'CAL').toUpperCase().trim();
+  return `${prefix}-${hh}${mm}-${suffix}`;
 }
 
 export async function createRestaurantOrder(

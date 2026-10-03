@@ -252,12 +252,30 @@ export interface DailyMenuConfig {
   updatedBy: string;
 }
 
+export type DayKey =
+  | 'lunes'
+  | 'martes'
+  | 'miercoles'
+  | 'jueves'
+  | 'viernes'
+  | 'sabado'
+  | 'domingo';
+
+export interface DaySchedule {
+  closed: boolean;
+  openTime: string;
+  closeTime: string;
+}
+
+export type WeeklySchedule = Record<DayKey, DaySchedule>;
+
 export interface RestaurantInfo {
   restaurantId: string;
   address: string;
   whatsapp: string;
   whatsappRaw: string;
   openingHours: string;
+  weeklySchedule?: WeeklySchedule;
   ecoDiscountPercent?: number;
   ecoDiscountDescription?: string;
   deliveryFee?: number;
@@ -265,6 +283,8 @@ export interface RestaurantInfo {
   vipRewardDescription?: string;
   servicePolicies?: string;
   activePromotions?: string;
+  loyaltyProgramName?: string;
+  orderFolioPrefix?: string;
   updatedAt?: string;
   updatedBy?: string;
 }

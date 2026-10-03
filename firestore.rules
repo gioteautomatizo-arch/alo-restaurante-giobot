@@ -1,24 +1,87 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isPlatformSuperAdmin() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/platformAdmins/$(request.auth.uid)).data.active != false;
+    }
+
+    function hasActiveMembership(businessId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true;
+    }
+
+    function getCallerMembershipRole(businessId) {
+      return hasActiveMembership(businessId)
+        ? get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role
+        : (isPlatformSuperAdmin() ? 'SUPER_ADMIN' : 'NONE');
+    }
+
+    function canManageMembership(businessId) {
+      return isSignedIn()
+        && (
+          (
+            hasActiveMembership(businessId)
+            && getCallerMembershipRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER']
+          )
+          || isPlatformSuperAdmin()
+        );
+    }
+
+    function canAssignRole(managerRole, targetRole) {
+      return managerRole in ['OWNER', 'ADMIN', 'SUPER_ADMIN']
+        || (managerRole == 'MANAGER' && targetRole in ['CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']);
+    }
+
+    function isValidRestaurant(data) {
+      return data.restaurantId == 'alo-restaurante';
+    }
+
+    function isKnownRestaurant(data) {
+      return data.restaurantId is string
+        && (
+          data.restaurantId == 'alo-restaurante'
+          || exists(/databases/$(database)/documents/businesses/$(data.restaurantId))
+        );
+    }
+
+    function isAuthorizedRestaurant(data) {
+      return isSignedIn()
+        && data.restaurantId is string
+        && (
+          data.restaurantId == 'alo-restaurante'
+          || hasActiveMembership(data.restaurantId)
+          || isPlatformSuperAdmin()
+        );
+    }
+
     match /businesses/{businessId} {
       allow read: if true;
 
-      allow create: if request.auth != null
+      allow create: if isSignedIn()
         && request.resource.data.restaurantId == businessId
         && businessId != 'alo-restaurante'
         && !exists(/databases/$(database)/documents/businesses/$(businessId));
 
-      allow update, delete: if request.auth != null
-        && exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
-        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role == 'OWNER'
-        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true;
+      allow update, delete: if isSignedIn()
+        && (
+          (
+            hasActiveMembership(businessId)
+            && getCallerMembershipRole(businessId) == 'OWNER'
+          )
+          || isPlatformSuperAdmin()
+        );
     }
 
-
     match /businesses/{businessId}/employees/{employeeUserId} {
-      // Employee records are scoped inside their business so list queries can be
-      // authorized from the business path without exposing other tenants.
+      // Los registros de empleados están aislados dentro de cada negocio.
+      // La lectura requiere rol OWNER, ADMIN o MANAGER activo en ese negocio.
       allow read: if canManageMembership(businessId);
 
       allow create: if canManageMembership(businessId)
@@ -26,22 +89,17 @@ service cloud.firestore {
         && request.resource.data.userId == employeeUserId
         && request.resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
         && request.resource.data.active == true
-        && canAssignRole(
-          get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role,
-          request.resource.data.role
-        );
+        && canAssignRole(getCallerMembershipRole(businessId), request.resource.data.role);
 
       allow update: if canManageMembership(businessId)
         && resource.data.restaurantId == businessId
         && resource.data.userId == employeeUserId
+        && resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
         && request.resource.data.restaurantId == businessId
         && request.resource.data.userId == employeeUserId
         && request.resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
         && request.resource.data.active is bool
-        && canAssignRole(
-          get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role,
-          request.resource.data.role
-        );
+        && canAssignRole(getCallerMembershipRole(businessId), request.resource.data.role);
 
       allow delete: if canManageMembership(businessId)
         && resource.data.restaurantId == businessId
@@ -50,36 +108,20 @@ service cloud.firestore {
     }
 
     match /businesses/{businessId}/catalog/{catalogDoc} {
-      // El catálogo público también debe poder leerse antes de iniciar sesión.
-      // La escritura queda protegida por catalog.manage.
       allow read: if true;
 
-      allow create, update: if request.auth != null
+      allow create, update: if isSignedIn()
         && request.resource.data.businessId == businessId
-        && exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
-        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true;
+        && (hasActiveMembership(businessId) || isPlatformSuperAdmin());
 
-      allow delete: if request.auth != null
-        && exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
-        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true;
-    }
-
-    function canManageMembership(businessId) {
-      return request.auth != null
-        && exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
-        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true
-        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role in ['OWNER', 'ADMIN', 'MANAGER'];
-    }
-
-    function canAssignRole(managerRole, targetRole) {
-      return managerRole in ['OWNER', 'ADMIN']
-        || (managerRole == 'MANAGER' && targetRole in ['CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']);
+      allow delete: if isSignedIn()
+        && (hasActiveMembership(businessId) || isPlatformSuperAdmin());
     }
 
     match /businessMemberships/{membershipId} {
       // Un usuario puede consultar su membresía. Los responsables también pueden
       // consultar las membresías de su propio negocio para administrar el equipo.
-      allow read: if request.auth != null
+      allow read: if isSignedIn()
         && (
           resource.data.userId == request.auth.uid
           || canManageMembership(resource.data.restaurantId)
@@ -88,7 +130,7 @@ service cloud.firestore {
       // El alta del propietario solo puede crear su propia membresía.
       // Los demás empleados son creados por el módulo de Empleados.
       allow create: if (
-        request.auth != null
+        isSignedIn()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.role == 'OWNER'
         && request.resource.data.active == true
@@ -97,7 +139,7 @@ service cloud.firestore {
         && membershipId == request.resource.data.restaurantId + '_' + request.auth.uid
         && existsAfter(/databases/$(database)/documents/businesses/$(request.resource.data.restaurantId))
       ) || (
-        request.auth != null
+        isSignedIn()
         && request.resource.data.restaurantId is string
         && request.resource.data.userId is string
         && request.resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
@@ -105,7 +147,7 @@ service cloud.firestore {
         && membershipId == request.resource.data.restaurantId + '_' + request.resource.data.userId
         && canManageMembership(request.resource.data.restaurantId)
         && canAssignRole(
-          get(/databases/$(database)/documents/businessMemberships/$(request.resource.data.restaurantId + '_' + request.auth.uid)).data.role,
+          getCallerMembershipRole(request.resource.data.restaurantId),
           request.resource.data.role
         )
         && exists(/databases/$(database)/documents/businesses/$(request.resource.data.restaurantId))
@@ -113,14 +155,14 @@ service cloud.firestore {
 
       // Solo un responsable puede cambiar empleados. Nunca se permite modificar
       // OWNER/SUPER_ADMIN ni cambiar el userId/restaurantId de una membresía.
-      allow update: if request.auth != null
+      allow update: if isSignedIn()
         && resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
         && canManageMembership(resource.data.restaurantId)
         && resource.data.userId == request.resource.data.userId
         && resource.data.restaurantId == request.resource.data.restaurantId
         && request.resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
         && canAssignRole(
-          get(/databases/$(database)/documents/businessMemberships/$(resource.data.restaurantId + '_' + request.auth.uid)).data.role,
+          getCallerMembershipRole(resource.data.restaurantId),
           request.resource.data.role
         )
         && request.resource.data.active is bool;
@@ -128,7 +170,7 @@ service cloud.firestore {
       // Un empleado puede abandonar su propia membresía; un responsable puede
       // retirar a un empleado, pero nunca OWNER/SUPER_ADMIN.
       allow delete: if (
-        request.auth != null
+        isSignedIn()
         && resource.data.userId == request.auth.uid
         && resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
       ) || (
@@ -140,40 +182,8 @@ service cloud.firestore {
     // Administradores de plataforma: los documentos se crean fuera del cliente
     // (setup seguro). El usuario solo puede consultar su propio estado.
     match /platformAdmins/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
+      allow read: if isSignedIn() && request.auth.uid == userId;
       allow create, update, delete: if false;
-    }
-
-    function isValidRestaurant(data) {
-      return data.restaurantId == 'alo-restaurante';
-    }
-
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    // Un tenant conocido puede operar con sus datos públicos (QR/cliente).
-    // Calientito conserva su identificador histórico; los nuevos negocios
-    // se validan contra el documento businesses/{restaurantId}.
-    function isKnownRestaurant(data) {
-      return data.restaurantId is string
-        && (
-          data.restaurantId == 'alo-restaurante'
-          || exists(/databases/$(database)/documents/businesses/$(data.restaurantId))
-        );
-    }
-
-    // Las operaciones administrativas requieren membresía activa.
-    function isAuthorizedRestaurant(data) {
-      return isSignedIn()
-        && data.restaurantId is string
-        && (
-          data.restaurantId == 'alo-restaurante'
-          || (
-            exists(/databases/$(database)/documents/businessMemberships/$(data.restaurantId + '_' + request.auth.uid))
-            && get(/databases/$(database)/documents/businessMemberships/$(data.restaurantId + '_' + request.auth.uid)).data.active == true
-          )
-        );
     }
 
     match /staff_users/{userId} {

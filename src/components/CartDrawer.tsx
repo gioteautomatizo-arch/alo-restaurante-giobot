@@ -6,6 +6,10 @@ import { createRestaurantOrder } from '../lib/ordersService';
 import { getTableOrderContext } from '../lib/tableSessionsService';
 import { X, Trash2, Plus, Minus, ShoppingBag, Leaf, CheckCircle2, MapPin, Phone, User, CreditCard, Send, Star, Gift, Copy, Check, MessageSquare, Printer, ArrowRight } from 'lucide-react';
 import { Logo } from './Logo';
+import { CALIENTITO_TENANT } from '../lib/restaurantCore';
+import { getActiveRestaurantId, isCalientitoTenant } from '../lib/restaurantContext';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -55,6 +59,27 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const [orderDate, setOrderDate] = useState<string>('');
   const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false);
   const [orderSubmitError, setOrderSubmitError] = useState<string | null>(null);
+  const [businessName, setBusinessName] = useState<string>(CALIENTITO_TENANT.branding.restaurantName);
+
+  useEffect(() => {
+    const activeId = getActiveRestaurantId();
+    if (isCalientitoTenant() || !activeId || activeId === 'alo-restaurante') {
+      setBusinessName(CALIENTITO_TENANT.branding.restaurantName);
+      return;
+    }
+    getDoc(doc(db, 'businesses', activeId))
+      .then((snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data?.branding?.restaurantName) {
+            setBusinessName(data.branding.restaurantName);
+          }
+        }
+      })
+      .catch(() => {
+        setBusinessName(CALIENTITO_TENANT.branding.restaurantName);
+      });
+  }, []);
 
   useEffect(() => {
     const handleUpdate = () => {
@@ -165,7 +190,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
       itemsList += '\n';
     });
 
-    let msg = `🧾 *TICKET DE COMPRA | ¡ALÓ! RESTAURANTE*\n`;
+    let msg = `🧾 *TICKET DE COMPRA | ${businessName.toUpperCase()}*\n`;
     msg += `═══════════════════════════════\n`;
     msg += `📍 *Sucursal:* ${restaurantAddress}\n`;
     msg += `📞 *WhatsApp:* ${restaurantPhoneDisplay}\n`;
@@ -212,7 +237,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
       msg += `🎁 *RECOMPENSA VIP:* Canje aplicado (${vipRewardDesc})\n`;
     }
 
-    msg += `⭐ *SOCIO ALÓ! VIP:* ${currentVipStamps}/${vipStampsReq} Sellos registrados\n`;
+    const loyaltyLabel = (restaurantInfo.loyaltyProgramName || 'Calientito VIP').toUpperCase();
+    msg += `⭐ *SOCIO ${loyaltyLabel}:* ${currentVipStamps}/${vipStampsReq} Sellos registrados\n`;
     msg += `═══════════════════════════════\n`;
     msg += `_¡Muchas gracias por tu compra! Estamos procesando tu orden. Por favor confírmanos por este medio cuando recibas este ticket._ 🍽️✨`;
 
@@ -365,7 +391,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
         <div className="flex items-center gap-2">
           <ShoppingBag className="w-5 h-5 text-[#C9974D]" />
           <h2 className="font-bold text-base text-[#FFF7EA] font-serif">
-            {orderConfirmed ? 'Ticket de Compra Digital' : 'Tu Pedido en Restaurante Calientito'}
+            {orderConfirmed ? 'Ticket de Compra Digital' : `Tu Pedido en ${businessName}`}
           </h2>
         </div>
         <button
@@ -409,9 +435,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               <div className="flex justify-center mb-1">
                 <Logo variant="compact" size="xs" />
               </div>
-              <h4 className="font-black text-sm text-[#3A2418] tracking-tight">RESTAURANTE CALIENTITO</h4>
-              <p className="text-[10px] text-[#6B4028]">{RESTAURANT_ADDRESS}</p>
-              <p className="text-[10px] text-[#3A2418] font-bold">WhatsApp Pedidos: 55 7441 1437</p>
+              <h4 className="font-black text-sm text-[#3A2418] tracking-tight">{businessName.toUpperCase()}</h4>
+              <p className="text-[10px] text-[#6B4028]">{restaurantAddress}</p>
+              <p className="text-[10px] text-[#3A2418] font-bold">WhatsApp Pedidos: {restaurantPhoneDisplay}</p>
               
               <div className="pt-2 flex items-center justify-between text-[11px] font-bold text-[#6B4028] border-t border-[#DEC8AE] mt-2">
                 <span>FOLIO: #{orderCode}</span>
@@ -521,7 +547,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             <div className="p-3 bg-[#3A2418] text-[#FFF7EA] text-center space-y-1">
               <p className="text-[10px] text-[#C9974D] font-bold flex items-center justify-center gap-1">
                 <Star className="w-3.5 h-3.5 fill-[#C9974D]" />
-                TARJETA ALÓ! VIP: {updatedVipResult?.stamps || 1}/{vipStampsReq} SELLOS
+                TARJETA {(restaurantInfo.loyaltyProgramName || 'Calientito VIP').toUpperCase()}: {updatedVipResult?.stamps || 1}/{vipStampsReq} SELLOS
               </p>
               <p className="text-[9px] text-[#EAD9C4]">
                 ¡Gracias por tu compra! Conserva tu folio #{orderCode}.

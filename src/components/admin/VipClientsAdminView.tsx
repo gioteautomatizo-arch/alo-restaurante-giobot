@@ -279,7 +279,7 @@ export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
               <Star className="w-3.5 h-3.5 text-[#C9974D]" /> Gestión de Fidelidad
             </span>
             <span className="px-2 py-0.5 rounded-md bg-[#4A2E1F] text-[#F4E3C8] text-[10px] font-semibold border border-[#C9974D]/20">
-              Calientito VIP Cloud
+              {restaurantInfo.loyaltyProgramName || 'Calientito VIP'} Cloud
             </span>
           </div>
           <h1 className="font-serif font-bold text-2xl sm:text-3xl text-white">

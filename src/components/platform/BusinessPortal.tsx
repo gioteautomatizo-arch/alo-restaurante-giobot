@@ -7,6 +7,7 @@ import {
   LockKeyhole,
   Mail,
   Plus,
+  Shield,
   Sparkles,
   Store,
 } from 'lucide-react';
@@ -15,6 +16,7 @@ import { CALIENTITO_TENANT, RestaurantTenant } from '../../lib/restaurantCore';
 import { subscribeToAuth } from '../../lib/firebase';
 import {
   getBusinessesForUser,
+  isPlatformAdmin,
   loginBusinessOwner,
   logoutBusinessOwner,
 } from '../../lib/businessAuthService';
@@ -32,6 +34,7 @@ export const BusinessPortal: React.FC = () => {
   const [myBusinesses, setMyBusinesses] = useState<RestaurantTenant[]>([]);
   const [loadingBusinesses, setLoadingBusinesses] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   useEffect(() => {
     const unsubscribe = subscribeToAuth((user) => {
@@ -44,6 +47,7 @@ export const BusinessPortal: React.FC = () => {
   useEffect(() => {
     if (!authUser) {
       setMyBusinesses([]);
+      setIsSuperAdmin(false);
       return;
     }
     setLoadingBusinesses(true);
@@ -54,6 +58,10 @@ export const BusinessPortal: React.FC = () => {
         setMyBusinesses([]);
       })
       .finally(() => setLoadingBusinesses(false));
+
+    isPlatformAdmin(authUser.uid)
+      .then(setIsSuperAdmin)
+      .catch(() => setIsSuperAdmin(false));
   }, [authUser]);
 
   const handleLogin = async (event: React.FormEvent) => {
@@ -187,7 +195,21 @@ export const BusinessPortal: React.FC = () => {
             <div className="w-10 h-10 rounded-2xl bg-[#111827] text-amber-300 flex items-center justify-center"><Bot className="w-5 h-5" /></div>
             <div><p className="text-[10px] uppercase tracking-[0.15em] font-black text-[#A86B3D]">Gioteautomatizo</p><h1 className="font-serif font-black text-lg">Mis negocios</h1></div>
           </div>
-          <button type="button" onClick={handleSignOut} className="rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-xs font-bold text-[#6B4028]">Cerrar sesión</button>
+          <div className="flex items-center gap-2">
+            {isSuperAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.hash = '#platform-admin';
+                }}
+                className="rounded-xl border border-amber-300/40 bg-[#111827] hover:bg-[#1F2937] px-3 py-2 text-xs font-black text-amber-300 transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Shield className="w-3.5 h-3.5 text-amber-300" />
+                <span>Super Admin</span>
+              </button>
+            )}
+            <button type="button" onClick={handleSignOut} className="rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-xs font-bold text-[#6B4028] hover:bg-[#FFF7EA] transition">Cerrar sesión</button>
+          </div>
         </div>
       </header>
 

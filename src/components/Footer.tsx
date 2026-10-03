@@ -1,12 +1,48 @@
-import React from 'react';
-import { MapPin, Clock, MessageSquare, Instagram, Facebook, Map, Lock } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { MapPin, Clock, MessageSquare, Instagram, Facebook, Map, Lock, ChevronDown } from 'lucide-react';
 import { Logo } from './Logo';
+import { getRestaurantInfo, ADMIN_DATA_EVENT } from '../lib/adminStorage';
+import {
+  DAY_KEYS,
+  DAY_LABELS,
+  resolveWeeklySchedule,
+  computeScheduleStatus,
+} from '../lib/scheduleService';
 
 interface FooterProps {
   onOpenAdmin?: () => void;
 }
 
 export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
+  const [restaurantInfo, setRestaurantInfo] = useState(() => getRestaurantInfo());
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+  const [showWeeklySchedule, setShowWeeklySchedule] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setRestaurantInfo(getRestaurantInfo());
+    };
+    window.addEventListener(ADMIN_DATA_EVENT, handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener(ADMIN_DATA_EVENT, handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const weeklySchedule = useMemo(() => resolveWeeklySchedule(restaurantInfo), [restaurantInfo]);
+  const scheduleStatus = useMemo(
+    () => computeScheduleStatus(weeklySchedule, currentTime),
+    [weeklySchedule, currentTime]
+  );
+
   return (
     <footer
       id="contacto"
@@ -22,25 +58,80 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-6 text-xs text-[#EAD9C4] font-light">
           <div className="flex items-center gap-1.5">
             <MapPin className="w-3.5 h-3.5 text-[#C9974D] shrink-0" />
-            <span>Calle la Fama 12, Tlalpan, CDMX</span>
+            <span>{restaurantInfo.address || 'Calle la Fama 12, Tlalpan, CDMX'}</span>
           </div>
           <span className="hidden sm:inline text-[#6B4028]">•</span>
-          <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setShowWeeklySchedule((prev) => !prev)}
+            className="flex items-center gap-1.5 hover:text-[#FFF7EA] transition-colors cursor-pointer text-left group"
+            title="Toca para ver los horarios de toda la semana"
+          >
             <Clock className="w-3.5 h-3.5 text-[#C9974D] shrink-0" />
-            <span>Lunes a domingo, 9:00 AM a 5:30 PM</span>
-          </div>
+            <span className="group-hover:underline">{scheduleStatus.statusText}</span>
+            <ChevronDown
+              className={`w-3.5 h-3.5 text-[#C9974D] transition-transform duration-200 ${
+                showWeeklySchedule ? 'rotate-180' : ''
+              }`}
+            />
+          </button>
         </div>
+
+        {/* Desplegable de Horarios de la Semana en Contacto */}
+        {showWeeklySchedule && (
+          <div className="w-full max-w-md bg-[#3A2418] border border-[#C9974D]/40 rounded-2xl p-4 shadow-lg text-left animate-in fade-in duration-150 space-y-2.5">
+            <div className="flex items-center justify-between border-b border-[#4E3222] pb-2 text-xs">
+              <span className="font-bold text-[#F4E3C8] flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-[#C9974D]" /> Horarios semanales de atención
+              </span>
+              <span className="text-[10px] text-[#C9974D]">CDMX ({scheduleStatus.mexicoTimeText} hrs)</span>
+            </div>
+
+            <div className="space-y-1">
+              {DAY_KEYS.map((key) => {
+                const day = weeklySchedule[key];
+                const isToday = scheduleStatus.todayKey === key;
+                return (
+                  <div
+                    key={key}
+                    className={`flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-colors ${
+                      isToday
+                        ? 'bg-[#C9974D]/20 text-[#FFF7EA] font-bold border border-[#C9974D]/40'
+                        : 'text-[#EAD9C4]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>{DAY_LABELS[key]}</span>
+                      {isToday && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-[#C9974D] text-[#3A2418] font-black uppercase">
+                          Hoy
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      {day.closed ? (
+                        <span className="text-rose-400 font-semibold">Cerrado</span>
+                      ) : (
+                        <span>{day.openTime} – {day.closeTime}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* 3. Botón principal de WhatsApp */}
         <div className="w-full max-w-xs pt-1">
           <a
-            href="https://wa.me/525574411437"
+            href={`https://wa.me/52${restaurantInfo.whatsappRaw || '5574411437'}`}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full px-4 py-2.5 rounded-2xl bg-[#25D366] hover:bg-[#20ba59] active:scale-98 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all"
           >
             <MessageSquare className="w-4 h-4 fill-white text-[#25D366]" />
-            <span>Pedir por WhatsApp (55 7441 1437)</span>
+            <span>Pedir por WhatsApp ({restaurantInfo.whatsapp || '55 7441 1437'})</span>
           </a>
         </div>
 
