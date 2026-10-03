@@ -86,9 +86,17 @@ service cloud.firestore {
     match /businesses/{businessId}/employees/{employeeUserId} {
       // Los registros de empleados están aislados dentro de cada negocio.
       // La lectura requiere rol OWNER, ADMIN o MANAGER activo en ese negocio.
-      allow read: if canManageMembership(businessId);
+      // Regla deliberadamente directa: la lista de empleados solo necesita
+      // comprobar la membresía activa del usuario autenticado en este negocio.
+      // No usamos canManageMembership aquí para evitar una cadena de funciones
+      // durante la evaluación de una consulta de colección.
+      allow read: if isSignedIn()
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role in ['OWNER', 'ADMIN', 'MANAGER'];
 
-      allow create: if canManageMembership(businessId)
+      allow create: if isSignedIn()
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role in ['OWNER', 'ADMIN', 'MANAGER']
         && request.resource.data.restaurantId == businessId
         && request.resource.data.userId == employeeUserId
         && request.resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
