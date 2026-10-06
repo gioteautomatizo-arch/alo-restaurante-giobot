@@ -209,6 +209,15 @@ export async function createBusinessEmployee(input: {
     );
   }
 
+  // El propietario no debe agregarse a sí mismo como empleado. Su membresía
+  // OWNER ya le da acceso al negocio y duplicar la identidad Firebase solo
+  // genera conflictos de permisos y de roles.
+  if (managerUser.uid === userId) {
+    throw new Error(
+      'Esta cuenta ya es la cuenta del propietario de este negocio. No necesitas agregarla como empleado.'
+    );
+  }
+
   let existingMembership;
   try {
     existingMembership = await getDoc(membershipRef(input.businessId, userId));
