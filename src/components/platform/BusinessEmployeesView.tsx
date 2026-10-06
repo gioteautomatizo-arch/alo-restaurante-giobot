@@ -174,9 +174,9 @@ export const BusinessEmployeesView: React.FC<{
                   <option value="existing">Usar cuenta existente</option>
                 </select>
               </label>
-              <label className="text-sm font-bold">{accountMode === 'new' ? 'Contraseña temporal' : 'Contraseña de la cuenta'}<input type="password" minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} required className="mt-1 w-full rounded-xl border border-[#DEC8AE] p-3 font-normal" /></label>
+              <label className="text-sm font-bold">{accountMode === 'new' ? 'Contraseña temporal' : 'Contraseña de la cuenta (opcional si usa Google)'}<input type="password" minLength={accountMode === 'new' ? 6 : undefined} value={password} onChange={(e) => setPassword(e.target.value)} required={accountMode === 'new'} className="mt-1 w-full rounded-xl border border-[#DEC8AE] p-3 font-normal" /></label>
               <label className="text-sm font-bold">Rol<select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value as BusinessRole)} className="mt-1 w-full rounded-xl border border-[#DEC8AE] p-3 font-normal">{allowedRoles.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}</select></label>
-              <div className="sm:col-span-2 flex items-center gap-2 text-xs text-[#6B4028]"><KeyRound className="w-4 h-4" /> {accountMode === 'new' ? 'Se creará una cuenta nueva con este correo.' : 'La cuenta existente se vinculará a este negocio; no se crea otra cuenta.'}</div>
+              <div className="sm:col-span-2 flex items-center gap-2 text-xs text-[#6B4028]"><KeyRound className="w-4 h-4" /> {accountMode === 'new' ? 'Se creará una cuenta nueva con este correo.' : 'La cuenta existente se validará con su contraseña o, si usa Google, podrás seleccionar ese mismo correo en la ventana de Google.'}</div>
               <button disabled={saving} className="sm:col-span-2 rounded-xl bg-[#A86B3D] px-4 py-3 font-black text-white disabled:opacity-50">{saving ? 'Creando…' : 'Crear acceso'}</button>
             </form>
           )}
