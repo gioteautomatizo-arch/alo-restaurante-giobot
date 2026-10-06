@@ -22,7 +22,8 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 // rompan altas de negocio u otras escrituras parciales.
 export const db = initializeFirestore(
   app,
-  { ignoreUndefinedProperties: true }
+  { ignoreUndefinedProperties: true },
+  '(default)',
 );
 
 // Inicializar Firebase Storage para las fotos del menú.
