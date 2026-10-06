@@ -218,26 +218,11 @@ export async function createBusinessEmployee(input: {
     );
   }
 
-  let existingMembership;
-  try {
-    existingMembership = await getDoc(membershipRef(input.businessId, userId));
-  } catch (error: any) {
-    console.error('Error leyendo membresía del empleado después de validar la cuenta:', {
-      code: error?.code,
-      message: error?.message,
-      managerUid: managerUser.uid,
-      managerEmail: managerUser.email,
-      employeeUid: userId,
-      businessId: input.businessId,
-    });
-    throw new Error(
-      'La cuenta de Google fue validada, pero Firebase rechazó la lectura de la membresía. La sesión del responsable no tiene permisos para este negocio.'
-    );
-  }
-
-  if (existingMembership.exists()) {
-    throw new Error('Esta cuenta ya tiene acceso a este negocio.');
-  }
+  // No hacemos un getDoc previo de la membresía. Para una cuenta nueva el
+  // documento todavía no existe y las reglas de Firestore correctamente pueden
+  // rechazar una lectura sobre un documento inexistente. La creación atómica
+  // siguiente es la fuente de verdad: si ya existe, Firestore devuelve
+  // ALREADY_EXISTS y no se modifica el roster.
   const now = new Date().toISOString();
   const employee: BusinessEmployee = {
     id: `${input.businessId}_${userId}`,
@@ -258,9 +243,22 @@ export async function createBusinessEmployee(input: {
       employeeUserIds: arrayUnion(userId),
     });
     await batch.commit();
-  } catch (error) {
+  } catch (error: any) {
+    console.error('Error asignando empleado al negocio:', {
+      code: error?.code,
+      message: error?.message,
+      managerUid: managerUser.uid,
+      managerEmail: managerUser.email,
+      employeeUid: userId,
+      businessId: input.businessId,
+    });
+
+    if (error?.code === 'already-exists') {
+      throw new Error('Esta cuenta ya tiene acceso a este negocio.');
+    }
+
     throw new Error(
-      'La cuenta de acceso se creó, pero no pudimos asignar el empleado al negocio. No vuelvas a registrarlo todavía; revisaremos los permisos de Firebase.'
+      'La cuenta de acceso fue validada, pero Firebase rechazó la asignación del empleado al negocio. Revisa los permisos de Firestore.'
     );
   }
 
