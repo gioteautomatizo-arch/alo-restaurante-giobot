@@ -198,7 +198,34 @@ export async function createBusinessEmployee(input: {
     ? await findExistingEmployeeAuth(email, input.password, input.businessId)
     : await createEmployeeAuth(email, input.password, input.businessId);
 
-  const existingMembership = await getDoc(membershipRef(input.businessId, userId));
+  // La autenticación de la cuenta del empleado se realiza en una app Firebase
+  // secundaria para no sustituir la sesión del propietario. Verificamos que la
+  // sesión primaria siga siendo la del responsable antes de tocar Firestore.
+  const primaryAuth = getAuth();
+  const managerUser = primaryAuth.currentUser;
+  if (!managerUser) {
+    throw new Error(
+      'La cuenta del empleado se validó, pero se perdió la sesión del responsable. Vuelve a iniciar sesión como propietario y repite la operación.'
+    );
+  }
+
+  let existingMembership;
+  try {
+    existingMembership = await getDoc(membershipRef(input.businessId, userId));
+  } catch (error: any) {
+    console.error('Error leyendo membresía del empleado después de validar la cuenta:', {
+      code: error?.code,
+      message: error?.message,
+      managerUid: managerUser.uid,
+      managerEmail: managerUser.email,
+      employeeUid: userId,
+      businessId: input.businessId,
+    });
+    throw new Error(
+      'La cuenta de Google fue validada, pero Firebase rechazó la lectura de la membresía. La sesión del responsable no tiene permisos para este negocio.'
+    );
+  }
+
   if (existingMembership.exists()) {
     throw new Error('Esta cuenta ya tiene acceso a este negocio.');
   }
