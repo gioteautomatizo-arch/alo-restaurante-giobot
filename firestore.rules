@@ -81,6 +81,14 @@ service cloud.firestore {
           )
           || isPlatformSuperAdmin()
         );
+
+      // El roster de empleados es un índice técnico del negocio. Los responsables
+      // pueden modificar únicamente ese campo; el resto de la configuración sigue
+      // protegido por la regla anterior.
+      allow update: if isSignedIn()
+        && hasActiveMembership(businessId)
+        && getCallerMembershipRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['employeeUserIds']);
     }
 
     match /businesses/{businessId}/employees/{employeeUserId} {
