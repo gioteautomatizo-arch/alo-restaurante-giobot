@@ -1,5 +1,11 @@
 import { initializeApp, deleteApp, getApps } from 'firebase/app';
-import { createUserWithEmailAndPassword, getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import {
+  createUserWithEmailAndPassword,
+  getAuth,
+  GoogleAuthProvider,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+} from 'firebase/auth';
 import {
   arrayRemove,
   arrayUnion,
@@ -73,12 +79,21 @@ async function withSecondaryAuth<T>(
 
 async function createEmployeeAuth(email: string, password: string, businessId: string): Promise<string> {
   return withSecondaryAuth(businessId, async (secondaryAuth) => {
-    const credential = await createUserWithEmailAndPassword(
-      secondaryAuth,
-      email.trim().toLowerCase(),
-      password,
-    );
-    return credential.user.uid;
+    try {
+      const credential = await createUserWithEmailAndPassword(
+        secondaryAuth,
+        email.trim().toLowerCase(),
+        password,
+      );
+      return credential.user.uid;
+    } catch (error: any) {
+      if (error?.code === 'auth/email-already-in-use') {
+        throw new Error(
+          'Ese correo ya tiene una cuenta de Firebase. Selecciona "Usar cuenta existente".'
+        );
+      }
+      throw error;
+    }
   });
 }
 
@@ -88,16 +103,44 @@ async function findExistingEmployeeAuth(
   businessId: string,
 ): Promise<string> {
   return withSecondaryAuth(businessId, async (secondaryAuth) => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (password.trim()) {
+      try {
+        const credential = await signInWithEmailAndPassword(
+          secondaryAuth,
+          normalizedEmail,
+          password,
+        );
+        return credential.user.uid;
+      } catch {
+        // Algunas cuentas existentes fueron creadas con Google y no tienen
+        // proveedor de correo/contraseña. En ese caso validamos la identidad
+        // mediante Google sin tocar la sesión principal del propietario.
+      }
+    }
+
     try {
-      const credential = await signInWithEmailAndPassword(
+      const credential = await signInWithPopup(
         secondaryAuth,
-        email.trim().toLowerCase(),
-        password,
+        new GoogleAuthProvider(),
       );
+      const googleEmail = credential.user.email?.trim().toLowerCase();
+
+      if (!googleEmail || googleEmail !== normalizedEmail) {
+        throw new Error(
+          `Selecciona en Google la cuenta ${email.trim()} para vincularla a este negocio.`,
+        );
+      }
+
       return credential.user.uid;
-    } catch {
+    } catch (error: any) {
+      if (error?.message?.startsWith('Selecciona en Google')) {
+        throw error;
+      }
+
       throw new Error(
-        'No pudimos validar esa cuenta existente. Revisa el correo y la contraseña.',
+        'No pudimos validar la cuenta existente. Usa la contraseña de esa cuenta o inicia sesión con Google con el mismo correo.'
       );
     }
   });
@@ -142,8 +185,13 @@ export async function createBusinessEmployee(input: {
   }
 
   const email = input.email.trim().toLowerCase();
-  if (!input.name.trim() || !email || input.password.length < 6) {
-    throw new Error('Completa nombre, correo y una contraseña temporal de al menos 6 caracteres.');
+  const needsPassword = input.accountMode !== 'existing';
+  if (!input.name.trim() || !email || (needsPassword && input.password.length < 6)) {
+    throw new Error(
+      needsPassword
+        ? 'Completa nombre, correo y una contraseña temporal de al menos 6 caracteres.'
+        : 'Completa nombre y correo. Puedes dejar vacía la contraseña si la cuenta existente usa Google.',
+    );
   }
 
   const userId = input.accountMode === 'existing'
