@@ -1,6 +1,8 @@
 import { initializeApp, deleteApp, getApps } from 'firebase/app';
 import { createUserWithEmailAndPassword, getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import {
+  arrayRemove,
+  arrayUnion,
   collection,
   deleteDoc,
   doc,
@@ -10,6 +12,7 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -42,8 +45,6 @@ export const MANAGEABLE_EMPLOYEE_ROLES: BusinessRole[] = [
 ];
 
 const COLLECTION = 'businessMemberships';
-const EMPLOYEES_SUBCOLLECTION = 'employees';
-
 function membershipRef(businessId: string, userId: string) {
   return doc(db, COLLECTION, `${businessId}_${userId}`);
 }
@@ -103,17 +104,26 @@ async function findExistingEmployeeAuth(
 }
 
 export async function listBusinessEmployees(businessId: string): Promise<BusinessEmployee[]> {
-  // The membership document is the canonical source of truth for business access.
-  // Keeping the employee roster there avoids maintaining two synchronized records
-  // and avoids the problematic employees subcollection deployment target.
-  const snap = await getDocs(
-    query(
-      collection(db, COLLECTION),
-      where('restaurantId', '==', businessId),
-    ),
+  // Firestore cannot safely authorize a collection query over businessMemberships
+  // because the rule must inspect each result document. The business keeps a small
+  // roster of employee UIDs, and each membership is then read by its deterministic ID.
+  const businessSnap = await getDoc(doc(db, 'businesses', businessId));
+  if (!businessSnap.exists()) {
+    throw new Error('El negocio no existe.');
+  }
+
+  const employeeUserIds = Array.isArray(businessSnap.data().employeeUserIds)
+    ? (businessSnap.data().employeeUserIds as string[])
+    : [];
+
+  if (employeeUserIds.length === 0) return [];
+
+  const memberships = await Promise.all(
+    employeeUserIds.map((userId) => getDoc(membershipRef(businessId, userId))),
   );
 
-  return snap.docs
+  return memberships
+    .filter((item) => item.exists())
     .map((item) => ({ id: item.id, ...(item.data() as Omit<BusinessEmployee, 'id'>) }))
     .filter((item) => item.role !== 'OWNER' && item.role !== 'SUPER_ADMIN')
     .sort((a, b) => a.name.localeCompare(b.name, 'es-MX'));
@@ -158,7 +168,12 @@ export async function createBusinessEmployee(input: {
   };
 
   try {
-    await setDoc(membershipRef(input.businessId, userId), employee);
+    const batch = writeBatch(db);
+    batch.set(membershipRef(input.businessId, userId), employee);
+    batch.update(doc(db, 'businesses', input.businessId), {
+      employeeUserIds: arrayUnion(userId),
+    });
+    await batch.commit();
   } catch (error) {
     throw new Error(
       'La cuenta de acceso se creó, pero no pudimos asignar el empleado al negocio. No vuelvas a registrarlo todavía; revisaremos los permisos de Firebase.'
@@ -186,7 +201,12 @@ export async function updateBusinessEmployee(
 }
 
 export async function removeBusinessEmployee(businessId: string, userId: string): Promise<void> {
-  await deleteDoc(membershipRef(businessId, userId));
+  const batch = writeBatch(db);
+  batch.delete(membershipRef(businessId, userId));
+  batch.update(doc(db, 'businesses', businessId), {
+    employeeUserIds: arrayRemove(userId),
+  });
+  await batch.commit();
 }
 
 export function getRolePermissions(role: BusinessRole): BusinessPermission[] {
