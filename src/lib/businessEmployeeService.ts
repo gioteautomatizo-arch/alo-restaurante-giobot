@@ -209,20 +209,18 @@ export async function createBusinessEmployee(input: {
     );
   }
 
-  // El propietario no debe agregarse a sí mismo como empleado. Su membresía
-  // OWNER ya le da acceso al negocio y duplicar la identidad Firebase solo
-  // genera conflictos de permisos y de roles.
-  if (managerUser.uid === userId) {
+  // Comparar también por correo: si el proveedor Google no está vinculado a
+  // la cuenta Firebase original, puede devolver otro UID para el mismo correo.
+  // El propietario no debe convertirse en empleado con una identidad duplicada.
+  if (
+    managerUser.uid === userId ||
+    managerUser.email?.trim().toLowerCase() === email
+  ) {
     throw new Error(
-      'Esta cuenta ya es la cuenta del propietario de este negocio. No necesitas agregarla como empleado.'
+      'Ese correo pertenece a la sesión del propietario. No necesitas agregarlo como empleado; usa el correo de la persona que tendrá acceso.'
     );
   }
 
-  // No hacemos un getDoc previo de la membresía. Para una cuenta nueva el
-  // documento todavía no existe y las reglas de Firestore correctamente pueden
-  // rechazar una lectura sobre un documento inexistente. La creación atómica
-  // siguiente es la fuente de verdad: si ya existe, Firestore devuelve
-  // ALREADY_EXISTS y no se modifica el roster.
   const now = new Date().toISOString();
   const employee: BusinessEmployee = {
     id: `${input.businessId}_${userId}`,
@@ -236,29 +234,56 @@ export async function createBusinessEmployee(input: {
     updatedAt: now,
   };
 
+  // Separar las escrituras identifica de forma inequívoca qué regla de
+  // Firestore deniega el acceso. Si actualizar el índice falla después de
+  // crear la membresía, intentamos revertir la primera escritura.
   try {
-    const batch = writeBatch(db);
-    batch.set(membershipRef(input.businessId, userId), employee);
-    batch.update(doc(db, 'businesses', input.businessId), {
-      employeeUserIds: arrayUnion(userId),
-    });
-    await batch.commit();
+    await setDoc(membershipRef(input.businessId, userId), employee);
   } catch (error: any) {
-    console.error('Error asignando empleado al negocio:', {
+    console.error('Firestore denegó crear la membresía del empleado:', {
       code: error?.code,
       message: error?.message,
       managerUid: managerUser.uid,
       managerEmail: managerUser.email,
       employeeUid: userId,
+      employeeEmail: email,
       businessId: input.businessId,
+      operation: 'create-membership',
+    });
+    throw new Error(
+      `Firebase rechazó crear la membresía del empleado (${error?.code || 'error sin código'}). Esto apunta a la regla de creación de businessMemberships en la base de datos activa.`
+    );
+  }
+
+  try {
+    await updateDoc(doc(db, 'businesses', input.businessId), {
+      employeeUserIds: arrayUnion(userId),
+    });
+  } catch (error: any) {
+    console.error('Firestore denegó actualizar la lista de empleados:', {
+      code: error?.code,
+      message: error?.message,
+      managerUid: managerUser.uid,
+      managerEmail: managerUser.email,
+      employeeUid: userId,
+      employeeEmail: email,
+      businessId: input.businessId,
+      operation: 'update-employee-roster',
     });
 
-    if (error?.code === 'already-exists') {
-      throw new Error('Esta cuenta ya tiene acceso a este negocio.');
+    try {
+      await deleteDoc(membershipRef(input.businessId, userId));
+    } catch (rollbackError: any) {
+      console.error('No se pudo revertir la membresía tras fallar el roster:', {
+        code: rollbackError?.code,
+        message: rollbackError?.message,
+        employeeUid: userId,
+        businessId: input.businessId,
+      });
     }
 
     throw new Error(
-      'La cuenta de acceso fue validada, pero Firebase rechazó la asignación del empleado al negocio. Revisa los permisos de Firestore.'
+      `La membresía fue creada, pero Firebase rechazó actualizar employeeUserIds del negocio (${error?.code || 'error sin código'}). Esto apunta a la regla de actualización de businesses.`
     );
   }
 
