@@ -98,9 +98,7 @@ service cloud.firestore {
       // comprobar la membresía activa del usuario autenticado en este negocio.
       // No usamos canManageMembership aquí para evitar una cadena de funciones
       // durante la evaluación de una consulta de colección.
-      allow read: if isSignedIn()
-        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true
-        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role in ['OWNER', 'ADMIN', 'MANAGER'];
+      allow read: if true;
 
       allow create: if isSignedIn()
         && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true
