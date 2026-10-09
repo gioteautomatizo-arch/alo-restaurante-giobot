@@ -157,16 +157,20 @@ service cloud.firestore {
         && membershipId == request.resource.data.restaurantId + '_' + request.auth.uid
         && existsAfter(/databases/$(database)/documents/businesses/$(request.resource.data.restaurantId))
       ) || (
+        // Alta de empleado: comprobar directamente la membresía del responsable
+        // en el mismo negocio. Esta ruta evita depender de funciones anidadas al
+        // evaluar la creación desde el cliente.
         isSignedIn()
         && request.resource.data.restaurantId is string
         && request.resource.data.userId is string
         && request.resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
         && request.resource.data.active == true
         && membershipId == request.resource.data.restaurantId + '_' + request.resource.data.userId
-        && canManageMembership(request.resource.data.restaurantId)
-        && canAssignRole(
-          getCallerMembershipRole(request.resource.data.restaurantId),
-          request.resource.data.role
+        && get(/databases/$(database)/documents/businessMemberships/$(request.resource.data.restaurantId + '_' + request.auth.uid)).data.active == true
+        && get(/databases/$(database)/documents/businessMemberships/$(request.resource.data.restaurantId + '_' + request.auth.uid)).data.role in ['OWNER', 'ADMIN', 'MANAGER']
+        && (
+          get(/databases/$(database)/documents/businessMemberships/$(request.resource.data.restaurantId + '_' + request.auth.uid)).data.role in ['OWNER', 'ADMIN']
+          || request.resource.data.role in ['CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
         )
         && exists(/databases/$(database)/documents/businesses/$(request.resource.data.restaurantId))
       );
