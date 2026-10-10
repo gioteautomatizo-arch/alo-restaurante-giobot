@@ -152,3 +152,46 @@
   --tenant-text: var(--business-text, var(--giote-white));
   --tenant-accent: var(--business-accent, var(--giote-gold-soft));
 }
+
+/* Refuerzo de contraste para textos heredados de componentes Tailwind.
+   Limita los cambios al portal Gioteautomatizo para no alterar el restaurante. */
+.giote-platform-theme [class~="text-slate-400"],
+.giote-platform-theme [class~="text-slate-500"],
+.giote-platform-theme [class~="text-gray-400"],
+.giote-platform-theme [class~="text-gray-500"],
+.giote-platform-theme [class~="text-zinc-400"],
+.giote-platform-theme [class~="text-zinc-500"],
+.giote-platform-theme [class~="text-neutral-400"],
+.giote-platform-theme [class~="text-neutral-500"] {
+  color: #bdbdbd !important;
+}
+
+.giote-platform-theme [class~="text-slate-600"],
+.giote-platform-theme [class~="text-gray-600"],
+.giote-platform-theme [class~="text-zinc-600"],
+.giote-platform-theme [class~="text-neutral-600"] {
+  color: #d0d0d0 !important;
+}
+
+.giote-platform-theme input,
+.giote-platform-theme textarea,
+.giote-platform-theme select {
+  color: var(--giote-white);
+  caret-color: var(--giote-gold);
+}
+
+.giote-platform-theme input::placeholder,
+.giote-platform-theme textarea::placeholder {
+  color: #a3a3a3;
+  opacity: 1;
+}
+
+.giote-platform-theme [class~="text-black"],
+.giote-platform-theme [class~="text-[#000000]"] {
+  color: #f7f7f7 !important;
+}
+
+.giote-platform-theme [class~="bg-white"] {
+  color: #171717;
+}
+
