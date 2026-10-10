@@ -49,7 +49,10 @@ export const BusinessCatalogEditor: React.FC<{
         setItems(catalog?.items || []);
         setLoaded(true);
       },
-      () => setMessage('No pudimos cargar el catálogo.')
+      (error: any) => {
+        setMessage(`Error al cargar: ${error?.message || error?.code || 'desconocido'}`);
+        setLoaded(true);
+      }
     );
   }, [businessId]);
 
@@ -107,8 +110,17 @@ export const BusinessCatalogEditor: React.FC<{
     }
   };
 
+  if (message && !loaded) {
+    return <div className="min-h-screen bg-[#F5F1EA] flex items-center justify-center p-6 text-center text-sm text-rose-700">{message}</div>;
+  }
+
   if (!loaded) {
-    return <div className="min-h-screen bg-[#F5F1EA] flex items-center justify-center text-[#6B4028]">Cargando catálogo…</div>;
+    return (
+      <div className="min-h-screen bg-[#F5F1EA] flex flex-col items-center justify-center text-[#6B4028] p-4 text-center">
+        <div>Cargando catálogo…</div>
+        {message && <div className="mt-2 text-sm text-rose-700">{message}</div>}
+      </div>
+    );
   }
 
   return (
@@ -153,16 +165,16 @@ export const BusinessCatalogEditor: React.FC<{
               {items.map((item) => (
                 <div key={item.id} className="rounded-2xl border border-[#E8D8C4] bg-[#FFFDF9] p-4 sm:p-5">
                   <div className="grid gap-3 md:grid-cols-12">
-                    <input value={item.name} onChange={(e) => updateItem(item.id, { name: e.target.value })} placeholder="Nombre del producto" className="md:col-span-4 rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-sm outline-none focus:border-[#A86B3D]" />
-                    <input value={item.category} onChange={(e) => updateItem(item.id, { category: e.target.value })} placeholder="Categoría" className="md:col-span-3 rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-sm outline-none focus:border-[#A86B3D]" />
-                    <input type="number" min="0" step="0.01" value={item.price ?? ''} onChange={(e) => updateItem(item.id, { price: e.target.value === '' ? null : Number(e.target.value) })} placeholder="Precio" className="md:col-span-2 rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-sm outline-none focus:border-[#A86B3D]" />
-                    <label className="md:col-span-2 flex items-center gap-2 rounded-xl border border-[#DEC8AE] px-3 text-xs font-bold">
+                    <input value={item.name} onChange={(e) => updateItem(item.id, { name: e.target.value })} placeholder="Nombre del producto" className="md:col-span-4 rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-sm text-[#2B1B13] placeholder:text-[#8A6A55] outline-none focus:border-[#A86B3D]" />
+                    <input value={item.category} onChange={(e) => updateItem(item.id, { category: e.target.value })} placeholder="Categoría" className="md:col-span-3 rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-sm text-[#2B1B13] placeholder:text-[#8A6A55] outline-none focus:border-[#A86B3D]" />
+                    <input type="number" min="0" step="0.01" value={item.price ?? ''} onChange={(e) => updateItem(item.id, { price: e.target.value === '' ? null : Number(e.target.value) })} placeholder="Precio" className="md:col-span-2 rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-sm text-[#2B1B13] placeholder:text-[#8A6A55] outline-none focus:border-[#A86B3D]" />
+                    <label className="md:col-span-2 flex items-center gap-2 rounded-xl border border-[#DEC8AE] bg-white px-3 text-xs font-bold text-[#2B1B13]">
                       <input type="checkbox" checked={item.available} onChange={(e) => updateItem(item.id, { available: e.target.checked })} />
                       Disponible
                     </label>
                     <button onClick={() => removeItem(item.id)} className="rounded-xl border border-red-200 px-3 py-2 text-red-700 hover:bg-red-50" title="Eliminar producto"><Trash2 className="mx-auto w-4 h-4" /></button>
-                    <textarea value={item.description} onChange={(e) => updateItem(item.id, { description: e.target.value })} placeholder="Descripción del producto" className="md:col-span-10 min-h-20 rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-sm outline-none focus:border-[#A86B3D]" />
-                    <label className="md:col-span-2 flex items-center gap-2 text-xs font-bold">
+                    <textarea value={item.description} onChange={(e) => updateItem(item.id, { description: e.target.value })} placeholder="Descripción del producto" className="md:col-span-10 min-h-20 rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-sm text-[#2B1B13] placeholder:text-[#8A6A55] outline-none focus:border-[#A86B3D]" />
+                    <label className="md:col-span-2 flex items-center gap-2 text-xs font-bold text-[#2B1B13]">
                       <input type="checkbox" checked={!!item.popular} onChange={(e) => updateItem(item.id, { popular: e.target.checked })} />
                       Popular
                     </label>

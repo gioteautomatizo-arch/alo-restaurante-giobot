@@ -159,3 +159,9 @@ export async function uploadBusinessLogo(businessId: string, file: File): Promis
   const optimizedFile = await optimizeMenuImage(file);
   return uploadToCloudinary(optimizedFile);
 }
+
+/** Guarda una foto de menú subida durante el onboarding/importador. */
+export async function uploadBusinessMenuImage(businessId: string, file: File): Promise<string> {
+  const optimizedFile = await optimizeMenuImage(file);
+  return uploadToCloudinary(optimizedFile);
+}

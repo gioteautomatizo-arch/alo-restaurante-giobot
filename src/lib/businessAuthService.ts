@@ -35,6 +35,8 @@ export interface RegisterBusinessInput {
   email: string;
   password: string;
   logoUrl?: string;
+  templateId?: string;
+  capabilities?: string[];
 }
 
 export interface RegisterBusinessResult {
@@ -107,6 +109,8 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
     businessType: (input.businessType as BusinessType) || 'restaurant',
     publicSlug: businessId,
     logoUrl: input.logoUrl,
+    templateId: input.templateId,
+    capabilities: input.capabilities,
   }));
 
   const membership: RestaurantMembership = {
@@ -139,14 +143,24 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
 
   // A business starts with a real, editable catalog instead of an empty shell.
   // The template is structural starter data; the owner can replace it immediately.
-  const template = getBusinessCatalogTemplate(input.businessType || 'restaurant');
-  if (template?.items.length) {
-    const starterItems = template.items.map((item) => ({
-      ...item,
-      id: createCatalogItemId(item.name),
-      available: true,
-    }));
-    await saveBusinessCatalog(businessId, starterItems, input.businessName.trim());
+  // Se siembra UNA sola vez: primero la plantilla elegida (templateId) y, si no hay,
+  // la del giro (businessType). Si falla, el negocio ya existe y el dueño puede
+  // cargar su catálogo después, por eso solo se avisa en consola.
+  const catalogTemplate = getBusinessCatalogTemplate(input.templateId || input.businessType || 'restaurant');
+  if (catalogTemplate?.items.length) {
+    try {
+      await saveBusinessCatalog(
+        businessId,
+        catalogTemplate.items.map((item, index) => ({
+          ...item,
+          id: `${createCatalogItemId(item.name)}-${index + 1}`,
+          available: true,
+        })),
+        input.businessName.trim()
+      );
+    } catch (error) {
+      console.warn('El negocio fue creado, pero no se pudo sembrar el catálogo de la plantilla:', error);
+    }
   }
 
   return { tenant, membership };
