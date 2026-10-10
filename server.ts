@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
+import { registerMenuImportRoute } from './menuImportApi';
 
 const app = express();
 app.use(express.json());
@@ -20,6 +21,8 @@ if (apiKey) {
     },
   });
 }
+
+registerMenuImportRoute(app, () => ai);
 
 const GIOBOT_SYSTEM_INSTRUCTION = `
 Eres Tita, la anfitriona virtual de Restaurante Calientito.

@@ -80,6 +80,8 @@ export const BusinessMenuImport: React.FC<{
   const [catalog, setCatalog] = useState<BusinessCatalogDocument | null>(null);
   const [catalogReady, setCatalogReady] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisNote, setAnalysisNote] = useState('');
   const [error, setError] = useState('');
   const [published, setPublished] = useState<{ added: number; skipped: number } | null>(null);
 
@@ -223,6 +225,69 @@ export const BusinessMenuImport: React.FC<{
     }
   };
 
+  const analyzeWithGiobot = async () => {
+    if (!sourceImageUrl) {
+      setError('Primero sube la foto de tu menú.');
+      return;
+    }
+    const user = auth.currentUser;
+    if (!user) {
+      setError('Tu sesión expiró. Vuelve a iniciar sesión.');
+      return;
+    }
+
+    setError('');
+    setPublished(null);
+    setAnalysisNote('');
+    setAnalyzing(true);
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/menu-import/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ businessId, imageUrl: sourceImageUrl }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || 'Giobot no pudo analizar la foto. Inténtalo de nuevo.');
+
+      const found: Array<Partial<MenuImportDraftItem>> = Array.isArray(data?.items) ? data.items : [];
+      if (found.length === 0) {
+        setError('Giobot no encontró productos en esta foto. Prueba con una foto más clara o súbela completa.');
+        return;
+      }
+
+      // Se suma a lo que ya hay en el borrador sin repetir nombres.
+      const known = new Set(latest.current.items.map((item) => normalizeName(item.name)).filter(Boolean));
+      const fresh: MenuImportDraftItem[] = [];
+      found.forEach((entry, index) => {
+        const name = String(entry.name || '').trim();
+        const key = normalizeName(name);
+        if (!name || known.has(key)) return;
+        known.add(key);
+        fresh.push({
+          id: `draft-ai-${Date.now().toString(36)}-${index}`,
+          name,
+          category: String(entry.category || '').trim(),
+          price: String(entry.price || '').trim(),
+          description: String(entry.description || '').trim(),
+        });
+      });
+
+      if (fresh.length === 0) {
+        setAnalysisNote('Giobot revisó la foto, pero esos productos ya estaban en tu lista.');
+        return;
+      }
+
+      edit((current) => [...current, ...fresh]);
+      setAnalysisNote(`Giobot encontró ${fresh.length} producto${fresh.length === 1 ? '' : 's'}. Revísalos y corrige lo que haga falta antes de publicar.`);
+    } catch (err) {
+      console.error('[BusinessMenuImport] falló el análisis:', err);
+      setError(err instanceof Error ? err.message : 'Giobot no pudo analizar la foto. Inténtalo de nuevo.');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
   const categories = useMemo(() => {
     const names = new Set<string>();
     (catalog?.items || []).forEach((item) => item.category && names.add(item.category));
@@ -351,15 +416,10 @@ export const BusinessMenuImport: React.FC<{
               <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#E3BC6B]">Giobot</p>
               <h1 className="mt-1 font-serif text-2xl font-black text-[#F7F7F7] sm:text-3xl">Convierte tu menú en tu app</h1>
               <p className="mt-2 text-sm leading-relaxed text-[#C8C8C8]">
-                Sube la foto de tu menú y captura tus productos viéndola. Todo se guarda solo mientras trabajas, y nada llega a tus
-                clientes hasta que pulses <strong className="text-[#F7F7F7]">Publicar</strong>.
+                Sube la foto de tu menú y Giobot la lee por ti: arma tu lista con nombres, categorías y precios. Tú solo revisas, y nada llega
+                a tus clientes hasta que pulses <strong className="text-[#F7F7F7]">Publicar</strong>.
               </p>
             </div>
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-[#3A3022] bg-[#0B0B0B] p-4 text-xs leading-relaxed text-[#C8C8C8]">
-            <strong className="text-[#E3BC6B]">Próximamente:</strong> Giobot leerá la foto y llenará esta lista por ti. Mientras
-            tanto, la captura es manual y ya queda guardada.
           </div>
         </section>
 
@@ -438,6 +498,21 @@ export const BusinessMenuImport: React.FC<{
                   <input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={(e) => { void handleFile(e.target.files?.[0] || null); e.target.value = ''; }} />
                 </label>
               )}
+
+              {sourceImageUrl && (
+                <button
+                  type="button"
+                  onClick={() => void analyzeWithGiobot()}
+                  disabled={analyzing || uploading}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#D6A34A] px-5 py-4 text-sm font-black text-[#050505] disabled:opacity-50"
+                >
+                  {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {analyzing ? 'Giobot está leyendo tu menú… (puede tardar un poco)' : 'Analizar menú con Giobot'}
+                </button>
+              )}
+              {analysisNote && (
+                <p className="mt-3 rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-3 text-xs leading-relaxed text-[#E3BC6B]">{analysisNote}</p>
+              )}
             </section>
 
             <section className="rounded-[1.75rem] border border-[#3A3022] bg-[#111111] p-5 sm:p-7">
@@ -447,7 +522,7 @@ export const BusinessMenuImport: React.FC<{
                   <span className={`text-xs font-bold ${saveState === 'error' ? 'text-red-300' : 'text-[#B7B7B7]'}`}>{saveLabel}</span>
                 )}
               </div>
-              <p className="mt-1 text-xs text-[#B7B7B7]">Escribe lo que ves en la foto. Si un producto ya está en tu catálogo, no se repite.</p>
+              <p className="mt-1 text-xs text-[#B7B7B7]">Revisa lo que leyó Giobot y corrige lo que haga falta (también puedes agregar productos a mano). Si un producto ya está en tu catálogo, no se repite.</p>
 
               <datalist id="menu-import-categories">
                 {categories.map((name) => (
@@ -458,7 +533,7 @@ export const BusinessMenuImport: React.FC<{
               <div className="mt-4 space-y-4">
                 {items.length === 0 && (
                   <div className="rounded-2xl border border-dashed border-[#3A3022] p-6 text-center text-sm text-[#B7B7B7]">
-                    Todavía no hay productos. Pulsa <strong className="text-[#F7F7F7]">Agregar producto</strong> para empezar.
+                    Todavía no hay productos. Sube tu foto y pulsa <strong className="text-[#F7F7F7]">Analizar menú con Giobot</strong>, o agrega uno a mano.
                   </div>
                 )}
 
