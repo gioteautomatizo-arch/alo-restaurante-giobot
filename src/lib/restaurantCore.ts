@@ -53,6 +53,9 @@ export interface RestaurantBranding {
   primaryColor?: string;
   accentColor?: string;
   coverUrl?: string;
+  backgroundColor?: string;
+  surfaceColor?: string;
+  textColor?: string;
 }
 
 export interface RestaurantAssistantProfile {
