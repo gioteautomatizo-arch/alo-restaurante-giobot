@@ -174,6 +174,10 @@ async function runModel(ai: GoogleGenAI, image: { data: string; mimeType: string
 export function registerMenuImportRoute(app: Express, getAi: () => GoogleGenAI | null) {
   app.post('/api/menu-import/analyze', async (req: Request, res: Response) => {
     try {
+      if (process.env.MENU_IMPORT_AI_ENABLED !== 'true') {
+        return res.status(503).json({ error: 'El análisis con Giobot está desactivado por ahora.' });
+      }
+
       const ai = getAi();
       if (!ai) {
         return res.status(503).json({ error: 'Giobot no está disponible en este momento (falta configurar la clave de IA).' });

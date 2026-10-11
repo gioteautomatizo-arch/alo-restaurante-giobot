@@ -29,6 +29,10 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 
 const SAVE_DELAY_MS = 1200;
 
+// Giobot leyendo la foto cuesta dinero por cada análisis. Se deja apagado hasta que el negocio lo decida.
+// Para prenderlo: cambiar a true (y el servidor debe tener MENU_IMPORT_AI_ENABLED=true).
+const AI_MENU_IMPORT_ENABLED = false;
+
 function newDraftItem(category = ''): MenuImportDraftItem {
   return {
     id: `draft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
@@ -416,8 +420,10 @@ export const BusinessMenuImport: React.FC<{
               <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#E3BC6B]">Giobot</p>
               <h1 className="mt-1 font-serif text-2xl font-black text-[#F7F7F7] sm:text-3xl">Convierte tu menú en tu app</h1>
               <p className="mt-2 text-sm leading-relaxed text-[#C8C8C8]">
-                Sube la foto de tu menú y Giobot la lee por ti: arma tu lista con nombres, categorías y precios. Tú solo revisas, y nada llega
-                a tus clientes hasta que pulses <strong className="text-[#F7F7F7]">Publicar</strong>.
+                {AI_MENU_IMPORT_ENABLED
+                  ? 'Sube la foto de tu menú y Giobot la lee por ti: arma tu lista con nombres, categorías y precios. Tú solo revisas, y nada llega a tus clientes hasta que pulses '
+                  : 'Sube la foto de tu menú y captura tus productos viéndola. Todo se guarda solo mientras trabajas, y nada llega a tus clientes hasta que pulses '}
+                <strong className="text-[#F7F7F7]">Publicar</strong>.
               </p>
             </div>
           </div>
@@ -499,7 +505,7 @@ export const BusinessMenuImport: React.FC<{
                 </label>
               )}
 
-              {sourceImageUrl && (
+              {AI_MENU_IMPORT_ENABLED && sourceImageUrl && (
                 <button
                   type="button"
                   onClick={() => void analyzeWithGiobot()}
@@ -522,7 +528,7 @@ export const BusinessMenuImport: React.FC<{
                   <span className={`text-xs font-bold ${saveState === 'error' ? 'text-red-300' : 'text-[#B7B7B7]'}`}>{saveLabel}</span>
                 )}
               </div>
-              <p className="mt-1 text-xs text-[#B7B7B7]">Revisa lo que leyó Giobot y corrige lo que haga falta (también puedes agregar productos a mano). Si un producto ya está en tu catálogo, no se repite.</p>
+              <p className="mt-1 text-xs text-[#B7B7B7]">Escribe o corrige tus productos viendo la foto. Si un producto ya está en tu catálogo, no se repite.</p>
 
               <datalist id="menu-import-categories">
                 {categories.map((name) => (
@@ -533,7 +539,7 @@ export const BusinessMenuImport: React.FC<{
               <div className="mt-4 space-y-4">
                 {items.length === 0 && (
                   <div className="rounded-2xl border border-dashed border-[#3A3022] p-6 text-center text-sm text-[#B7B7B7]">
-                    Todavía no hay productos. Sube tu foto y pulsa <strong className="text-[#F7F7F7]">Analizar menú con Giobot</strong>, o agrega uno a mano.
+                    Todavía no hay productos. Pulsa <strong className="text-[#F7F7F7]">Agregar producto</strong> para empezar.
                   </div>
                 )}
 
