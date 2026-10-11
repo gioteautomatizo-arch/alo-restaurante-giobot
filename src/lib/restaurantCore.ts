@@ -52,6 +52,7 @@ export interface RestaurantBranding {
   logoUrl?: string;
   primaryColor?: string;
   accentColor?: string;
+  coverUrl?: string;
 }
 
 export interface RestaurantAssistantProfile {
