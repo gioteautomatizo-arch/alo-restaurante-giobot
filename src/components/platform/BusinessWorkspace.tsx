@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Bot, Store } from 'lucide-react';
+import { BusinessBrandingSettings } from './BusinessBrandingSettings';
 import { BusinessCatalogEditor } from './BusinessCatalogEditor';
 import { BusinessEmployeesView } from './BusinessEmployeesView';
 import { BusinessOperationsView } from './BusinessOperationsView';
@@ -18,7 +19,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const [role, setRole] = useState<BusinessRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<'workspace' | 'catalog' | 'employees' | 'operations' | 'menuImport' | 'modules'>('workspace');
+  const [view, setView] = useState<'workspace' | 'catalog' | 'employees' | 'operations' | 'menuImport' | 'modules' | 'branding'>('workspace');
 
   useEffect(() => subscribeToAuth((user) => setAuthUser(user)), []);
 
@@ -65,6 +66,10 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
       else if (module.capability === 'MENU_IMPORT') setView('menuImport');
       else if (module.capability === 'STAFF' && canManageEmployees) setView('employees');
     }} />;
+  }
+
+  if (view === 'branding' && business) {
+    return <BusinessBrandingSettings business={business} onBack={() => setView('workspace')} onSaved={(updated) => setBusiness(updated)} />;
   }
 
   if (view === 'menuImport' && business) {
@@ -119,7 +124,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     ['Clientes', 'Clientes y relaciones', true, true, 'soon'],
     ['Asistente IA', 'Atención con Giobot', business.features.customerAssistant, true, 'soon'],
     ['Reportes', 'Ventas, actividad y métricas', true, true, 'soon'],
-    ['Configuración', 'Identidad, módulos y negocio', true, true, 'soon'],
+    ['Identidad y colores', 'Logo, portada y paleta visual de tu negocio', true, !!role && hasBusinessPermission(role, 'business.manage'), 'branding'],
   ] as const;
 
   return (
@@ -130,8 +135,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
             <ArrowLeft className="w-4 h-4" /> Mis negocios
           </button>
           <div className="flex items-center gap-2">
-            <Bot className="w-5 h-5 text-[#B88917]" />
-            <span className="text-xs font-black uppercase tracking-wide text-[#6B4028]">Gioteautomatizo Business</span>
+            <img src="/brand/giobot-logo.svg" alt="Giobot by Gioteautomatizo" className="h-9 w-auto max-w-[150px] object-contain" />
           </div>
         </div>
       </header>
