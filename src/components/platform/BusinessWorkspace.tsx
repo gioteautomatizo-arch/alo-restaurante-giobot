@@ -48,6 +48,25 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
       .finally(() => setLoading(false));
   }, [authUser, businessId]);
 
+  // Paleta del negocio: la leen las pantallas del espacio (ver platformTheme.css).
+  useEffect(() => {
+    if (!business) return;
+    const b = business.branding;
+    const root = document.documentElement;
+    const vars: Record<string, string | undefined> = {
+      '--biz-bg': b.backgroundColor,
+      '--biz-surface': b.surfaceColor,
+      '--biz-text': b.textColor,
+      '--biz-primary': b.primaryColor,
+      '--biz-accent': b.accentColor,
+    };
+    Object.entries(vars).forEach(([key, value]) => {
+      if (value) root.style.setProperty(key, value);
+      else root.style.removeProperty(key);
+    });
+    return () => Object.keys(vars).forEach((key) => root.style.removeProperty(key));
+  }, [business]);
+
   const back = () => {
     window.location.hash = '#business';
   };
@@ -80,7 +99,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   }
 
   if (view === 'menuImport' && business) {
-    return <BusinessMenuImport businessId={businessId} businessName={business.branding.restaurantName} onBack={() => setView('workspace')} onOpenCatalog={() => setView('catalog')} />;
+    return <BusinessMenuImport businessId={businessId} businessName={business.branding.restaurantName} onBack={() => setView('catalog')} onOpenCatalog={() => setView('catalog')} />;
   }
 
   if (view === 'operations' && business) {
@@ -88,7 +107,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   }
 
   if (view === 'catalog' && business) {
-    return <BusinessCatalogEditor businessId={businessId} businessName={business.branding.restaurantName} onBack={() => setView('workspace')} />;
+    return <BusinessCatalogEditor businessId={businessId} businessName={business.branding.restaurantName} onBack={() => setView('workspace')} onImportFromPhoto={() => setView('menuImport')} />;
   }
 
   if (view === 'employees' && business && role) {
@@ -124,8 +143,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const canManageBusiness = !!role && hasBusinessPermission(role, 'business.manage');
   const modulesList: Array<{ title: string; description: string; view?: typeof view; allowed: boolean; deniedText: string }> = [
     { title: 'Caja y pedidos', description: 'Vende, cobra y sigue cada pedido.', view: 'operations', allowed: !!business.features.pos && canUsePos, deniedText: 'Tu rol no tiene acceso' },
-    { title: 'Catálogo', description: 'Productos, precios, fotos y disponibilidad.', view: 'catalog', allowed: canManageCatalog, deniedText: 'Solo encargados y dueños' },
-    { title: 'Sube tu menú', description: 'Sube la foto de tu menú y publícalo en tu catálogo.', view: 'menuImport', allowed: canManageCatalog, deniedText: 'Solo encargados y dueños' },
+    { title: 'Catálogo', description: 'Productos, precios y disponibilidad. También puedes cargarlo desde la foto de tu menú.', view: 'catalog', allowed: canManageCatalog, deniedText: 'Solo encargados y dueños' },
     { title: 'Reportes', description: 'Ventas, producto estrella y cómo te pagan.', view: 'reports', allowed: canSeeReports, deniedText: 'Tu rol no tiene acceso' },
     { title: 'Empleados', description: 'Tu equipo, roles y permisos.', view: 'employees', allowed: canManageEmployees, deniedText: 'Solo administradores y dueños' },
     { title: 'Identidad y colores', description: 'Logo, portada y paleta de tu negocio.', view: 'branding', allowed: canManageBusiness, deniedText: 'Solo el dueño' },
@@ -143,7 +161,10 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
           <button type="button" onClick={back} className="rounded-xl border border-[#3A3022] px-3 py-2 text-xs font-bold text-[#F7F7F7] flex items-center gap-2">
             <ArrowLeft className="w-4 h-4" /> Mis negocios
           </button>
-          <img src="/brand/giobot-logo.svg" alt="Giobot by Gioteautomatizo" className="h-9 w-auto max-w-[150px] object-contain" />
+          <div className="flex min-w-0 items-center gap-2">
+            {business.branding.logoUrl && <img src={business.branding.logoUrl} alt="" className="h-8 w-8 rounded-lg bg-white object-cover" />}
+            <strong className="truncate font-serif text-base text-[#F7F7F7]">{business.branding.restaurantName}</strong>
+          </div>
         </div>
       </header>
 
@@ -196,6 +217,8 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
             Ver todo lo que incluirá la plantilla {template.name}
           </button>
         </section>
+
+        <p className="pb-4 text-center text-[11px] text-[#B7B7B7]">Hecho con Gioteautomatizo</p>
       </main>
     </div>
   );

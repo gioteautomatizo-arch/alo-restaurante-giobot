@@ -195,3 +195,61 @@
   color: #171717;
 }
 
+
+
+/* ------------------------------------------------------------------
+ * Espacio de un negocio (marca blanca): sin firma de Gioteautomatizo arriba
+ * y con la paleta del propio negocio (Identidad y colores).
+ * Las variables --biz-* las pone BusinessWorkspace según el negocio abierto.
+ * ------------------------------------------------------------------ */
+.giote-platform-theme.platform-business::before {
+  display: none;
+}
+
+.platform-business {
+  background: var(--biz-bg, #050505);
+  color: var(--biz-text, #f7f7f7);
+}
+
+.platform-business [class~="bg-[#050505]"] {
+  background-color: var(--biz-bg, #050505) !important;
+}
+
+.platform-business [class~="bg-[#111111]"] {
+  background-color: var(--biz-surface, #111111) !important;
+}
+
+.platform-business [class~="bg-[#0B0B0B]"],
+.platform-business [class~="bg-[#0B0B0B]/95"] {
+  background-color: color-mix(in srgb, var(--biz-bg, #050505) 55%, var(--biz-surface, #111111)) !important;
+}
+
+.platform-business [class~="border-[#3A3022]"],
+.platform-business [class~="border-[#5A4A2E]"] {
+  border-color: color-mix(in srgb, var(--biz-accent, #e3bc6b) 38%, transparent) !important;
+}
+
+.platform-business [class~="bg-[#D6A34A]"] {
+  background-color: var(--biz-primary, #d6a34a) !important;
+}
+
+.platform-business [class~="text-[#050505]"] {
+  color: var(--biz-bg, #050505) !important;
+}
+
+.platform-business [class~="text-[#D6A34A]"] {
+  color: var(--biz-primary, #d6a34a) !important;
+}
+
+.platform-business [class~="text-[#E3BC6B]"] {
+  color: var(--biz-accent, #e3bc6b) !important;
+}
+
+.platform-business [class~="text-[#F7F7F7]"] {
+  color: var(--biz-text, #f7f7f7) !important;
+}
+
+.platform-business [class~="text-[#C8C8C8]"],
+.platform-business [class~="text-[#B7B7B7]"] {
+  color: color-mix(in srgb, var(--biz-text, #f7f7f7) 72%, transparent) !important;
+}

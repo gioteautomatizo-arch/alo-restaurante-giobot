@@ -29,7 +29,7 @@ function RootRouter() {
 
   const businessMatch = hash.match(/^#business\/([^/]+)$/);
   if (businessMatch) {
-    return <div className="giote-platform-theme"><BusinessWorkspace businessId={decodeURIComponent(businessMatch[1])} /></div>;
+    return <div className="giote-platform-theme platform-business"><BusinessWorkspace businessId={decodeURIComponent(businessMatch[1])} /></div>;
   }
 
   if (hash === '#business') {

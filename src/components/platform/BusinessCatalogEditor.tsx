@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Plus, Save, Trash2, Utensils } from 'lucide-react';
+import { ArrowLeft, Camera, Plus, Save, Trash2, Utensils } from 'lucide-react';
 import type { BusinessCatalogItem } from '../../lib/businessCatalogService';
 import {
   createCatalogItemId,
@@ -25,7 +25,8 @@ export const BusinessCatalogEditor: React.FC<{
   businessId: string;
   businessName: string;
   onBack: () => void;
-}> = ({ businessId, businessName, onBack }) => {
+  onImportFromPhoto?: () => void;
+}> = ({ businessId, businessName, onBack, onImportFromPhoto }) => {
   const [items, setItems] = useState<BusinessCatalogItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -144,7 +145,10 @@ export const BusinessCatalogEditor: React.FC<{
               <h1 className="mt-1 font-serif text-3xl font-black">{businessName}</h1>
               <p className="mt-1 text-sm text-[#6B4028]">Administra productos, precios, categorías y disponibilidad.</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              {onImportFromPhoto && (
+                <button onClick={onImportFromPhoto} className="rounded-xl border border-[#DEC8AE] px-4 py-2 text-xs font-black text-[#6B4028] flex items-center gap-2"><Camera className="w-4 h-4" /> Cargar desde foto del menú</button>
+              )}
               {items.length === 0 && (
                 <button onClick={loadTemplate} className="rounded-xl border border-[#DEC8AE] px-4 py-2 text-xs font-black text-[#6B4028]">Usar plantilla de inicio</button>
               )}
