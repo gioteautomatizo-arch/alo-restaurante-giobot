@@ -54,6 +54,10 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
           <Logo variant="compact" size="lg" />
         </div>
 
+        {restaurantInfo.footerTagline && (
+          <p className="text-sm font-serif italic text-[#F4E3C8] max-w-md">{restaurantInfo.footerTagline}</p>
+        )}
+
         {/* 2. Dirección y Horario */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-6 text-xs text-[#EAD9C4] font-light">
           <div className="flex items-center gap-1.5">

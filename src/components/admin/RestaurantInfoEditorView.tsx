@@ -70,6 +70,10 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
   const [facebookUrl, setFacebookUrl] = useState(initialInfo.facebookUrl || '');
   const [mapsUrl, setMapsUrl] = useState(initialInfo.mapsUrl || '');
   const [footerText, setFooterText] = useState(initialInfo.footerText || '');
+  const [heroBadge, setHeroBadge] = useState(initialInfo.heroBadge ?? '');
+  const [heroTitle, setHeroTitle] = useState(initialInfo.heroTitle || '');
+  const [heroSubtitle, setHeroSubtitle] = useState(initialInfo.heroSubtitle ?? '');
+  const [footerTagline, setFooterTagline] = useState(initialInfo.footerTagline || '');
   const [lastSavedInfo, setLastSavedInfo] = useState<RestaurantInfo>(initialInfo);
   const [isSaving, setIsSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -91,6 +95,10 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
     setFacebookUrl(info.facebookUrl || '');
     setMapsUrl(info.mapsUrl || '');
     setFooterText(info.footerText || '');
+    setHeroBadge(info.heroBadge ?? '');
+    setHeroTitle(info.heroTitle || '');
+    setHeroSubtitle(info.heroSubtitle ?? '');
+    setFooterTagline(info.footerTagline || '');
   };
 
   const handleLogoFile = async (file: File | null) => {
@@ -214,6 +222,10 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
           facebookUrl: facebookUrl.trim(),
           mapsUrl: mapsUrl.trim(),
           footerText: footerText.trim(),
+          heroBadge: heroBadge.trim(),
+          heroTitle: heroTitle.trim(),
+          heroSubtitle: heroSubtitle.trim(),
+          footerTagline: footerTagline.trim(),
           updatedAt: new Date().toISOString(),
           updatedBy: currentUser.name,
         },
@@ -428,9 +440,18 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
 
         <section className="space-y-4 border-t border-[#F4E3C8] pt-6">
           <div className="border-b border-[#F4E3C8] pb-3">
-            <h3 className="font-serif font-bold text-base text-[#2B1B13] flex items-center gap-2"><Store className="w-4 h-4 text-[#C9974D]" />6. Logo y pie de página</h3>
-            <p className="text-xs text-[#6B4028] mt-1">Cambia tu logo y los enlaces del final de la página. Si dejas un enlace vacío, ese botón se oculta.</p>
+            <h3 className="font-serif font-bold text-base text-[#2B1B13] flex items-center gap-2"><Store className="w-4 h-4 text-[#C9974D]" />6. Portada, logo y pie de página</h3>
+            <p className="text-xs text-[#6B4028] mt-1">Escribe el slogan de tu portada y del pie, cambia tu logo y los enlaces. Si dejas un campo vacío, ese texto o botón se oculta.</p>
           </div>
+
+          <div className="space-y-3 rounded-2xl border border-[#E7D7C4] bg-[#FFFDF9] p-4">
+            <p className="text-xs font-black uppercase tracking-wide text-[#A86B3D]">Portada (lo primero que ve tu cliente)</p>
+            <div className="space-y-1.5"><label className={labelClass}>Slogan principal</label><input value={heroTitle} onChange={(e) => setHeroTitle(e.target.value)} disabled={isSaving} placeholder="Sabor casero y hospitalidad en cada platillo." className={inputClass} /></div>
+            <div className="space-y-1.5"><label className={labelClass}>Etiqueta de arriba (opcional)</label><input value={heroBadge} onChange={(e) => setHeroBadge(e.target.value)} disabled={isSaving} placeholder="Comida casera & cafetería cálida · Tlalpan" className={inputClass} /></div>
+            <div className="space-y-1.5"><label className={labelClass}>Texto debajo del slogan (opcional)</label><textarea value={heroSubtitle} onChange={(e) => setHeroSubtitle(e.target.value)} disabled={isSaving} rows={2} placeholder="Una frase corta que invite a pedir." className={inputClass} /></div>
+          </div>
+
+          <div className="space-y-1.5"><label className={labelClass}>Slogan del pie de página (opcional)</label><input value={footerTagline} onChange={(e) => setFooterTagline(e.target.value)} disabled={isSaving} placeholder="Ej. Comida hecha con cariño, como en casa." className={inputClass} /></div>
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="w-24 h-24 rounded-2xl bg-[#FFF7EA] border border-[#E7D7C4] flex items-center justify-center overflow-hidden shrink-0">
@@ -453,7 +474,7 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
             <div className="space-y-1.5"><label className={labelClass}>Instagram (enlace)</label><input value={instagramUrl} onChange={(e) => setInstagramUrl(e.target.value)} disabled={isSaving} placeholder="https://www.instagram.com/tu_negocio" className={inputClass} /></div>
             <div className="space-y-1.5"><label className={labelClass}>Facebook (enlace)</label><input value={facebookUrl} onChange={(e) => setFacebookUrl(e.target.value)} disabled={isSaving} placeholder="https://www.facebook.com/tu_negocio" className={inputClass} /></div>
             <div className="space-y-1.5 sm:col-span-2"><label className={labelClass}>Google Maps (enlace, opcional)</label><input value={mapsUrl} onChange={(e) => setMapsUrl(e.target.value)} disabled={isSaving} placeholder="Si lo dejas vacío, se arma con tu dirección" className={inputClass} /></div>
-            <div className="space-y-1.5 sm:col-span-2"><label className={labelClass}>Texto final del pie de página (opcional)</label><input value={footerText} onChange={(e) => setFooterText(e.target.value)} disabled={isSaving} placeholder="© 2026 Restaurante Calientito • Tu dirección" className={inputClass} /></div>
+            <div className="space-y-1.5 sm:col-span-2"><label className={labelClass}>Línea final de derechos © (opcional)</label><input value={footerText} onChange={(e) => setFooterText(e.target.value)} disabled={isSaving} placeholder="© 2026 Restaurante Calientito • Tu dirección" className={inputClass} /></div>
           </div>
         </section>
 

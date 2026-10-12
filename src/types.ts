@@ -293,6 +293,11 @@ export interface RestaurantInfo {
   mapsUrl?: string;
   /** Texto final del pie de página. Vacío = © año + nombre + dirección. */
   footerText?: string;
+  /** Textos de la portada (Banner) y slogan del pie. Vacíos = se ocultan (el título cae al original). */
+  heroBadge?: string;
+  heroTitle?: string;
+  heroSubtitle?: string;
+  footerTagline?: string;
   updatedAt?: string;
   updatedBy?: string;
 }
