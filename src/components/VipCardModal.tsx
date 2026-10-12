@@ -564,7 +564,7 @@ export const VipCardModal: React.FC<VipCardModalProps> = ({
                     onClick={handleClear}
                     className="text-red-400 hover:text-red-300 font-semibold flex items-center gap-1 cursor-pointer"
                   >
-                    <Trash2 className="w-3.5 h-3.5" /> Ocultar en este dispositivo
+                    <Trash2 className="w-3.5 h-3.5" /> Desvincular de este dispositivo
                   </button>
                 </div>
               </div>
