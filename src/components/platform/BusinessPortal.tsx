@@ -179,6 +179,10 @@ export const BusinessPortal: React.FC = () => {
                 <Plus className="w-4 h-4 text-[#A86B3D]" /> Registrar un negocio nuevo
               </button>
 
+              <button type="button" onClick={openPublicCalientito} className="mt-3 w-full rounded-2xl border border-[#3A3022] bg-transparent px-4 py-3 text-sm font-bold text-[#E3BC6B]">
+                Ir a la app de Restaurante Calientito
+              </button>
+
               <p className="mt-5 text-[10px] leading-relaxed text-[#8A6A55]">Tu acceso se guarda con Firebase Auth. Restaurante Calientito conserva su propio acceso de personal.</p>
             </div>
           </section>
