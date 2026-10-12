@@ -13,7 +13,8 @@ import {
 } from 'lucide-react';
 import { loginStaff } from '../../lib/adminStorage';
 import { CALIENTITO_TENANT, RestaurantTenant } from '../../lib/restaurantCore';
-import { subscribeToAuth } from '../../lib/firebase';
+import { auth, subscribeToAuth } from '../../lib/firebase';
+import { sendPasswordResetEmail } from 'firebase/auth';
 import {
   getBusinessesForUser,
   isPlatformAdmin,
@@ -21,6 +22,29 @@ import {
   logoutBusinessOwner,
 } from '../../lib/businessAuthService';
 import type { User as FirebaseUser } from 'firebase/auth';
+
+/** Traduce el código de error de Firebase a un mensaje claro (antes todo salía como "contraseña incorrecta"). */
+function loginErrorMessage(code?: string): string {
+  switch (code) {
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+    case 'auth/invalid-email':
+      return 'Correo o contraseña incorrectos. Si no la recuerdas, toca "Olvidé mi contraseña".';
+    case 'auth/too-many-requests':
+      return 'Demasiados intentos. Espera unos minutos o usa "Olvidé mi contraseña".';
+    case 'auth/network-request-failed':
+      return 'No hay conexión con el servidor. Revisa tu internet e inténtalo de nuevo.';
+    case 'auth/unauthorized-domain':
+      return 'Firebase no tiene autorizado este dominio. Hay que agregarlo en Firebase → Authentication → Configuración → Dominios autorizados.';
+    case 'auth/operation-not-allowed':
+      return 'El acceso con correo y contraseña no está activado en Firebase (Authentication → Método de acceso).';
+    case 'auth/user-disabled':
+      return 'Esta cuenta está deshabilitada en Firebase.';
+    default:
+      return `No pudimos iniciar sesión${code ? ` (${code})` : ''}. Inténtalo de nuevo.`;
+  }
+}
 
 export const BusinessPortal: React.FC = () => {
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
@@ -71,9 +95,26 @@ export const BusinessPortal: React.FC = () => {
     try {
       await loginBusinessOwner(email.trim(), password);
     } catch (err: any) {
-      setError('Correo o contraseña incorrectos.');
+      console.error('Error al iniciar sesión de negocio:', err?.code, err?.message);
+      setError(loginErrorMessage(err?.code));
     } finally {
       setIsLoggingIn(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    setError(null);
+    setNotice(null);
+    if (!email.trim()) {
+      setError('Escribe tu correo arriba y vuelve a tocar "Olvidé mi contraseña".');
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setNotice('Te enviamos un correo para crear una contraseña nueva. Revisa también tu carpeta de spam.');
+    } catch (err: any) {
+      console.error('Error al enviar correo de recuperación:', err?.code, err?.message);
+      setError(loginErrorMessage(err?.code));
     }
   };
 
@@ -167,6 +208,10 @@ export const BusinessPortal: React.FC = () => {
                     </button>
                   </div>
                 </div>
+
+                <button type="button" onClick={() => void handleForgotPassword()} className="text-xs font-bold text-[#A86B3D] underline">Olvidé mi contraseña</button>
+
+                {notice && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800">{notice}</div>}
 
                 {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-800">{error}</div>}
 
