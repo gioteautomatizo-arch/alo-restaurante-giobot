@@ -333,17 +333,23 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
       // La comanda ya está confirmada en Firestore: el borrador local de 3 minutos se elimina.
       onClearCart();
 
-      // Fidelidad se actualiza únicamente después de que Firestore confirma la comanda.
-      const newVip = addStampToVip({
-        customerName: effectiveCustomerName,
-        phone,
-        address,
-        reference,
-        paymentMethod,
-        orderType,
-      });
+      // Fidelidad solo aplica a un cliente VIP que ya vinculó su tarjeta.
+      // Nunca crear una cuenta ni asignar sellos desde el flujo del personal/iPad.
+      const currentVipProfile = getVipProfile();
+      const newVip = !isStaffOrder && currentVipProfile
+        ? addStampToVip({
+            customerName: effectiveCustomerName,
+            phone,
+            address,
+            reference,
+            paymentMethod,
+            orderType,
+          })
+        : currentVipProfile;
 
-      if (redeemingReward) redeemVipReward();
+      if (redeemingReward && !isStaffOrder && currentVipProfile?.rewardAvailable) {
+        redeemVipReward();
+      }
 
       setCustomerName(effectiveCustomerName);
       setUpdatedVipResult(newVip);
@@ -354,7 +360,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
       setOrderDate(nowStr);
       setOrderCode(order.code);
 
-      const generated = formatTicketMessage(order.code, nowStr, newVip.stamps);
+      const generated = formatTicketMessage(order.code, nowStr, newVip?.stamps ?? 0);
       setTicketText(generated);
       setOrderConfirmed(true);
     } catch (err: any) {
@@ -547,7 +553,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             <div className="p-3 bg-[#3A2418] text-[#FFF7EA] text-center space-y-1">
               <p className="text-[10px] text-[#C9974D] font-bold flex items-center justify-center gap-1">
                 <Star className="w-3.5 h-3.5 fill-[#C9974D]" />
-                TARJETA {(restaurantInfo.loyaltyProgramName || 'Calientito VIP').toUpperCase()}: {updatedVipResult?.stamps || 1}/{vipStampsReq} SELLOS
+                TARJETA {(restaurantInfo.loyaltyProgramName || 'Calientito VIP').toUpperCase()}: {updatedVipResult?.stamps ?? 0}/{vipStampsReq} SELLOS
               </p>
               <p className="text-[9px] text-[#EAD9C4]">
                 ¡Gracias por tu compra! Conserva tu folio #{orderCode}.
