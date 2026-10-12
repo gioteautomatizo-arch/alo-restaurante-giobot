@@ -5,6 +5,7 @@ import { BusinessCatalogEditor } from './BusinessCatalogEditor';
 import { BusinessEmployeesView } from './BusinessEmployeesView';
 import { BusinessOperationsView } from './BusinessOperationsView';
 import { BusinessMenuImport } from './BusinessMenuImport';
+import { BusinessReportsView } from './BusinessReportsView';
 import { BusinessModulesView } from './BusinessModulesView';
 import { getBusinessTemplateConfig } from '../../data/businessTemplates';
 import { hasBusinessPermission } from '../../lib/restaurantCore';
@@ -19,7 +20,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const [role, setRole] = useState<BusinessRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<'workspace' | 'catalog' | 'employees' | 'operations' | 'menuImport' | 'modules' | 'branding'>('workspace');
+  const [view, setView] = useState<'workspace' | 'catalog' | 'employees' | 'operations' | 'menuImport' | 'modules' | 'branding' | 'reports'>('workspace');
 
   useEffect(() => subscribeToAuth((user) => setAuthUser(user)), []);
 
@@ -65,7 +66,13 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
       else if (module.capability === 'POS' || module.capability === 'ORDERS' || module.capability === 'ORDER_QUEUE') setView('operations');
       else if (module.capability === 'MENU_IMPORT') setView('menuImport');
       else if (module.capability === 'STAFF' && canManageEmployees) setView('employees');
+      else if (module.capability === 'RECEIPTS' && !!role && hasBusinessPermission(role, 'reports.view')) setView('reports');
+      else if (module.capability === 'BUSINESS_SETTINGS' && !!role && hasBusinessPermission(role, 'business.manage')) setView('branding');
     }} />;
+  }
+
+  if (view === 'reports' && business) {
+    return <BusinessReportsView businessName={business.branding.restaurantName} onBack={() => setView('workspace')} />;
   }
 
   if (view === 'branding' && business) {
@@ -112,96 +119,82 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     );
   }
 
-  // [título, descripción, ¿activo en este negocio?, ¿tiene permiso mi rol?, acción]
-  // La acción 'soon' marca módulos que todavía no están construidos.
-  const quickModules = [
-    ['Ecosistema completo', 'Todos los módulos de esta plantilla', true, true, 'modules'],
-    ['Operación', 'POS, ventas y operación diaria', business.features.pos, canUsePos, 'operations'],
-    ['Catálogo', 'Productos, precios y menú', business.features.publicMenu, canManageCatalog, 'catalog'],
-    ['Sube tu menú', 'Foto + análisis asistido por Giobot', true, canManageCatalog, 'menuImport'],
-    ['Empleados', 'Equipo y permisos del negocio', true, canManageEmployees, 'employees'],
-    ['Inventario', 'Existencias y control', business.features.inventory, true, 'soon'],
-    ['Clientes', 'Clientes y relaciones', true, true, 'soon'],
-    ['Asistente IA', 'Atención con Giobot', business.features.customerAssistant, true, 'soon'],
-    ['Reportes', 'Ventas, actividad y métricas', true, true, 'soon'],
-    ['Identidad y colores', 'Logo, portada y paleta visual de tu negocio', true, !!role && hasBusinessPermission(role, 'business.manage'), 'branding'],
-  ] as const;
+  // Un solo listado de módulos. "ready" = ya funciona; "soon" = todavía no está construido.
+  const canSeeReports = !!role && hasBusinessPermission(role, 'reports.view');
+  const canManageBusiness = !!role && hasBusinessPermission(role, 'business.manage');
+  const modulesList: Array<{ title: string; description: string; view?: typeof view; allowed: boolean; deniedText: string }> = [
+    { title: 'Caja y pedidos', description: 'Vende, cobra y sigue cada pedido.', view: 'operations', allowed: !!business.features.pos && canUsePos, deniedText: 'Tu rol no tiene acceso' },
+    { title: 'Catálogo', description: 'Productos, precios, fotos y disponibilidad.', view: 'catalog', allowed: canManageCatalog, deniedText: 'Solo encargados y dueños' },
+    { title: 'Sube tu menú', description: 'Sube la foto de tu menú y publícalo en tu catálogo.', view: 'menuImport', allowed: canManageCatalog, deniedText: 'Solo encargados y dueños' },
+    { title: 'Reportes', description: 'Ventas, producto estrella y cómo te pagan.', view: 'reports', allowed: canSeeReports, deniedText: 'Tu rol no tiene acceso' },
+    { title: 'Empleados', description: 'Tu equipo, roles y permisos.', view: 'employees', allowed: canManageEmployees, deniedText: 'Solo administradores y dueños' },
+    { title: 'Identidad y colores', description: 'Logo, portada y paleta de tu negocio.', view: 'branding', allowed: canManageBusiness, deniedText: 'Solo el dueño' },
+    { title: 'Clientes', description: 'Historial y relación con tus clientes.', allowed: true, deniedText: '' },
+    { title: 'Inventario', description: 'Existencias, entradas y alertas.', allowed: true, deniedText: '' },
+    { title: 'Giobot, tu asistente', description: `Atiende a tus clientes por ti (${business.assistant.name}).`, allowed: true, deniedText: '' },
+  ];
+  const readyModules = modulesList.filter((module) => module.view);
+  const soonModules = modulesList.filter((module) => !module.view);
 
   return (
-    <div className="min-h-screen bg-white text-[#111111]">
-      <header className="border-b border-black/10 bg-white/95 px-4 py-4 shadow-sm">
-        <div className="mx-auto max-w-6xl flex items-center justify-between gap-4">
-          <button type="button" onClick={back} className="rounded-xl border border-black/15 bg-white px-3 py-2 text-xs font-bold text-[#6B4028] flex items-center gap-2">
+    <div className="min-h-screen bg-[#050505] text-[#F7F7F7]">
+      <header className="border-b border-[#3A3022] bg-[#0B0B0B] px-4 py-4">
+        <div className="mx-auto max-w-4xl flex items-center justify-between gap-4">
+          <button type="button" onClick={back} className="rounded-xl border border-[#3A3022] px-3 py-2 text-xs font-bold text-[#F7F7F7] flex items-center gap-2">
             <ArrowLeft className="w-4 h-4" /> Mis negocios
           </button>
-          <div className="flex items-center gap-2">
-            <img src="/brand/giobot-logo.svg" alt="Giobot by Gioteautomatizo" className="h-9 w-auto max-w-[150px] object-contain" />
-          </div>
+          <img src="/brand/giobot-logo.svg" alt="Giobot by Gioteautomatizo" className="h-9 w-auto max-w-[150px] object-contain" />
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-7 sm:py-10">
-        <section className="rounded-[2rem] border border-[#D9C5AC] bg-white overflow-hidden shadow-sm">
-          <div className="bg-[#111827] px-6 py-8 sm:px-8 text-white">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-5">
-              <div className="w-20 h-20 rounded-3xl bg-white overflow-hidden flex items-center justify-center shrink-0">
-                {business.branding.logoUrl ? (
-                  <img src={business.branding.logoUrl} alt={business.branding.restaurantName} className="w-full h-full object-cover" />
-                ) : (
-                  <Store className="w-9 h-9 text-[#A86B3D]" />
-                )}
-              </div>
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-300">Espacio de negocio</span>
-                <h1 className="mt-1 font-serif text-3xl font-black">{business.branding.restaurantName}</h1>
-                <p className="mt-1 text-sm text-slate-300">@{business.branding.publicSlug} · {business.assistant.name} · Rol: {role || '…'}</p>
-              </div>
-            </div>
+      <main className="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:py-8">
+        <section className="flex items-center gap-4 rounded-[1.75rem] border border-[#3A3022] bg-[#111111] p-5 sm:p-6">
+          <div className="w-16 h-16 rounded-2xl bg-white overflow-hidden flex items-center justify-center shrink-0">
+            {business.branding.logoUrl ? (
+              <img src={business.branding.logoUrl} alt={business.branding.restaurantName} className="w-full h-full object-cover" />
+            ) : (
+              <Store className="w-8 h-8 text-[#A86B3D]" />
+            )}
           </div>
-
-          <div className="p-6 sm:p-8">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {[
-                ['POS', business.features.pos],
-                ['Catálogo', business.features.publicMenu],
-                ['Inventario', business.features.inventory],
-                ['Clientes + IA', business.features.customerAssistant],
-              ].map(([label, enabled]) => (
-                <div key={String(label)} className="rounded-2xl border border-black/10 bg-white p-4">
-                  <span className="text-[10px] font-black uppercase tracking-wide text-[#A86B3D]">{enabled ? 'Disponible' : 'Próximamente'}</span>
-                  <strong className="mt-1 block text-sm">{label}</strong>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 rounded-2xl border border-[#D4AF37]/30 bg-[#FBF7EA] p-4">
-              <p className="text-xs font-black uppercase tracking-wide text-[#5A4815]">Giobot</p>
-              <p className="mt-1 text-sm text-amber-900">Tu asistente <strong>{business.assistant.name}</strong> está asociado exclusivamente a este negocio.</p>
-            </div>
-
-            <div className="mt-6 rounded-2xl border border-[#E8D8C4] bg-[#FFFDF9] p-5"><p className="text-[10px] font-black uppercase tracking-wide text-[#A86B3D]">Ecosistema · {template.name}</p><p className="mt-1 text-xs text-[#6B4028]">Este negocio tiene {template.modules.length} módulos definidos por su plantilla. Los módulos se irán habilitando sin copiar lógica específica de otro negocio.</p><div className="mt-3 flex flex-wrap gap-2">{template.modules.map((module) => <span key={module.id} className="rounded-full border border-[#E8D8C4] bg-white px-2.5 py-1 text-[10px] font-bold text-[#6B4028]">{module.title}</span>)}</div></div>
-
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {quickModules.map(([title, description, enabled, allowed, action]) => {
-                const built = action !== 'soon';
-                const usable = enabled && allowed && built;
-                const label = !built ? 'Próximamente' : !enabled ? 'No incluido en tu plan' : !allowed ? 'Sin permiso para tu rol' : 'Módulo disponible';
-                return (
-                <button
-                  key={title}
-                  type="button"
-                  disabled={!usable}
-                  onClick={() => setView(action === 'soon' ? 'workspace' : action)}
-                  className="rounded-2xl border border-[#DEC8AE] bg-[#FFFDF9] p-5 text-left transition hover:border-[#C9974D] hover:bg-[#FBF7EA] disabled:cursor-default disabled:opacity-60 disabled:hover:border-[#DEC8AE] disabled:hover:bg-[#FFFDF9]"
-                >
-                  <span className="text-[10px] font-black uppercase tracking-wide text-[#A86B3D]">{label}</span>
-                  <strong className="mt-2 block font-serif text-lg text-[#2B1B13]">{title}</strong>
-                  <span className="mt-1 block text-xs leading-relaxed text-[#6B4028]">{description}</span>
-                </button>
-                );
-              })}
-            </div>
+          <div className="min-w-0">
+            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#E3BC6B]">Espacio de negocio</span>
+            <h1 className="mt-0.5 truncate font-serif text-2xl font-black text-[#F7F7F7] sm:text-3xl">{business.branding.restaurantName}</h1>
+            <p className="mt-0.5 text-xs text-[#B7B7B7]">@{business.branding.publicSlug} · {template.name} · Rol: {role || '…'}</p>
           </div>
+        </section>
+
+        <section>
+          <h2 className="mb-3 font-serif text-xl font-black text-[#F7F7F7]">Listos para usar</h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {readyModules.map((module) => (
+              <button
+                key={module.title}
+                type="button"
+                disabled={!module.allowed}
+                onClick={() => module.view && setView(module.view)}
+                className="rounded-2xl border border-[#3A3022] bg-[#111111] p-5 text-left transition hover:border-[#D6A34A] disabled:cursor-default disabled:opacity-60 disabled:hover:border-[#3A3022]"
+              >
+                <span className="text-[10px] font-black uppercase tracking-wide text-[#E3BC6B]">{module.allowed ? 'Abrir' : module.deniedText}</span>
+                <strong className="mt-1.5 block font-serif text-lg text-[#F7F7F7]">{module.title}</strong>
+                <span className="mt-1 block text-xs leading-relaxed text-[#C8C8C8]">{module.description}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="mb-3 font-serif text-xl font-black text-[#F7F7F7]">Próximamente</h2>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {soonModules.map((module) => (
+              <div key={module.title} className="rounded-2xl border border-dashed border-[#3A3022] bg-[#0B0B0B] p-4">
+                <strong className="block font-serif text-base text-[#F7F7F7]">{module.title}</strong>
+                <span className="mt-1 block text-xs leading-relaxed text-[#B7B7B7]">{module.description}</span>
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={() => setView('modules')} className="mt-4 text-xs font-bold text-[#E3BC6B] underline">
+            Ver todo lo que incluirá la plantilla {template.name}
+          </button>
         </section>
       </main>
     </div>
