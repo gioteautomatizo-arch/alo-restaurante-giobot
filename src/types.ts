@@ -285,6 +285,14 @@ export interface RestaurantInfo {
   activePromotions?: string;
   loyaltyProgramName?: string;
   orderFolioPrefix?: string;
+  /** Logo del negocio (URL de Cloudinary). Vacío = logo original de Calientito. */
+  logoUrl?: string;
+  /** Enlaces del pie de página. Vacío = no se muestra el botón (Maps se arma con la dirección). */
+  instagramUrl?: string;
+  facebookUrl?: string;
+  mapsUrl?: string;
+  /** Texto final del pie de página. Vacío = © año + nombre + dirección. */
+  footerText?: string;
   updatedAt?: string;
   updatedBy?: string;
 }

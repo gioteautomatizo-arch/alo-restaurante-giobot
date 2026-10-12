@@ -242,7 +242,7 @@ export const BusinessPortal: React.FC = () => {
         <div className="mx-auto max-w-6xl flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-[#111827] text-amber-300 flex items-center justify-center"><Bot className="w-5 h-5" /></div>
-            <div><p className="text-[10px] uppercase tracking-[0.15em] font-black text-[#A86B3D]">Gioteautomatizo</p><h1 className="font-serif font-black text-lg">Mis negocios</h1></div>
+            <div><p className="text-[10px] uppercase tracking-[0.15em] font-black text-[#A86B3D]">Gioteautomatizo</p><h1 className="font-serif font-black text-lg" style={{ color: '#111111' }}>Mis negocios</h1></div>
           </div>
           <div className="flex items-center gap-2">
             {isSuperAdmin && (
@@ -286,7 +286,7 @@ export const BusinessPortal: React.FC = () => {
 
                 <div className="mt-5 flex items-center gap-3 rounded-2xl border border-[#E8D8C4] bg-[#FFFDF9] p-3">
                   <img src="/tita.png" alt="Tita" className="w-11 h-11 rounded-xl object-contain bg-white" />
-                  <div><span className="text-[10px] font-black uppercase tracking-wide text-[#A86B3D]">Asistente del negocio</span><strong className="block text-sm">{CALIENTITO_TENANT.assistant.name} · Avatar personalizado</strong></div>
+                  <div><span className="text-[10px] font-black uppercase tracking-wide text-[#A86B3D]">Asistente del negocio</span><strong className="block text-sm" style={{ color: '#F7F7F7' }}>{CALIENTITO_TENANT.assistant.name} · Avatar personalizado</strong></div>
                 </div>
 
                 <div className="mt-5 grid sm:grid-cols-2 gap-3">

@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { getRestaurantInfo, ADMIN_DATA_EVENT } from '../lib/adminStorage';
 
 interface LogoProps {
   variant?: 'full' | 'compact' | 'light' | 'dark' | 'icon-only';
@@ -12,6 +13,18 @@ export const Logo: React.FC<LogoProps> = ({
   className = '',
   alt = 'Restaurante Calientito',
 }) => {
+  // Logo editable por el negocio (admin → Información). Si no hay, se usa el original.
+  const [customLogo, setCustomLogo] = useState(() => getRestaurantInfo().logoUrl || '');
+  useEffect(() => {
+    const update = () => setCustomLogo(getRestaurantInfo().logoUrl || '');
+    window.addEventListener(ADMIN_DATA_EVENT, update);
+    window.addEventListener('storage', update);
+    return () => {
+      window.removeEventListener(ADMIN_DATA_EVENT, update);
+      window.removeEventListener('storage', update);
+    };
+  }, []);
+
   // Sizing maps to maintain exact proportions without clipping or deformation
   const heightClass = {
     xs: 'h-8 w-8',
@@ -25,7 +38,10 @@ export const Logo: React.FC<LogoProps> = ({
   return (
     <div className={`inline-flex items-center justify-center select-none ${className}`}>
       <img
-        src="/logo-calientito.png"
+        src={customLogo || '/logo-calientito.png'}
+        onError={(event) => {
+          if (customLogo) event.currentTarget.src = '/logo-calientito.png';
+        }}
         alt={alt}
         className={`${heightClass} max-w-full aspect-square object-contain shrink-0`}
         loading="eager"

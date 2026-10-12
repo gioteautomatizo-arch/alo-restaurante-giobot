@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { StaffUser, RestaurantInfo } from '../../types';
 import { getRestaurantInfo, saveRestaurantInfo } from '../../lib/adminStorage';
+import { uploadBusinessLogo, validateMenuImage } from '../../lib/menuImagesService';
 import {
   parseWeeklyPromotions,
   serializeWeeklyPromotions,
@@ -63,6 +64,12 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
   const [weeklyPromotions, setWeeklyPromotions] = useState<WeeklyPromotionMap>(() =>
     parseWeeklyPromotions(initialInfo.activePromotions)
   );
+  const [logoUrl, setLogoUrl] = useState(initialInfo.logoUrl || '');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [instagramUrl, setInstagramUrl] = useState(initialInfo.instagramUrl || '');
+  const [facebookUrl, setFacebookUrl] = useState(initialInfo.facebookUrl || '');
+  const [mapsUrl, setMapsUrl] = useState(initialInfo.mapsUrl || '');
+  const [footerText, setFooterText] = useState(initialInfo.footerText || '');
   const [lastSavedInfo, setLastSavedInfo] = useState<RestaurantInfo>(initialInfo);
   const [isSaving, setIsSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -79,6 +86,33 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
     setVipRewardDescription(info.vipRewardDescription || DEFAULT_REWARD);
     setServicePolicies(info.servicePolicies || DEFAULT_POLICIES);
     setWeeklyPromotions(parseWeeklyPromotions(info.activePromotions));
+    setLogoUrl(info.logoUrl || '');
+    setInstagramUrl(info.instagramUrl || '');
+    setFacebookUrl(info.facebookUrl || '');
+    setMapsUrl(info.mapsUrl || '');
+    setFooterText(info.footerText || '');
+  };
+
+  const handleLogoFile = async (file: File | null) => {
+    if (!file) return;
+    const problem = validateMenuImage(file);
+    if (problem) {
+      setErrorMsg(problem);
+      return;
+    }
+    setErrorMsg(null);
+    setUploadingLogo(true);
+    try {
+      const url = await uploadBusinessLogo('alo-restaurante', file);
+      setLogoUrl(url);
+      setSuccessMsg('Logo cargado. Pulsa "Guardar y sincronizar" para publicarlo.');
+      window.setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (error: any) {
+      console.error('No se pudo subir el logo:', error);
+      setErrorMsg(error?.message || 'No se pudo subir el logo. Inténtalo de nuevo.');
+    } finally {
+      setUploadingLogo(false);
+    }
   };
 
   useEffect(() => {
@@ -175,6 +209,11 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
           vipRewardDescription: vipRewardDescription.trim(),
           servicePolicies: servicePolicies.trim(),
           activePromotions: activePromotionsText,
+          logoUrl: logoUrl.trim(),
+          instagramUrl: instagramUrl.trim(),
+          facebookUrl: facebookUrl.trim(),
+          mapsUrl: mapsUrl.trim(),
+          footerText: footerText.trim(),
           updatedAt: new Date().toISOString(),
           updatedBy: currentUser.name,
         },
@@ -387,6 +426,37 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
           <WeeklyPromotionsEditor value={weeklyPromotions} onChange={setWeeklyPromotions} disabled={isSaving} />
         </section>
 
+        <section className="space-y-4 border-t border-[#F4E3C8] pt-6">
+          <div className="border-b border-[#F4E3C8] pb-3">
+            <h3 className="font-serif font-bold text-base text-[#2B1B13] flex items-center gap-2"><Store className="w-4 h-4 text-[#C9974D]" />6. Logo y pie de página</h3>
+            <p className="text-xs text-[#6B4028] mt-1">Cambia tu logo y los enlaces del final de la página. Si dejas un enlace vacío, ese botón se oculta.</p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="w-24 h-24 rounded-2xl bg-[#FFF7EA] border border-[#E7D7C4] flex items-center justify-center overflow-hidden shrink-0">
+              <img src={logoUrl || '/logo-calientito.png'} alt="Logo actual" className="w-full h-full object-contain" />
+            </div>
+            <div className="space-y-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-[#E7D7C4] bg-white px-4 py-2.5 text-xs font-bold text-[#6B4028] hover:bg-[#FFF7EA]">
+                {uploadingLogo ? <RefreshCw className="w-4 h-4 animate-spin text-[#C9974D]" /> : <Sparkles className="w-4 h-4 text-[#C9974D]" />}
+                {uploadingLogo ? 'Subiendo logo…' : 'Cambiar logo'}
+                <input type="file" accept="image/*" className="hidden" disabled={isSaving || uploadingLogo} onChange={(e) => { void handleLogoFile(e.target.files?.[0] || null); e.target.value = ''; }} />
+              </label>
+              {logoUrl && (
+                <button type="button" onClick={() => setLogoUrl('')} disabled={isSaving} className="block text-xs font-semibold text-[#A86B3D] underline">Volver al logo original</button>
+              )}
+              <p className="text-[11px] text-[#6B4028]">Mejor un logo cuadrado, de al menos 512 × 512 px.</p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5"><label className={labelClass}>Instagram (enlace)</label><input value={instagramUrl} onChange={(e) => setInstagramUrl(e.target.value)} disabled={isSaving} placeholder="https://www.instagram.com/tu_negocio" className={inputClass} /></div>
+            <div className="space-y-1.5"><label className={labelClass}>Facebook (enlace)</label><input value={facebookUrl} onChange={(e) => setFacebookUrl(e.target.value)} disabled={isSaving} placeholder="https://www.facebook.com/tu_negocio" className={inputClass} /></div>
+            <div className="space-y-1.5 sm:col-span-2"><label className={labelClass}>Google Maps (enlace, opcional)</label><input value={mapsUrl} onChange={(e) => setMapsUrl(e.target.value)} disabled={isSaving} placeholder="Si lo dejas vacío, se arma con tu dirección" className={inputClass} /></div>
+            <div className="space-y-1.5 sm:col-span-2"><label className={labelClass}>Texto final del pie de página (opcional)</label><input value={footerText} onChange={(e) => setFooterText(e.target.value)} disabled={isSaving} placeholder="© 2026 Restaurante Calientito • Tu dirección" className={inputClass} /></div>
+          </div>
+        </section>
+
         <section className="bg-[#FFFDF9] border border-[#F4E3C8] rounded-2xl p-4 space-y-2">
           <div className="flex items-center gap-2 text-xs font-bold text-[#A86B3D] uppercase"><Info className="w-3.5 h-3.5" />Vista previa del sistema</div>
           <div className="text-xs text-[#2B1B13] bg-white border border-[#F4E3C8]/70 rounded-xl p-3 space-y-1.5">
@@ -401,7 +471,7 @@ export const RestaurantInfoEditorView: React.FC<RestaurantInfoEditorViewProps> =
 
         <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-[#F4E3C8]">
           <button type="button" onClick={() => hydrate(lastSavedInfo)} disabled={isSaving} className="w-full sm:w-auto px-5 py-3 rounded-2xl border border-[#F4E3C8] text-[#6B4028] hover:bg-[#FFF7EA] font-semibold text-xs disabled:opacity-50">Restablecer valores actuales</button>
-          <button type="submit" disabled={isSaving} className="w-full sm:w-auto bg-[#3A2418] hover:bg-[#2B1B13] text-[#FFF7EA] font-bold py-3.5 px-8 rounded-2xl shadow-md flex items-center justify-center gap-2.5 text-sm disabled:opacity-60">
+          <button type="submit" disabled={isSaving || uploadingLogo} className="w-full sm:w-auto bg-[#3A2418] hover:bg-[#2B1B13] text-[#FFF7EA] font-bold py-3.5 px-8 rounded-2xl shadow-md flex items-center justify-center gap-2.5 text-sm disabled:opacity-60">
             {isSaving ? <><RefreshCw className="w-4 h-4 animate-spin text-[#C9974D]" />Guardando...</> : <><Save className="w-4 h-4 text-[#C9974D]" />Guardar y sincronizar</>}
           </button>
         </div>

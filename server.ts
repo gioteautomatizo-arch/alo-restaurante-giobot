@@ -85,6 +85,44 @@ REGLAS:
 10. Si pregunta cómo hacer algo en la app, da pasos concretos usando los nombres reales de las pestañas.
 `;
 
+const money = (value: any) => (typeof value === 'number' && Number.isFinite(value) ? `$${value}` : '');
+
+function formatCatalogForPrompt(menuCatalog: any): string {
+  if (!Array.isArray(menuCatalog) || menuCatalog.length === 0) return '(catálogo no disponible)';
+
+  const groups = new Map<string, string[]>();
+  for (const item of menuCatalog.slice(0, 120)) {
+    const name = String(item?.name || '').trim();
+    if (!name) continue;
+    const category = String(item?.category || 'Otros').trim() || 'Otros';
+
+    const parts: string[] = [name];
+    const price = money(item?.price);
+    if (price) parts.push(price);
+
+    const description = String(item?.description || '').replace(/\s+/g, ' ').trim().slice(0, 110);
+    if (description) parts.push(description);
+
+    if (Array.isArray(item?.sizes) && item.sizes.length) {
+      parts.push('tamaños: ' + item.sizes.map((size: any) => `${size?.name}${money(size?.price) ? ' ' + money(size.price) : ''}`).join(', '));
+    }
+    if (Array.isArray(item?.options) && item.options.length) {
+      parts.push('opciones: ' + item.options.filter(Boolean).join(', '));
+    }
+    if (Array.isArray(item?.extras) && item.extras.length) {
+      parts.push('extras: ' + item.extras.map((extra: any) => `${extra?.name}${money(extra?.price) ? ' ' + money(extra.price) : ''}`).join(', '));
+    }
+    if (item?.popular) parts.push('★');
+
+    if (!groups.has(category)) groups.set(category, []);
+    groups.get(category)!.push(parts.join(' | '));
+  }
+
+  return Array.from(groups.entries())
+    .map(([category, lines]) => `## ${category}\n${lines.join('\n')}`)
+    .join('\n');
+}
+
 app.post('/api/chat', async (req, res) => {
   try {
     const {
@@ -171,34 +209,23 @@ Si el estado es ULTIMAS_PORCIONES, dilo claramente antes de recomendar la comida
 `.trim();
       }
 
-      const safeCatalog = Array.isArray(menuCatalog)
-        ? menuCatalog.slice(0, 120).map((item: any) => ({
-            id: item?.id,
-            name: item?.name,
-            category: item?.category,
-            description: item?.description,
-            price: item?.price,
-            sizes: item?.sizes,
-            options: item?.options,
-            extras: item?.extras,
-            popular: Boolean(item?.popular),
-          }))
-        : [];
-
       const safeCustomerContext = customerContext && typeof customerContext === 'object'
         ? customerContext
         : { serviceMode: 'GENERAL', table: null, cart: { items: [], itemCount: 0, total: 0 } };
 
+      // Catálogo compacto: una línea por producto, agrupado por categoría y sin ids ni
+      // JSON con sangrías. Dice lo mismo con menos de la mitad de tokens, así Gemini
+      // empieza a responder antes. Se mantiene estable entre mensajes (mejor para caché).
       const catalogInstruction = `
-CATÁLOGO REAL DISPONIBLE PARA EL CLIENTE:
-${JSON.stringify(safeCatalog, null, 2)}
+CATÁLOGO REAL DISPONIBLE PARA EL CLIENTE (formato: Nombre | $precio | detalle | tamaños | opciones | extras | ★=popular):
+${formatCatalogForPrompt(menuCatalog)}
 
 REGLA: no recomiendes ni cotices productos que no estén aquí, salvo el menú del día si está incluido arriba.
 `.trim();
 
       const customerContextInstruction = `
 CONTEXTO ACTUAL DEL COMENSAL:
-${JSON.stringify(safeCustomerContext, null, 2)}
+${JSON.stringify(safeCustomerContext)}
 
 Usa este contexto para responder preguntas sobre su mesa, persona seleccionada, consumo ya enviado y carrito. Si preguntan por el total de la cuenta, responde con customerContext.consumption.total. Si preguntan por lo que lleva la persona seleccionada, usa customerContext.consumption.selectedPersonTotal. Nunca menciones datos de otras mesas.
 `.trim();
@@ -255,7 +282,7 @@ Usa este contexto para responder preguntas sobre su mesa, persona seleccionada, 
     } catch (primaryErr: any) {
       if (isTemporaryError(primaryErr)) {
         console.warn(`[Tita Chat] Aviso temporal en ${PRIMARY_MODEL}. Reintentando...`);
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         try {
           responseStream = await ai.models.generateContentStream({
             model: PRIMARY_MODEL,

@@ -135,32 +135,36 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
           </a>
         </div>
 
-        {/* 4. Iconos secundarios: Instagram, Facebook y Google Maps */}
+        {/* 4. Iconos secundarios: Instagram, Facebook y Google Maps (editables desde el admin) */}
         <div className="flex items-center justify-center gap-3 pt-1 text-xs">
-          <a
-            href="https://www.instagram.com/calientitocafe15?igsh=Z3hzdmViZDVka2ho"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 py-1.5 rounded-xl bg-[#3A2418] hover:bg-[#4A2E1F] text-[#FFF7EA] hover:text-[#C9974D] border border-[#4E3222] flex items-center gap-1.5 transition-colors"
-            title="Instagram Calientito"
-          >
-            <Instagram className="w-3.5 h-3.5 text-[#C9974D]" />
-            <span className="font-medium">Instagram</span>
-          </a>
+          {restaurantInfo.instagramUrl && (
+            <a
+              href={restaurantInfo.instagramUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-xl bg-[#3A2418] hover:bg-[#4A2E1F] text-[#FFF7EA] hover:text-[#C9974D] border border-[#4E3222] flex items-center gap-1.5 transition-colors"
+              title="Instagram"
+            >
+              <Instagram className="w-3.5 h-3.5 text-[#C9974D]" />
+              <span className="font-medium">Instagram</span>
+            </a>
+          )}
+
+          {restaurantInfo.facebookUrl && (
+            <a
+              href={restaurantInfo.facebookUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-xl bg-[#3A2418] hover:bg-[#4A2E1F] text-[#FFF7EA] hover:text-[#C9974D] border border-[#4E3222] flex items-center gap-1.5 transition-colors"
+              title="Facebook"
+            >
+              <Facebook className="w-3.5 h-3.5 text-[#C9974D]" />
+              <span className="font-medium">Facebook</span>
+            </a>
+          )}
 
           <a
-            href="https://www.facebook.com/share/1Cvompzmgh/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 py-1.5 rounded-xl bg-[#3A2418] hover:bg-[#4A2E1F] text-[#FFF7EA] hover:text-[#C9974D] border border-[#4E3222] flex items-center gap-1.5 transition-colors"
-            title="Facebook Calientito"
-          >
-            <Facebook className="w-3.5 h-3.5 text-[#C9974D]" />
-            <span className="font-medium">Facebook</span>
-          </a>
-
-          <a
-            href="https://maps.google.com/?q=Calle+la+Fama+12,+14260+Tlalpan,+CDMX"
+            href={restaurantInfo.mapsUrl || `https://maps.google.com/?q=${encodeURIComponent(restaurantInfo.address || 'Calle la Fama 12, 14260 Tlalpan, CDMX')}`}
             target="_blank"
             rel="noopener noreferrer"
             className="px-3 py-1.5 rounded-xl bg-[#3A2418] hover:bg-[#4A2E1F] text-[#FFF7EA] hover:text-[#C9974D] border border-[#4E3222] flex items-center gap-1.5 transition-colors"
@@ -173,7 +177,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
 
         {/* 5. Línea final de copyright y acceso administrativo discreto */}
         <div className="w-full pt-4 border-t border-[#3A2418] flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-[#A86B3D] font-light">
-          <p>© 2026 Restaurante Calientito • Calle la Fama 12, Tlalpan, CDMX.</p>
+          <p>{restaurantInfo.footerText || `© ${new Date().getFullYear()} Restaurante Calientito • ${restaurantInfo.address || 'Calle la Fama 12, Tlalpan, CDMX'}.`}</p>
           {onOpenAdmin && (
             <button
               onClick={onOpenAdmin}
