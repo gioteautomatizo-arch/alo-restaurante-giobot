@@ -11,6 +11,7 @@ import { getBusinessTemplateConfig } from '../../data/businessTemplates';
 import { hasBusinessPermission } from '../../lib/restaurantCore';
 import type { BusinessRole, RestaurantTenant } from '../../lib/restaurantCore';
 import { getBusinessForUser, getBusinessMembership } from '../../lib/businessAuthService';
+import { getBusinessPublicationStatus, setBusinessPublication } from '../../lib/businessPublicProfileService';
 import { subscribeToAuth } from '../../lib/firebase';
 import type { User as FirebaseUser } from 'firebase/auth';
 
@@ -69,6 +70,9 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
 
   const publicUrl = `${window.location.origin}${window.location.pathname}#negocio/${encodeURIComponent(businessId)}`;
   const [linkCopied, setLinkCopied] = useState(false);
+  const [isPublished, setIsPublished] = useState(false);
+  const [publicationBusy, setPublicationBusy] = useState(false);
+  const [publicationMessage, setPublicationMessage] = useState<string | null>(null);
   const copyPublicLink = async () => {
     try {
       await navigator.clipboard.writeText(publicUrl);
@@ -76,6 +80,29 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
       window.setTimeout(() => setLinkCopied(false), 2500);
     } catch {
       window.prompt('Copia el enlace de tu página:', publicUrl);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    getBusinessPublicationStatus(businessId)
+      .then((published) => { if (!cancelled) setIsPublished(published); })
+      .catch((err) => console.warn('No se pudo consultar la publicación:', err));
+    return () => { cancelled = true; };
+  }, [businessId]);
+
+  const togglePublication = async () => {
+    if (!business) return;
+    setPublicationBusy(true);
+    setPublicationMessage(null);
+    try {
+      await setBusinessPublication(businessId, business, !isPublished);
+      setIsPublished(!isPublished);
+      setPublicationMessage(!isPublished ? 'Tu página ya está publicada en el directorio.' : 'Tu página se ocultó del directorio público.');
+    } catch (err) {
+      setPublicationMessage(err instanceof Error ? err.message : 'No pudimos actualizar la publicación.');
+    } finally {
+      setPublicationBusy(false);
     }
   };
 
@@ -202,6 +229,20 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
           <p className="mt-1 break-all text-xs text-[#C8C8C8]">{publicUrl}</p>
           <button type="button" onClick={() => void copyPublicLink()} className="mt-3 rounded-xl bg-[#D6A34A] px-4 py-2.5 text-xs font-black text-[#050505]">{linkCopied ? '¡Enlace copiado!' : 'Copiar enlace'}</button>
           <p className="mt-2 text-[11px] text-[#B7B7B7]">Compártelo por WhatsApp, redes o en un QR. Tus clientes verán solo tu menú, nunca el panel.</p>
+          {role === 'OWNER' && (
+            <div className="mt-4 border-t border-[#3A3022] pt-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <strong className="block text-sm">{isPublished ? 'Visible en el directorio' : 'No aparece en el directorio'}</strong>
+                  <span className="mt-1 block text-[11px] text-[#B7B7B7]">{isPublished ? 'Cualquier visitante puede encontrar tu página pública.' : 'Publícala cuando el menú y los datos estén listos.'}</span>
+                </div>
+                <button type="button" disabled={publicationBusy} onClick={() => void togglePublication()} className="rounded-xl bg-[#D6A34A] px-4 py-2.5 text-xs font-black text-[#050505] disabled:opacity-50">
+                  {publicationBusy ? 'Guardando…' : isPublished ? 'Ocultar del directorio' : 'Publicar mi negocio'}
+                </button>
+              </div>
+              {publicationMessage && <p role="status" className="mt-3 text-xs text-[#E3BC6B]">{publicationMessage}</p>}
+            </div>
+          )}
         </section>
 
         <section>
