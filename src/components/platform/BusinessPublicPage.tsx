@@ -42,7 +42,17 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
           setStatus('missing');
           return;
         }
-        if (snap.data().published !== true) {\n          setStatus('missing');\n          return;\n        }\n        setBusiness({\n          restaurantId: businessId,\n          businessType: snap.data().businessType,\n          branding: snap.data().branding,\n          assistant: { name: 'Giobot', plan: 'GIOBOT_BASE', personality: 'AMABLE', enabled: true },\n          features: { publicMenu: true, qrTables: false, pos: false, kitchenStations: false, inventory: false, vip: false, promotions: false, customerAssistant: false, adminAssistant: false, delivery: true, reservations: false },\n        } as RestaurantTenant);
+        if (snap.data().published !== true) {
+          setStatus('missing');
+          return;
+        }
+        setBusiness({
+          restaurantId: businessId,
+          businessType: snap.data().businessType,
+          branding: snap.data().branding,
+          assistant: { name: 'Giobot', plan: 'GIOBOT_BASE', personality: 'AMABLE', enabled: true },
+          features: { publicMenu: true, qrTables: false, pos: false, kitchenStations: false, inventory: false, vip: false, promotions: false, customerAssistant: false, adminAssistant: false, delivery: true, reservations: false },
+        } as RestaurantTenant);
         setStatus('ready');
       })
       .catch((error) => {
