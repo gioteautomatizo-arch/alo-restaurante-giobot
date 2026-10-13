@@ -60,3 +60,8 @@ export async function setBusinessPublication(businessId: string, tenant: Restaur
     await setDoc(ref, { businessId, restaurantId: businessId, published: false, updatedAt: new Date().toISOString() }, { merge: true });
   }
 }
+
+export async function getBusinessPublicationStatus(businessId: string): Promise<boolean> {
+  const snap = await getDoc(doc(db, 'publicBusinessProfiles', businessId));
+  return snap.exists() && snap.data().published === true;
+}
