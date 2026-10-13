@@ -145,7 +145,11 @@ service cloud.firestore {
           )
         )
         && request.resource.data.businessId == businessId
-        && request.resource.data.published is bool;
+        && request.resource.data.restaurantId == businessId
+        && request.resource.data.published is bool
+        && request.resource.data.keys().hasOnly([
+          'businessId', 'restaurantId', 'businessType', 'branding', 'published', 'updatedAt'
+        ]);
 
       allow delete: if isPlatformSuperAdmin();
     }
