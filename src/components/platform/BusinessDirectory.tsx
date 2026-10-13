@@ -21,8 +21,33 @@ export const BusinessDirectory: React.FC = () => {
         if (cancelled) return;
         const rows = snapshot.docs
           .map((item) => ({ ...(item.data() as DirectoryBusiness), restaurantId: item.id }))
-          .filter((business) => business.publicListing !== false && business.published !== false)
-          .sort((a, b) => a.branding.restaurantName.localeCompare(b.branding.restaurantName, 'es-MX'));
+          .filter((business) => business.publicListing !== false && business.published !== false);
+
+        // Calientito usa la app histórica y sus datos legacy; no depende de businesses/{id}.
+        // Se incluye explícitamente en el directorio y su ruta abre la app original.
+        const hasCalientito = rows.some((business) => business.restaurantId === 'alo-restaurante');
+        if (!hasCalientito) {
+          rows.push({
+            restaurantId: 'alo-restaurante',
+            businessType: 'restaurant',
+            branding: {
+              restaurantName: 'Restaurante Calientito',
+              publicSlug: 'calientito',
+              tagline: 'Comida rica, como en casa',
+              description: 'Consulta el menú de Restaurante Calientito y prepara tu pedido.',
+            },
+            assistant: { name: 'Giobot', plan: 'GIOBOT_BASE', personality: 'AMABLE', enabled: true },
+            features: {
+              publicMenu: true, qrTables: true, pos: true, kitchenStations: true, inventory: true,
+              vip: true, promotions: true, customerAssistant: true, adminAssistant: true,
+              delivery: true, reservations: false,
+            },
+            publicListing: true,
+            published: true,
+          } as DirectoryBusiness);
+        }
+
+        rows.sort((a, b) => a.branding.restaurantName.localeCompare(b.branding.restaurantName, 'es-MX'));
         setBusinesses(rows);
       })
       .catch((err) => {
