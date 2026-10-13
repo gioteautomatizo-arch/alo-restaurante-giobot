@@ -21,7 +21,9 @@ function RootRouter() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  if (hash === '#explorar' || hash === '#') {
+  const hasTableQr = new URLSearchParams(window.location.search).has('table') || new URLSearchParams(window.location.search).has('qr') || new URLSearchParams(window.location.search).get('staffOrder') === '1';
+
+  if (hash === '#explorar' || hash === '#' || (!hash && !hasTableQr)) {
     return <div className="giote-platform-theme"><BusinessDirectory /></div>;
   }
 
@@ -37,6 +39,10 @@ function RootRouter() {
   const publicMatch = hash.match(/^#negocio\/([^/]+)$/);
   if (publicMatch && decodeURIComponent(publicMatch[1]) !== 'alo-restaurante') {
     return <BusinessPublicPage businessId={decodeURIComponent(publicMatch[1])} />;
+  }
+
+  if (publicMatch && decodeURIComponent(publicMatch[1]) === 'alo-restaurante') {
+    return <App />;
   }
 
   const businessMatch = hash.match(/^#business\/([^/]+)$/);
