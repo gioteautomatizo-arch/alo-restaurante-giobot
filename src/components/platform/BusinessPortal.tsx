@@ -120,12 +120,8 @@ export const BusinessPortal: React.FC = () => {
   };
 
   const openCalientito = () => {
+    // Calientito conserva su propio acceso de personal (usuario y PIN): se abre su pantalla de acceso.
     setError(null);
-    const result = loginStaff('gio', '1234', true);
-    if (!result.success || !result.user) {
-      setError(result.error || 'No pudimos preparar la sesión demo de Calientito.');
-      return;
-    }
     window.location.hash = '#admin';
   };
 
