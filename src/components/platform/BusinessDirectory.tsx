@@ -8,26 +8,7 @@ type DirectoryBusiness = RestaurantTenant & { publicListing?: boolean; published
 
 const normalize = (value: string) => value.toLocaleLowerCase('es-MX').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-export const BusinessDirectory: React.FC = () => {
-  const [businesses, setBusinesses] = useState<DirectoryBusiness[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [search, setSearch] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-    getDocs(query(collection(db, 'publicBusinessProfiles'), where('published', '==', true)))
-      .then((snapshot) => {
-        if (cancelled) return;
-        const rows = snapshot.docs
-          .map((item) => ({ ...(item.data() as DirectoryBusiness), restaurantId: item.id }))
-          .filter((business) => business.published === true);
-
-        // Calientito usa la app histórica y sus datos legacy; no depende de businesses/{id}.
-        // Se incluye explícitamente en el directorio y su ruta abre la app original.
-        const hasCalientito = rows.some((business) => business.restaurantId === 'alo-restaurante');
-        if (!hasCalientito) {
-          rows.push({
+const calientitoCard = (): DirectoryBusiness => ({
             restaurantId: 'alo-restaurante',
             businessType: 'restaurant',
             branding: {
@@ -45,14 +26,33 @@ export const BusinessDirectory: React.FC = () => {
             publicListing: true,
             published: true,
           } as DirectoryBusiness);
-        }
+
+export const BusinessDirectory: React.FC = () => {
+  const [businesses, setBusinesses] = useState<DirectoryBusiness[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    getDocs(query(collection(db, 'publicBusinessProfiles'), where('published', '==', true)))
+      .then((snapshot) => {
+        if (cancelled) return;
+        const rows = snapshot.docs
+          .map((item) => ({ ...(item.data() as DirectoryBusiness), restaurantId: item.id }))
+          .filter((business) => business.published === true);
+
+        if (!rows.some((business) => business.restaurantId === 'alo-restaurante')) rows.push(calientitoCard());
 
         rows.sort((a, b) => a.branding.restaurantName.localeCompare(b.branding.restaurantName, 'es-MX'));
         setBusinesses(rows);
       })
       .catch((err) => {
         console.error('[BusinessDirectory] No se pudieron cargar los negocios públicos:', err);
-        if (!cancelled) setError(true);
+        if (!cancelled) {
+          setError(String((err as { code?: string })?.code || (err as Error)?.message || 'error'));
+          setBusinesses([calientitoCard()]);
+        }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -102,7 +102,7 @@ export const BusinessDirectory: React.FC = () => {
           </div>
 
           {loading && <div className="py-14 text-center text-sm text-white/60">Cargando negocios publicados…</div>}
-          {error && <div className="mt-6 rounded-2xl border border-red-400/30 bg-red-950/20 p-5 text-sm text-red-100">No pudimos cargar el directorio. Revisa tu conexión e inténtalo de nuevo.</div>}
+          {error && <div className="mt-6 rounded-2xl border border-red-400/30 bg-red-950/20 p-5 text-sm text-red-100">No pudimos cargar todos los negocios ({error}). Si dice permission-denied, faltan publicar las reglas de Firestore.</div>}
           {!loading && !error && visible.length === 0 && <div className="mt-6 rounded-2xl border border-white/10 bg-white/[.03] p-8 text-center"><Store className="mx-auto h-9 w-9 text-[#D6A34A]"/><h3 className="mt-3 text-lg font-bold">{search ? 'No encontramos coincidencias' : 'Estamos preparando el directorio'}</h3><p className="mt-2 text-sm text-white/60">{search ? 'Prueba con otro nombre o categoría.' : 'Pronto aparecerán más negocios. Mientras tanto, puedes registrar el tuyo.'}</p></div>}
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {visible.map((business) => {
