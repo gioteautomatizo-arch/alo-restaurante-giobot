@@ -6,6 +6,7 @@ import { AdminOwnerTitaGate } from './components/admin/AdminOwnerTitaGate';
 import { BusinessPortal } from './components/platform/BusinessPortal';
 import { BusinessWorkspace } from './components/platform/BusinessWorkspace';
 import { BusinessPublicPage } from './components/platform/BusinessPublicPage';
+import { BusinessDirectory } from './components/platform/BusinessDirectory';
 import { BusinessOnboardingDemo } from './components/platform/BusinessOnboardingDemo';
 import { PlatformAdminPanel } from './components/platform/PlatformAdminPanel';
 import './components/platform/platformTheme.css';
@@ -19,6 +20,10 @@ function RootRouter() {
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
+
+  if (hash === '#explorar' || hash === '#') {
+    return <div className="giote-platform-theme"><BusinessDirectory /></div>;
+  }
 
   if (hash === '#platform-admin') {
     return <div className="giote-platform-theme"><PlatformAdminPanel /></div>;
