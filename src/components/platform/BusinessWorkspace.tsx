@@ -67,6 +67,18 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     return () => Object.keys(vars).forEach((key) => root.style.removeProperty(key));
   }, [business]);
 
+  const publicUrl = `${window.location.origin}${window.location.pathname}#negocio/${encodeURIComponent(businessId)}`;
+  const [linkCopied, setLinkCopied] = useState(false);
+  const copyPublicLink = async () => {
+    try {
+      await navigator.clipboard.writeText(publicUrl);
+      setLinkCopied(true);
+      window.setTimeout(() => setLinkCopied(false), 2500);
+    } catch {
+      window.prompt('Copia el enlace de tu página:', publicUrl);
+    }
+  };
+
   const back = () => {
     window.location.hash = '#business';
   };
@@ -141,7 +153,8 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   // Un solo listado de módulos. "ready" = ya funciona; "soon" = todavía no está construido.
   const canSeeReports = !!role && hasBusinessPermission(role, 'reports.view');
   const canManageBusiness = !!role && hasBusinessPermission(role, 'business.manage');
-  const modulesList: Array<{ title: string; description: string; view?: typeof view; allowed: boolean; deniedText: string }> = [
+  const modulesList: Array<{ title: string; description: string; view?: typeof view; href?: string; allowed: boolean; deniedText: string }> = [
+    { title: 'Mi página pública', description: 'Lo que ve tu cliente: portada, menú y pedido por WhatsApp.', href: `#negocio/${encodeURIComponent(businessId)}`, allowed: true, deniedText: '' },
     { title: 'Caja y pedidos', description: 'Vende, cobra y sigue cada pedido.', view: 'operations', allowed: !!business.features.pos && canUsePos, deniedText: 'Tu rol no tiene acceso' },
     { title: 'Catálogo', description: 'Productos, precios y disponibilidad. También puedes cargarlo desde la foto de tu menú.', view: 'catalog', allowed: canManageCatalog, deniedText: 'Solo encargados y dueños' },
     { title: 'Reportes', description: 'Ventas, producto estrella y cómo te pagan.', view: 'reports', allowed: canSeeReports, deniedText: 'Tu rol no tiene acceso' },
@@ -151,8 +164,8 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     { title: 'Inventario', description: 'Existencias, entradas y alertas.', allowed: true, deniedText: '' },
     { title: 'Giobot, tu asistente', description: `Atiende a tus clientes por ti (${business.assistant.name}).`, allowed: true, deniedText: '' },
   ];
-  const readyModules = modulesList.filter((module) => module.view);
-  const soonModules = modulesList.filter((module) => !module.view);
+  const readyModules = modulesList.filter((module) => module.view || module.href);
+  const soonModules = modulesList.filter((module) => !module.view && !module.href);
 
   return (
     <div className="min-h-screen bg-[#050505] text-[#F7F7F7]">
@@ -184,6 +197,13 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
           </div>
         </section>
 
+        <section className="rounded-2xl border border-[#3A3022] bg-[#111111] p-4">
+          <p className="text-[10px] font-black uppercase tracking-wide text-[#E3BC6B]">Enlace para tus clientes</p>
+          <p className="mt-1 break-all text-xs text-[#C8C8C8]">{publicUrl}</p>
+          <button type="button" onClick={() => void copyPublicLink()} className="mt-3 rounded-xl bg-[#D6A34A] px-4 py-2.5 text-xs font-black text-[#050505]">{linkCopied ? '¡Enlace copiado!' : 'Copiar enlace'}</button>
+          <p className="mt-2 text-[11px] text-[#B7B7B7]">Compártelo por WhatsApp, redes o en un QR. Tus clientes verán solo tu menú, nunca el panel.</p>
+        </section>
+
         <section>
           <h2 className="mb-3 font-serif text-xl font-black text-[#F7F7F7]">Listos para usar</h2>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -192,7 +212,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
                 key={module.title}
                 type="button"
                 disabled={!module.allowed}
-                onClick={() => module.view && setView(module.view)}
+                onClick={() => (module.href ? window.open(module.href, '_blank') : module.view && setView(module.view))}
                 className="rounded-2xl border border-[#3A3022] bg-[#111111] p-5 text-left transition hover:border-[#D6A34A] disabled:cursor-default disabled:opacity-60 disabled:hover:border-[#3A3022]"
               >
                 <span className="text-[10px] font-black uppercase tracking-wide text-[#E3BC6B]">{module.allowed ? 'Abrir' : module.deniedText}</span>

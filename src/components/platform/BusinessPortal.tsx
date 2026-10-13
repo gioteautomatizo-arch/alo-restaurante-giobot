@@ -329,6 +329,7 @@ export const BusinessPortal: React.FC = () => {
                     </div>
                   </div>
                   <button type="button" onClick={() => openBusiness(tenant)} className="mt-5 w-full rounded-2xl bg-[#3A2418] px-4 py-3 text-sm font-black text-white">Abrir negocio</button>
+                  <button type="button" onClick={() => { window.location.hash = `#negocio/${encodeURIComponent(tenant.restaurantId)}`; }} className="mt-2 w-full rounded-2xl border border-[#DEC8AE] bg-white px-4 py-3 text-sm font-black text-[#5C3825]">Ver página pública</button>
                 </article>
               ))}
             </div>

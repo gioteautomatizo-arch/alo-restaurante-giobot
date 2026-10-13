@@ -31,6 +31,13 @@ export const BusinessBrandingSettings: React.FC<{
   const [textColor, setTextColor] = useState(branding.textColor || initial.text);
   const [logoUrl, setLogoUrl] = useState(branding.logoUrl || '');
   const [coverUrl, setCoverUrl] = useState(branding.coverUrl || '');
+  const [tagline, setTagline] = useState(branding.tagline || '');
+  const [description, setDescription] = useState(branding.description || '');
+  const [whatsapp, setWhatsapp] = useState(branding.whatsapp || '');
+  const [address, setAddress] = useState(branding.address || '');
+  const [hoursText, setHoursText] = useState(branding.hoursText || '');
+  const [instagramUrl, setInstagramUrl] = useState(branding.instagramUrl || '');
+  const [facebookUrl, setFacebookUrl] = useState(branding.facebookUrl || '');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -91,6 +98,13 @@ export const BusinessBrandingSettings: React.FC<{
         backgroundColor: background,
         surfaceColor: surface,
         textColor,
+        tagline: tagline.trim(),
+        description: description.trim(),
+        whatsapp: whatsapp.trim(),
+        address: address.trim(),
+        hoursText: hoursText.trim(),
+        instagramUrl: instagramUrl.trim(),
+        facebookUrl: facebookUrl.trim(),
       },
     };
     try {
@@ -144,6 +158,26 @@ export const BusinessBrandingSettings: React.FC<{
                 <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => void upload(e.target.files?.[0], 'cover')} />
               </label>
             </div>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border p-5 sm:p-6" style={{ borderColor: accent, backgroundColor: surface }}>
+          <h2 className="text-xl font-black">Datos de tu página pública</h2>
+          <p className="mt-1 text-sm opacity-75">Esto es lo que ve tu cliente al abrir el enlace de tu negocio. Lo que dejes vacío no se muestra.</p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            {([
+              { label: 'Slogan (título grande de la portada)', value: tagline, set: setTagline, placeholder: 'Ej. Los mejores tacos de la colonia', full: true },
+              { label: 'Descripción corta', value: description, set: setDescription, placeholder: 'Una frase que invite a pedir', full: true },
+              { label: 'WhatsApp para recibir pedidos', value: whatsapp, set: setWhatsapp, placeholder: '55 1234 5678' },
+              { label: 'Horario', value: hoursText, set: setHoursText, placeholder: 'Lun a Sáb, 9:00 a 18:00' },
+              { label: 'Dirección', value: address, set: setAddress, placeholder: 'Calle y número, colonia', full: true },
+              { label: 'Instagram (enlace)', value: instagramUrl, set: setInstagramUrl, placeholder: 'https://instagram.com/tu_negocio' },
+              { label: 'Facebook (enlace)', value: facebookUrl, set: setFacebookUrl, placeholder: 'https://facebook.com/tu_negocio' },
+            ] as const).map((field) => (
+              <label key={field.label} className={`block text-sm font-semibold ${'full' in field && field.full ? 'sm:col-span-2' : ''}`}>{field.label}
+                <input value={field.value} onChange={(e) => field.set(e.target.value)} placeholder={field.placeholder} maxLength={200} className="mt-2 w-full rounded-xl border px-3 py-3" style={{ color: '#171717', backgroundColor: '#fff', borderColor: accent }} />
+              </label>
+            ))}
           </div>
         </section>
 

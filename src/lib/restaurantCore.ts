@@ -56,6 +56,14 @@ export interface RestaurantBranding {
   backgroundColor?: string;
   surfaceColor?: string;
   textColor?: string;
+  /** Datos públicos que ve el cliente en la página del negocio. */
+  tagline?: string;
+  description?: string;
+  whatsapp?: string;
+  address?: string;
+  hoursText?: string;
+  instagramUrl?: string;
+  facebookUrl?: string;
 }
 
 export interface RestaurantAssistantProfile {

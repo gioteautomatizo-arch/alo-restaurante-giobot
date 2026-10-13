@@ -5,6 +5,7 @@ import { AdminTabOrderManager } from './components/admin/AdminTabOrderManager';
 import { AdminOwnerTitaGate } from './components/admin/AdminOwnerTitaGate';
 import { BusinessPortal } from './components/platform/BusinessPortal';
 import { BusinessWorkspace } from './components/platform/BusinessWorkspace';
+import { BusinessPublicPage } from './components/platform/BusinessPublicPage';
 import { BusinessOnboardingDemo } from './components/platform/BusinessOnboardingDemo';
 import { PlatformAdminPanel } from './components/platform/PlatformAdminPanel';
 import './components/platform/platformTheme.css';
@@ -25,6 +26,12 @@ function RootRouter() {
 
   if (hash === '#business-new') {
     return <div className="giote-platform-theme platform-onboarding"><BusinessOnboardingDemo /></div>;
+  }
+
+  // Página pública de un negocio (lo que ve el cliente). Calientito conserva su propia app.
+  const publicMatch = hash.match(/^#negocio\/([^/]+)$/);
+  if (publicMatch && decodeURIComponent(publicMatch[1]) !== 'alo-restaurante') {
+    return <BusinessPublicPage businessId={decodeURIComponent(publicMatch[1])} />;
   }
 
   const businessMatch = hash.match(/^#business\/([^/]+)$/);
