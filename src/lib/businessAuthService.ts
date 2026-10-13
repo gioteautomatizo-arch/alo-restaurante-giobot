@@ -73,10 +73,8 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
     throw new Error('El nombre de usuario del negocio no es válido.');
   }
 
-  const existing = await getDoc(businessRef(businessId));
-  if (existing.exists()) {
-    throw new Error('Ese nombre de negocio ya está en uso. Elige otro.');
-  }
+  // La regla de Firestore impide crear un ID que ya exista. No leemos fichas privadas
+  // de otros negocios para comprobar disponibilidad del identificador.
 
   let userId: string;
 
@@ -125,11 +123,6 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
   // requieren que businesses/{businessId} exista antes de crear
   // businessMemberships/{businessId}_{userId}.
   const ref = businessRef(businessId);
-  const current = await getDoc(ref);
-  if (current.exists()) {
-    throw new Error('Ese nombre de negocio ya está en uso. Elige otro.');
-  }
-
   await setDoc(ref, tenant);
 
   try {
