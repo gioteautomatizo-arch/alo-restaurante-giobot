@@ -35,14 +35,14 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
   useEffect(() => {
     let cancelled = false;
     setStatus('loading');
-    getDoc(doc(db, 'businesses', businessId))
+    getDoc(doc(db, 'publicBusinessProfiles', businessId))
       .then((snap) => {
         if (cancelled) return;
         if (!snap.exists()) {
           setStatus('missing');
           return;
         }
-        setBusiness(snap.data() as RestaurantTenant);
+        if (snap.data().published !== true) {\n          setStatus('missing');\n          return;\n        }\n        setBusiness({\n          restaurantId: businessId,\n          businessType: snap.data().businessType,\n          branding: snap.data().branding,\n          assistant: { name: 'Giobot', plan: 'GIOBOT_BASE', personality: 'AMABLE', enabled: true },\n          features: { publicMenu: true, qrTables: false, pos: false, kitchenStations: false, inventory: false, vip: false, promotions: false, customerAssistant: false, adminAssistant: false, delivery: true, reservations: false },\n        } as RestaurantTenant);
         setStatus('ready');
       })
       .catch((error) => {
