@@ -21,7 +21,7 @@ export const BusinessDirectory: React.FC = () => {
         if (cancelled) return;
         const rows = snapshot.docs
           .map((item) => ({ ...(item.data() as DirectoryBusiness), restaurantId: item.id }))
-          .filter((business) => business.restaurantId !== 'alo-restaurante' && business.publicListing !== false && business.published !== false)
+          .filter((business) => business.publicListing !== false && business.published !== false)
           .sort((a, b) => a.branding.restaurantName.localeCompare(b.branding.restaurantName, 'es-MX'));
         setBusinesses(rows);
       })
