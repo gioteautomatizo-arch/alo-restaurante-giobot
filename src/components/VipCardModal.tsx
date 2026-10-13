@@ -277,7 +277,7 @@ export const VipCardModal: React.FC<VipCardModalProps> = ({
   const handleClear = () => {
     if (
       window.confirm(
-        '¿Deseas ocultar tu tarjeta VIP en este dispositivo? Tu cuenta y tus sellos permanecerán guardados en la nube. Podrás recuperarla en cualquier momento con tu teléfono y PIN.'
+        '¿Deseas desvincular esta tarjeta VIP de este dispositivo? Solo se quitará la copia local de este equipo. La cuenta, los sellos y el historial en la nube se conservarán; podrás volver a vincularla con tu teléfono y PIN.'
       )
     ) {
       clearVipProfile();
@@ -564,7 +564,7 @@ export const VipCardModal: React.FC<VipCardModalProps> = ({
                     onClick={handleClear}
                     className="text-red-400 hover:text-red-300 font-semibold flex items-center gap-1 cursor-pointer"
                   >
-                    <Trash2 className="w-3.5 h-3.5" /> Ocultar en este dispositivo
+                    <Trash2 className="w-3.5 h-3.5" /> Desvincular de este dispositivo
                   </button>
                 </div>
               </div>
