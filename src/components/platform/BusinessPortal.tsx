@@ -80,6 +80,7 @@ export const BusinessPortal: React.FC = () => {
       .catch((err) => {
         console.warn('No se pudieron cargar tus negocios:', err);
         setMyBusinesses([]);
+        setError(`No pudimos cargar tus negocios${err?.code ? ` (${err.code})` : ''}. Si dice permission-denied, falta revisar las reglas de Firestore o tu membresía.`);
       })
       .finally(() => setLoadingBusinesses(false));
 

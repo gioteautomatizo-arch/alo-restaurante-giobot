@@ -181,8 +181,13 @@ export async function getBusinessesForUser(userId: string): Promise<RestaurantTe
 
   const tenants: RestaurantTenant[] = [];
   for (const businessId of businessIds) {
-    const snap = await getDoc(businessRef(businessId));
-    if (snap.exists()) tenants.push(snap.data() as RestaurantTenant);
+    try {
+      const snap = await getDoc(businessRef(businessId));
+      if (snap.exists()) tenants.push(snap.data() as RestaurantTenant);
+    } catch (err) {
+      // Un negocio con problema de permisos no debe ocultar los demás.
+      console.warn('No se pudo leer el negocio', businessId, err);
+    }
   }
   return tenants;
 }
