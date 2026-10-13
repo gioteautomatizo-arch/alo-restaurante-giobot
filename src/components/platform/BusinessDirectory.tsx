@@ -16,12 +16,12 @@ export const BusinessDirectory: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    getDocs(collection(db, 'businesses'))
+    getDocs(collection(db, 'publicBusinessProfiles'))
       .then((snapshot) => {
         if (cancelled) return;
         const rows = snapshot.docs
           .map((item) => ({ ...(item.data() as DirectoryBusiness), restaurantId: item.id }))
-          .filter((business) => business.publicListing !== false && business.published !== false);
+          .filter((business) => business.published === true);
 
         // Calientito usa la app histórica y sus datos legacy; no depende de businesses/{id}.
         // Se incluye explícitamente en el directorio y su ruta abre la app original.
