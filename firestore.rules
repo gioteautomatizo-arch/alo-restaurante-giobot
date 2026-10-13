@@ -92,13 +92,9 @@ service cloud.firestore {
     }
 
     match /businesses/{businessId}/employees/{employeeUserId} {
-      // Los registros de empleados están aislados dentro de cada negocio.
-      // La lectura requiere rol OWNER, ADMIN o MANAGER activo en ese negocio.
-      // Regla deliberadamente directa: la lista de empleados solo necesita
-      // comprobar la membresía activa del usuario autenticado en este negocio.
-      // No usamos canManageMembership aquí para evitar una cadena de funciones
-      // durante la evaluación de una consulta de colección.
-      allow read: if true;
+      // Los datos del personal son privados: solo responsables activos del negocio
+      // o un administrador de plataforma pueden consultarlos.
+      allow read: if canManageMembership(businessId);
 
       allow create: if isSignedIn()
         && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true
