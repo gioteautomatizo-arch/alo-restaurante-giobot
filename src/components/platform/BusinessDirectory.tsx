@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { ArrowRight, Search, Store, Utensils, ShoppingBag, Sparkles, MapPin, Bot } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import type { RestaurantTenant } from '../../lib/restaurantCore';
@@ -16,7 +16,7 @@ export const BusinessDirectory: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    getDocs(collection(db, 'publicBusinessProfiles'))
+    getDocs(query(collection(db, 'publicBusinessProfiles'), where('published', '==', true)))
       .then((snapshot) => {
         if (cancelled) return;
         const rows = snapshot.docs
