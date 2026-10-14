@@ -120,7 +120,7 @@ export const BusinessCatalogEditor: React.FC<{
     const added: BusinessCatalogItem[] = parsed.map((p) => {
       order += 10;
       const optionGroups = p.options.length >= 2
-        ? [{ id: `g-${Date.now().toString(36)}${order}`, name: 'Elige una opción', required: true, multiple: false, choices: p.options.map((name) => ({ name, price: 0 })) }]
+        ? [{ id: `g-${Date.now().toString(36)}${order}`, name: 'Elige una opción', required: true, multiple: false, choices: p.options.map((o) => ({ name: o.name, price: o.price })) }]
         : undefined;
       return { id: createCatalogItemId(p.name), name: p.name, description: p.description, price: p.price, category: p.category || 'General', available: true, popular: false, sortOrder: order, ...(optionGroups ? { optionGroups } : {}) };
     });

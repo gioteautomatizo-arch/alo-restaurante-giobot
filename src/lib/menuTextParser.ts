@@ -5,14 +5,22 @@
 //   Nombre - descripción - $45
 // Líneas sin precio y cortas (o con ":" / "#" / MAYÚSCULAS) se toman como categoría.
 
+export interface ParsedChoice {
+  name: string;
+  /** Lo que suma al precio base del producto. */
+  price: number;
+}
+
 export interface ParsedMenuItem {
   name: string;
   category: string;
   price: number | null;
   description: string;
   /** Opciones a elegir (ej. Nopales / Pollo / Chorizo). Vacío si no hay. */
-  options: string[];
+  options: ParsedChoice[];
 }
+
+type Row = ParsedMenuItem & { fromPipe: boolean; variantParts: string[] | null };
 
 const PRICE_AT_END = /(?:\$\s*)?(\d{1,6}(?:[.,]\d{1,2})?)\s*(?:pesos|mxn|mx|\$)?\s*$/i;
 
@@ -40,15 +48,63 @@ function looksLikeCategory(line: string): boolean {
 }
 
 function categoryName(line: string): string {
-  return line.replace(/^#{1,6}\s+/, '').replace(/[:：]\s*$/, '').replace(/^[\s*_\-–—=]+|[\s*_\-–—=]+$/g, '').trim();
+  const name = line.replace(/^#{1,6}\s+/, '').replace(/[:：]\s*$/, '').replace(/^[\s*_\-–—=]+|[\s*_\-–—=]+$/g, '').trim();
+  // "TACO NORTEÑO" -> "Taco norteño"
+  if (name.length > 1 && name === name.toUpperCase() && name !== name.toLowerCase()) {
+    const lower = name.toLocaleLowerCase('es-MX');
+    return lower.charAt(0).toLocaleUpperCase('es-MX') + lower.slice(1);
+  }
+  return name;
 }
 
-function splitOptions(raw: string): string[] {
-  return raw.split(/\s*\/\s*|\s*;\s*/).map((o) => o.trim()).filter(Boolean);
+function splitOptions(raw: string): ParsedChoice[] {
+  return raw.split(/\s*\/\s*|\s*;\s*/).map((o) => o.trim()).filter(Boolean).map((name) => ({ name, price: 0 }));
+}
+
+const roundMoney = (n: number) => Math.round(n * 100) / 100;
+
+/** Une las líneas de una sección que son variantes de un mismo producto (Nopales / Pollo / Chorizo $90 …). */
+function mergeVariants(rows: Row[], notes: Record<string, string>): ParsedMenuItem[] {
+  const byCategory = new Map<string, Row[]>();
+  rows.forEach((row) => {
+    if (!byCategory.has(row.category)) byCategory.set(row.category, []);
+    byCategory.get(row.category)!.push(row);
+  });
+
+  const mergedAt = new Map<Row, ParsedMenuItem | null>();
+  byCategory.forEach((list, category) => {
+    if (!list.some((r) => r.variantParts)) return;
+    const members = list.filter((r) => !r.fromPipe && r.price !== null && !r.description && r.options.length === 0);
+    if (!members.some((r) => r.variantParts)) return;
+    const base = Math.min(...members.map((r) => r.price as number));
+    const options: ParsedChoice[] = [];
+    members.forEach((row) => {
+      const extra = roundMoney((row.price as number) - base);
+      (row.variantParts || [row.name]).forEach((name) => {
+        if (!options.some((o) => o.name.toLowerCase() === name.toLowerCase())) options.push({ name, price: extra });
+      });
+    });
+    const merged: ParsedMenuItem = { name: category, category, price: base, description: notes[category] || '', options };
+    members.forEach((row, index) => mergedAt.set(row, index === 0 ? merged : null));
+  });
+
+  const result: ParsedMenuItem[] = [];
+  rows.forEach((row) => {
+    if (mergedAt.has(row)) {
+      const merged = mergedAt.get(row);
+      if (merged) result.push(merged);
+      return;
+    }
+    const { fromPipe: _fp, variantParts: _vp, ...item } = row;
+    if (!item.description && notes[item.category]) item.description = notes[item.category];
+    result.push(item);
+  });
+  return result;
 }
 
 export function parseMenuText(text: string, defaultCategory = 'General'): ParsedMenuItem[] {
-  const items: ParsedMenuItem[] = [];
+  const items: Row[] = [];
+  const notes: Record<string, string> = {};
   let category = defaultCategory;
 
   const lines = text.replace(/\r/g, '').split('\n');
@@ -79,7 +135,7 @@ export function parseMenuText(text: string, defaultCategory = 'General'): Parsed
       let price: number | null = null;
       let cat = '';
       let description = '';
-      let options: string[] = [];
+      let options: ParsedChoice[] = [];
       const rest = parts.slice(1);
       const priceIdx = rest.findIndex((p) => /^\$?\s*\d{1,6}(?:[.,]\d{1,2})?\s*(?:pesos|mxn)?$/i.test(p));
       if (priceIdx >= 0) {
@@ -92,7 +148,7 @@ export function parseMenuText(text: string, defaultCategory = 'General'): Parsed
         cat = rest[0] || '';
         description = rest.slice(1).join(' · ');
       }
-      items.push({ name, category: cat || category, price, description, options });
+      items.push({ name, category: cat || category, price, description, options, fromPipe: true, variantParts: null });
       continue;
     }
 
@@ -117,21 +173,29 @@ export function parseMenuText(text: string, defaultCategory = 'General'): Parsed
         head = split[0].trim();
         description = split.slice(1).join(' - ').trim();
       }
-      const name = clean(head);
-      if (name) items.push({ name, category, price: toPrice(priceMatch[1]), description, options: [] });
+      let name = clean(head);
+      const parts = name.split(/\s+\/\s+/).map((part) => part.trim()).filter(Boolean);
+      const variantParts = parts.length >= 2 ? parts : null;
+      if (!variantParts && /^\d+\s*(pieza|piezas|pza|pzas)\b/i.test(name) && category !== defaultCategory) name = `${category} (${name})`;
+      if (name) items.push({ name, category, price: toPrice(priceMatch[1]), description, options: [], fromPipe: false, variantParts });
       continue;
     }
 
     // 4) Línea sin precio: si hay un producto anterior sin descripción, es su descripción; si no, producto sin precio
+    const noteCandidate = noBullet.split(/\s+/).length >= 4 && /[a-záéíóú]/.test(noBullet);
+    if (noteCandidate && !items.some((row) => row.category === category) && !!next && hasPriceAtEnd(next) && !next.includes('|')) {
+      notes[category] = notes[category] ? `${notes[category]} ${noBullet}` : noBullet;
+      continue;
+    }
     const last = items[items.length - 1];
     if (last && !last.description && last.category === category && noBullet.length > 28 && /[a-záéíóú]/.test(noBullet)) {
       last.description = noBullet;
       continue;
     }
     const name = clean(noBullet);
-    if (name) items.push({ name, category, price: null, description: '', options: [] });
+    if (name) items.push({ name, category, price: null, description: '', options: [], fromPipe: false, variantParts: null });
   }
-  return items;
+  return mergeVariants(items, notes);
 }
 
 /** Instrucciones para pegarle a ChatGPT/Gemini junto con la foto del menú. */
