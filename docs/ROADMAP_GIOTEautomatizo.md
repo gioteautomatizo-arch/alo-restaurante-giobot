@@ -79,3 +79,8 @@ Un directorio público que permita descubrir negocios, consultar catálogos y co
 - El resumen administrativo se suscribe al historial de tickets finales de Caja & Cobro.
 - La tarjeta “Ventas de Hoy” suma `totalPaid` de tickets cerrados en la fecha actual de `America/Mexico_City`, mostrando también el número de tickets.
 - Estado: código guardado; pendiente de build y comparación con caja real.
+
+## Mejora 10X — reportes aislados por negocio
+- El módulo de Reportes recibe el `businessId` activo y consulta pedidos únicamente de ese negocio mediante `subscribeToBusinessRestaurantOrders`.
+- Se eliminó del módulo de reportes multinegocio el listener global sin filtro, que podía mezclar ventas entre negocios.
+- Estado: cambios guardados; pendiente de compilación y prueba con al menos dos negocios.
