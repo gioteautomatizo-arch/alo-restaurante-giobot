@@ -68,3 +68,9 @@ Un directorio público que permita descubrir negocios, consultar catálogos y co
 2. No desplegar reglas Firestore sin probar el acceso del dueño, empleado y visitante.
 3. No declarar una función terminada hasta probarla en el preview/publicación real.
 4. No eliminar ni migrar datos productivos sin respaldo y aprobación explícita.
+
+## Mejora añadida — POS multinegocio
+- Código añadido: suscripción de pedidos filtrada por `businessId` explícito.
+- Código añadido: creación de pedidos desde el POS con el `businessId` del negocio abierto.
+- Código añadido: validación de pertenencia al negocio antes de cambiar el estado de un pedido.
+- Estado: pendiente de compilación y pruebas en AI Studio; no se considera validado hasta probarlo.
