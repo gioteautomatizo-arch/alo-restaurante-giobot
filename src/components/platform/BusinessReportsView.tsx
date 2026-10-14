@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, BarChart3, Banknote, CreditCard, Landmark, Receipt, ShoppingBag } from 'lucide-react';
 import type { RestaurantOrder } from '../../types';
-import { subscribeToRestaurantOrders } from '../../lib/ordersService';
+import { subscribeToBusinessRestaurantOrders } from '../../lib/ordersService';
 import { buildSalesReport } from '../../lib/businessReports';
 import type { ReportPeriod } from '../../lib/businessReports';
 
@@ -19,18 +19,18 @@ const card = 'rounded-2xl border border-[#3A3022] bg-[#111111] p-4';
  * Reportes de ventas. Usa los pedidos que el negocio ya registra (POS y pedidos),
  * así que no genera costo extra ni usa IA.
  */
-export const BusinessReportsView: React.FC<{ businessName: string; onBack: () => void }> = ({ businessName, onBack }) => {
+export const BusinessReportsView: React.FC<{ businessId: string; businessName: string; onBack: () => void }> = ({ businessId, businessName, onBack }) => {
   const [orders, setOrders] = useState<RestaurantOrder[]>([]);
   const [ready, setReady] = useState(false);
   const [period, setPeriod] = useState<ReportPeriod>(7);
 
   useEffect(
     () =>
-      subscribeToRestaurantOrders((data) => {
+      subscribeToBusinessRestaurantOrders(businessId, (data) => {
         setOrders(data);
         setReady(true);
       }),
-    [],
+    [businessId],
   );
 
   const report = useMemo(() => buildSalesReport(orders, period), [orders, period]);
