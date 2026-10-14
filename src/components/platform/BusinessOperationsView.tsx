@@ -3,7 +3,7 @@ import { ArrowLeft, CheckCircle2, ClipboardList, Minus, PackagePlus, Plus, Shopp
 import type { BusinessCatalogItem } from '../../lib/businessCatalogService';
 import { subscribeToBusinessCatalog } from '../../lib/businessCatalogService';
 import type { RestaurantOrder, RestaurantOrderItem, RestaurantOrderStatus } from '../../types';
-import { createRestaurantOrder, subscribeToRestaurantOrders, updateRestaurantOrderStatus } from '../../lib/ordersService';
+import { createBusinessRestaurantOrder, subscribeToBusinessRestaurantOrders, updateBusinessRestaurantOrderStatus } from '../../lib/ordersService';
 import { getCurrentAuthUser } from '../../lib/firebase';
 
 const STATUS_LABELS: Record<RestaurantOrderStatus, string> = {
@@ -44,7 +44,7 @@ export const BusinessOperationsView: React.FC<{
     () => setCatalog([])
   ), [businessId]);
 
-  useEffect(() => subscribeToRestaurantOrders(setOrders), []);
+  useEffect(() => subscribeToBusinessRestaurantOrders(businessId, setOrders), [businessId]);
 
   const availableCatalog = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase('es-MX');
@@ -105,7 +105,7 @@ export const BusinessOperationsView: React.FC<{
         };
       });
 
-      await createRestaurantOrder({
+      await createBusinessRestaurantOrder(businessId, {
         orderType: 'pickup',
         orderSource: 'CAJA',
         capturedById: authUser.uid,
@@ -146,7 +146,7 @@ export const BusinessOperationsView: React.FC<{
     }
 
     try {
-      await updateRestaurantOrderStatus(order.id, nextStatus, {
+      await updateBusinessRestaurantOrderStatus(businessId, order.id, nextStatus, {
         id: authUser.uid,
         name: authUser.displayName || authUser.email || 'Usuario',
       });
@@ -162,7 +162,7 @@ export const BusinessOperationsView: React.FC<{
     if (!authUser) return;
 
     try {
-      await updateRestaurantOrderStatus(order.id, 'CANCELADO', {
+      await updateBusinessRestaurantOrderStatus(businessId, order.id, 'CANCELADO', {
         id: authUser.uid,
         name: authUser.displayName || authUser.email || 'Usuario',
       });
