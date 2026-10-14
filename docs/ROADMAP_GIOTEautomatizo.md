@@ -74,3 +74,8 @@ Un directorio público que permita descubrir negocios, consultar catálogos y co
 - Código añadido: creación de pedidos desde el POS con el `businessId` del negocio abierto.
 - Código añadido: validación de pertenencia al negocio antes de cambiar el estado de un pedido.
 - Estado: pendiente de compilación y pruebas en AI Studio; no se considera validado hasta probarlo.
+
+## Mejora añadida — resumen de ventas diarias
+- El resumen administrativo se suscribe al historial de tickets finales de Caja & Cobro.
+- La tarjeta “Ventas de Hoy” suma `totalPaid` de tickets cerrados en la fecha actual de `America/Mexico_City`, mostrando también el número de tickets.
+- Estado: código guardado; pendiente de build y comparación con caja real.
