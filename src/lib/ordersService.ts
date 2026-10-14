@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   onSnapshot,
   query,
   setDoc,
@@ -146,6 +147,113 @@ export async function createRestaurantOrder(
  * Suscripción global compartida para el panel administrativo.
  * Todos los consumidores internos reutilizan un único onSnapshot de Firestore.
  */
+
+/**
+ * Suscripción de pedidos aislada para el espacio multinegocio.
+ * A diferencia del listener histórico, recibe el tenant explícitamente y no depende
+ * de un restaurantId global almacenado en el dispositivo.
+ */
+export function subscribeToBusinessRestaurantOrders(
+  businessId: string,
+  callback: RestaurantOrdersSubscriber
+): () => void {
+  if (!businessId.trim()) {
+    callback([]);
+    return () => {};
+  }
+
+  const q = query(
+    collection(db, ORDERS_COLLECTION),
+    where('restaurantId', '==', businessId)
+  );
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const orders = snapshot.docs.map((snap) => ({
+        ...(snap.data() as RestaurantOrder),
+        id: snap.id,
+      }));
+      orders.sort((a, b) => (Date.parse(b.createdAt || '') || 0) - (Date.parse(a.createdAt || '') || 0));
+      callback(orders);
+    },
+    (error) => {
+      console.warn('[ordersService] business order listener error:', businessId, error);
+      callback([]);
+    }
+  );
+}
+
+function buildBusinessOrderCode(businessId: string): string {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const suffix = Math.floor(100 + Math.random() * 900);
+  const prefix = businessId === 'alo-restaurante'
+    ? ((getRestaurantInfo().orderFolioPrefix || 'CAL').toUpperCase().trim())
+    : businessId.replace(/[^a-z0-9]/gi, '').slice(0, 3).toUpperCase().padEnd(3, 'X');
+  return `${prefix}-${hh}${mm}-${suffix}`;
+}
+
+/** Crea un pedido para el tenant indicado; evita depender del contexto global de Calientito. */
+export async function createBusinessRestaurantOrder(
+  businessId: string,
+  order: Omit<RestaurantOrder, 'id' | 'code' | 'restaurantId' | 'status' | 'createdAt' | 'updatedAt'>
+): Promise<RestaurantOrder> {
+  if (!businessId.trim()) throw new Error('No se indicó el negocio del pedido.');
+
+  const now = new Date().toISOString();
+  const payload = sanitizeFirestorePayload({
+    ...order,
+    code: buildBusinessOrderCode(businessId),
+    restaurantId: businessId,
+    status: 'NUEVO' as RestaurantOrderStatus,
+    billingStatus: 'PENDIENTE',
+    createdAt: now,
+    updatedAt: now,
+  }) as Omit<RestaurantOrder, 'id'>;
+
+  const ref = await addDoc(collection(db, ORDERS_COLLECTION), payload);
+
+  if (payload.orderType === 'dine_in' && payload.tableNumber) {
+    const publicPayload: Omit<PublicTableOrder, 'id'> = {
+      orderId: ref.id,
+      code: payload.code,
+      restaurantId: businessId,
+      tableNumber: payload.tableNumber,
+      tableSessionId: payload.tableSessionId,
+      accountId: payload.accountId,
+      accountLabel: payload.accountLabel,
+      orderSource: payload.orderSource,
+      items: payload.items,
+      total: Number(payload.total || 0),
+      status: payload.status,
+      billingStatus: payload.billingStatus,
+      createdAt: payload.createdAt,
+      updatedAt: payload.updatedAt,
+    };
+    await setDoc(doc(db, PUBLIC_TABLE_ORDERS_COLLECTION, ref.id), sanitizeFirestorePayload(publicPayload))
+      .catch((error) => console.warn('[ordersService] no se pudo publicar resumen de mesa del tenant:', error));
+  }
+
+  return { ...payload, id: ref.id } as RestaurantOrder;
+}
+
+/** Actualiza un pedido solo si su documento pertenece al tenant que abrió el panel. */
+export async function updateBusinessRestaurantOrderStatus(
+  businessId: string,
+  orderId: string,
+  status: RestaurantOrderStatus,
+  user: Pick<StaffUser, 'id' | 'name'>
+): Promise<void> {
+  const orderSnap = await getDoc(doc(db, ORDERS_COLLECTION, orderId));
+  if (!orderSnap.exists()) throw new Error('El pedido ya no existe.');
+  if ((orderSnap.data() as RestaurantOrder).restaurantId !== businessId) {
+    throw new Error('Este pedido pertenece a otro negocio.');
+  }
+  await updateRestaurantOrderStatus(orderId, status, user);
+}
+
 export function subscribeToRestaurantOrders(
   callback: RestaurantOrdersSubscriber
 ): () => void {
