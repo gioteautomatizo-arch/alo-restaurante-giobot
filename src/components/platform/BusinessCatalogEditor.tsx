@@ -6,6 +6,7 @@ import type { ParsedMenuItem } from '../../lib/menuTextParser';
 import type { BusinessCatalogItem, CatalogOptionGroup } from '../../lib/businessCatalogService';
 import {
   createCatalogItemId,
+  ensureUniqueIds,
   saveBusinessCatalog,
   subscribeToBusinessCatalog,
 } from '../../lib/businessCatalogService';
@@ -54,7 +55,7 @@ export const BusinessCatalogEditor: React.FC<{
     return subscribeToBusinessCatalog(
       businessId,
       (catalog) => {
-        setItems(catalog?.items || []);
+        setItems(ensureUniqueIds(catalog?.items || []));
         setLoaded(true);
       },
       (error: any) => {
@@ -123,7 +124,7 @@ export const BusinessCatalogEditor: React.FC<{
         : undefined;
       return { id: createCatalogItemId(p.name), name: p.name, description: p.description, price: p.price, category: p.category || 'General', available: true, popular: false, sortOrder: order, ...(optionGroups ? { optionGroups } : {}) };
     });
-    setItems([...base, ...added]);
+    setItems(ensureUniqueIds([...base, ...added]));
     setShowPaste(false);
     setDirty(true);
     setMessage(`Agregamos ${added.length} productos. Revisa, ponles foto y toca Guardar catálogo.`);
@@ -137,7 +138,7 @@ export const BusinessCatalogEditor: React.FC<{
       id: createCatalogItemId(item.name),
       available: true,
     }));
-    setItems(nextItems);
+    setItems(ensureUniqueIds(nextItems));
     setMessage('Plantilla cargada. Guarda para publicarla en este negocio.');
   };
 

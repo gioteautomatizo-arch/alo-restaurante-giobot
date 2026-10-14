@@ -71,7 +71,18 @@ export function createCatalogItemId(name: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 72);
-  return `${slug || 'producto'}-${Date.now().toString(36)}`;
+  return `${slug || 'producto'}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/** Garantiza que cada producto tenga un id único (dos productos con el mismo id rompen editar, borrar y el carrito). */
+export function ensureUniqueIds<T extends { id: string; name: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.map((item) => {
+    let id = item.id;
+    while (!id || seen.has(id)) id = createCatalogItemId(item.name || 'producto');
+    seen.add(id);
+    return id === item.id ? item : { ...item, id };
+  });
 }
 
 export function subscribeToBusinessCatalog(
@@ -104,7 +115,7 @@ export async function saveBusinessCatalog(
   const payload: BusinessCatalogDocument = {
     businessId,
     sourceLabel: 'Catálogo del negocio',
-    items: items
+    items: ensureUniqueIds(items)
       .map((item) => {
         const optionGroups = cleanOptionGroups(item.optionGroups);
         const { optionGroups: _discard, ...rest } = item;
