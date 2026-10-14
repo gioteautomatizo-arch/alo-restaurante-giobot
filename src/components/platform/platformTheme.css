@@ -15,16 +15,10 @@
   color: var(--giote-white);
 }
 
-/* Firma visual de plataforma: Gioteautomatizo es la marca madre. */
+/* Sin banner de logo: el archivo original es de muy baja resolución y se veía pixelado.
+   La marca Gioteautomatizo se muestra como texto en el encabezado de cada pantalla. */
 .giote-platform-theme::before {
-  content: '';
-  display: block;
-  width: min(180px, 42vw);
-  aspect-ratio: 1;
-  margin: 18px auto 8px;
-  background: url('/brand/gioteautomatizo-logo.webp') center / contain no-repeat;
-  border-radius: 26px;
-  box-shadow: 0 14px 45px rgb(0 0 0 / 0.28);
+  display: none;
 }
 
 .giote-platform-theme [class~="bg-[#0F172A]"],

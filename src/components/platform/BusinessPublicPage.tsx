@@ -152,25 +152,71 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
   const quantityOf = (id: string) => cart.filter((line) => line.item.id === id).reduce((sum, line) => sum + line.quantity, 0);
   const theme = { bg, surface, text, primary, accent, border };
 
+  const renderCard = (item: BusinessCatalogItem) => {
+    const quantity = quantityOf(item.id);
+    const customizable = (item.optionGroups || []).length > 0;
+    return (
+      <article key={item.id} onClick={() => setSelectedItem(item)} className="flex cursor-pointer flex-col overflow-hidden rounded-2xl border transition active:scale-[0.99]" style={{ borderColor: border, backgroundColor: surface }}>
+        <div className="relative aspect-[4/3] w-full overflow-hidden" style={{ backgroundColor: bg }}>
+          {item.imageUrl ? (
+            <img src={item.imageUrl} alt={item.name} loading="lazy" className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center" style={{ background: `linear-gradient(135deg, ${surface}, ${bg})` }}>
+              <span className="flex h-11 w-11 items-center justify-center rounded-full border" style={{ borderColor: border }}><Utensils className="h-5 w-5" style={{ color: accent }} /></span>
+            </div>
+          )}
+          {item.popular && <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase" style={{ backgroundColor: primary, color: bg }}><Sparkles className="h-2.5 w-2.5" /> Favorito</span>}
+          {quantity > 0 && <span className="absolute right-2 top-2 rounded-full bg-black/75 px-2 py-0.5 text-[10px] font-black text-white">En pedido: {quantity}</span>}
+          <span className="absolute bottom-2 right-2 rounded-xl bg-black/80 px-2.5 py-1 font-serif text-xs font-black text-white">
+            {formatMoney(Number(item.price))}{hasPriceFrom(item) && <span className="font-sans text-[9px] font-normal opacity-80"> (desde)</span>}
+          </span>
+        </div>
+        <div className="flex flex-1 flex-col p-3">
+          <h3 className="font-serif text-sm font-black leading-snug">{item.name}</h3>
+          {item.description && <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed opacity-75">{item.description}</p>}
+          <button
+            type="button"
+            onClick={(event) => { event.stopPropagation(); if (customizable) setSelectedItem(item); else add(item); }}
+            className="mt-auto flex w-full items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-black"
+            style={{ backgroundColor: primary, color: bg, marginTop: '0.75rem' }}
+          >
+            <Plus className="h-3.5 w-3.5" /> {customizable ? 'Agregar / Personalizar' : 'Agregar'}
+          </button>
+        </div>
+      </article>
+    );
+  };
+
+  const starItems = groups.flatMap((group) => group.items).filter((item) => item.popular);
+
   return (
     <div className="min-h-screen pb-28" style={{ backgroundColor: bg, color: text }}>
-      <header className="sticky top-0 z-30 border-b px-4 py-3 backdrop-blur" style={{ borderColor: border, backgroundColor: `${bg}ee` }}>
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white">
-              {b.logoUrl ? <img src={b.logoUrl} alt="" className="h-full w-full object-contain" /> : <Store className="h-5 w-5 text-stone-500" />}
+      <header className="border-b px-4 py-3" style={{ borderColor: border, backgroundColor: surface }}>
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow">
+              {b.logoUrl ? <img src={b.logoUrl} alt={b.restaurantName} className="h-full w-full object-contain" /> : <Store className="h-6 w-6 text-stone-500" />}
             </div>
-            <strong className="truncate font-serif text-lg">{b.restaurantName}</strong>
+            <div className="min-w-0">
+              <strong className="block truncate font-serif text-lg leading-tight">{b.restaurantName}</strong>
+              {b.hoursText && <span className="mt-0.5 flex items-center gap-1 text-[11px] opacity-85"><Clock className="h-3 w-3 shrink-0" style={{ color: accent }} /><span className="truncate">{b.hoursText}</span></span>}
+              {b.address && <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="mt-0.5 flex items-center gap-1 text-[11px] opacity-85"><MapPin className="h-3 w-3 shrink-0" style={{ color: accent }} /><span className="truncate">{b.address}</span></a>}
+            </div>
           </div>
-          <button type="button" onClick={() => setCartOpen(true)} className="relative flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-black" style={{ backgroundColor: primary, color: bg }}>
-            <ShoppingBag className="h-4 w-4" /> Pedido
-            {itemCount > 0 && <span className="rounded-full px-1.5 text-xs" style={{ backgroundColor: bg, color: primary }}>{itemCount}</span>}
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {whatsappNumber && <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" className="flex h-9 w-9 items-center justify-center rounded-xl border" style={{ borderColor: border }}><MessageCircle className="h-4 w-4" style={{ color: accent }} /></a>}
+            {instagram && <a href={instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="flex h-9 w-9 items-center justify-center rounded-xl border" style={{ borderColor: border }}><Instagram className="h-4 w-4" style={{ color: accent }} /></a>}
+            {facebook && <a href={facebook} target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="flex h-9 w-9 items-center justify-center rounded-xl border" style={{ borderColor: border }}><Facebook className="h-4 w-4" style={{ color: accent }} /></a>}
+            <button type="button" onClick={() => setCartOpen(true)} className="relative flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-black" style={{ backgroundColor: primary, color: bg }}>
+              <ShoppingBag className="h-4 w-4" /> Pedido
+              {itemCount > 0 && <span className="rounded-full px-1.5 text-xs" style={{ backgroundColor: bg, color: primary }}>{itemCount}</span>}
+            </button>
+          </div>
         </div>
       </header>
 
       <section
-        className="relative px-4 py-10 text-center sm:py-14"
+        className="relative px-4 py-12 text-center sm:py-16"
         style={{
           backgroundColor: surface,
           backgroundImage: b.coverUrl ? `linear-gradient(0deg, ${bg}f2, ${bg}99), url("${b.coverUrl}")` : undefined,
@@ -181,18 +227,22 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
         <div className="mx-auto max-w-3xl space-y-3">
           <h1 className="font-serif text-3xl font-black leading-tight sm:text-5xl">{b.tagline || b.restaurantName}</h1>
           {b.description && <p className="mx-auto max-w-2xl text-sm opacity-85 sm:text-base">{b.description}</p>}
-          <div className="flex flex-wrap items-center justify-center gap-2 pt-2 text-xs">
-            {b.hoursText && <span className="flex items-center gap-1.5 rounded-full border px-3 py-1.5" style={{ borderColor: border }}><Clock className="h-3.5 w-3.5" style={{ color: accent }} />{b.hoursText}</span>}
-            {b.address && <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-full border px-3 py-1.5" style={{ borderColor: border }}><MapPin className="h-3.5 w-3.5" style={{ color: accent }} />{b.address}</a>}
-            {whatsappNumber && <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-full border px-3 py-1.5" style={{ borderColor: border }}><MessageCircle className="h-3.5 w-3.5" style={{ color: accent }} />WhatsApp</a>}
-            {instagram && <a href={instagram} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-full border px-3 py-1.5" style={{ borderColor: border }}><Instagram className="h-3.5 w-3.5" style={{ color: accent }} />Instagram</a>}
-            {facebook && <a href={facebook} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-full border px-3 py-1.5" style={{ borderColor: border }}><Facebook className="h-3.5 w-3.5" style={{ color: accent }} />Facebook</a>}
-          </div>
         </div>
       </section>
 
       <main className="mx-auto max-w-5xl px-4 py-6">
-        <div className="relative">
+        {catalogReady && starItems.length > 0 && (
+          <section>
+            <p className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide" style={{ color: accent }}><Sparkles className="h-3.5 w-3.5" /> Favoritos de {b.restaurantName}</p>
+            <h2 className="mt-1 font-serif text-2xl font-black">Platillos estrella</h2>
+            <div className="-mx-4 mt-3 flex gap-3 overflow-x-auto px-4 pb-2">
+              {starItems.map((item) => <div key={item.id} className="flex w-44 shrink-0 flex-col sm:w-52">{renderCard(item)}</div>)}
+            </div>
+          </section>
+        )}
+
+        <h2 className={`font-serif text-2xl font-black ${catalogReady && starItems.length > 0 ? 'mt-8' : ''}`}>Carta completa</h2>
+        <div className="relative mt-3">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-60" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar en el menú…" className="w-full rounded-2xl border py-3 pl-10 pr-4 text-sm outline-none" style={{ borderColor: border, backgroundColor: surface, color: text }} />
         </div>
@@ -218,40 +268,7 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
             <section key={group.category} className="mt-7">
               <h2 className="mb-3 font-serif text-xl font-black">{group.category}</h2>
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
-                {group.items.map((item) => {
-                  const quantity = quantityOf(item.id);
-                  const customizable = (item.optionGroups || []).length > 0;
-                  return (
-                    <article key={item.id} onClick={() => setSelectedItem(item)} className="flex cursor-pointer flex-col overflow-hidden rounded-2xl border transition active:scale-[0.99]" style={{ borderColor: border, backgroundColor: surface }}>
-                      <div className="relative aspect-[4/3] w-full overflow-hidden" style={{ backgroundColor: bg }}>
-                        {item.imageUrl ? (
-                          <img src={item.imageUrl} alt={item.name} loading="lazy" className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center" style={{ background: `linear-gradient(135deg, ${surface}, ${bg})` }}>
-                            <span className="flex h-11 w-11 items-center justify-center rounded-full border" style={{ borderColor: border }}><Utensils className="h-5 w-5" style={{ color: accent }} /></span>
-                          </div>
-                        )}
-                        {item.popular && <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase" style={{ backgroundColor: primary, color: bg }}><Sparkles className="h-2.5 w-2.5" /> Favorito</span>}
-                        {quantity > 0 && <span className="absolute right-2 top-2 rounded-full bg-black/75 px-2 py-0.5 text-[10px] font-black text-white">En pedido: {quantity}</span>}
-                        <span className="absolute bottom-2 right-2 rounded-xl bg-black/80 px-2.5 py-1 font-serif text-xs font-black text-white">
-                          {formatMoney(Number(item.price))}{hasPriceFrom(item) && <span className="font-sans text-[9px] font-normal opacity-80"> (desde)</span>}
-                        </span>
-                      </div>
-                      <div className="flex flex-1 flex-col p-3">
-                        <h3 className="font-serif text-sm font-black leading-snug">{item.name}</h3>
-                        {item.description && <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed opacity-75">{item.description}</p>}
-                        <button
-                          type="button"
-                          onClick={(event) => { event.stopPropagation(); if (customizable) setSelectedItem(item); else add(item); }}
-                          className="mt-auto flex w-full items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-black"
-                          style={{ backgroundColor: primary, color: bg, marginTop: '0.75rem' }}
-                        >
-                          <Plus className="h-3.5 w-3.5" /> {customizable ? 'Agregar / Personalizar' : 'Agregar'}
-                        </button>
-                      </div>
-                    </article>
-                  );
-                })}
+                {group.items.map((item) => renderCard(item))}
               </div>
             </section>
           ))
