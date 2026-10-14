@@ -130,7 +130,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   }
 
   if (view === 'reports' && business) {
-    return <BusinessReportsView businessName={business.branding.restaurantName} onBack={() => setView('workspace')} />;
+    return <BusinessReportsView businessId={businessId} businessName={business.branding.restaurantName} onBack={() => setView('workspace')} />;
   }
 
   if (view === 'branding' && business) {
