@@ -63,6 +63,31 @@ function money(value: number): string {
   })}`;
 }
 
+function localDateKey(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'fecha-desconocida';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateHeading(key: string): string {
+  if (key === 'fecha-desconocida') return 'Fecha no disponible';
+  const [year, month, day] = key.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+  const label = sameDay(date, today) ? 'Hoy' : sameDay(date, yesterday) ? 'Ayer' :
+    date.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return label.charAt(0).toLocaleUpperCase('es-MX') + label.slice(1);
+}
+
 function isToday(iso: string): boolean {
   const d = new Date(iso);
   const now = new Date();
@@ -121,6 +146,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
   const [sessionsByNumber, setSessionsByNumber] = useState<Record<number, TableSession | null>>({});
   const [payments, setPayments] = useState<TablePayment[]>([]);
   const [receipts, setReceipts] = useState<SaleReceipt[]>([]);
+  const [receiptDateFilter, setReceiptDateFilter] = useState<string>('TODOS');
   const [requests, setRequests] = useState<TableServiceRequest[]>([]);
   const [selectedTable, setSelectedTable] = useState<TableRecord | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
@@ -162,6 +188,25 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     () => tables.filter((t) => t.tableNumber !== 3).sort((a, b) => a.tableNumber - b.tableNumber),
     [tables]
   );
+
+  const receiptGroups = useMemo(() => {
+    const grouped = new Map<string, SaleReceipt[]>();
+    [...receipts]
+      .sort((a, b) => Date.parse(b.closedAt || '') - Date.parse(a.closedAt || ''))
+      .forEach((receipt) => {
+        const key = localDateKey(receipt.closedAt || '');
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key)!.push(receipt);
+      });
+    return Array.from(grouped.entries()).map(([date, items]) => ({
+      date,
+      items,
+      total: items.reduce((sum, item) => sum + Number(item.totalPaid || 0), 0),
+    }));
+  }, [receipts]);
+  const visibleReceiptGroups = receiptDateFilter === 'TODOS'
+    ? receiptGroups
+    : receiptGroups.filter((group) => group.date === receiptDateFilter);
 
   const todayPayments = useMemo(() => payments.filter((p) => p.status === 'PAGADO' && isToday(p.createdAt)), [payments]);
   const todayTotal = todayPayments.reduce((sum, p) => sum + p.total, 0);
@@ -502,51 +547,81 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
           <ReceiptText className="w-5 h-5 text-[#C9974D]" />
         </div>
 
+        <div className="px-4 sm:px-5 py-3 border-b border-[#F4E3C8] flex flex-wrap items-center justify-between gap-3">
+          <label className="text-[11px] font-bold text-[#7A5A45] flex items-center gap-2">
+            Ver fecha
+            <select
+              value={receiptDateFilter}
+              onChange={(event) => setReceiptDateFilter(event.target.value)}
+              className="rounded-xl border border-[#F4E3C8] bg-[#FFF9F0] px-3 py-2 text-xs text-[#2B1B13]"
+            >
+              <option value="TODOS">Todas las fechas</option>
+              {receiptGroups.map((group) => (
+                <option key={group.date} value={group.date}>{formatDateHeading(group.date)} · {group.items.length}</option>
+              ))}
+            </select>
+          </label>
+          <span className="text-[10px] text-[#7A5A45]">{receipts.length} ticket(s) · {receiptGroups.length} día(s)</span>
+        </div>
+
         {receipts.length === 0 ? (
           <div className="px-5 py-7 text-center text-xs text-[#7A5A45]">Todavía no hay tickets finales registrados.</div>
+        ) : visibleReceiptGroups.length === 0 ? (
+          <div className="px-5 py-7 text-center text-xs text-[#7A5A45]">No hay tickets para esa fecha.</div>
         ) : (
           <div className="divide-y divide-[#F4E3C8]">
-            {receipts.slice(0, 20).map((receipt) => (
-              <details key={receipt.id || receipt.code} className="group">
-                <summary className="list-none cursor-pointer px-4 sm:px-5 py-4 flex items-center justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <strong className="font-serif text-[#2B1B13]">Mesa {receipt.tableNumber}</strong>
-                      <span className="text-[9px] font-black px-2 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">PAGADO</span>
-                    </div>
-                    <div className="text-[10px] text-[#7A5A45] mt-1">{receipt.code} · {new Date(receipt.closedAt).toLocaleString('es-MX')}</div>
-                    <div className="text-[10px] text-[#A86B3D] mt-1">{receipt.waiterName ? ('Mesero: ' + receipt.waiterName) : 'Sin mesero'} · {receipt.orders.length} comanda(s)</div>
+            {visibleReceiptGroups.map((group, groupIndex) => (
+              <details key={group.date} open={groupIndex === 0} className="group/date">
+                <summary className="list-none cursor-pointer px-4 sm:px-5 py-3 bg-[#FFF9F0] flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <strong className="font-serif text-sm text-[#2B1B13]">{formatDateHeading(group.date)}</strong>
+                    <span className="ml-2 text-[10px] text-[#7A5A45]">{group.items.length} ticket(s)</span>
                   </div>
-                  <div className="text-right shrink-0">
-                    <div className="font-serif font-black text-lg text-[#2B1B13]">{money(receipt.totalPaid)}</div>
-                    <div className="text-[9px] text-[#7A5A45]">Ver detalle</div>
-                  </div>
+                  <strong className="font-serif text-[#2B1B13]">{money(group.total)}</strong>
                 </summary>
-
-                <div className="px-4 sm:px-5 pb-5 space-y-3">
-                  {receipt.orders.map((order) => (
-                    <div key={order.orderId || order.code} className="rounded-2xl bg-[#FFF9F0] border border-[#F4E3C8] p-3">
-                      <div className="flex justify-between gap-3 text-[11px] font-bold text-[#5C3825]">
-                        <span>#{order.code}</span>
-                        <span>{money(order.total)}</span>
-                      </div>
-                      <div className="mt-2 space-y-1">
-                        {order.items.map((item, index) => (
-                          <div key={order.code + '-' + item.productId + '-' + index} className="flex justify-between gap-3 text-[11px] text-[#6B4028]">
-                            <span>{item.quantity}× {item.name}{item.personLabel ? (' · ' + item.personLabel) : ''}</span>
-                            <span>{money(item.totalPrice)}</span>
+                <div className="divide-y divide-[#F4E3C8]">
+                  {group.items.map((receipt) => (
+                    <details key={receipt.id || receipt.code} className="group">
+                      <summary className="list-none cursor-pointer px-4 sm:px-5 py-4 flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <strong className="font-serif text-[#2B1B13]">Mesa {receipt.tableNumber}</strong>
+                            <span className="text-[9px] font-black px-2 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">PAGADO</span>
+                          </div>
+                          <div className="text-[10px] text-[#7A5A45] mt-1">{receipt.code} · {new Date(receipt.closedAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</div>
+                          <div className="text-[10px] text-[#A86B3D] mt-1">{receipt.waiterName ? ('Mesero: ' + receipt.waiterName) : 'Sin mesero'} · {receipt.orders.length} comanda(s)</div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="font-serif font-black text-lg text-[#2B1B13]">{money(receipt.totalPaid)}</div>
+                          <div className="text-[9px] text-[#7A5A45]">Ver detalle</div>
+                        </div>
+                      </summary>
+                      <div className="px-4 sm:px-5 pb-5 space-y-3">
+                        {receipt.orders.map((order) => (
+                          <div key={order.orderId || order.code} className="rounded-2xl bg-[#FFF9F0] border border-[#F4E3C8] p-3">
+                            <div className="flex justify-between gap-3 text-[11px] font-bold text-[#5C3825]">
+                              <span>#{order.code}</span>
+                              <span>{money(order.total)}</span>
+                            </div>
+                            <div className="mt-2 space-y-1">
+                              {order.items.map((item, index) => (
+                                <div key={order.code + '-' + item.productId + '-' + index} className="flex justify-between gap-3 text-[11px] text-[#6B4028]">
+                                  <span>{item.quantity}× {item.name}{item.personLabel ? (' · ' + item.personLabel) : ''}</span>
+                                  <span>{money(item.totalPrice)}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         ))}
+                        <div className="rounded-2xl bg-[#3A2418] text-[#FFF7EA] p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                          <div><span className="block text-[#C9974D] text-[9px] uppercase">Subtotal</span><strong>{money(receipt.subtotal)}</strong></div>
+                          <div><span className="block text-[#C9974D] text-[9px] uppercase">Descuento</span><strong>{money(receipt.discountAmount)}</strong></div>
+                          <div><span className="block text-[#C9974D] text-[9px] uppercase">Propina</span><strong>{money(receipt.tipAmount)}</strong></div>
+                          <div><span className="block text-[#C9974D] text-[9px] uppercase">Total pagado</span><strong>{money(receipt.totalPaid)}</strong></div>
+                        </div>
                       </div>
-                    </div>
+                    </details>
                   ))}
-
-                  <div className="rounded-2xl bg-[#3A2418] text-[#FFF7EA] p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                    <div><span className="block text-[#C9974D] text-[9px] uppercase">Subtotal</span><strong>{money(receipt.subtotal)}</strong></div>
-                    <div><span className="block text-[#C9974D] text-[9px] uppercase">Descuento</span><strong>{money(receipt.discountAmount)}</strong></div>
-                    <div><span className="block text-[#C9974D] text-[9px] uppercase">Propina</span><strong>{money(receipt.tipAmount)}</strong></div>
-                    <div><span className="block text-[#C9974D] text-[9px] uppercase">Total pagado</span><strong>{money(receipt.totalPaid)}</strong></div>
-                  </div>
                 </div>
               </details>
             ))}
