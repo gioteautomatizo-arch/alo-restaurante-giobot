@@ -13,6 +13,7 @@ Un directorio público que permita descubrir negocios, consultar catálogos y co
 - Espacio privado por negocio: `#business/{id}`.
 - Página pública por negocio: `#negocio/{id}`.
 - Catálogo público, carrito local y preparación de pedido por WhatsApp.
+- Historial de tickets cerrados agrupado por fecha, con filtro por día, subtotal diario y sin límite artificial de 20 tickets (pendiente de validación en ejecución).
 - Módulos de marca, catálogo, personal, operaciones y reportes.
 - Perfiles públicos separados en `publicBusinessProfiles/{businessId}`.
 - Publicar/ocultar página desde el espacio del propietario.
