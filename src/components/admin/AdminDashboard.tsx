@@ -44,6 +44,8 @@ import { LocalDataMigrationModal } from './LocalDataMigrationModal';
 import { TablesView } from './TablesView';
 import { OrdersView } from './OrdersView';
 import { TableAccountsView } from './TableAccountsView';
+import type { SaleReceipt } from '../../types';
+import { subscribeToSaleReceipts } from '../../lib/saleReceiptsService';
 import { subscribeToPendingTableRequests } from '../../lib/tableRequestsService';
 import { subscribeToRestaurantOrders } from '../../lib/ordersService';
 import {
@@ -137,6 +139,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>(() => getDefaultTabForRole(currentUser.role));
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
+  const [saleReceipts, setSaleReceipts] = useState<SaleReceipt[]>([]);
   const [isMigrationModalOpen, setIsMigrationModalOpen] = useState<boolean>(false);
   const [syncState, setSyncState] = useState<SyncState>(getSyncState());
   const [googleUser, setGoogleUser] = useState<FirebaseUser | null>(getCurrentAuthUser());
@@ -151,6 +154,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const knownReadyOrderIdsRef = useRef<Set<string> | null>(null);
 
   const device = getDeviceIdentifier();
+
+  useEffect(() => subscribeToSaleReceipts(setSaleReceipts), []);
 
   useEffect(() => {
     const unsubSync = subscribeToSyncState((state) => {
@@ -323,6 +328,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     setLocalEffectiveService(getEffectiveService());
   };
+
+  const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
+  const todayClosedReceipts = saleReceipts.filter((receipt) => {
+    if (!receipt.closedAt) return false;
+    return new Date(receipt.closedAt).toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' }) === todayKey;
+  });
+  const todayClosedSales = todayClosedReceipts.reduce((sum, receipt) => sum + Number(receipt.totalPaid || 0), 0);
 
   const currentShift = getCurrentShift();
   const shiftExpenses = currentShift ? getExpenses(currentShift.id) : [];
@@ -822,6 +834,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </span>
                 <span className="text-[11px] text-[#6B4028] block">
                   Efectivo: ${(currentShift?.salesCash || 0).toFixed(2)} | Tarjeta: ${(currentShift?.salesCard || 0).toFixed(2)}
+                </span>
+              </div>
+
+              {/* Ventas confirmadas al cerrar tickets, fuente del historial de Caja & Cobro */}
+              <div className="bg-white p-5 rounded-3xl border border-[#F4E3C8] shadow-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-[#A86B3D] uppercase tracking-wider">
+                    Ventas de Hoy
+                  </span>
+                  <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 flex items-center justify-center">
+                    <Receipt className="w-4 h-4" />
+                  </div>
+                </div>
+                <span className="font-serif font-black text-2xl text-[#2B1B13] block">
+                  ${todayClosedSales.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+                <span className="text-[11px] text-[#6B4028] block">
+                  {todayClosedReceipts.length} ticket(s) cobrados hoy · según Caja & Cobro
                 </span>
               </div>
 
