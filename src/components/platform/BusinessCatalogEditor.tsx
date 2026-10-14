@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ImagePlus, Loader2, Plus, Save, Trash2, Utensils, ClipboardPaste } from 'lucide-react';
+import { ArrowLeft, ImagePlus, Loader2, Plus, Save, Trash2, Utensils, ClipboardPaste, ChevronDown, ListPlus, X } from 'lucide-react';
 import { uploadMenuImage } from '../../lib/menuImagesService';
 import { BusinessMenuPasteImport } from './BusinessMenuPasteImport';
 import type { ParsedMenuItem } from '../../lib/menuTextParser';
-import type { BusinessCatalogItem } from '../../lib/businessCatalogService';
+import type { BusinessCatalogItem, CatalogOptionGroup } from '../../lib/businessCatalogService';
 import {
   createCatalogItemId,
   saveBusinessCatalog,
@@ -38,6 +38,7 @@ export const BusinessCatalogEditor: React.FC<{
   const [showPaste, setShowPaste] = useState(false);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [openOptions, setOpenOptions] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const unsubscribeAuth = subscribeToAuth((user) => {
@@ -98,12 +99,29 @@ export const BusinessCatalogEditor: React.FC<{
     }
   };
 
+  const newGroup = (kind: 'sabor' | 'extras' | 'paquete' | 'vacio'): CatalogOptionGroup => {
+    const id = `g-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+    if (kind === 'extras') return { id, name: 'Extras', required: false, multiple: true, choices: [{ name: '', price: 0 }] };
+    if (kind === 'paquete') return { id, name: '¿Lo quieres en paquete?', required: false, multiple: false, choices: [{ name: 'Solo el platillo', price: 0 }, { name: 'En paquete', price: 0 }] };
+    if (kind === 'sabor') return { id, name: 'Elige una opción', required: true, multiple: false, choices: [{ name: '', price: 0 }, { name: '', price: 0 }] };
+    return { id, name: '', required: false, multiple: false, choices: [{ name: '', price: 0 }] };
+  };
+
+  const setGroups = (item: BusinessCatalogItem, groups: CatalogOptionGroup[]) => updateItem(item.id, { optionGroups: groups });
+  const patchGroup = (item: BusinessCatalogItem, groupId: string, patch: Partial<CatalogOptionGroup>) =>
+    setGroups(item, (item.optionGroups || []).map((g) => (g.id === groupId ? { ...g, ...patch } : g)));
+  const patchChoice = (item: BusinessCatalogItem, groupId: string, index: number, patch: Partial<{ name: string; price: number }>) =>
+    setGroups(item, (item.optionGroups || []).map((g) => (g.id === groupId ? { ...g, choices: g.choices.map((c, i) => (i === index ? { ...c, ...patch } : c)) } : g)));
+
   const applyPasted = (parsed: ParsedMenuItem[], mode: 'add' | 'replace') => {
     const base = mode === 'replace' ? [] : items;
     let order = base.length ? Math.max(...base.map((i) => i.sortOrder)) : 0;
     const added: BusinessCatalogItem[] = parsed.map((p) => {
       order += 10;
-      return { id: createCatalogItemId(p.name), name: p.name, description: p.description, price: p.price, category: p.category || 'General', available: true, popular: false, sortOrder: order };
+      const optionGroups = p.options.length >= 2
+        ? [{ id: `g-${Date.now().toString(36)}${order}`, name: 'Elige una opción', required: true, multiple: false, choices: p.options.map((name) => ({ name, price: 0 })) }]
+        : undefined;
+      return { id: createCatalogItemId(p.name), name: p.name, description: p.description, price: p.price, category: p.category || 'General', available: true, popular: false, sortOrder: order, ...(optionGroups ? { optionGroups } : {}) };
     });
     setItems([...base, ...added]);
     setShowPaste(false);
@@ -220,6 +238,42 @@ export const BusinessCatalogEditor: React.FC<{
                   </div>
                 </div>
                 <textarea value={item.description} onChange={(e) => updateItem(item.id, { description: e.target.value })} placeholder="Descripción (opcional)" rows={2} className={`${field} mt-2`} />
+                <button type="button" onClick={() => setOpenOptions((c) => ({ ...c, [item.id]: !c[item.id] }))} className="mt-2 flex w-full items-center justify-between rounded-xl border border-[#3A3022] bg-[#0B0B0B] px-3 py-2.5 text-xs font-bold text-[#E3BC6B]">
+                  <span className="flex items-center gap-2"><ListPlus className="h-4 w-4" /> Opciones del producto {(item.optionGroups || []).length > 0 && `(${(item.optionGroups || []).length})`}</span>
+                  <ChevronDown className={`h-4 w-4 transition ${openOptions[item.id] ? 'rotate-180' : ''}`} />
+                </button>
+                {openOptions[item.id] && (
+                  <div className="mt-2 space-y-3 rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-3">
+                    <p className="text-[11px] leading-relaxed text-[#C8C8C8]">Para que el cliente elija, por ejemplo, <b>nopales, pollo o chorizo</b>, o si lo quiere <b>en paquete</b>. El precio de arriba es el precio base; cada opción puede sumar un precio extra.</p>
+                    {(item.optionGroups || []).map((group) => (
+                      <div key={group.id} className="rounded-xl border border-[#3A3022] bg-[#111111] p-3">
+                        <div className="flex gap-2">
+                          <input value={group.name} onChange={(e) => patchGroup(item, group.id, { name: e.target.value })} placeholder="Título (ej. Guiso, Extras)" className={field} />
+                          <button type="button" onClick={() => setGroups(item, (item.optionGroups || []).filter((g) => g.id !== group.id))} className="shrink-0 rounded-lg border border-red-500/50 px-3 text-red-400" title="Quitar este grupo"><Trash2 className="h-4 w-4" /></button>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold">
+                          <button type="button" onClick={() => patchGroup(item, group.id, { required: !group.required })} className={`rounded-lg border px-3 py-2 ${group.required ? 'border-[#D6A34A] text-[#E3BC6B]' : 'border-[#3A3022] text-[#C8C8C8]'}`}>{group.required ? 'Obligatorio' : 'Opcional'}</button>
+                          <button type="button" onClick={() => patchGroup(item, group.id, { multiple: !group.multiple })} className={`rounded-lg border px-3 py-2 ${group.multiple ? 'border-[#D6A34A] text-[#E3BC6B]' : 'border-[#3A3022] text-[#C8C8C8]'}`}>{group.multiple ? 'Puede elegir varias' : 'Elige solo una'}</button>
+                        </div>
+                        <div className="mt-2 space-y-2">
+                          {group.choices.map((choice, index) => (
+                            <div key={index} className="flex gap-2">
+                              <input value={choice.name} onChange={(e) => patchChoice(item, group.id, index, { name: e.target.value })} placeholder="Opción (ej. Nopales)" className={`${field} flex-1`} />
+                              <input type="number" inputMode="decimal" min="0" step="0.01" value={choice.price || ''} onChange={(e) => patchChoice(item, group.id, index, { price: e.target.value === '' ? 0 : Number(e.target.value) })} placeholder="+$0" className={`${field} w-24`} />
+                              <button type="button" onClick={() => patchGroup(item, group.id, { choices: group.choices.filter((_, i) => i !== index) })} className="shrink-0 rounded-lg border border-[#3A3022] px-2.5 text-[#C8C8C8]" title="Quitar opción"><X className="h-4 w-4" /></button>
+                            </div>
+                          ))}
+                          <button type="button" onClick={() => patchGroup(item, group.id, { choices: [...group.choices, { name: '', price: 0 }] })} className="text-xs font-bold text-[#E3BC6B]">+ Agregar opción</button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex flex-wrap gap-2 text-xs font-bold">
+                      <button type="button" onClick={() => setGroups(item, [...(item.optionGroups || []), newGroup('sabor')])} className="rounded-lg border border-[#D6A34A] px-3 py-2 text-[#E3BC6B]">+ Elegir guiso o sabor</button>
+                      <button type="button" onClick={() => setGroups(item, [...(item.optionGroups || []), newGroup('paquete')])} className="rounded-lg border border-[#3A3022] px-3 py-2 text-[#C8C8C8]">+ ¿En paquete?</button>
+                      <button type="button" onClick={() => setGroups(item, [...(item.optionGroups || []), newGroup('extras')])} className="rounded-lg border border-[#3A3022] px-3 py-2 text-[#C8C8C8]">+ Extras</button>
+                    </div>
+                  </div>
+                )}
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap gap-2 text-xs font-bold">
                     <label className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 ${item.available ? 'border-[#D6A34A] text-[#E3BC6B]' : 'border-[#3A3022] text-[#C8C8C8]'}`}>

@@ -2,6 +2,24 @@ import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
 import { auth } from './firebase';
 import { db } from './firebase';
 import { BusinessRole } from './restaurantCore';
+import { cleanOptionGroups } from './catalogOptions';
+
+export interface CatalogChoice {
+  name: string;
+  /** Lo que suma al precio base (0 si no cambia el precio). */
+  price: number;
+}
+
+export interface CatalogOptionGroup {
+  id: string;
+  /** Ej.: "Guiso", "Extras", "¿Lo quieres en paquete?" */
+  name: string;
+  /** El cliente debe elegir al menos una opción. */
+  required: boolean;
+  /** Puede elegir varias (extras). Si es false, elige solo una. */
+  multiple: boolean;
+  choices: CatalogChoice[];
+}
 
 export interface BusinessCatalogItem {
   id: string;
@@ -12,6 +30,7 @@ export interface BusinessCatalogItem {
   category: string;
   available: boolean;
   popular?: boolean;
+  optionGroups?: CatalogOptionGroup[];
   sortOrder: number;
 }
 
@@ -85,7 +104,14 @@ export async function saveBusinessCatalog(
   const payload: BusinessCatalogDocument = {
     businessId,
     sourceLabel: 'Catálogo del negocio',
-    items: items.sort((a, b) => a.sortOrder - b.sortOrder),
+    items: items
+      .map((item) => {
+        const optionGroups = cleanOptionGroups(item.optionGroups);
+        const { optionGroups: _discard, ...rest } = item;
+        // Firestore no acepta valores undefined: se omiten los campos vacíos.
+        return JSON.parse(JSON.stringify(optionGroups.length ? { ...rest, optionGroups } : rest)) as BusinessCatalogItem;
+      })
+      .sort((a, b) => a.sortOrder - b.sortOrder),
     updatedAt: new Date().toISOString(),
     updatedBy: actorName,
   };

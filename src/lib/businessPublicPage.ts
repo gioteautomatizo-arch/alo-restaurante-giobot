@@ -1,4 +1,6 @@
 import type { BusinessCatalogItem } from './businessCatalogService';
+import type { OptionSelection } from './catalogOptions';
+import { selectionSummary, unitPriceFor } from './catalogOptions';
 
 /**
  * Utilidades de la página pública de un negocio (lo que ve el cliente).
@@ -6,9 +8,14 @@ import type { BusinessCatalogItem } from './businessCatalogService';
  */
 
 export interface PublicCartLine {
+  /** Producto + opciones elegidas identifican la línea (ver selectionKey). */
+  key: string;
   item: BusinessCatalogItem;
   quantity: number;
+  selection?: OptionSelection;
 }
+
+export const lineUnitPrice = (line: PublicCartLine): number => unitPriceFor(line.item, line.selection || {});
 
 /** Deja solo dígitos; un número mexicano de 10 dígitos recibe el prefijo 52. Vacío si no es usable. */
 export function normalizeWhatsapp(raw: string | undefined): string {
@@ -49,7 +56,7 @@ export function groupVisibleCatalog(items: BusinessCatalogItem[]): Array<{ categ
 }
 
 export function cartTotal(lines: PublicCartLine[]): number {
-  return Math.round(lines.reduce((sum, line) => sum + Number(line.item.price || 0) * line.quantity, 0) * 100) / 100;
+  return Math.round(lines.reduce((sum, line) => sum + lineUnitPrice(line) * line.quantity, 0) * 100) / 100;
 }
 
 export function buildWhatsappOrderUrl(input: {
@@ -62,9 +69,10 @@ export function buildWhatsappOrderUrl(input: {
   const phone = normalizeWhatsapp(input.whatsapp);
   if (!phone || input.lines.length === 0) return '';
 
-  const rows = input.lines.map(
-    (line) => `• ${line.quantity} x ${line.item.name} — ${formatMoney(Number(line.item.price || 0) * line.quantity)}`,
-  );
+  const rows = input.lines.map((line) => {
+    const detail = selectionSummary(line.item, line.selection || {});
+    return `• ${line.quantity} x ${line.item.name}${detail ? ` (${detail})` : ''} — ${formatMoney(lineUnitPrice(line) * line.quantity)}`;
+  });
   const message = [
     `Hola, quiero hacer un pedido en ${input.businessName}:`,
     '',

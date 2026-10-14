@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Clock, Facebook, Instagram, MapPin, MessageCircle, Minus, Plus, Search, ShoppingBag, Store, X } from 'lucide-react';
+import { Clock, Facebook, Instagram, MapPin, MessageCircle, Minus, Plus, Search, ShoppingBag, Sparkles, Store, Utensils, X } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { subscribeToBusinessCatalog } from '../../lib/businessCatalogService';
@@ -14,6 +14,10 @@ import {
   safeExternalUrl,
 } from '../../lib/businessPublicPage';
 import type { PublicCartLine } from '../../lib/businessPublicPage';
+import { lineUnitPrice } from '../../lib/businessPublicPage';
+import { hasPriceFrom, selectionKey, selectionSummary } from '../../lib/catalogOptions';
+import type { OptionSelection } from '../../lib/catalogOptions';
+import { BusinessProductModal } from './BusinessProductModal';
 
 /**
  * Página pública de un negocio: lo que ve el cliente al abrir su enlace (#negocio/{id}).
@@ -29,6 +33,7 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
   const [activeCategory, setActiveCategory] = useState('Todo');
   const [cart, setCart] = useState<PublicCartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<BusinessCatalogItem | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -130,20 +135,22 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
   const total = cartTotal(cart);
   const orderUrl = buildWhatsappOrderUrl({ whatsapp: b.whatsapp || '', businessName: b.restaurantName, lines: cart, customerName, notes });
 
-  const add = (item: BusinessCatalogItem) =>
+  const add = (item: BusinessCatalogItem, selection: OptionSelection = {}, quantity = 1) =>
     setCart((current) => {
-      const existing = current.find((line) => line.item.id === item.id);
+      const key = selectionKey(item.id, item, selection);
+      const existing = current.find((line) => line.key === key);
       return existing
-        ? current.map((line) => (line.item.id === item.id ? { ...line, quantity: line.quantity + 1 } : line))
-        : [...current, { item, quantity: 1 }];
+        ? current.map((line) => (line.key === key ? { ...line, quantity: line.quantity + quantity } : line))
+        : [...current, { key, item, quantity, selection }];
     });
 
-  const change = (id: string, delta: number) =>
+  const change = (key: string, delta: number) =>
     setCart((current) =>
-      current.map((line) => (line.item.id === id ? { ...line, quantity: line.quantity + delta } : line)).filter((line) => line.quantity > 0),
+      current.map((line) => (line.key === key ? { ...line, quantity: line.quantity + delta } : line)).filter((line) => line.quantity > 0),
     );
 
-  const quantityOf = (id: string) => cart.find((line) => line.item.id === id)?.quantity || 0;
+  const quantityOf = (id: string) => cart.filter((line) => line.item.id === id).reduce((sum, line) => sum + line.quantity, 0);
+  const theme = { bg, surface, text, primary, accent, border };
 
   return (
     <div className="min-h-screen pb-28" style={{ backgroundColor: bg, color: text }}>
@@ -210,30 +217,37 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
           visibleGroups.map((group) => (
             <section key={group.category} className="mt-7">
               <h2 className="mb-3 font-serif text-xl font-black">{group.category}</h2>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
                 {group.items.map((item) => {
                   const quantity = quantityOf(item.id);
+                  const customizable = (item.optionGroups || []).length > 0;
                   return (
-                    <article key={item.id} className="flex gap-3 overflow-hidden rounded-2xl border p-3" style={{ borderColor: border, backgroundColor: surface }}>
-                      {item.imageUrl && <img src={item.imageUrl} alt={item.name} loading="lazy" className="h-24 w-24 shrink-0 rounded-xl object-cover" />}
-                      <div className="flex min-w-0 flex-1 flex-col">
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="font-serif text-base font-black leading-snug">{item.name}</h3>
-                          <strong className="shrink-0 text-sm" style={{ color: accent }}>{formatMoney(Number(item.price))}</strong>
-                        </div>
-                        {item.description && <p className="mt-1 line-clamp-3 text-xs opacity-75">{item.description}</p>}
-                        <div className="mt-auto flex items-center justify-between pt-2">
-                          {item.popular ? <span className="text-[10px] font-black uppercase" style={{ color: accent }}>★ Favorito</span> : <span />}
-                          {quantity === 0 ? (
-                            <button type="button" onClick={() => add(item)} className="flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-black" style={{ backgroundColor: primary, color: bg }}><Plus className="h-3.5 w-3.5" /> Agregar</button>
-                          ) : (
-                            <span className="flex items-center gap-2 rounded-xl border px-1 py-0.5" style={{ borderColor: border }}>
-                              <button type="button" aria-label="Quitar uno" onClick={() => change(item.id, -1)} className="rounded-lg p-1.5"><Minus className="h-3.5 w-3.5" /></button>
-                              <strong className="min-w-4 text-center text-sm">{quantity}</strong>
-                              <button type="button" aria-label="Agregar uno" onClick={() => change(item.id, 1)} className="rounded-lg p-1.5"><Plus className="h-3.5 w-3.5" /></button>
-                            </span>
-                          )}
-                        </div>
+                    <article key={item.id} onClick={() => setSelectedItem(item)} className="flex cursor-pointer flex-col overflow-hidden rounded-2xl border transition active:scale-[0.99]" style={{ borderColor: border, backgroundColor: surface }}>
+                      <div className="relative aspect-[4/3] w-full overflow-hidden" style={{ backgroundColor: bg }}>
+                        {item.imageUrl ? (
+                          <img src={item.imageUrl} alt={item.name} loading="lazy" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center" style={{ background: `linear-gradient(135deg, ${surface}, ${bg})` }}>
+                            <span className="flex h-11 w-11 items-center justify-center rounded-full border" style={{ borderColor: border }}><Utensils className="h-5 w-5" style={{ color: accent }} /></span>
+                          </div>
+                        )}
+                        {item.popular && <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase" style={{ backgroundColor: primary, color: bg }}><Sparkles className="h-2.5 w-2.5" /> Favorito</span>}
+                        {quantity > 0 && <span className="absolute right-2 top-2 rounded-full bg-black/75 px-2 py-0.5 text-[10px] font-black text-white">En pedido: {quantity}</span>}
+                        <span className="absolute bottom-2 right-2 rounded-xl bg-black/80 px-2.5 py-1 font-serif text-xs font-black text-white">
+                          {formatMoney(Number(item.price))}{hasPriceFrom(item) && <span className="font-sans text-[9px] font-normal opacity-80"> (desde)</span>}
+                        </span>
+                      </div>
+                      <div className="flex flex-1 flex-col p-3">
+                        <h3 className="font-serif text-sm font-black leading-snug">{item.name}</h3>
+                        {item.description && <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed opacity-75">{item.description}</p>}
+                        <button
+                          type="button"
+                          onClick={(event) => { event.stopPropagation(); if (customizable) setSelectedItem(item); else add(item); }}
+                          className="mt-auto flex w-full items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-black"
+                          style={{ backgroundColor: primary, color: bg, marginTop: '0.75rem' }}
+                        >
+                          <Plus className="h-3.5 w-3.5" /> {customizable ? 'Agregar / Personalizar' : 'Agregar'}
+                        </button>
                       </div>
                     </article>
                   );
@@ -257,6 +271,10 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
         </div>
       )}
 
+      {selectedItem && (
+        <BusinessProductModal item={selectedItem} theme={theme} onClose={() => setSelectedItem(null)} onAdd={(selection, quantity) => { add(selectedItem, selection, quantity); setSelectedItem(null); }} />
+      )}
+
       {cartOpen && (
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 sm:items-center" onClick={() => setCartOpen(false)}>
           <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl border p-5 sm:rounded-3xl" style={{ backgroundColor: surface, borderColor: border, color: text }} onClick={(event) => event.stopPropagation()}>
@@ -271,14 +289,17 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
               <>
                 <ul className="mt-4 space-y-2">
                   {cart.map((line) => (
-                    <li key={line.item.id} className="flex items-center justify-between gap-3 text-sm">
-                      <span className="min-w-0 flex-1 truncate">{line.item.name}</span>
-                      <span className="flex items-center gap-2">
-                        <button type="button" aria-label="Quitar uno" onClick={() => change(line.item.id, -1)} className="rounded-lg border p-1" style={{ borderColor: border }}><Minus className="h-3.5 w-3.5" /></button>
-                        <strong className="w-5 text-center">{line.quantity}</strong>
-                        <button type="button" aria-label="Agregar uno" onClick={() => change(line.item.id, 1)} className="rounded-lg border p-1" style={{ borderColor: border }}><Plus className="h-3.5 w-3.5" /></button>
+                    <li key={line.key} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{line.item.name}</span>
+                        {selectionSummary(line.item, line.selection || {}) && <span className="block text-[11px] opacity-70">{selectionSummary(line.item, line.selection || {})}</span>}
                       </span>
-                      <strong className="w-20 text-right">{formatMoney(Number(line.item.price) * line.quantity)}</strong>
+                      <span className="flex items-center gap-2">
+                        <button type="button" aria-label="Quitar uno" onClick={() => change(line.key, -1)} className="rounded-lg border p-1" style={{ borderColor: border }}><Minus className="h-3.5 w-3.5" /></button>
+                        <strong className="w-5 text-center">{line.quantity}</strong>
+                        <button type="button" aria-label="Agregar uno" onClick={() => change(line.key, 1)} className="rounded-lg border p-1" style={{ borderColor: border }}><Plus className="h-3.5 w-3.5" /></button>
+                      </span>
+                      <strong className="w-20 text-right">{formatMoney(lineUnitPrice(line) * line.quantity)}</strong>
                     </li>
                   ))}
                 </ul>

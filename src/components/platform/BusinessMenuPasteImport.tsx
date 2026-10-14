@@ -80,7 +80,7 @@ export const BusinessMenuPasteImport: React.FC<{
                     <div key={index} className="flex items-start justify-between gap-3 border-b border-[#3A3022] pb-2 last:border-0 last:pb-0">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-bold text-[#F7F7F7]">{item.name}</p>
-                        <p className="text-[11px] text-[#B7B7B7]">{item.category}{item.description ? ` · ${item.description}` : ''}</p>
+                        <p className="text-[11px] text-[#B7B7B7]">{item.category}{item.description ? ` · ${item.description}` : ''}{item.options.length ? ` · Opciones: ${item.options.join(', ')}` : ''}</p>
                       </div>
                       <span className={`shrink-0 text-sm font-black ${item.price === null ? 'text-[#E3BC6B]' : 'text-[#F7F7F7]'}`}>{item.price === null ? 'Sin precio' : `$${item.price}`}</span>
                     </div>
