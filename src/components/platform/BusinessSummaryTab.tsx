@@ -5,6 +5,7 @@ import { subscribeToBusinessCatalog } from '../../lib/businessCatalogService';
 import type { BusinessCatalogItem } from '../../lib/businessCatalogService';
 import { subscribeToBusinessRestaurantOrders } from '../../lib/ordersService';
 import type { RestaurantOrder } from '../../types';
+import { mexicoDayKey } from '../../lib/businessReports';
 
 const money = (v: number) => v.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
 
@@ -23,11 +24,12 @@ export const BusinessSummaryTab: React.FC<{
   useEffect(() => subscribeToBusinessRestaurantOrders(businessId, setOrders), [businessId]);
 
   const stats = useMemo(() => {
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
-    const todays = orders.filter((o) => o.createdAt?.startsWith(today) && o.status !== 'CANCELADO');
+    const today = mexicoDayKey(new Date());
+    const todays = orders.filter((o) => mexicoDayKey(o.createdAt || '') === today && o.status !== 'CANCELADO');
+    const paidToday = orders.filter((o) => o.billingStatus === 'PAGADO' && o.status !== 'CANCELADO' && mexicoDayKey(o.paidAt || o.createdAt || '') === today);
     return {
       ordersToday: todays.length,
-      salesToday: todays.reduce((s, o) => s + Number(o.total || 0), 0),
+      salesToday: paidToday.reduce((s, o) => s + Number(o.total || 0), 0),
       active: orders.filter((o) => o.status === 'NUEVO' || o.status === 'PREPARANDO' || o.status === 'LISTO').length,
     };
   }, [orders]);
