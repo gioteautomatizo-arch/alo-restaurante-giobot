@@ -93,3 +93,8 @@ Un directorio público que permita descubrir negocios, consultar catálogos y co
 - No publicar producción hasta pasar pruebas de permisos, aislamiento y flujos de cobro. Los cambios recientes no han sido compilados ni probados en ejecución desde esta revisión.
 
 - Seguridad: restringida la lectura de `restaurant_orders` para negocios multinegocio a miembros activos del tenant o superadministrador; se conserva compatibilidad de lectura del flujo legado `alo-restaurante`. Pendiente probar reglas con dos cuentas y el emulador/entorno de prueba.
+
+## Calidad automática añadida — 15/10/2026
+- Se creó `.github/workflows/quality.yml` para ejecutar en GitHub Actions `npm run lint` (TypeScript) y `npm run build` al actualizar la rama de trabajo o abrir PR hacia ramas principales.
+- El repositorio no contiene `package-lock.json` ni otro lockfile; por eso el workflow usa `npm install --no-package-lock`. Recomendación pendiente: generar y revisar un lockfile para builds reproducibles, sin subir secretos.
+- La CI aún debe ejecutarse y pasar; no declarar listo para producción hasta revisar sus resultados y completar pruebas de aislamiento de tenants, cobro y reglas de Firebase.
