@@ -1,0 +1,39 @@
+name: Quality checks
+
+on:
+  push:
+    branches:
+      - main
+      - integration
+      - feat/gioteautomatizo-multinegocio-core
+  pull_request:
+    branches:
+      - main
+      - integration
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: TypeScript and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies without changing repository files
+        run: npm install --no-package-lock --no-audit --no-fund
+      - name: TypeScript validation
+        run: npm run lint
+      - name: Production build
+        run: npm run build
