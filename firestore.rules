@@ -381,7 +381,12 @@ service cloud.firestore {
         && request.resource.data.createdAt is string
       );
 
-      allow read: if isSignedIn();
+      // Calientito conserva compatibilidad con su flujo legado. Los pedidos de
+      // cualquier otro negocio solo son visibles para miembros activos de ese tenant
+      // o para el superadministrador; no basta con haber iniciado sesión.
+      allow read: if resource.data.restaurantId == 'alo-restaurante'
+        ? isSignedIn()
+        : isAuthorizedRestaurant(resource.data);
 
       allow update: if isAuthorizedRestaurant(resource.data)
         && isAuthorizedRestaurant(request.resource.data)
