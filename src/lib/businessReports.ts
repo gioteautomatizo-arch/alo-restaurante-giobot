@@ -61,7 +61,7 @@ export function buildSalesReport(orders: RestaurantOrder[], period: ReportPeriod
   let cancelledCount = 0;
 
   for (const order of orders) {
-    const key = mexicoDayKey(order.createdAt || '');
+    const key = mexicoDayKey(order.paidAt || order.createdAt || '');
     const day = days.get(key);
     if (!day) continue;
 
@@ -69,6 +69,8 @@ export function buildSalesReport(orders: RestaurantOrder[], period: ReportPeriod
       cancelledCount += 1;
       continue;
     }
+
+    if (order.billingStatus !== 'PAGADO') continue;
 
     const total = Number(order.total) || 0;
     totalSales += total;
