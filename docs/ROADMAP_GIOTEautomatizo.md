@@ -91,3 +91,5 @@ Un directorio público que permita descubrir negocios, consultar catálogos y co
 - Corrección añadida: reportes multinegocio excluyen pedidos no pagados y agrupan ingresos por fecha de pago/creación como respaldo.
 - Pendiente crítico antes de publicar: ejecutar `npm run lint` y `npm run build`; validar dos negocios sin cruces de datos; revisar reglas Firestore/Storage, publicación pública, QR/mesa y pedidos/cobros; revisar estado de `#business` y `#business-new` en móvil; confirmar rama desplegada y rollback.
 - No publicar producción hasta pasar pruebas de permisos, aislamiento y flujos de cobro. Los cambios recientes no han sido compilados ni probados en ejecución desde esta revisión.
+
+- Seguridad: restringida la lectura de `restaurant_orders` para negocios multinegocio a miembros activos del tenant o superadministrador; se conserva compatibilidad de lectura del flujo legado `alo-restaurante`. Pendiente probar reglas con dos cuentas y el emulador/entorno de prueba.
