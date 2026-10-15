@@ -1,4 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { subscribeToSaleReceipts } from '../../lib/saleReceiptsService';
+import { computeShiftSalesFromReceipts } from '../../lib/shiftSales';
+import { SaleReceipt } from '../../types';
 import { StaffUser, ShiftRecord, UserRole } from '../../types';
 import {
   getCurrentShift,
@@ -90,6 +93,49 @@ export const ShiftControlView: React.FC<ShiftControlViewProps> = ({
       window.removeEventListener('storage', handleDataChange);
     };
   }, []);
+
+  // Ventas reales: se suman solas desde los tickets cerrados durante el turno
+  const [receipts, setReceipts] = useState<SaleReceipt[]>([]);
+  const lastSyncedKey = useRef<string>('');
+
+  useEffect(() => {
+    const unsub = subscribeToSaleReceipts(setReceipts);
+    return () => unsub();
+  }, []);
+
+  const ticketTotals = currentShift
+    ? computeShiftSalesFromReceipts(receipts, currentShift.openedAtTimestamp || currentShift.createdAt)
+    : null;
+
+  useEffect(() => {
+    if (!currentShift || !ticketTotals) return;
+    const key = `${currentShift.id}|${ticketTotals.cash}|${ticketTotals.card}|${ticketTotals.platforms}`;
+    if (lastSyncedKey.current === key) return;
+    lastSyncedKey.current = key;
+    setSalesCash(ticketTotals.cash);
+    setSalesCard(ticketTotals.card);
+    setSalesPlatforms(ticketTotals.platforms);
+    if (
+      currentShift.salesCash !== ticketTotals.cash ||
+      currentShift.salesCard !== ticketTotals.card ||
+      currentShift.salesPlatforms !== ticketTotals.platforms
+    ) {
+      updateShiftSales(
+        ticketTotals.cash,
+        ticketTotals.card,
+        ticketTotals.platforms,
+        undefined,
+        currentUser
+      )
+        .then((u) => {
+          if (u) {
+            setCurrentShift(u);
+            onRefreshStats();
+          }
+        })
+        .catch((e) => console.warn('[ShiftControl] no se pudo guardar ventas', e));
+    }
+  }, [currentShift?.id, ticketTotals?.cash, ticketTotals?.card, ticketTotals?.platforms]);
 
   const totalSales = Number(salesCash || 0) + Number(salesCard || 0) + Number(salesPlatforms || 0);
   const shiftExpenses = currentShift ? getExpenses(currentShift.id) : [];
@@ -192,6 +238,13 @@ export const ShiftControlView: React.FC<ShiftControlViewProps> = ({
     }
 
     try {
+      await updateShiftSales(
+        Number(salesCash || 0),
+        Number(salesCard || 0),
+        Number(salesPlatforms || 0),
+        undefined,
+        currentUser
+      );
       await closeShift(
         Number(countedCash || 0),
         closeNotes,
@@ -384,7 +437,7 @@ export const ShiftControlView: React.FC<ShiftControlViewProps> = ({
               <DollarSign className="w-4 h-4 text-[#C9974D]" />
               <span>1. Registro de Ventas</span>
             </h3>
-            <span className="text-xs text-[#A86B3D]">Captura de montos</span>
+            <span className="text-xs text-[#A86B3D]">Se suma solo de los tickets cerrados{ticketTotals ? ` (${ticketTotals.count})` : ''}</span>
           </div>
 
           {/* Venta en Efectivo */}
@@ -427,7 +480,7 @@ export const ShiftControlView: React.FC<ShiftControlViewProps> = ({
           <div>
             <label className="block text-xs font-bold text-[#6B4028] uppercase tracking-wider mb-1 flex items-center gap-1.5 font-serif">
               <Smartphone className="w-3.5 h-3.5 text-[#C77B4A]" />
-              <span>Venta en Plataformas / Apps ($)</span>
+              <span>Transferencia / Apps ($)</span>
             </label>
             <div className="relative">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#A86B3D] font-bold">$</span>
