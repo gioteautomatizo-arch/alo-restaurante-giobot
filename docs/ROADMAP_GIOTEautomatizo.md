@@ -84,3 +84,10 @@ Un directorio público que permita descubrir negocios, consultar catálogos y co
 - El módulo de Reportes recibe el `businessId` activo y consulta pedidos únicamente de ese negocio mediante `subscribeToBusinessRestaurantOrders`.
 - Se eliminó del módulo de reportes multinegocio el listener global sin filtro, que podía mezclar ventas entre negocios.
 - Estado: cambios guardados; pendiente de compilación y prueba con al menos dos negocios.
+
+## Revisión 10X de Claude — 15/10/2026
+- Claude añadió panel del dueño con pestañas, resumen y checklist de preparación; página pública con logo, horarios, dirección, redes y favoritos; Control de Turno suma cobros por método.
+- Corrección añadida: el resumen del negocio ahora suma ventas solo de pedidos pagados y usa la fecha de pago cuando está disponible.
+- Corrección añadida: reportes multinegocio excluyen pedidos no pagados y agrupan ingresos por fecha de pago/creación como respaldo.
+- Pendiente crítico antes de publicar: ejecutar `npm run lint` y `npm run build`; validar dos negocios sin cruces de datos; revisar reglas Firestore/Storage, publicación pública, QR/mesa y pedidos/cobros; revisar estado de `#business` y `#business-new` en móvil; confirmar rama desplegada y rollback.
+- No publicar producción hasta pasar pruebas de permisos, aislamiento y flujos de cobro. Los cambios recientes no han sido compilados ni probados en ejecución desde esta revisión.
