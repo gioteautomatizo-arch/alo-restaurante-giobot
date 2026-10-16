@@ -183,6 +183,43 @@ export const BusinessBrandingSettings: React.FC<{
         </section>
 
         <section className="rounded-3xl border p-5 sm:p-6" style={{ borderColor: accent, backgroundColor: surface }}>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 className="text-xl font-black">Vista previa de la página pública</h2>
+              <p className="mt-1 text-sm opacity-75">Una muestra de cómo se verá tu negocio para tus clientes. No se publica hasta que guardes y publiques el negocio.</p>
+            </div>
+            <span className="rounded-full px-3 py-1 text-xs font-bold" style={{ backgroundColor: background, color: primary }}>Vista previa</span>
+          </div>
+          <div className="mt-4 overflow-hidden rounded-3xl border" style={{ borderColor: accent, backgroundColor: background, color: textColor }}>
+            <div className="relative flex min-h-44 items-end p-5 sm:p-7" style={{ backgroundImage: coverUrl ? `linear-gradient(0deg, ${background}ee, ${background}22), url("${coverUrl}")` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: background }}>
+              <div className="flex items-center gap-4">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-white" style={{ borderColor: accent }}>
+                  {logoUrl ? <img src={logoUrl} alt="" className="h-full w-full object-contain" /> : <Store className="h-7 w-7 text-stone-500" />}
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-widest" style={{ color: primary }}>Negocio cerca de ti</p>
+                  <h3 className="font-serif text-2xl font-black">{name || 'Nombre de tu negocio'}</h3>
+                  <p className="mt-1 text-sm opacity-80">{tagline || 'Tu siguiente cliente te está buscando.'}</p>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-4 p-5">
+              {description && <p className="text-sm">{description}</p>}
+              <div className="grid gap-2 sm:grid-cols-2">
+                {whatsapp && <div className="rounded-xl border p-3 text-sm" style={{ borderColor: accent, backgroundColor: surface }}>WhatsApp <strong className="block">{whatsapp}</strong></div>}
+                {hoursText && <div className="rounded-xl border p-3 text-sm" style={{ borderColor: accent, backgroundColor: surface }}>Horario <strong className="block">{hoursText}</strong></div>}
+                {address && <div className="rounded-xl border p-3 text-sm sm:col-span-2" style={{ borderColor: accent, backgroundColor: surface }}>Dirección <strong className="block">{address}</strong></div>}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-xl px-4 py-2.5 text-sm font-black" style={{ backgroundColor: primary, color: background }}>Explorar catálogo</span>
+                <span className="rounded-xl border px-4 py-2.5 text-sm font-bold" style={{ borderColor: accent }}>Compartir negocio</span>
+              </div>
+              <p className="text-center text-xs opacity-60">Hecho con Gioteautomatizo</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border p-5 sm:p-6" style={{ borderColor: accent, backgroundColor: surface }}>
           <h2 className="text-xl font-black">Paleta de colores</h2>
           <p className="mt-1 text-sm opacity-75">Elige un estilo inicial o ajusta los colores manualmente. Los cambios se guardan solo en este negocio.</p>
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
