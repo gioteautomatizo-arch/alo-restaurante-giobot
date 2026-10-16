@@ -194,6 +194,13 @@ export default function App() {
 
     try {
       const searchParams = new URLSearchParams(window.location.search);
+      // Compatibilidad con QR que guardaron ?table=2 o ?qr=... dentro del fragmento (#...).
+      const fragmentQuery = window.location.hash.includes('?')
+        ? window.location.hash.slice(window.location.hash.indexOf('?') + 1)
+        : '';
+      new URLSearchParams(fragmentQuery).forEach((value, key) => {
+        if (!searchParams.has(key)) searchParams.set(key, value);
+      });
       const tableParam = searchParams.get('table');
       const qrParam = searchParams.get('qr')?.trim().toLowerCase() || null;
       if (tableParam) {
