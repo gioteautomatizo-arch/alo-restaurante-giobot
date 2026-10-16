@@ -8,6 +8,7 @@ import type { RestaurantTenant } from '../../lib/restaurantCore';
 type Palette = { name: string; primary: string; accent: string; background: string; surface: string; text: string };
 
 const PALETTES: Palette[] = [
+  { name: 'Crema & Café', primary: '#A86B3D', accent: '#D6A34A', background: '#F5F1EA', surface: '#FFF9F0', text: '#2B211B' },
   { name: 'Giote dorado', primary: '#D6A34A', accent: '#E3BC6B', background: '#111111', surface: '#1A1A1A', text: '#F7F7F7' },
   { name: 'Océano', primary: '#0E7490', accent: '#67E8F9', background: '#082F49', surface: '#0C4A6E', text: '#F0F9FF' },
   { name: 'Bosque', primary: '#15803D', accent: '#86EFAC', background: '#10251A', surface: '#183B29', text: '#F0FDF4' },
