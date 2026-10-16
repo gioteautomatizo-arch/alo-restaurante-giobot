@@ -32,6 +32,7 @@ export const BusinessOperationsView: React.FC<{
   const [orders, setOrders] = useState<RestaurantOrder[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia' | 'tarjeta'>('efectivo');
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
@@ -111,6 +112,7 @@ export const BusinessOperationsView: React.FC<{
         capturedById: authUser.uid,
         capturedByName: authUser.displayName || authUser.email || 'Caja',
         customerName: customerName.trim() || 'Cliente mostrador',
+        phone: customerPhone.replace(/\D/g, '').slice(-10) || undefined,
         paymentMethod,
         bringOwnContainer: false,
         items,
@@ -123,6 +125,7 @@ export const BusinessOperationsView: React.FC<{
 
       setCart([]);
       setCustomerName('');
+      setCustomerPhone('');
       setActiveTab('orders');
       setMessage('Pedido registrado correctamente.');
     } catch (error) {
@@ -206,6 +209,7 @@ export const BusinessOperationsView: React.FC<{
               <div className="flex flex-col sm:flex-row gap-3">
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto..." className="flex-1 rounded-xl border border-[#DEC8AE] px-4 py-3 text-sm text-[#2B1B13] placeholder:text-[#A86B3D]/70 outline-none focus:border-[#A86B3D]" />
                 <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Cliente (opcional)" className="sm:w-56 rounded-xl border border-[#DEC8AE] px-4 py-3 text-sm text-[#2B1B13] placeholder:text-[#A86B3D]/70 outline-none focus:border-[#A86B3D]" />
+                <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} inputMode="tel" placeholder="WhatsApp (opcional)" className="sm:w-44 rounded-xl border border-[#DEC8AE] px-4 py-3 text-sm text-[#2B1B13] placeholder:text-[#A86B3D]/70 outline-none focus:border-[#A86B3D]" />
               </div>
               <div className="mt-5 grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
                 {availableCatalog.map((item) => (

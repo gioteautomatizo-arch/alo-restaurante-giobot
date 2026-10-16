@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, BarChart3, BookOpen, Bot, ExternalLink, LayoutDashboard, Settings, ShoppingBag, Store, Users } from 'lucide-react';
+import { ArrowLeft, BarChart3, BookOpen, Bot, Heart, ExternalLink, LayoutDashboard, Settings, ShoppingBag, Store, Users } from 'lucide-react';
 import { BusinessSummaryTab } from './BusinessSummaryTab';
+import { BusinessCustomersView } from './BusinessCustomersView';
 import { BusinessBrandingSettings } from './BusinessBrandingSettings';
 import { BusinessCatalogEditor } from './BusinessCatalogEditor';
 import { BusinessEmployeesView } from './BusinessEmployeesView';
@@ -22,7 +23,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const [role, setRole] = useState<BusinessRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<'workspace' | 'catalog' | 'employees' | 'operations' | 'menuImport' | 'modules' | 'branding' | 'reports'>('workspace');
+  const [view, setView] = useState<'workspace' | 'catalog' | 'employees' | 'customers' | 'operations' | 'menuImport' | 'modules' | 'branding' | 'reports'>('workspace');
 
   useEffect(() => subscribeToAuth((user) => setAuthUser(user)), []);
 
@@ -152,6 +153,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     { id: 'catalog', label: 'Catálogo', icon: BookOpen, allowed: canManageCatalog },
     { id: 'operations', label: 'Pedidos y Caja', icon: ShoppingBag, allowed: canPos },
     { id: 'reports', label: 'Reportes', icon: BarChart3, allowed: canSeeReports },
+    { id: 'customers', label: 'Clientes', icon: Heart, allowed: canPos || canSeeReports },
     { id: 'employees', label: 'Empleados', icon: Users, allowed: canManageEmployees },
     { id: 'branding', label: 'Info', icon: Settings, allowed: canManageBusiness },
   ];
@@ -169,6 +171,10 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
         else if (module.capability === 'RECEIPTS' && !!role && hasBusinessPermission(role, 'reports.view')) setView('reports');
         else if (module.capability === 'BUSINESS_SETTINGS' && !!role && hasBusinessPermission(role, 'business.manage')) setView('branding');
       }} />;
+    }
+
+    if (view === 'customers') {
+      return <BusinessCustomersView businessId={businessId} />;
     }
 
     if (view === 'reports') {
