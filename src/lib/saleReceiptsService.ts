@@ -96,6 +96,8 @@ export async function createFinalSaleReceipt(input: {
   orders: RestaurantOrder[];
   payments: TablePayment[];
   user: Pick<StaffUser, 'id' | 'name'>;
+  waiterId?: string;
+  waiterName?: string;
 }): Promise<SaleReceipt> {
   const sessionId = input.session.id;
   if (!sessionId) {
@@ -134,6 +136,14 @@ export async function createFinalSaleReceipt(input: {
   const tipAmount = validPayments.reduce((sum, payment) => sum + Number(payment.tipAmount || 0), 0);
   const totalPaid = validPayments.reduce((sum, payment) => sum + Number(payment.total || 0), 0);
   const closedAt = new Date().toISOString();
+  // La sesión suele tener al mesero asignado, pero sesiones antiguas o abiertas
+  // desde caja pueden no conservarlo. Recuperar primero de la mesa y después
+  // del primer pedido capturado por un mesero para no imprimir "Sin mesero".
+  const waiterOrder = validOrders.find((order) =>
+    order.orderSource === 'MESERO' && Boolean(order.capturedByName?.trim())
+  );
+  const waiterId = input.session.waiterId || input.waiterId;
+  const waiterName = input.session.waiterName?.trim() || input.waiterName?.trim() || waiterOrder?.capturedByName?.trim();
 
   const receipt: SaleReceipt = {
     code: receiptCode(input.tableNumber),
@@ -141,8 +151,8 @@ export async function createFinalSaleReceipt(input: {
     tableNumber: input.tableNumber,
     tableSessionId: sessionId,
     guestCount: Number(input.session.guestCount || 0),
-    waiterId: input.session.waiterId,
-    waiterName: input.session.waiterName,
+    waiterId,
+    waiterName,
     openedAt: input.session.openedAt,
     closedAt,
     closedById: input.user.id,
