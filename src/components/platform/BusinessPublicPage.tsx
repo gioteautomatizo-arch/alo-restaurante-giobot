@@ -40,6 +40,7 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
   const [notes, setNotes] = useState('');
   const [sending, setSending] = useState(false);
   const [sentCode, setSentCode] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -154,6 +155,7 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
   const sendOrder = async () => {
     if (sending || cart.length === 0) return;
     setSending(true);
+    setSendError(null);
     // Abrimos la pestaña antes del await para que el navegador no la bloquee.
     const popup = whatsappNumber ? window.open('', '_blank') : null;
     let code: string | undefined;
@@ -177,6 +179,7 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
       setCart([]);
     } catch (err) {
       console.warn('No se pudo registrar el pedido en el negocio:', err);
+      setSendError('No pudimos registrar el pedido automáticamente. Si se abrió WhatsApp, envía el mensaje al negocio para no perder tu pedido.');
     } finally {
       setSending(false);
     }
@@ -351,6 +354,12 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
               <h2 className="font-serif text-xl font-black">Tu pedido</h2>
               <button type="button" aria-label="Cerrar" onClick={() => setCartOpen(false)} className="rounded-lg p-2"><X className="h-5 w-5" /></button>
             </div>
+
+            {sendError && (
+              <p role="alert" className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm" style={{ color: text }}>
+                {sendError}
+              </p>
+            )}
 
             {cart.length === 0 ? (
               sentCode ? (
