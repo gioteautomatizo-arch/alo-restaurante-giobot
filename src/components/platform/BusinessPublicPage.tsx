@@ -119,6 +119,17 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
   }
 
   const b = business.branding;
+  const fragmentQuery = window.location.hash.includes('?')
+    ? window.location.hash.slice(window.location.hash.indexOf('?') + 1)
+    : '';
+  const publicParams = new URLSearchParams(window.location.search);
+  new URLSearchParams(fragmentQuery).forEach((value, key) => {
+    if (!publicParams.has(key)) publicParams.set(key, value);
+  });
+  const tableParam = publicParams.get('table');
+  const tableNumber = tableParam && /^\\d{1,3}$/.test(tableParam) && Number(tableParam) > 0
+    ? Number(tableParam)
+    : undefined;
   const bg = b.backgroundColor || '#111111';
   const surface = b.surfaceColor || '#1A1A1A';
   const text = b.textColor || '#F7F7F7';
@@ -133,7 +144,7 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
 
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
   const total = cartTotal(cart);
-  const orderUrl = buildWhatsappOrderUrl({ whatsapp: b.whatsapp || '', businessName: b.restaurantName, lines: cart, customerName, notes });
+  const orderUrl = buildWhatsappOrderUrl({ whatsapp: b.whatsapp || '', businessName: b.restaurantName, lines: cart, customerName, notes, tableNumber });
 
   const add = (item: BusinessCatalogItem, selection: OptionSelection = {}, quantity = 1) =>
     setCart((current) => {
