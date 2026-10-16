@@ -161,9 +161,9 @@ export const BusinessPortal: React.FC = () => {
         <div className="w-full max-w-5xl grid lg:grid-cols-[1.1fr_0.9fr] overflow-hidden rounded-[2rem] border border-white/10 bg-white shadow-2xl">
           <section className="hidden lg:flex flex-col justify-between bg-gradient-to-br from-[#111827] via-[#1F2937] to-[#3A2418] p-10 text-white">
             <div>
+              <img src="/gioteautomatizo-logo.svg" alt="Gioteautomatizo — Tu negocio. Más conectado." className="mb-8 w-full max-w-md rounded-2xl" />
               <div className="inline-flex items-center gap-2 rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-amber-300">
-                <Sparkles className="w-3.5 h-3.5" /> Business Core
-              </div>
+                <Sparkles className="w-3.5 h-3.5" /> Plataforma para negocios
               <h1 className="mt-6 text-4xl font-black leading-tight">Tu negocio, su POS y su IA en un solo lugar.</h1>
               <p className="mt-4 max-w-xl text-sm leading-relaxed text-slate-300">
                 Inicia sesión, abre tu negocio y administra ventas, catálogo, inventario, clientes y asistentes inteligentes desde una sola plataforma.
@@ -179,8 +179,8 @@ export const BusinessPortal: React.FC = () => {
           <section className="bg-[#FFFDF9] p-6 sm:p-10 text-[#2B1B13]">
             <div className="mx-auto max-w-md">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-[#3A2418] text-[#C9974D] flex items-center justify-center shadow-sm">
-                  <Bot className="w-6 h-6" />
+                <div className="w-12 h-12 rounded-2xl bg-[#050505] flex items-center justify-center shadow-sm overflow-hidden">
+                  <img src="/gioteautomatizo-mark.svg" alt="" className="w-full h-full object-contain" />
                 </div>
                 <div>
                   <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#A86B3D]">Gioteautomatizo</p>
