@@ -45,7 +45,7 @@ export const BusinessReportsView: React.FC<{ businessId: string; businessName: s
     <div className="min-h-screen bg-[#050505] text-[#F7F7F7]">
       <header className="sticky top-0 z-20 border-b border-[#3A3022] bg-[#0B0B0B]/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
-          <button type="button" onClick={onBack} className="flex items-center gap-2 rounded-xl border border-[#3A3022] px-3 py-2 text-xs font-bold text-[#F7F7F7]">
+          <button data-biz-back type="button" onClick={onBack} className="flex items-center gap-2 rounded-xl border border-[#3A3022] px-3 py-2 text-xs font-bold text-[#F7F7F7]">
             <ArrowLeft className="h-4 w-4" /> Negocio
           </button>
           <span className="truncate text-xs font-black text-[#B7B7B7]">Reportes · {businessName}</span>

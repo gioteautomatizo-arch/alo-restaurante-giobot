@@ -186,7 +186,7 @@ export const BusinessCatalogEditor: React.FC<{
     <div className="min-h-screen bg-[#050505] text-[#F7F7F7]">
       <header className="sticky top-0 z-20 border-b border-[#3A3022] bg-[#0B0B0B]/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-3">
-          <button onClick={onBack} className="flex items-center gap-2 rounded-xl border border-[#3A3022] px-3 py-2 text-xs font-bold text-[#F7F7F7]">
+          <button data-biz-back onClick={onBack} className="flex items-center gap-2 rounded-xl border border-[#3A3022] px-3 py-2 text-xs font-bold text-[#F7F7F7]">
             <ArrowLeft className="h-4 w-4" /> Negocio
           </button>
           <button onClick={save} disabled={saving} className="flex items-center gap-2 rounded-xl bg-[#D6A34A] px-4 py-2.5 text-xs font-black text-[#050505] disabled:opacity-60">

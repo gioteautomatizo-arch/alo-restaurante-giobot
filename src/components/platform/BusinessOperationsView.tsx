@@ -175,7 +175,7 @@ export const BusinessOperationsView: React.FC<{
     <div className="business-operations-view min-h-screen bg-[#F5F1EA] text-[#201610]">
       <header className="border-b border-[#E5D8C4] bg-white px-4 py-4 sticky top-0 z-20">
         <div className="mx-auto max-w-6xl flex items-center justify-between gap-3">
-          <button onClick={onBack} className="rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-xs font-bold text-[#6B4028] flex items-center gap-2">
+          <button data-biz-back onClick={onBack} className="rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-xs font-bold text-[#6B4028] flex items-center gap-2">
             <ArrowLeft className="w-4 h-4" /> Negocio
           </button>
           <div className="text-right">

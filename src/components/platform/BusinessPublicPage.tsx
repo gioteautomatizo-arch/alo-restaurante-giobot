@@ -1,3 +1,4 @@
+import { createBusinessRestaurantOrder } from '../../lib/ordersService';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Clock, Facebook, Instagram, MapPin, MessageCircle, Minus, Plus, Search, ShoppingBag, Sparkles, Store, Utensils, X } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
@@ -7,6 +8,7 @@ import type { BusinessCatalogItem } from '../../lib/businessCatalogService';
 import type { RestaurantTenant } from '../../lib/restaurantCore';
 import {
   buildWhatsappOrderUrl,
+  cartToOrderItems,
   cartTotal,
   formatMoney,
   groupVisibleCatalog,
@@ -36,6 +38,8 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
   const [selectedItem, setSelectedItem] = useState<BusinessCatalogItem | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [notes, setNotes] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sentCode, setSentCode] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -145,6 +149,43 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
   const total = cartTotal(cart);
   const orderUrl = buildWhatsappOrderUrl({ whatsapp: b.whatsapp || '', businessName: b.restaurantName, lines: cart, customerName, notes, tableNumber });
+
+  // Registra el pedido en Pedidos y Caja del negocio y, si hay WhatsApp, abre el chat con el código.
+  const sendOrder = async () => {
+    if (sending || cart.length === 0) return;
+    setSending(true);
+    // Abrimos la pestaña antes del await para que el navegador no la bloquee.
+    const popup = whatsappNumber ? window.open('', '_blank') : null;
+    let code: string | undefined;
+    try {
+      const saved = await createBusinessRestaurantOrder(businessId, {
+        orderType: 'pickup',
+        orderSource: 'CLIENTE_QR',
+        orderOrigin: 'QR_EXTERNO',
+        customerName: customerName.trim() || 'Cliente web',
+        paymentMethod: 'efectivo',
+        bringOwnContainer: false,
+        items: cartToOrderItems(cart),
+        subtotal: total,
+        discountAmount: 0,
+        deliveryFee: 0,
+        total,
+        notes: [tableNumber ? `Mesa ${tableNumber}` : '', notes.trim()].filter(Boolean).join(' · ') || undefined,
+      });
+      code = saved.code;
+      setSentCode(saved.code);
+      setCart([]);
+    } catch (err) {
+      console.warn('No se pudo registrar el pedido en el negocio:', err);
+    } finally {
+      setSending(false);
+    }
+    if (whatsappNumber) {
+      const url = buildWhatsappOrderUrl({ whatsapp: b.whatsapp || '', businessName: b.restaurantName, lines: cart, customerName, notes, tableNumber, orderCode: code });
+      if (popup) popup.location.href = url;
+      else window.open(url, '_blank');
+    }
+  };
 
   const add = (item: BusinessCatalogItem, selection: OptionSelection = {}, quantity = 1) =>
     setCart((current) => {
@@ -312,7 +353,15 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
             </div>
 
             {cart.length === 0 ? (
-              <p className="mt-6 text-center text-sm opacity-70">Aún no agregas productos.</p>
+              sentCode ? (
+                <div className="mt-6 text-center">
+                  <p className="font-serif text-lg font-black" style={{ color: accent }}>¡Pedido enviado!</p>
+                  <p className="mt-1 text-sm">Tu código es <strong>{sentCode}</strong>. El negocio ya lo recibió.</p>
+                  <button type="button" onClick={() => { setSentCode(null); setCartOpen(false); }} className="mt-4 rounded-xl border px-4 py-2 text-xs font-bold" style={{ borderColor: border }}>Seguir viendo el menú</button>
+                </div>
+              ) : (
+                <p className="mt-6 text-center text-sm opacity-70">Aún no agregas productos.</p>
+              )
             ) : (
               <>
                 <ul className="mt-4 space-y-2">
@@ -339,13 +388,9 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
                 <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Tu nombre (opcional)" className="mt-4 w-full rounded-xl border px-3 py-3 text-sm outline-none" style={{ borderColor: border, backgroundColor: bg, color: text }} />
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas: sin cebolla, para llevar, dirección…" rows={2} className="mt-2 w-full rounded-xl border px-3 py-3 text-sm outline-none" style={{ borderColor: border, backgroundColor: bg, color: text }} />
 
-                {orderUrl ? (
-                  <a href={orderUrl} target="_blank" rel="noopener noreferrer" className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#25D366] px-5 py-4 text-sm font-black text-white">
-                    <MessageCircle className="h-4 w-4" /> Enviar pedido por WhatsApp
-                  </a>
-                ) : (
-                  <p className="mt-4 rounded-xl border p-3 text-xs" style={{ borderColor: border }}>Este negocio aún no configura su WhatsApp. Muestra este pedido directamente en el local.</p>
-                )}
+                <button type="button" disabled={sending} onClick={() => void sendOrder()} className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-4 text-sm font-black disabled:opacity-60" style={{ backgroundColor: whatsappNumber ? '#25D366' : primary, color: whatsappNumber ? '#fff' : bg }}>
+                  <MessageCircle className="h-4 w-4" /> {sending ? 'Enviando…' : whatsappNumber ? 'Enviar pedido (se registra y abre WhatsApp)' : 'Enviar pedido al negocio'}
+                </button>
                 <button type="button" onClick={() => setCart([])} className="mt-3 w-full text-xs underline opacity-70">Vaciar pedido</button>
               </>
             )}

@@ -123,7 +123,7 @@ export const BusinessBrandingSettings: React.FC<{
   return (
     <div className="min-h-screen px-4 py-5 sm:px-6" style={{ backgroundColor: background, color: textColor }}>
       <header className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-        <button onClick={onBack} className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: accent }}>
+        <button data-biz-back onClick={onBack} className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: accent }}>
           <ArrowLeft className="h-4 w-4" /> Volver al negocio
         </button>
         <button onClick={save} disabled={busy} className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-60" style={{ backgroundColor: primary, color: background }}>

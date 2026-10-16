@@ -274,7 +274,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
           </div>
         </nav>
       </div>
-      <main className="mx-auto max-w-6xl px-4 py-5">{renderContent()}</main>
+      <main className="biz-embedded mx-auto max-w-6xl px-4 py-5">{renderContent()}</main>
     </div>
   );
 };

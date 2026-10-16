@@ -148,7 +148,7 @@ export const BusinessEmployeesView: React.FC<{
   return (
     <div className="min-h-screen bg-[#F5F1EA] text-[#201610] px-4 py-6">
       <div className="mx-auto max-w-5xl">
-        <button type="button" onClick={onBack} className="mb-5 rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-xs font-bold text-[#6B4028]">← Volver al negocio</button>
+        <button data-biz-back type="button" onClick={onBack} className="mb-5 rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-xs font-bold text-[#6B4028]">← Volver al negocio</button>
 
         <section className="rounded-[2rem] border border-[#D9C5AC] bg-white p-6 sm:p-8 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">

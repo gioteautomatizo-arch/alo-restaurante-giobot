@@ -291,3 +291,15 @@
   color: #171717;
   background: #ffffff;
 }
+
+/* Panel del negocio: las pantallas internas se muestran dentro de las pestañas,
+   así que ocultamos su botón "Volver" propio y no forzamos pantalla completa. */
+.biz-embedded [data-biz-back] {
+  display: none !important;
+}
+.biz-embedded .min-h-screen {
+  min-height: 0 !important;
+}
+.biz-embedded header.sticky {
+  top: 112px;
+}

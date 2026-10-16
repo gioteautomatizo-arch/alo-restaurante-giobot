@@ -40,7 +40,7 @@ export const BusinessModulesView: React.FC<Props> = ({
     <div className="min-h-screen bg-[#F5F1EA] text-[#201610]">
       <header className="sticky top-0 z-20 border-b border-[#E5D8C4] bg-white/95 px-4 py-4 backdrop-blur">
         <div className="mx-auto max-w-6xl flex items-center justify-between gap-3">
-          <button onClick={onBack} className="rounded-xl border border-[#DEC8AE] px-3 py-2 text-xs font-bold text-[#6B4028] flex items-center gap-2">
+          <button data-biz-back onClick={onBack} className="rounded-xl border border-[#DEC8AE] px-3 py-2 text-xs font-bold text-[#6B4028] flex items-center gap-2">
             <ArrowLeft className="w-4 h-4" /> Negocio
           </button>
           <div className="text-right">

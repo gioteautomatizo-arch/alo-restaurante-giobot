@@ -66,6 +66,7 @@ export function buildWhatsappOrderUrl(input: {
   customerName?: string;
   notes?: string;
   tableNumber?: number;
+  orderCode?: string;
 }): string {
   const phone = normalizeWhatsapp(input.whatsapp);
   if (!phone || input.lines.length === 0) return '';
@@ -76,6 +77,7 @@ export function buildWhatsappOrderUrl(input: {
   });
   const message = [
     `Hola, quiero hacer un pedido en ${input.businessName}:`,
+    input.orderCode ? `Pedido ${input.orderCode}` : '',
     '',
     ...rows,
     '',
@@ -88,4 +90,27 @@ export function buildWhatsappOrderUrl(input: {
     .join('\n');
 
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+}
+
+/** Convierte el carrito público en las partidas que entiende Pedidos y Caja. */
+export function cartToOrderItems(lines: PublicCartLine[]): Array<{
+  productId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  customizationSummary?: string;
+}> {
+  return lines.map((line) => {
+    const unitPrice = lineUnitPrice(line);
+    const detail = selectionSummary(line.item, line.selection || {});
+    return {
+      productId: line.item.id,
+      name: line.item.name,
+      quantity: line.quantity,
+      unitPrice,
+      totalPrice: Math.round(unitPrice * line.quantity * 100) / 100,
+      ...(detail ? { customizationSummary: detail } : {}),
+    };
+  });
 }
