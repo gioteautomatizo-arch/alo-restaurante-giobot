@@ -55,6 +55,13 @@ service cloud.firestore {
         );
     }
 
+    // Un pedido anónimo multinegocio solo puede dirigirse a una página publicada.
+    function isPublishedBusiness(businessId) {
+      return businessId is string
+        && exists(/databases/$(database)/documents/publicBusinessProfiles/$(businessId))
+        && get(/databases/$(database)/documents/publicBusinessProfiles/$(businessId)).data.published == true;
+    }
+
     function isAuthorizedRestaurant(data) {
       return isSignedIn()
         && data.restaurantId is string
@@ -383,10 +390,41 @@ service cloud.firestore {
         && request.resource.data.orderType in ['dine_in', 'pickup', 'delivery']
         && request.resource.data.items is list
         && request.resource.data.items.size() > 0
+        && request.resource.data.items.size() <= 100
         && request.resource.data.total is number
         && request.resource.data.total >= 0
         && request.resource.data.code is string
+        && request.resource.data.code.size() > 0
         && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is string
+        && (
+          // Compatibilidad con los pedidos históricos de Calientito.
+          request.resource.data.restaurantId == 'alo-restaurante'
+          // Caja/POS autenticado: solo personal autorizado del negocio.
+          || isAuthorizedRestaurant(request.resource.data)
+          // Pedido web anónimo: solo para un negocio publicado y con campos públicos permitidos.
+          || (
+            request.auth == null
+            && request.resource.data.orderSource == 'CLIENTE_QR'
+            && isPublishedBusiness(request.resource.data.restaurantId)
+            && request.resource.data.customerName is string
+            && request.resource.data.paymentMethod in ['efectivo', 'transferencia', 'tarjeta']
+            && request.resource.data.billingStatus == 'PENDIENTE'
+            && request.resource.data.subtotal is number
+            && request.resource.data.subtotal >= 0
+            && request.resource.data.discountAmount is number
+            && request.resource.data.discountAmount >= 0
+            && request.resource.data.deliveryFee is number
+            && request.resource.data.deliveryFee >= 0
+            && request.resource.data.keys().hasOnly([
+              'code', 'restaurantId', 'orderType', 'tableNumber', 'tableSessionId',
+              'accountId', 'accountLabel', 'orderSource', 'orderOrigin', 'qrSource',
+              'customerName', 'phone', 'address', 'addressReference', 'paymentMethod',
+              'bringOwnContainer', 'notes', 'items', 'subtotal', 'discountAmount',
+              'deliveryFee', 'total', 'status', 'billingStatus', 'createdAt', 'updatedAt'
+            ])
+          )
+        )
       );
 
       // Calientito conserva compatibilidad con su flujo legado. Los pedidos de
