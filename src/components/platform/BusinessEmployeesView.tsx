@@ -146,85 +146,85 @@ export const BusinessEmployeesView: React.FC<{
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F1EA] text-[#201610] px-4 py-6">
+    <div className="text-[#F7F7F7] px-0 py-2">
       <div className="mx-auto max-w-5xl">
-        <button data-biz-back type="button" onClick={onBack} className="mb-5 rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-xs font-bold text-[#6B4028]">← Volver al negocio</button>
+        <button data-biz-back type="button" onClick={onBack} className="mb-5 rounded-xl border border-[#3A3022] bg-[#111111] px-3 py-2 text-xs font-bold text-[#C8C8C8]">← Volver al negocio</button>
 
-        <section className="rounded-[2rem] border border-[#D9C5AC] bg-white p-6 sm:p-8 shadow-sm">
+        <section className="rounded-[2rem] border border-[#3A3022] bg-[#111111] p-6 sm:p-8 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div>
-              <span className="text-[10px] font-black uppercase tracking-wide text-[#A86B3D]">Equipo</span>
+              <span className="text-[10px] font-black uppercase tracking-wide text-[#E3BC6B]">Equipo</span>
               <h1 className="mt-1 font-serif text-3xl font-black">Empleados y roles</h1>
-              <p className="mt-2 text-sm text-[#6B4028]">Cada empleado tiene una cuenta propia y solo recibe los permisos de su rol.</p>
+              <p className="mt-2 text-sm text-[#C8C8C8]">Cada empleado tiene una cuenta propia y solo recibe los permisos de su rol.</p>
             </div>
-            <button type="button" onClick={() => setShowForm((value) => !value)} className="rounded-2xl bg-[#3A2418] px-4 py-3 text-sm font-black text-white flex items-center justify-center gap-2">
+            <button type="button" onClick={() => setShowForm((value) => !value)} className="rounded-2xl bg-[#D6A34A] px-4 py-3 text-sm font-black text-[#050505] flex items-center justify-center gap-2">
               <Plus className="w-4 h-4" /> Nuevo empleado
             </button>
           </div>
 
-          {error && <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">{error}</div>}
+          {error && <div className="mt-5 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-200">{error}</div>}
 
           {showForm && (
-            <form onSubmit={create} className="mt-6 grid gap-4 rounded-2xl border border-[#E8D8C4] bg-[#FFFDF9] p-5 sm:grid-cols-2">
-              <label className="text-sm font-bold">Nombre<input value={name} onChange={(e) => setName(e.target.value)} required className="mt-1 w-full rounded-xl border border-[#DEC8AE] p-3 font-normal" /></label>
-              <label className="text-sm font-bold">Correo de acceso<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="mt-1 w-full rounded-xl border border-[#DEC8AE] p-3 font-normal" /></label>
+            <form onSubmit={create} className="mt-6 grid gap-4 rounded-2xl border border-[#3A3022] bg-[#0B0B0B] p-5 sm:grid-cols-2">
+              <label className="text-sm font-bold">Nombre<input value={name} onChange={(e) => setName(e.target.value)} required className="mt-1 w-full rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-3 font-normal text-[#F7F7F7]" /></label>
+              <label className="text-sm font-bold">Correo de acceso<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="mt-1 w-full rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-3 font-normal text-[#F7F7F7]" /></label>
               <label className="text-sm font-bold">Tipo de cuenta
-                <select value={accountMode} onChange={(e) => setAccountMode(e.target.value as 'new' | 'existing')} className="mt-1 w-full rounded-xl border border-[#DEC8AE] p-3 font-normal">
+                <select value={accountMode} onChange={(e) => setAccountMode(e.target.value as 'new' | 'existing')} className="mt-1 w-full rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-3 font-normal text-[#F7F7F7]">
                   <option value="new">Crear cuenta nueva</option>
                   <option value="existing">Usar cuenta existente</option>
                 </select>
               </label>
-              <label className="text-sm font-bold">{accountMode === 'new' ? 'Contraseña temporal' : 'Contraseña de la cuenta (opcional si usa Google)'}<input type="password" minLength={accountMode === 'new' ? 6 : undefined} value={password} onChange={(e) => setPassword(e.target.value)} required={accountMode === 'new'} className="mt-1 w-full rounded-xl border border-[#DEC8AE] p-3 font-normal" /></label>
-              <label className="text-sm font-bold">Rol<select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value as BusinessRole)} className="mt-1 w-full rounded-xl border border-[#DEC8AE] p-3 font-normal">{allowedRoles.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}</select></label>
-              <div className="sm:col-span-2 flex items-center gap-2 text-xs text-[#6B4028]"><KeyRound className="w-4 h-4" /> {accountMode === 'new' ? 'Se creará una cuenta nueva con este correo.' : 'La cuenta existente se validará con su contraseña o, si usa Google, podrás seleccionar ese mismo correo en la ventana de Google.'}</div>
-              <button disabled={saving} className="sm:col-span-2 rounded-xl bg-[#A86B3D] px-4 py-3 font-black text-white disabled:opacity-50">{saving ? 'Creando…' : 'Crear acceso'}</button>
+              <label className="text-sm font-bold">{accountMode === 'new' ? 'Contraseña temporal' : 'Contraseña de la cuenta (opcional si usa Google)'}<input type="password" minLength={accountMode === 'new' ? 6 : undefined} value={password} onChange={(e) => setPassword(e.target.value)} required={accountMode === 'new'} className="mt-1 w-full rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-3 font-normal text-[#F7F7F7]" /></label>
+              <label className="text-sm font-bold">Rol<select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value as BusinessRole)} className="mt-1 w-full rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-3 font-normal text-[#F7F7F7]">{allowedRoles.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}</select></label>
+              <div className="sm:col-span-2 flex items-center gap-2 text-xs text-[#C8C8C8]"><KeyRound className="w-4 h-4" /> {accountMode === 'new' ? 'Se creará una cuenta nueva con este correo.' : 'La cuenta existente se validará con su contraseña o, si usa Google, podrás seleccionar ese mismo correo en la ventana de Google.'}</div>
+              <button disabled={saving} className="sm:col-span-2 rounded-xl bg-[#D6A34A] px-4 py-3 font-black text-[#050505] disabled:opacity-50">{saving ? 'Creando…' : 'Crear acceso'}</button>
             </form>
           )}
 
           {loading ? (
-            <div className="py-12 text-center text-sm text-[#6B4028]">Cargando equipo…</div>
+            <div className="py-12 text-center text-sm text-[#C8C8C8]">Cargando equipo…</div>
           ) : (
             <div className="mt-6 space-y-3">
-              {employees.length === 0 && <div className="rounded-2xl border border-dashed border-[#DEC8AE] p-8 text-center text-sm text-[#6B4028]">Todavía no hay empleados registrados.</div>}
+              {employees.length === 0 && <div className="rounded-2xl border border-dashed border-[#3A3022] p-8 text-center text-sm text-[#C8C8C8]">Todavía no hay empleados registrados.</div>}
               {employees.map((employee) => (
-                <article key={employee.id} className="rounded-2xl border border-[#E8D8C4] bg-[#FFFDF9] p-4">
+                <article key={employee.id} className="rounded-2xl border border-[#3A3022] bg-[#0B0B0B] p-4">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="h-11 w-11 rounded-full bg-[#F1E2D0] flex items-center justify-center"><UserRound className="w-5 h-5 text-[#A86B3D]" /></div>
+                      <div className="h-11 w-11 rounded-full bg-[#1A1A1A] flex items-center justify-center"><UserRound className="w-5 h-5 text-[#E3BC6B]" /></div>
                       <div>
                         <strong className="block">{employee.name}</strong>
-                        <span className="text-xs text-[#6B4028]">{employee.email}</span>
+                        <span className="text-xs text-[#C8C8C8]">{employee.email}</span>
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <select value={employee.role} onChange={(e) => void changeRole(employee.userId, e.target.value as BusinessRole)} className="rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-xs font-bold">
+                      <select value={employee.role} onChange={(e) => void changeRole(employee.userId, e.target.value as BusinessRole)} className="rounded-xl border border-[#3A3022] bg-[#0B0B0B] px-3 py-2 text-xs font-bold text-[#F7F7F7]">
                         {MANAGEABLE_EMPLOYEE_ROLES.filter((role) => canManageEmployeeRole(managerRole, role) || role === employee.role).map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
                       </select>
-                      <button type="button" onClick={() => void toggleActive(employee.userId, !employee.active)} className="rounded-xl border border-[#DEC8AE] px-3 py-2 text-xs font-black">{employee.active ? 'Activo' : 'Inactivo'}</button>
-                      <button type="button" onClick={() => void remove(employee.userId)} className="rounded-xl border border-red-200 px-3 py-2 text-xs font-black text-red-700"><UserRoundX className="inline w-4 h-4 mr-1" />Retirar</button>
+                      <button type="button" onClick={() => void toggleActive(employee.userId, !employee.active)} className="rounded-xl border border-[#3A3022] px-3 py-2 text-xs font-black text-[#F7F7F7]">{employee.active ? 'Activo' : 'Inactivo'}</button>
+                      <button type="button" onClick={() => void remove(employee.userId)} className="rounded-xl border border-rose-500/40 px-3 py-2 text-xs font-black text-rose-300"><UserRoundX className="inline w-4 h-4 mr-1" />Retirar</button>
                     </div>
                   </div>
                   <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex items-center gap-2 text-xs font-bold">
-                      {employee.active ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <Lock className="w-4 h-4 text-slate-500" />}
+                      {employee.active ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Lock className="w-4 h-4 text-[#B7B7B7]" />}
                       {employee.active ? 'Puede entrar al negocio' : 'Acceso bloqueado'}
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {getRolePermissions(employee.role).map((permission) => (
-                        <span key={permission} title={PERMISSION_LABELS[permission]} className="rounded-full bg-[#F4E7D8] px-2 py-1 text-[10px] font-bold text-[#6B4028]">{PERMISSION_LABELS[permission]}</span>
+                        <span key={permission} title={PERMISSION_LABELS[permission]} className="rounded-full bg-[#1A1A1A] px-2 py-1 text-[10px] font-bold text-[#C8C8C8]">{PERMISSION_LABELS[permission]}</span>
                       ))}
                     </div>
                   </div>
-                  <p className="mt-3 text-xs text-[#6B4028]"><strong>{ROLE_LABELS[employee.role]}:</strong> {ROLE_DESCRIPTIONS[employee.role]}</p>
+                  <p className="mt-3 text-xs text-[#C8C8C8]"><strong>{ROLE_LABELS[employee.role]}:</strong> {ROLE_DESCRIPTIONS[employee.role]}</p>
                 </article>
               ))}
             </div>
           )}
         </section>
 
-        <section className="mt-5 rounded-[2rem] border border-[#D9C5AC] bg-white p-6">
-          <div className="flex items-center gap-2"><Shield className="w-5 h-5 text-[#A86B3D]" /><h2 className="font-serif text-xl font-black">Roles protegidos</h2></div>
-          <p className="mt-2 text-sm text-[#6B4028]">OWNER y SUPER_ADMIN no aparecen como roles asignables. Un empleado tampoco puede cambiar su propio rol desde este módulo.</p>
+        <section className="mt-5 rounded-[2rem] border border-[#3A3022] bg-[#111111] p-6">
+          <div className="flex items-center gap-2"><Shield className="w-5 h-5 text-[#E3BC6B]" /><h2 className="font-serif text-xl font-black">Roles protegidos</h2></div>
+          <p className="mt-2 text-sm text-[#C8C8C8]">OWNER y SUPER_ADMIN no aparecen como roles asignables. Un empleado tampoco puede cambiar su propio rol desde este módulo.</p>
         </section>
       </div>
     </div>

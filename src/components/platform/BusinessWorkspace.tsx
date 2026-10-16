@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, BarChart3, BookOpen, Bot, Clock, Heart, Receipt, ExternalLink, LayoutDashboard, Settings, ShoppingBag, Store, Users } from 'lucide-react';
+import { ArrowLeft, BarChart3, BookOpen, Bot, Clock, Heart, Receipt, ScrollText, ExternalLink, LayoutDashboard, Settings, ShoppingBag, Store, Users } from 'lucide-react';
 import { BusinessSummaryTab } from './BusinessSummaryTab';
 import { BusinessCustomersView } from './BusinessCustomersView';
 import { BusinessShiftView } from './BusinessShiftView';
 import { BusinessExpensesView } from './BusinessExpensesView';
+import { BusinessAuditView } from './BusinessAuditView';
+import { BusinessModuleToggles } from './BusinessModuleToggles';
 import { BusinessBrandingSettings } from './BusinessBrandingSettings';
 import { BusinessCatalogEditor } from './BusinessCatalogEditor';
 import { BusinessEmployeesView } from './BusinessEmployeesView';
@@ -25,7 +27,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const [role, setRole] = useState<BusinessRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<'workspace' | 'catalog' | 'employees' | 'customers' | 'shifts' | 'expenses' | 'operations' | 'menuImport' | 'modules' | 'branding' | 'reports'>('workspace');
+  const [view, setView] = useState<'workspace' | 'catalog' | 'employees' | 'customers' | 'shifts' | 'expenses' | 'audit' | 'operations' | 'menuImport' | 'modules' | 'branding' | 'reports'>('workspace');
 
   useEffect(() => subscribeToAuth((user) => setAuthUser(user)), []);
 
@@ -159,6 +161,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     { id: 'operations', label: 'Pedidos y Caja', icon: ShoppingBag, allowed: canPos },
     { id: 'shifts', label: 'Turno', icon: Clock, allowed: hasCap('SHIFTS') && (!!role && hasBusinessPermission(role, 'pos.use')) },
     { id: 'expenses', label: 'Gastos', icon: Receipt, allowed: hasCap('EXPENSES') && (!!role && hasBusinessPermission(role, 'pos.use')) },
+    { id: 'audit', label: 'Bitácora', icon: ScrollText, allowed: hasCap('AUDIT_LOG') && !!role && ['OWNER', 'ADMIN', 'MANAGER', 'SUPER_ADMIN'].includes(role) },
     { id: 'reports', label: 'Reportes', icon: BarChart3, allowed: canSeeReports },
     { id: 'customers', label: 'Clientes', icon: Heart, allowed: canPos || canSeeReports },
     { id: 'employees', label: 'Empleados', icon: Users, allowed: canManageEmployees },
@@ -178,6 +181,10 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
         else if (module.capability === 'RECEIPTS' && !!role && hasBusinessPermission(role, 'reports.view')) setView('reports');
         else if (module.capability === 'BUSINESS_SETTINGS' && !!role && hasBusinessPermission(role, 'business.manage')) setView('branding');
       }} />;
+    }
+
+    if (view === 'audit') {
+      return <BusinessAuditView businessId={businessId} />;
     }
 
     if (view === 'expenses') {
@@ -220,6 +227,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     return (
       <div className="space-y-5">
         <BusinessSummaryTab businessId={businessId} business={business} isPublished={isPublished} onGo={(t) => setView(t)} />
+        <BusinessModuleToggles businessId={businessId} enabled={enabledCapabilities} isOwner={role === 'OWNER' || role === 'SUPER_ADMIN'} onChanged={(caps) => setBusiness({ ...business, capabilities: caps })} />
         <section className="rounded-2xl border border-[#3A3022] bg-[#111111] p-4">
           <p className="text-[10px] font-black uppercase tracking-wide text-[#E3BC6B]">Enlace para tus clientes</p>
           <p className="mt-1 break-all text-xs text-[#C8C8C8]">{publicUrl}</p>
