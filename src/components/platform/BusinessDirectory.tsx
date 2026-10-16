@@ -77,8 +77,8 @@ export const BusinessDirectory: React.FC = () => {
       <header className="sticky top-0 z-20 border-b border-white/10 bg-[#10100F]/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <a href="#" onClick={(event) => { event.preventDefault(); window.location.hash = '#explorar'; }} className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#3A2418] text-[#D6A34A]"><Bot className="h-6 w-6" /></span>
-            <span><span className="block text-[10px] font-black uppercase tracking-[.2em] text-[#D6A34A]">Gioteautomatizo</span><strong className="font-serif text-lg sm:text-xl">Negocios cerca de ti</strong></span>
+            <img src="/gioteautomatizo-mark.svg" alt="" className="h-10 w-10 rounded-xl" />
+            <span><span className="block text-[10px] font-black uppercase tracking-[.2em] text-[#D6A34A]">Gioteautomatizo</span><strong className="font-serif text-lg sm:text-xl">Negocios cerca de ti</strong><span className="block text-[10px] tracking-wide text-white/60">Tu negocio. Más conectado.</span></span>
           </a>
           <button onClick={openBusinessAccess} className="rounded-xl border border-white/15 px-3 py-2 text-xs font-bold hover:border-[#D6A34A] sm:px-4 sm:text-sm">Acceso para negocios</button>
         </div>
