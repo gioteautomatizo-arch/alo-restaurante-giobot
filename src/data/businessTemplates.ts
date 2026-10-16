@@ -3,7 +3,8 @@ export type BusinessCapability =
   | 'POS' | 'INVENTORY' | 'RECIPES' | 'MODIFIERS' | 'TOPPINGS' | 'SHIFTS' | 'STAFF'
   | 'TABLES' | 'TABLE_ACCOUNTS' | 'PAYMENTS' | 'CUSTOMERS' | 'VIP' | 'PROMOTIONS'
   | 'DAILY_MENU' | 'EXPENSES' | 'RECEIPTS' | 'KITCHEN_STATIONS' | 'DELIVERY'
-  | 'RESERVATIONS' | 'ASSISTANT_AI' | 'BUSINESS_SETTINGS';
+  | 'RESERVATIONS' | 'ASSISTANT_AI' | 'BUSINESS_SETTINGS'
+  | 'CASH_VAULT' | 'RECEIVABLES' | 'PAYABLES' | 'AUDIT_LOG';
 
 export interface BusinessModule {
   id: string;
@@ -45,6 +46,10 @@ const restaurantModules: BusinessModule[] = [
   { id: 'promotions', title: 'Promociones', description: 'Descuentos, combos y campañas.', capability: 'PROMOTIONS', group: 'VENTAS', priority: 'advanced' },
   { id: 'daily-menu', title: 'Menú del día', description: 'Configuración rápida de platillos y combos.', capability: 'DAILY_MENU', group: 'VENTAS', priority: 'advanced' },
   { id: 'expenses', title: 'Gastos', description: 'Registro y control de egresos.', capability: 'EXPENSES', group: 'ADMINISTRACION' },
+  { id: 'cash-vault', title: 'Sobre / resguardo', description: 'Dinero apartado de caja con responsable y comprobante.', capability: 'CASH_VAULT', group: 'ADMINISTRACION' },
+  { id: 'receivables', title: 'Cuentas por cobrar', description: 'Lo que te deben clientes y empleados.', capability: 'RECEIVABLES', group: 'ADMINISTRACION' },
+  { id: 'payables', title: 'Cuentas por pagar', description: 'Lo que debes a proveedores y servicios.', capability: 'PAYABLES', group: 'ADMINISTRACION' },
+  { id: 'audit', title: 'Bitácora y auditoría', description: 'Quién hizo qué y cuándo.', capability: 'AUDIT_LOG', group: 'ADMINISTRACION' },
   { id: 'receipts', title: 'Recibos / reportes', description: 'Tickets, comprobantes e historial.', capability: 'RECEIPTS', group: 'ADMINISTRACION' },
   { id: 'kitchen', title: 'Cocina', description: 'Estaciones y preparación.', capability: 'KITCHEN_STATIONS', group: 'OPERACION' },
   { id: 'delivery', title: 'Delivery', description: 'Pedidos para entrega y seguimiento.', capability: 'DELIVERY', group: 'VENTAS', priority: 'advanced' },
@@ -63,6 +68,18 @@ export const BUSINESS_TEMPLATE_CONFIGS: Record<string, BusinessTemplateConfig> =
   design: { id: 'design', name: 'Diseño gráfico', description: 'Clientes, cotizaciones, proyectos, anticipos e IA.', capabilities: ['CATALOG','ORDERS','POS','PAYMENTS','CUSTOMERS','EXPENSES','RECEIPTS','ASSISTANT_AI','BUSINESS_SETTINGS'], modules: restaurantModules.filter((m) => ['CATALOG','ORDERS','POS','PAYMENTS','CUSTOMERS','EXPENSES','RECEIPTS','ASSISTANT_AI','BUSINESS_SETTINGS'].includes(m.capability)) },
   other: { id: 'other', name: 'Otro negocio', description: 'Business Core con módulos activables.', capabilities: ['CATALOG','ORDERS','POS','PAYMENTS','CUSTOMERS','ASSISTANT_AI','BUSINESS_SETTINGS'], modules: restaurantModules.filter((m) => ['CATALOG','ORDERS','POS','PAYMENTS','CUSTOMERS','ASSISTANT_AI','BUSINESS_SETTINGS'].includes(m.capability)) },
 };
+
+// Los módulos administrativos viajan en bloque: quien lleva turnos y gastos
+// recibe también resguardo, cuentas por cobrar/pagar y bitácora. Un negocio
+// que solo necesita ticket (sin SHIFTS ni EXPENSES) no los recibe.
+const ADMIN_BUNDLE: BusinessCapability[] = ['CASH_VAULT', 'RECEIVABLES', 'PAYABLES', 'AUDIT_LOG'];
+for (const template of Object.values(BUSINESS_TEMPLATE_CONFIGS)) {
+  const wantsAdmin = template.capabilities.includes('SHIFTS') || template.capabilities.includes('EXPENSES');
+  if (!wantsAdmin) continue;
+  const capabilities = Array.from(new Set([...template.capabilities, ...ADMIN_BUNDLE]));
+  template.capabilities = capabilities;
+  template.modules = restaurantModules.filter((m) => capabilities.includes(m.capability));
+}
 
 export function getBusinessTemplateConfig(templateId: string): BusinessTemplateConfig {
   return BUSINESS_TEMPLATE_CONFIGS[templateId] || BUSINESS_TEMPLATE_CONFIGS.other;

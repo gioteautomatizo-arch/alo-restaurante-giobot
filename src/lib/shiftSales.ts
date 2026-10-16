@@ -52,3 +52,32 @@ export function computeShiftSalesFromReceipts(
   platforms = round2(platforms);
   return { cash, card, platforms, total: round2(cash + card + platforms), count };
 }
+
+/** Misma suma, pero para los pedidos de un negocio (POS, página pública y mesas). */
+export function computeShiftSalesFromOrders(
+  orders: Array<{ status?: string; billingStatus?: string; paymentMethod?: string; total?: number; paidAt?: string; createdAt?: string }>,
+  shiftStartIso: string,
+  shiftEndIso?: string,
+): ShiftSalesTotals {
+  const start = Date.parse(shiftStartIso) || 0;
+  const end = Date.parse(shiftEndIso || '') || Infinity;
+  let cash = 0;
+  let card = 0;
+  let platforms = 0;
+  let count = 0;
+  for (const o of orders) {
+    if (o.status === 'CANCELADO' || o.billingStatus !== 'PAGADO') continue;
+    const at = Date.parse(o.paidAt || o.createdAt || '') || 0;
+    if (at < start || at > end) continue;
+    const amount = Number(o.total || 0);
+    if (!(amount > 0)) continue;
+    count += 1;
+    if (o.paymentMethod === 'efectivo') cash += amount;
+    else if (o.paymentMethod === 'tarjeta') card += amount;
+    else platforms += amount;
+  }
+  cash = round2(cash);
+  card = round2(card);
+  platforms = round2(platforms);
+  return { cash, card, platforms, total: round2(cash + card + platforms), count };
+}

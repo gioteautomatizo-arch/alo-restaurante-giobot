@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, BarChart3, BookOpen, Bot, Heart, ExternalLink, LayoutDashboard, Settings, ShoppingBag, Store, Users } from 'lucide-react';
+import { ArrowLeft, BarChart3, BookOpen, Bot, Clock, Heart, ExternalLink, LayoutDashboard, Settings, ShoppingBag, Store, Users } from 'lucide-react';
 import { BusinessSummaryTab } from './BusinessSummaryTab';
 import { BusinessCustomersView } from './BusinessCustomersView';
+import { BusinessShiftView } from './BusinessShiftView';
 import { BusinessBrandingSettings } from './BusinessBrandingSettings';
 import { BusinessCatalogEditor } from './BusinessCatalogEditor';
 import { BusinessEmployeesView } from './BusinessEmployeesView';
@@ -23,7 +24,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const [role, setRole] = useState<BusinessRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<'workspace' | 'catalog' | 'employees' | 'customers' | 'operations' | 'menuImport' | 'modules' | 'branding' | 'reports'>('workspace');
+  const [view, setView] = useState<'workspace' | 'catalog' | 'employees' | 'customers' | 'shifts' | 'operations' | 'menuImport' | 'modules' | 'branding' | 'reports'>('workspace');
 
   useEffect(() => subscribeToAuth((user) => setAuthUser(user)), []);
 
@@ -148,10 +149,14 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const canManageBusiness = !!role && hasBusinessPermission(role, 'business.manage');
   const canPos = !!business.features.pos && canUsePos;
 
+  const enabledCapabilities = new Set<string>(business.capabilities && business.capabilities.length > 0 ? business.capabilities : template.capabilities);
+  const hasCap = (capability: string) => enabledCapabilities.has(capability);
+
   const tabs: Array<{ id: typeof view; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; allowed: boolean }> = [
     { id: 'workspace', label: 'Resumen', icon: LayoutDashboard, allowed: true },
     { id: 'catalog', label: 'Catálogo', icon: BookOpen, allowed: canManageCatalog },
     { id: 'operations', label: 'Pedidos y Caja', icon: ShoppingBag, allowed: canPos },
+    { id: 'shifts', label: 'Turno', icon: Clock, allowed: hasCap('SHIFTS') && (!!role && hasBusinessPermission(role, 'pos.use')) },
     { id: 'reports', label: 'Reportes', icon: BarChart3, allowed: canSeeReports },
     { id: 'customers', label: 'Clientes', icon: Heart, allowed: canPos || canSeeReports },
     { id: 'employees', label: 'Empleados', icon: Users, allowed: canManageEmployees },
@@ -171,6 +176,10 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
         else if (module.capability === 'RECEIPTS' && !!role && hasBusinessPermission(role, 'reports.view')) setView('reports');
         else if (module.capability === 'BUSINESS_SETTINGS' && !!role && hasBusinessPermission(role, 'business.manage')) setView('branding');
       }} />;
+    }
+
+    if (view === 'shifts') {
+      return <BusinessShiftView businessId={businessId} />;
     }
 
     if (view === 'customers') {

@@ -172,6 +172,47 @@ service cloud.firestore {
         && (hasActiveMembership(businessId) || isPlatformSuperAdmin());
     }
 
+    // ── Módulos administrativos por negocio (turnos, gastos, resguardo, cuentas, bitácora…).
+    // Un solo bloque cubre a TODOS los negocios: los datos viven en
+    // businesses/{id}/{módulo}/{doc} y el acceso depende de la membresía activa y su rol.
+    // Agregar un negocio nuevo no requiere tocar reglas.
+    function isTenantModule(col) {
+      return col in ['shifts', 'expenses', 'vault', 'receivables', 'payables', 'auditLog'];
+    }
+
+    function tenantRole(businessId) {
+      return getCallerMembershipRole(businessId);
+    }
+
+    match /businesses/{businessId}/{moduleCol}/{moduleDoc} {
+      allow read: if isTenantModule(moduleCol)
+        && (
+          moduleCol == 'auditLog'
+            ? tenantRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER', 'SUPER_ADMIN']
+            : tenantRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER', 'CASHIER', 'SUPER_ADMIN']
+        );
+
+      allow create: if isTenantModule(moduleCol)
+        && request.resource.data.businessId == businessId
+        && (
+          moduleCol == 'auditLog'
+            ? tenantRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE', 'SUPER_ADMIN']
+              && request.resource.data.actorId == request.auth.uid
+            : tenantRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER', 'CASHIER', 'SUPER_ADMIN']
+        );
+
+      // La bitácora no se edita ni se borra. Los turnos tampoco se borran (se cierran).
+      allow update: if isTenantModule(moduleCol)
+        && moduleCol != 'auditLog'
+        && request.resource.data.businessId == businessId
+        && tenantRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER', 'CASHIER', 'SUPER_ADMIN'];
+
+      allow delete: if isTenantModule(moduleCol)
+        && moduleCol != 'auditLog'
+        && moduleCol != 'shifts'
+        && tenantRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER', 'SUPER_ADMIN'];
+    }
+
     match /businessMemberships/{membershipId} {
       // Un usuario puede consultar su membresía. Los responsables también pueden
       // consultar las membresías de su propio negocio para administrar el equipo.
