@@ -367,6 +367,8 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
                 orders: sessionOrders,
                 payments: sessionPayments,
                 user: currentUser,
+                waiterId: selectedTable.waiterId,
+                waiterName: selectedTable.waiterName,
               });
             } catch (receiptErr) {
               console.warn('[TableAccountsView] pago guardado, no se pudo generar ticket final:', receiptErr);
