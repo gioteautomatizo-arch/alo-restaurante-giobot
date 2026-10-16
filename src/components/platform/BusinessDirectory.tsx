@@ -78,7 +78,7 @@ export const BusinessDirectory: React.FC = () => {
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <a href="#" onClick={(event) => { event.preventDefault(); window.location.hash = '#explorar'; }} className="flex items-center gap-3">
             <img src="/gioteautomatizo-mark.png" alt="" className="h-10 w-10 rounded-xl" />
-            <span><span className="block text-[10px] font-black uppercase tracking-[.2em] text-[#D6A34A]">Gioteautomatizo</span><strong className="font-serif text-lg sm:text-xl">Negocios cerca de ti</strong><span className="block text-[10px] tracking-wide text-white/60">Automatiza hoy, crece siempre.</span></span>
+            <span><span className="block text-[10px] font-black uppercase tracking-[.2em] text-[#D6A34A]">Gioteautomatizo</span><strong className="font-serif text-lg sm:text-xl">Negocios cerca de ti</strong><span className="block text-[10px] tracking-wide text-white/60">Tu negocio. Más conectado.</span></span>
           </a>
           <button onClick={openBusinessAccess} className="rounded-xl border border-white/15 px-3 py-2 text-xs font-bold hover:border-[#D6A34A] sm:px-4 sm:text-sm">Acceso para negocios</button>
         </div>
