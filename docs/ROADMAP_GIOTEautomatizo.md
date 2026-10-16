@@ -98,3 +98,10 @@ Un directorio público que permita descubrir negocios, consultar catálogos y co
 - Se creó `.github/workflows/quality.yml` para ejecutar en GitHub Actions `npm run lint` (TypeScript) y `npm run build` al actualizar la rama de trabajo o abrir PR hacia ramas principales.
 - El repositorio no contiene `package-lock.json` ni otro lockfile; por eso el workflow usa `npm install --no-package-lock`. Recomendación pendiente: generar y revisar un lockfile para builds reproducibles, sin subir secretos.
 - La CI aún debe ejecutarse y pasar; no declarar listo para producción hasta revisar sus resultados y completar pruebas de aislamiento de tenants, cobro y reglas de Firebase.
+
+## Mejoras de identidad y QR — 15/10/2026
+- Se agregó la paleta universal **Crema & Café** a la configuración de identidad por negocio; no reemplaza los valores guardados en Calientito ni cambia otras identidades automáticamente.
+- Se corrigió el enrutamiento para aceptar parámetros QR tanto antes como después del fragmento de URL, por ejemplo `?table=2` o `#negocio/alo-restaurante?table=2`.
+- La página pública multinegocio conserva el número de mesa del QR y lo incluye en el mensaje de pedido enviado por WhatsApp.
+- Pendiente: generar/descargar hojas de QR desde el panel de cada negocio; verificar en dispositivos reales los QR antiguos y nuevos; ejecutar lint/build y probar QR para Calientito y para un negocio multinegocio. Estos cambios no han sido validados con una compilación ejecutada.
+- Estrategia de lanzamiento recomendada: directorio y menú gratuitos; QR autogenerados y descargables incluidos en el plan básico; instalación personalizada, reportes avanzados, multi-sucursal y automatizaciones asistidas como futuros planes de pago. Donación voluntaria opcional, sin bloquear el uso básico.
