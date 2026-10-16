@@ -65,6 +65,7 @@ export function buildWhatsappOrderUrl(input: {
   lines: PublicCartLine[];
   customerName?: string;
   notes?: string;
+  tableNumber?: number;
 }): string {
   const phone = normalizeWhatsapp(input.whatsapp);
   if (!phone || input.lines.length === 0) return '';
@@ -79,6 +80,7 @@ export function buildWhatsappOrderUrl(input: {
     ...rows,
     '',
     `Total: ${formatMoney(cartTotal(input.lines))}`,
+    input.tableNumber ? `Mesa: ${input.tableNumber}` : '',
     input.customerName?.trim() ? `Nombre: ${input.customerName.trim()}` : '',
     input.notes?.trim() ? `Notas: ${input.notes.trim()}` : '',
   ]
