@@ -164,6 +164,7 @@ export const BusinessPortal: React.FC = () => {
               <img src="/gioteautomatizo-logo.svg" alt="Gioteautomatizo — Tu negocio. Más conectado." className="mb-8 w-full max-w-md rounded-2xl" />
               <div className="inline-flex items-center gap-2 rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-amber-300">
                 <Sparkles className="w-3.5 h-3.5" /> Plataforma para negocios
+              </div>
               <h1 className="mt-6 text-4xl font-black leading-tight">Tu negocio, su POS y su IA en un solo lugar.</h1>
               <p className="mt-4 max-w-xl text-sm leading-relaxed text-slate-300">
                 Inicia sesión, abre tu negocio y administra ventas, catálogo, inventario, clientes y asistentes inteligentes desde una sola plataforma.
