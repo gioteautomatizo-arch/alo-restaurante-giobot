@@ -21,7 +21,14 @@ function RootRouter() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  const hasTableQr = new URLSearchParams(window.location.search).has('table') || new URLSearchParams(window.location.search).has('qr') || new URLSearchParams(window.location.search).get('staffOrder') === '1';
+  // QR heredados pueden colocar sus parámetros antes o después de #.
+  // Unificamos ambos formatos sin alterar la URL que recibe el cliente.
+  const fragmentQuery = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '';
+  const qrParams = new URLSearchParams(window.location.search);
+  new URLSearchParams(fragmentQuery).forEach((value, key) => {
+    if (!qrParams.has(key)) qrParams.set(key, value);
+  });
+  const hasTableQr = qrParams.has('table') || qrParams.has('qr') || qrParams.get('staffOrder') === '1';
 
   if (hash === '#explorar' || hash === '#' || (!hash && !hasTableQr)) {
     return <div className="giote-platform-theme"><BusinessDirectory /></div>;
@@ -36,7 +43,8 @@ function RootRouter() {
   }
 
   // Página pública de un negocio (lo que ve el cliente). Calientito conserva su propia app.
-  const publicMatch = hash.match(/^#negocio\/([^/]+)$/);
+  const routeHash = hash.includes('?') ? hash.slice(0, hash.indexOf('?')) : hash;
+  const publicMatch = routeHash.match(/^#negocio\/([^/]+)$/);
   if (publicMatch && decodeURIComponent(publicMatch[1]) !== 'alo-restaurante') {
     return <BusinessPublicPage businessId={decodeURIComponent(publicMatch[1])} />;
   }
@@ -45,7 +53,7 @@ function RootRouter() {
     return <App />;
   }
 
-  const businessMatch = hash.match(/^#business\/([^/]+)$/);
+  const businessMatch = routeHash.match(/^#business\/([^/]+)$/);
   if (businessMatch) {
     return <div className="giote-platform-theme platform-business"><BusinessWorkspace businessId={decodeURIComponent(businessMatch[1])} /></div>;
   }
