@@ -127,7 +127,7 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
     if (!publicParams.has(key)) publicParams.set(key, value);
   });
   const tableParam = publicParams.get('table');
-  const tableNumber = tableParam && /^\\d{1,3}$/.test(tableParam) && Number(tableParam) > 0
+  const tableNumber = tableParam && /^\d{1,3}$/.test(tableParam) && Number(tableParam) > 0
     ? Number(tableParam)
     : undefined;
   const bg = b.backgroundColor || '#111111';
