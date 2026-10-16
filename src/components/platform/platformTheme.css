@@ -247,3 +247,47 @@
 .platform-business [class~="text-[#B7B7B7]"] {
   color: color-mix(in srgb, var(--biz-text, #f7f7f7) 72%, transparent) !important;
 }
+
+/* POS multinegocio: los selectores globales del tema no deben dejar texto blanco
+   sobre tarjetas blancas ni imponer el tema de Gioteautomatizo al negocio. */
+.giote-platform-theme .business-operations-view {
+  background: var(--biz-bg, #F5F1EA) !important;
+  color: var(--biz-text, #201610) !important;
+}
+.giote-platform-theme .business-operations-view [class~="bg-white"],
+.giote-platform-theme .business-operations-view [class~="bg-[#FFFDF9]"] {
+  background-color: var(--biz-surface, #FFF9F0) !important;
+  color: var(--biz-text, #2B211B) !important;
+}
+.giote-platform-theme .business-operations-view [class~="text-[#2B1B13]"],
+.giote-platform-theme .business-operations-view [class~="text-[#201610]"],
+.giote-platform-theme .business-operations-view [class~="text-[#3A2418]"] {
+  color: var(--biz-text, #2B211B) !important;
+}
+.giote-platform-theme .business-operations-view [class~="text-[#6B4028]"],
+.giote-platform-theme .business-operations-view [class~="text-slate-400"],
+.giote-platform-theme .business-operations-view [class~="text-slate-500"] {
+  color: color-mix(in srgb, var(--biz-text, #2B211B) 76%, transparent) !important;
+}
+.giote-platform-theme .business-operations-view [class~="border-[#DEC8AE]"],
+.giote-platform-theme .business-operations-view [class~="border-[#D9C5AC]"],
+.giote-platform-theme .business-operations-view [class~="border-[#E8D8C4]"] {
+  border-color: color-mix(in srgb, var(--biz-primary, #A86B3D) 32%, transparent) !important;
+}
+.giote-platform-theme .business-operations-view [class~="bg-[#3A2418]"],
+.giote-platform-theme .business-operations-view [class~="bg-[#D6A34A]"],
+.giote-platform-theme .business-operations-view [class~="bg-amber-300"] {
+  background-color: var(--biz-primary, #A86B3D) !important;
+}
+.giote-platform-theme .business-operations-view [class~="text-[#111827]"],
+.giote-platform-theme .business-operations-view [class~="text-[#050505]"] {
+  color: var(--biz-bg, #F5F1EA) !important;
+}
+.giote-platform-theme .business-operations-view input,
+.giote-platform-theme .business-operations-view select {
+  color: var(--biz-text, #2B211B) !important;
+}
+.giote-platform-theme .business-operations-view option {
+  color: #171717;
+  background: #ffffff;
+}
