@@ -221,3 +221,160 @@ Publicar el MVP cuando P0 esté completa, P1 pase pruebas en móvil y escritorio
 - 16/10/2026: ajuste en `BusinessPublicPage.tsx` para mostrar un aviso si falla el registro del pedido.
 - 16/10/2026: endurecimiento inicial de `firestore.rules` para que pedidos anónimos multinegocio requieran perfil público publicado, estado pendiente, tipos/campos permitidos y límite de 100 artículos.
 - **Advertencia:** las reglas nuevas aún deben ejecutarse en emulador/proyecto de pruebas y comprobarse con el flujo público de Giomero y los flujos heredados de Calientito antes de desplegar.
+
+
+---
+
+## ROADMAP GENERAL — INVENTARIO DEL PRODUCTO (16/10/2026)
+
+Este documento describe **Gioteautomatizo como plataforma completa**, no como una lista de tareas para un negocio individual. Las capacidades se clasifican como: probadas por el usuario, presentes en el código pendientes de aceptación, o pendientes/futuras. La existencia de una pantalla no prueba que el flujo esté terminado.
+
+### A. Lo que ya tiene Gioteautomatizo como plataforma general
+
+#### A1. Descubrimiento y presencia pública
+- [x] Directorio público de negocios con búsqueda y tarjetas.
+- [x] Página pública independiente por negocio, con enlace compartible.
+- [x] Catálogo público y carrito/armado de pedido en la página del negocio.
+- [x] El visitante puede explorar y comenzar un pedido sin tener que crear una cuenta.
+- [x] Opción de publicar u ocultar la página del negocio.
+- [x] Campos de perfil público: nombre, logo/portada, descripción, horarios, contacto y redes, según lo configurado.
+- [ ] Pendiente de aceptación: comprobar que el directorio muestre únicamente negocios publicados y que al ocultarlos desaparezcan sin filtrar información privada.
+
+#### A2. Registro y panel de negocios
+- [x] Ruta de acceso de negocios: `#business`.
+- [x] Ruta de registro de negocio: `#business-new`.
+- [x] Espacio privado por negocio: `#business/{id}`.
+- [x] Panel general con Resumen, Catálogo, Pedidos y Caja, Reportes, Empleados e Info/identidad, sujeto a permisos y capacidades del negocio.
+- [x] Modelo de membresías y roles por negocio.
+- [x] Configuración de marca por negocio y paletas, incluida la paleta universal Crema & Café.
+- [ ] Pendiente: terminar el panel de superadministración con búsqueda, estado de publicación, actividad y soporte; probar invitaciones y roles de empleados de extremo a extremo.
+
+#### A3. Pedidos públicos
+- [x] El código guarda pedidos públicos asociados al negocio y genera un código/folio.
+- [x] Si está configurado, abre WhatsApp con la información del pedido como canal complementario.
+- [x] Se añadió un aviso explícito cuando falla la persistencia del pedido para no presentar como guardado algo que no se guardó.
+- [x] Restricción de reglas añadida para que pedidos anónimos multinegocio requieran perfil público publicado y estado inicial permitido.
+- [x] **Prueba reportada por el usuario:** un pedido público de Giomero llegó a Pedidos y Caja tras hacer Pull.
+- [ ] Pendiente: pruebas repetibles de doble toque, reintentos, pedido manipulado, falta de conexión, perfil oculto y reglas desplegadas.
+
+#### A4. Catálogo, archivos e identidad
+- [x] Editor de catálogo y flujo de importación de menú desde foto presentes en el panel multinegocio.
+- [x] Edición de nombre, logo, portada, slogan, descripción, WhatsApp, horario, dirección, redes y paleta por negocio.
+- [ ] Pendiente: validar subida de imágenes y reglas de Storage; mostrar errores útiles; revisar peso, tipo de archivo y vista móvil.
+- [ ] Pendiente: garantizar que los colores seleccionados se apliquen de forma consistente en todas las pestañas y que no se filtren a otro negocio al cambiar de tenant.
+
+#### A5. Pedidos, operaciones y reportes multinegocio
+- [x] Vistas de pedidos/caja y reportes por negocio existen en el código.
+- [x] Se añadieron consultas de pedidos con filtro por `businessId` para evitar mezclar operaciones entre negocios.
+- [x] Se añadieron correcciones para excluir pedidos no pagados del cálculo de ventas y usar la fecha de pago cuando esté disponible.
+- [ ] Pendiente: comparar caja, tickets, resumen y reportes con ventas reales en días y turnos distintos.
+- [ ] Pendiente: probar aislamiento de pedidos, reportes, empleados, clientes, mesas y archivos con dos cuentas y dos negocios.
+
+#### A6. QR y enlaces de mesa
+- [x] La ruta pública admite parámetros de mesa en los formatos contemplados en el código.
+- [x] El número de mesa puede conservarse en el pedido público y en el texto de WhatsApp.
+- [ ] Pendiente: generador visual de QR por negocio y por mesa, descarga PNG/PDF, hoja imprimible, regeneración y prueba de QR antiguos/nuevos en dispositivos reales.
+- [ ] Pendiente: impedir que una visita desde el dispositivo del dueño o empleado cree accidentalmente un cliente VIP o selle una mesa sin una acción válida.
+
+### B. Restaurante Calientito — módulos de referencia existentes
+
+Restaurante Calientito conserva su experiencia operativa histórica. Esta sección sirve como inventario de referencia para convertir funciones útiles en módulos universales, sin copiar su nombre, datos, horarios o reglas a otros negocios.
+
+- [x] Resumen administrativo del turno y ventas.
+- [x] Mesas, comensales, sesiones y asignación operativa de mesero.
+- [x] Caja & Cobro, métodos de pago e historial de tickets/cortes.
+- [x] Comandas separadas por Cocina y Cafetería, estados de preparación y filtros por fecha.
+- [x] Control de Turno.
+- [x] Gastos & Comprobantes.
+- [x] Sobre / Resguardo.
+- [x] Clientes VIP, sellos y recompensa.
+- [x] Inventario de Papel.
+- [x] Menú del Día: disponibilidad semanal, plato fuerte, entrada/sopa, guarniciones, agua, postre, alternativas y precios adicionales.
+- [x] Info Restaurante: dirección, horarios por día, WhatsApp, entrega, formas de pago/políticas, reglas VIP, descuento ecológico, promociones semanales, portada, logo y redes.
+- [x] Historial de Cortes.
+- [x] Bitácora & Auditoría.
+- [x] Colaboradores & Accesos.
+- [ ] Pendiente crítico: probar y corregir que el mesero asignado aparezca en el ticket final de cobro.
+- [ ] Pendiente crítico: comprobar que Resumen de ventas de hoy cuadre con Caja & Cobro y que se usen únicamente tickets pagados, con zona horaria `America/Mexico_City`.
+- [ ] Pendiente crítico: verificar la desvinculación de cliente VIP del dispositivo/cuenta y evitar altas/sellos automáticos por visitas de empleados.
+- [ ] Pendiente: convertir los módulos aplicables en capacidades configurables para restaurantes, cafeterías, pizzerías, tiendas, puestos ambulantes, tianguis, perfumes/decants y ghost kitchens.
+
+### C. Roadmap general — trabajo pendiente ordenado por prioridad
+
+#### P0. Seguridad y estabilidad (bloquea abrir registros a todo el público)
+- [ ] Ejecutar GitHub Actions y confirmar lint/build verdes.
+- [ ] Probar reglas Firestore en emulador o entorno de pruebas.
+- [ ] Probar visitante anónimo, cliente, propietario, empleado y superadministrador.
+- [ ] Probar dos negocios en paralelo: ningún negocio debe leer o modificar datos del otro.
+- [ ] Auditar reglas de Storage, datos VIP, mesas, empleados, caja, turnos, gastos y perfiles públicos.
+- [ ] Probar todos los flujos de Calientito después de cualquier cambio de reglas.
+- [ ] Preparar respaldo, restauración y rollback documentados.
+
+#### P1. MVP público
+- [ ] Directorio y páginas públicas con estados de carga/error claros.
+- [ ] Catálogo y pedido fiable; solo confirmar éxito tras guardar.
+- [ ] QR descargables por negocio y mesa; prueba física en Android/iPad.
+- [ ] Acceso de cliente opcional para explorar y pedir; registro solo para funciones que lo necesiten.
+- [ ] Términos, aviso de privacidad, contacto y mecanismo de reporte.
+- [ ] Pruebas completas en móvil, tablet y escritorio.
+
+#### P2. Paridad operativa y universalización
+- [ ] Flujo completo mesa/pedido → comanda → ticket → cobro → resumen → reporte.
+- [ ] Ticket con mesero, fecha, hora, método de pago, folio y negocio correctos.
+- [ ] Caja e historial por fecha/turno; sin mezclar pedidos pendientes con ventas pagadas.
+- [ ] Cuentas divididas, descuentos, propinas, cancelaciones y permisos por rol.
+- [ ] Gastos, cortes, auditoría, exportaciones CSV/PDF y recuperación.
+- [ ] Plantillas y módulos activables por giro, con identidad independiente.
+
+#### P3. Clientes, inventario y POS de microcomercios
+- [ ] CRM por negocio con datos mínimos y consentimiento.
+- [ ] Inventario por producto/variante/unidad, entradas/salidas y ajustes auditados.
+- [ ] Proveedores, compras, costo, margen y alertas de bajo stock.
+- [ ] Recetas e insumos con movimientos consistentes.
+- [ ] POS de venta rápida para tienda, tianguis, puesto ambulante y ghost kitchen.
+- [ ] Herramientas para supervisión remota, límites de caja y auditoría de trabajadores.
+- [ ] Piloto con 3–5 negocios de giros distintos.
+
+#### P4. Giobot e IA
+- [ ] Asistente del cliente separado del asistente administrativo privado.
+- [ ] Conocimiento por negocio basado en el método operativo del fundador, editable y versionado.
+- [ ] Respuestas con información autorizada del negocio y derivación a humanos.
+- [ ] Acciones sensibles con aprobación humana y bitácora.
+- [ ] Pruebas de privacidad, respuestas inventadas, prompt injection y costes.
+- [ ] Límites de uso para mantener sostenible el plan gratuito.
+
+#### P5. Red social empresarial y expansión global
+- [ ] Seguir negocios, favoritos y feed de promociones.
+- [ ] Publicaciones, fotos, búsqueda, categorías y recomendaciones.
+- [ ] Reseñas verificadas, denuncias, bloqueo, moderación y apelación.
+- [ ] Mensajería anti-spam con políticas de retención y privacidad.
+- [ ] Analítica de visitas, conversiones y retención.
+- [ ] Idiomas, monedas, normativas locales, soporte y escalado regional antes de expansión mundial.
+
+#### P6. Sostenibilidad, políticas y costes
+- [ ] Plan gratuito con límites transparentes y donación voluntaria opcional.
+- [ ] Planes futuros para IA intensiva, multi-sucursal, analítica y soporte.
+- [ ] Presupuesto y alertas para Firebase, almacenamiento, transferencia, hosting y llamadas de IA.
+- [ ] Medir coste real con 5, 20 y 100 negocios antes de prometer capacidad.
+- [ ] Aviso de privacidad, términos para negocios/clientes, consentimiento de marketing y proceso de baja/exportación.
+- [ ] Canal de soporte, monitoreo, respaldo, respuesta a incidentes y política de contenido.
+
+### D. Lanzamiento gradual recomendado
+
+1. **Equipo interno:** Calientito y Giomero; corregir seguridad, QR, caja, mesero y reportes.
+2. **Piloto de 3–5 negocios:** distintos giros y acompañamiento cercano; recoger fallos y medir uso.
+3. **Piloto de 10–20 negocios:** comprobar onboarding autónomo, coste por negocio, errores y carga de soporte.
+4. **Lanzamiento regional:** directorio público, soporte, políticas y alertas operativas.
+5. **Expansión:** más categorías y regiones; añadir la comunidad social cuando exista capacidad de moderación y uso real.
+
+### E. Criterio para declarar una tarea terminada
+
+Una función no se considera finalizada solo porque se haya editado el código o hecho Pull. Debe: compilar; pasar permisos; respetar aislamiento multinegocio; funcionar en un dispositivo real; tener un resultado de error claro; y no romper Calientito ni otro negocio.
+
+### F. Estado de esta revisión
+
+- Pedido público de Giomero: prueba reportada como exitosa por el usuario.
+- Reglas de pedidos anónimos: endurecimiento presente en la rama, todavía requiere pruebas en emulador/entorno de pruebas.
+- QR: soporte de parámetros presente; generador/descarga imprimible pendiente.
+- Calientito: referencia funcional con módulos históricos; mesero en ticket, cuadre de ventas y flujo VIP deben seguir en pruebas de aceptación.
+- No se afirma que el MVP esté listo para producción hasta pasar P0 y P1.
