@@ -8,9 +8,9 @@ const ITEMS: ToggleItem[] = [
   { capability: 'SHIFTS', title: 'Turnos y cortes', description: 'Abrir y cerrar caja, ventas por método de pago y diferencia.', ready: true },
   { capability: 'EXPENSES', title: 'Gastos y comprobantes', description: 'Registra gastos con foto del comprobante.', ready: true },
   { capability: 'AUDIT_LOG', title: 'Bitácora y auditoría', description: 'Quién hizo qué y cuándo.', ready: true },
-  { capability: 'CASH_VAULT', title: 'Sobre / resguardo', description: 'Dinero apartado de caja.', ready: false },
-  { capability: 'RECEIVABLES', title: 'Cuentas por cobrar', description: 'Lo que te deben.', ready: false },
-  { capability: 'PAYABLES', title: 'Cuentas por pagar', description: 'Lo que debes a proveedores.', ready: false },
+  { capability: 'CASH_VAULT', title: 'Sobre / resguardo', description: 'Dinero apartado de caja.', ready: true },
+  { capability: 'RECEIVABLES', title: 'Cuentas por cobrar', description: 'Lo que te deben.', ready: true },
+  { capability: 'PAYABLES', title: 'Cuentas por pagar', description: 'Lo que debes a proveedores.', ready: true },
 ];
 
 /** El dueño enciende o apaga módulos de su negocio. Un negocio que solo quiere ticket los deja apagados. */

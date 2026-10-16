@@ -41,6 +41,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
   const [shifts, setShifts] = useState<ShiftDoc[]>([]);
   const [orders, setOrders] = useState<RestaurantOrder[]>([]);
   const [expenses, setExpenses] = useState<ExpenseDoc[]>([]);
+  const [vault, setVault] = useState<Array<{ kind: 'deposito' | 'retiro'; amount: number; createdAt: string }>>([]);
   const [fund, setFund] = useState('500');
   const [counted, setCounted] = useState('');
   const [notes, setNotes] = useState('');
@@ -50,6 +51,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
 
   useEffect(() => subscribeToModule<ShiftDoc>(businessId, 'shifts', setShifts, 'openedAt'), [businessId]);
   useEffect(() => subscribeToModule<ExpenseDoc>(businessId, 'expenses', setExpenses), [businessId]);
+  useEffect(() => subscribeToModule<{ kind: 'deposito' | 'retiro'; amount: number; createdAt: string }>(businessId, 'vault', setVault), [businessId]);
   useEffect(() => subscribeToBusinessRestaurantOrders(businessId, setOrders), [businessId]);
 
   const active = shifts.find((s) => s.status === 'abierto') || null;
@@ -62,9 +64,12 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
     const cashExpenses = expenses
       .filter((e) => e.paidWith === 'efectivo_caja' && (Date.parse(e.createdAt) || 0) >= start)
       .reduce((s, e) => s + Number(e.amount || 0), 0);
-    const expectedCash = Math.round((Number(active.initialCashFund || 0) + sales.cash - cashExpenses) * 100) / 100;
-    return { sales, cashExpenses, expectedCash };
-  }, [active, orders, expenses]);
+    const cashToVault = vault
+      .filter((m) => (Date.parse(m.createdAt) || 0) >= start)
+      .reduce((sum, m) => sum + (m.kind === 'deposito' ? 1 : -1) * Number(m.amount || 0), 0);
+    const expectedCash = Math.round((Number(active.initialCashFund || 0) + sales.cash - cashExpenses - cashToVault) * 100) / 100;
+    return { sales, cashExpenses, cashToVault, expectedCash };
+  }, [active, orders, expenses, vault]);
 
   const user = getCurrentAuthUser();
   const userName = user?.displayName || user?.email || 'Usuario';
@@ -160,6 +165,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
               <div className="flex justify-between"><span className="text-[#C8C8C8]">Fondo inicial</span><span>{money(active.initialCashFund)}</span></div>
               <div className="flex justify-between"><span className="text-[#C8C8C8]">+ Ventas en efectivo</span><span>{money(live.sales.cash)}</span></div>
               <div className="flex justify-between"><span className="text-[#C8C8C8]">− Gastos pagados de caja</span><span>{money(live.cashExpenses)}</span></div>
+              <div className="flex justify-between"><span className="text-[#C8C8C8]">− Guardado en resguardo</span><span>{money(live.cashToVault)}</span></div>
               <div className="flex justify-between border-t border-[#3A3022] pt-2 font-black"><span>Efectivo esperado en caja</span><span className="text-[#E3BC6B]">{money(live.expectedCash)}</span></div>
             </div>
             {!closing ? (
