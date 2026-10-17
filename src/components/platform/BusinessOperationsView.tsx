@@ -67,7 +67,8 @@ export const BusinessOperationsView: React.FC<{
     const filtered = commandFilter === 'TODAS' ? orders : orders.filter((order) => order.status === commandFilter);
     return [...filtered].sort((a, b) => (Date.parse(b.createdAt || '') || 0) - (Date.parse(a.createdAt || '') || 0));
   }, [orders, commandFilter]);
-  const paidLikeOrders = todayOrders.filter((order) => order.billingStatus === 'PAGADO');
+  const nonCancelledTodayOrders = todayOrders.filter((order) => order.status !== 'CANCELADO');
+  const paidLikeOrders = nonCancelledTodayOrders.filter((order) => order.billingStatus === 'PAGADO');
 
   const addToCart = (item: BusinessCatalogItem) => {
     setCart((current) => {
@@ -197,7 +198,7 @@ export const BusinessOperationsView: React.FC<{
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><ClipboardList className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{todayOrders.length}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Pedidos hoy</span></div>
           <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><PackagePlus className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{activeOrders.length}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">En operación</span></div>
-          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><ShoppingCart className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{money(todayOrders.reduce((sum, order) => sum + Number(order.total || 0), 0))}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Venta registrada</span></div>
+          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><ShoppingCart className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{money(nonCancelledTodayOrders.reduce((sum, order) => sum + Number(order.total || 0), 0))}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Venta registrada</span></div>
           <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><CheckCircle2 className="w-5 h-5 text-emerald-600" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{paidLikeOrders.length}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Pagados</span></div>
         </div>
 
