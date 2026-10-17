@@ -463,6 +463,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
         user: currentUser,
       });
 
+      let receiptWarning: string | null = null;
       const paidIds = new Set(selectedOrders.map((order) => order.id).filter(Boolean));
       const remainingOrders = selectedAllOrders.filter((order) => !order.id || !paidIds.has(order.id));
       try {
@@ -494,8 +495,9 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
                 waiterId: selectedTable.waiterId,
                 waiterName: selectedTable.waiterName,
               });
-            } catch (receiptErr) {
-              console.warn('[TableAccountsView] pago guardado, no se pudo generar ticket final:', receiptErr);
+            } catch (receiptErr: any) {
+              console.error('[TableAccountsView] pago guardado, no se pudo generar ticket final:', receiptErr);
+              receiptWarning = receiptErr?.message || 'Error desconocido al guardar el ticket.';
             }
           }
 
@@ -530,11 +532,12 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
       });
 
       setSuccess(
-        paymentMethod === 'MIXTO'
+        (paymentMethod === 'MIXTO'
           ? `Pago mixto registrado · ${selectedAccountLabel} · ${payment.code}`
           : payment.paymentMethod === 'EFECTIVO'
           ? `Pago registrado · ${selectedAccountLabel} · Cambio: ${money(payment.changeDue)}`
-          : `Pago registrado · ${selectedAccountLabel} · ${payment.code}`
+          : `Pago registrado · ${selectedAccountLabel} · ${payment.code}`) +
+        (receiptWarning ? ` · ATENCIÓN: el cobro sí quedó guardado, pero falló el ticket (${receiptWarning}). No vuelvas a cobrar.` : '')
       );
 
       window.setTimeout(() => {
