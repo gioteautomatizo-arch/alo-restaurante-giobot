@@ -247,7 +247,7 @@ export const updatePersonalVipInfo = async (params: {
  * Migra un perfil antiguo que residía solo en localStorage asignándole un PIN de seguridad
  * Mantiene los sellos existentes en pendingStampsToValidate para revisión administrativa segura
  */
-export const migrateLocalVipProfileWithPin = async (pin: string): Promise<VipProfile> => {
+export const migrateLocalVipProfileWithPin = async (pin: string, businessId: string = RESTAURANT_ID): Promise<VipProfile> => {
   const existing = getVipProfile();
   if (!existing) {
     throw new Error('No hay perfil local para migrar.');
@@ -272,6 +272,7 @@ export const migrateLocalVipProfileWithPin = async (pin: string): Promise<VipPro
     preferredPayment: existing.preferredPayment,
     preferredOrderType: existing.preferredOrderType,
     pendingStampsToValidate: pendingStamps,
+    businessId,
   });
 };
 
