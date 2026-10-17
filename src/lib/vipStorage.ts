@@ -53,6 +53,7 @@ export const createCloudVipProfile = async (params: {
   preferredPayment?: 'efectivo' | 'transferencia' | 'tarjeta';
   preferredOrderType?: OrderType;
   pendingStampsToValidate?: number;
+  businessId?: string;
 }): Promise<VipProfile> => {
   const normPhone = normalizePhone(params.phone);
   const normPin = normalizePin(params.pin);
@@ -67,7 +68,9 @@ export const createCloudVipProfile = async (params: {
     throw new Error('El PIN debe tener al menos 4 dígitos.');
   }
 
-  const docId = await computeVipDocId(normPhone, normPin);
+  const businessId = params.businessId?.trim() || RESTAURANT_ID;
+  const baseDocId = await computeVipDocId(normPhone, normPin);
+  const docId = businessId === RESTAURANT_ID ? baseDocId : `${businessId}_${baseDocId}`;
   const pinHash = await computePinHash(normPin, normPhone);
 
   // Verificar si ya existe en Firestore
@@ -93,7 +96,7 @@ export const createCloudVipProfile = async (params: {
   // Perfil nuevo: cumple estrictamente las reglas públicas de Firestore
   const newProfile: VipProfile = {
     id: docId,
-    restaurantId: RESTAURANT_ID,
+    restaurantId: businessId,
     memberId: memberId,
     customerName: params.customerName.trim(),
     phone: normPhone,
@@ -119,7 +122,7 @@ export const createCloudVipProfile = async (params: {
 /**
  * Recupera una tarjeta VIP desde otro dispositivo usando Teléfono (10 dígitos) + PIN
  */
-export const recoverCloudVipProfile = async (phone: string, pin: string): Promise<VipProfile> => {
+export const recoverCloudVipProfile = async (phone: string, pin: string, businessId: string = RESTAURANT_ID): Promise<VipProfile> => {
   const normPhone = normalizePhone(phone);
   const normPin = normalizePin(pin);
 
@@ -130,7 +133,9 @@ export const recoverCloudVipProfile = async (phone: string, pin: string): Promis
     throw new Error('Por favor ingresa tu PIN de 4 dígitos.');
   }
 
-  const docId = await computeVipDocId(normPhone, normPin);
+  const baseDocId = await computeVipDocId(normPhone, normPin);
+  const scopedBusinessId = businessId.trim() || RESTAURANT_ID;
+  const docId = scopedBusinessId === RESTAURANT_ID ? baseDocId : `${scopedBusinessId}_${baseDocId}`;
   const docRef = doc(db, 'vip_profiles', docId);
   const docSnap = await getDoc(docRef);
 
@@ -139,6 +144,9 @@ export const recoverCloudVipProfile = async (phone: string, pin: string): Promis
   }
 
   const cloudData = docSnap.data() as VipProfile;
+  if ((cloudData as VipProfile).restaurantId !== scopedBusinessId) {
+    throw new Error('Esta tarjeta VIP no pertenece a este negocio.');
+  }
   const recovered: VipProfile = {
     ...cloudData,
     id: docId,
