@@ -6,6 +6,7 @@ import { BusinessShiftView } from './BusinessShiftView';
 import { BusinessExpensesView } from './BusinessExpensesView';
 import { BusinessAuditView } from './BusinessAuditView';
 import { BusinessVaultView } from './BusinessVaultView';
+import { BusinessVipPanel } from './BusinessVipPanel';
 import { BusinessLedgerView } from './BusinessLedgerView';
 import { BusinessModuleToggles } from './BusinessModuleToggles';
 import { BusinessBrandingSettings } from './BusinessBrandingSettings';
@@ -29,6 +30,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const [role, setRole] = useState<BusinessRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [customersTab, setCustomersTab] = useState<'list' | 'vip'>('list');
   const [view, setView] = useState<'workspace' | 'catalog' | 'employees' | 'customers' | 'shifts' | 'expenses' | 'vault' | 'receivables' | 'payables' | 'audit' | 'operations' | 'menuImport' | 'modules' | 'branding' | 'reports'>('workspace');
 
   useEffect(() => subscribeToAuth((user) => setAuthUser(user)), []);
@@ -212,7 +214,21 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     }
 
     if (view === 'customers') {
-      return <BusinessCustomersView businessId={businessId} />;
+      const showVip = hasCap('VIP');
+      return (
+        <div className="space-y-4">
+          {showVip && (
+            <div className="flex gap-2">
+              {([['list', 'Clientes'], ['vip', 'Tarjeta VIP']] as const).map(([id, label]) => (
+                <button key={id} type="button" onClick={() => setCustomersTab(id)} className={`rounded-full px-4 py-2 text-xs font-black ${customersTab === id ? 'bg-[#D6A34A] text-[#050505]' : 'border border-[#3A3022] text-[#F7F7F7]'}`}>{label}</button>
+              ))}
+            </div>
+          )}
+          {showVip && customersTab === 'vip'
+            ? <BusinessVipPanel businessId={businessId} business={business} isOwner={role === 'OWNER' || role === 'SUPER_ADMIN'} isPublished={isPublished} onBusinessUpdated={setBusiness} />
+            : <BusinessCustomersView businessId={businessId} />}
+        </div>
+      );
     }
 
     if (view === 'reports') {

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { StaffUser, VipProfile } from '../../types';
 import { adminFetchVipProfiles, adminUpdateVipProfile } from '../../lib/vipStorage';
-import { getRestaurantInfo, addActivityLog } from '../../lib/adminStorage';
+import { getRestaurantInfo, addActivityLog as addCalientitoActivityLog } from '../../lib/adminStorage';
+import { writeAudit } from '../../lib/tenantModules';
 import { isUserAuthenticated, auth } from '../../lib/firebase';
 import {
   Star,
@@ -28,12 +29,16 @@ interface VipClientsAdminViewProps {
   currentUser: StaffUser;
   onRefreshStats?: () => void;
   businessId?: string;
+  stampsRequiredOverride?: number;
+  rewardOverride?: string;
 }
 
 export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
   currentUser,
   onRefreshStats,
   businessId,
+  stampsRequiredOverride,
+  rewardOverride,
 }) => {
   const [profiles, setProfiles] = useState<VipProfile[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -47,8 +52,16 @@ export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
   const [customTotalOrders, setCustomTotalOrders] = useState<number>(0);
 
   const restaurantInfo = getRestaurantInfo();
-  const stampsRequired = Math.max(1, restaurantInfo.vipStampsRequired || 5);
-  const rewardDescription = restaurantInfo.vipRewardDescription || 'Café americano o postre gratis';
+  // Calientito conserva su bitácora local; los demás negocios escriben en la bitácora de su propio negocio.
+  const addActivityLog = (data: Parameters<typeof addCalientitoActivityLog>[0]) => {
+    if (businessId && businessId !== 'alo-restaurante') {
+      void writeAudit(businessId, { action: `vip.${data.action.toLowerCase()}`, module: 'vip', summary: data.details || data.action });
+      return;
+    }
+    addCalientitoActivityLog(data);
+  };
+  const stampsRequired = Math.max(1, stampsRequiredOverride ?? (restaurantInfo.vipStampsRequired || 5));
+  const rewardDescription = rewardOverride || restaurantInfo.vipRewardDescription || 'Café americano o postre gratis';
 
   const fetchProfiles = async () => {
     setIsLoading(true);

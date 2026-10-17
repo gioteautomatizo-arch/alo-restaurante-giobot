@@ -1,6 +1,6 @@
 import { createBusinessRestaurantOrder } from '../../lib/ordersService';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Clock, Facebook, Instagram, MapPin, MessageCircle, Minus, Plus, Search, ShoppingBag, Sparkles, Store, Utensils, X } from 'lucide-react';
+import { Award, Clock, Facebook, Instagram, MapPin, MessageCircle, Minus, Plus, Search, ShoppingBag, Sparkles, Store, Utensils, X } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { subscribeToBusinessCatalog } from '../../lib/businessCatalogService';
@@ -20,6 +20,9 @@ import { lineUnitPrice } from '../../lib/businessPublicPage';
 import { hasPriceFrom, selectionKey, selectionSummary } from '../../lib/catalogOptions';
 import type { OptionSelection } from '../../lib/catalogOptions';
 import { BusinessProductModal } from './BusinessProductModal';
+import { VipCardModal } from '../VipCardModal';
+import { getVipProfile, setActiveVipBusiness, VIP_DATA_EVENT } from '../../lib/vipStorage';
+import type { VipProfile } from '../../types';
 
 /**
  * Página pública de un negocio: lo que ve el cliente al abrir su enlace (#negocio/{id}).
@@ -106,6 +109,21 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
       }))
       .filter((group) => group.items.length > 0);
   }, [groups, activeCategory, search]);
+
+  const vipEnabled = !!business?.branding?.vipEnabled;
+  const [vipOpen, setVipOpen] = useState(false);
+  const [vipProfile, setVipProfile] = useState<VipProfile | null>(null);
+  useEffect(() => {
+    if (!vipEnabled) return;
+    setActiveVipBusiness(businessId);
+    const sync = () => setVipProfile(getVipProfile());
+    sync();
+    window.addEventListener(VIP_DATA_EVENT, sync);
+    return () => {
+      window.removeEventListener(VIP_DATA_EVENT, sync);
+      setActiveVipBusiness(undefined);
+    };
+  }, [businessId, vipEnabled]);
 
   if (status === 'loading') {
     return <div className="flex min-h-screen items-center justify-center bg-[#111111] text-sm text-[#F7F7F7]">Cargando…</div>;
@@ -285,6 +303,26 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
         </div>
       </section>
 
+      {b.vipEnabled && (
+        <section className="mx-auto max-w-5xl px-4 pt-6">
+          <button
+            type="button"
+            onClick={() => setVipOpen(true)}
+            className="flex w-full items-center gap-4 rounded-2xl border p-4 text-left"
+            style={{ borderColor: primary, background: `linear-gradient(135deg, ${surface}, ${bg})` }}
+          >
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: primary, color: bg }}><Award className="h-6 w-6" /></span>
+            <span className="min-w-0 flex-1">
+              <strong className="block font-serif text-lg font-black">{b.loyaltyProgramName || `${b.restaurantName} VIP`}</strong>
+              <span className="block text-xs opacity-80">
+                {vipProfile ? `Tu tarjeta: ${vipProfile.stamps} / ${b.vipStampsRequired || 5} sellos${vipProfile.rewardAvailable ? ' · ¡Premio listo!' : ''}` : `Junta ${b.vipStampsRequired || 5} sellos${b.vipRewardDescription ? ` y gana: ${b.vipRewardDescription}` : ' y gana un premio'}.`}
+              </span>
+            </span>
+            <span className="shrink-0 rounded-xl px-3 py-2 text-xs font-black" style={{ backgroundColor: primary, color: bg }}>{vipProfile ? 'Ver mi tarjeta' : 'Obtener tarjeta'}</span>
+          </button>
+        </section>
+      )}
+
       <main className="mx-auto max-w-5xl px-4 py-6">
         {catalogReady && starItems.length > 0 && (
           <section>
@@ -334,6 +372,18 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
           <a href="#business" className="underline">Acceso del negocio</a>
         </footer>
       </main>
+
+      {b.vipEnabled && (
+        <VipCardModal
+          isOpen={vipOpen}
+          onClose={() => setVipOpen(false)}
+          onOpenCart={() => { setVipOpen(false); setCartOpen(true); }}
+          vipProfile={vipProfile}
+          onProfileUpdated={() => setVipProfile(getVipProfile())}
+          businessId={businessId}
+          vipConfig={{ programName: b.loyaltyProgramName || `${b.restaurantName} VIP`, stampsRequired: b.vipStampsRequired || 5, rewardDescription: b.vipRewardDescription, businessName: b.restaurantName }}
+        />
+      )}
 
       {itemCount > 0 && !cartOpen && (
         <div className="fixed inset-x-0 bottom-0 z-30 p-3">

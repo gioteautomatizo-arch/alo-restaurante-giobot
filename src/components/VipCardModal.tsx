@@ -41,6 +41,8 @@ interface VipCardModalProps {
   vipProfile: VipProfile | null;
   onProfileUpdated: () => void;
   businessId?: string;
+  /** Marca del negocio (si no se pasa, se usa la de Calientito). */
+  vipConfig?: { programName?: string; stampsRequired?: number; rewardDescription?: string; businessName?: string };
 }
 
 type ModalMode = 'view' | 'register' | 'recover' | 'edit' | 'migrate_pin';
@@ -52,6 +54,7 @@ export const VipCardModal: React.FC<VipCardModalProps> = ({
   vipProfile,
   onProfileUpdated,
   businessId,
+  vipConfig,
 }) => {
   const [restaurantInfo, setRestaurantInfo] = useState(getRestaurantInfo());
   const [mode, setMode] = useState<ModalMode>(vipProfile ? 'view' : 'register');
@@ -94,8 +97,9 @@ export const VipCardModal: React.FC<VipCardModalProps> = ({
     };
   }, []);
 
-  const stampsRequired = Math.max(1, restaurantInfo.vipStampsRequired ?? 5);
+  const stampsRequired = Math.max(1, vipConfig?.stampsRequired ?? restaurantInfo.vipStampsRequired ?? 5);
   const rewardDescription =
+    vipConfig?.rewardDescription ||
     restaurantInfo.vipRewardDescription ||
     'Al acumular 5 sellos, el cliente obtiene gratis un café americano o postre del día.';
   const stampSlots = Array.from({ length: stampsRequired }, (_, i) => i + 1);
@@ -305,7 +309,7 @@ export const VipCardModal: React.FC<VipCardModalProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-black font-serif text-[#FFF7EA] flex items-center gap-1.5">
-                Tarjeta {restaurantInfo.loyaltyProgramName || 'Calientito VIP'}
+                Tarjeta {vipConfig?.programName || restaurantInfo.loyaltyProgramName || 'Calientito VIP'}
               </h2>
               <p className="text-xs text-[#F4E3C8]">
                 Sellos de lealtad & Recompensas respaldadas en la nube
@@ -975,14 +979,14 @@ export const VipCardModal: React.FC<VipCardModalProps> = ({
           <div className="bg-[#3A2418] border border-[#4E3222] rounded-2xl p-3.5 text-xs text-[#EAD9C4] space-y-1.5">
             <h4 className="font-bold text-[#C9974D] flex items-center gap-1.5 font-serif">
               <ShieldCheck className="w-4 h-4 text-[#C9974D]" />
-              ¿Cómo funciona {restaurantInfo.loyaltyProgramName || 'Calientito VIP'} Cloud?
+              ¿Cómo funciona {vipConfig?.programName || restaurantInfo.loyaltyProgramName || 'Calientito VIP'} Cloud?
             </h4>
             <p className="text-[11px] text-[#EAD9C4] leading-relaxed">
               1. <strong>Seguridad Determinística:</strong> Tu tarjeta se vincula a tu teléfono y PIN sin exponer datos sensibles.
               <br />
               2. <strong>Recuperación Multidispositivo:</strong> Cambia de celular o abre desde cualquier tablet ingresando tu teléfono y PIN.
               <br />
-              3. <strong>Sellos Verificados:</strong> Los sellos son administrados de forma segura por el equipo de Restaurante Calientito.
+              3. <strong>Sellos Verificados:</strong> Los sellos son administrados de forma segura por el equipo de {vipConfig?.businessName || 'Restaurante Calientito'}.
               <br />
               4. <strong>Recompensas:</strong> {rewardDescription}
             </p>

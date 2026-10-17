@@ -14,7 +14,7 @@ export interface AuditEntry {
   actorId: string;
   actorName: string;
   action: string; // p. ej. "shift.open", "expense.create"
-  module: TenantModule;
+  module: TenantModule | 'vip';
   targetId?: string;
   summary: string;
   at: string; // ISO

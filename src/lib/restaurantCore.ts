@@ -64,6 +64,11 @@ export interface RestaurantBranding {
   hoursText?: string;
   instagramUrl?: string;
   facebookUrl?: string;
+  /** Tarjeta VIP del negocio (se publica en su página pública). */
+  vipEnabled?: boolean;
+  loyaltyProgramName?: string;
+  vipStampsRequired?: number;
+  vipRewardDescription?: string;
 }
 
 export interface RestaurantAssistantProfile {

@@ -4,7 +4,7 @@ import { subscribeToModule } from '../../lib/tenantModules';
 import type { AuditEntry } from '../../lib/tenantModules';
 
 const MODULE_LABELS: Record<string, string> = {
-  shifts: 'Turnos', expenses: 'Gastos', vault: 'Resguardo', receivables: 'Por cobrar', payables: 'Por pagar',
+  shifts: 'Turnos', expenses: 'Gastos', vault: 'Resguardo', receivables: 'Por cobrar', payables: 'Por pagar', vip: 'VIP',
 };
 const when = (iso: string) => {
   const d = new Date(iso);

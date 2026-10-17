@@ -7,6 +7,7 @@ interface ToggleItem { capability: string; title: string; description: string; r
 const ITEMS: ToggleItem[] = [
   { capability: 'SHIFTS', title: 'Turnos y cortes', description: 'Abrir y cerrar caja, ventas por método de pago y diferencia.', ready: true },
   { capability: 'EXPENSES', title: 'Gastos y comprobantes', description: 'Registra gastos con foto del comprobante.', ready: true },
+  { capability: 'VIP', title: 'Tarjeta VIP', description: 'Sellos y premios para tus clientes frecuentes.', ready: true },
   { capability: 'AUDIT_LOG', title: 'Bitácora y auditoría', description: 'Quién hizo qué y cuándo.', ready: true },
   { capability: 'CASH_VAULT', title: 'Sobre / resguardo', description: 'Dinero apartado de caja.', ready: true },
   { capability: 'RECEIVABLES', title: 'Cuentas por cobrar', description: 'Lo que te deben.', ready: true },

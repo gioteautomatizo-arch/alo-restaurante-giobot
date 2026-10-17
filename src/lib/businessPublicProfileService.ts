@@ -19,6 +19,10 @@ export type PublicBusinessProfile = {
     hoursText?: string;
     instagramUrl?: string;
     facebookUrl?: string;
+    vipEnabled?: boolean;
+    loyaltyProgramName?: string;
+    vipStampsRequired?: number;
+    vipRewardDescription?: string;
   };
   published: boolean;
   updatedAt: string;
@@ -33,6 +37,12 @@ export function makePublicBusinessProfile(businessId: string, tenant: Restaurant
   for (const key of ['logoUrl','coverUrl','tagline','description','whatsapp','address','hoursText','instagramUrl','facebookUrl'] as const) {
     const value = b[key];
     if (typeof value === 'string' && value.trim()) branding[key] = value.trim();
+  }
+  if (b.vipEnabled) {
+    branding.vipEnabled = true;
+    if (b.loyaltyProgramName?.trim()) branding.loyaltyProgramName = b.loyaltyProgramName.trim();
+    if (b.vipRewardDescription?.trim()) branding.vipRewardDescription = b.vipRewardDescription.trim();
+    if (Number.isFinite(b.vipStampsRequired)) branding.vipStampsRequired = Math.min(20, Math.max(1, Math.round(Number(b.vipStampsRequired))));
   }
   return {
     businessId,

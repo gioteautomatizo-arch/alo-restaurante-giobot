@@ -7,6 +7,15 @@ import { normalizePhone, normalizePin, computeVipDocId, computePinHash } from '.
 const VIP_KEY = 'calientito_vip_profile';
 export const RESTAURANT_ID = 'alo-restaurante';
 
+// Cada negocio guarda su tarjeta en una llave distinta para que no se mezclen en un mismo teléfono.
+// Calientito conserva su llave de siempre.
+let activeVipBusinessId: string = RESTAURANT_ID;
+export function setActiveVipBusiness(businessId?: string): void {
+  activeVipBusinessId = businessId && businessId.trim() ? businessId : RESTAURANT_ID;
+  notifyVipChange();
+}
+const vipKey = (): string => (activeVipBusinessId === RESTAURANT_ID ? VIP_KEY : `${VIP_KEY}__${activeVipBusinessId}`);
+
 export const VIP_DATA_EVENT = 'alo_vip_data_updated';
 
 function notifyVipChange(): void {
@@ -20,7 +29,7 @@ function notifyVipChange(): void {
  */
 export const getVipProfile = (): VipProfile | null => {
   try {
-    const dataStr = localStorage.getItem(VIP_KEY);
+    const dataStr = localStorage.getItem(vipKey());
     if (!dataStr) return null;
     return JSON.parse(dataStr) as VipProfile;
   } catch (err) {
@@ -34,7 +43,7 @@ export const getVipProfile = (): VipProfile | null => {
  */
 export const saveLocalVipProfile = (profile: VipProfile): void => {
   try {
-    localStorage.setItem(VIP_KEY, JSON.stringify(profile));
+    localStorage.setItem(vipKey(), JSON.stringify(profile));
     notifyVipChange();
   } catch (err) {
     console.error('Error saving VIP profile to localStorage:', err);
@@ -411,7 +420,7 @@ export const redeemVipReward = (): VipProfile | null => {
 };
 
 export const clearVipProfile = (): void => {
-  localStorage.removeItem(VIP_KEY);
+  localStorage.removeItem(vipKey());
   notifyVipChange();
 };
 
