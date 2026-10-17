@@ -610,8 +610,6 @@ service cloud.firestore {
     match /sale_receipts/{receiptId} {
       allow read: if canReadRestaurantDoc(resource.data);
       allow create: if isAuthorizedRestaurant(request.resource.data)
-        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
-        && request.resource.data.tableSessionId is string
         && request.resource.data.orderIds is list
         && request.resource.data.paymentIds is list
         && request.resource.data.orders is list
@@ -624,7 +622,16 @@ service cloud.firestore {
         && request.resource.data.openedAt is string
         && request.resource.data.closedAt is string
         && request.resource.data.closedById is string
-        && request.resource.data.closedByName is string;
+        && request.resource.data.closedByName is string
+        && (
+          (request.resource.data.receiptType == 'OFF_TABLE'
+            && request.resource.data.tableNumber == 0
+            && request.resource.data.orderIds.size() == 1
+            && request.resource.data.tableSessionId == null)
+          || (request.resource.data.receiptType != 'OFF_TABLE'
+            && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+            && request.resource.data.tableSessionId is string)
+        );
 
       allow update, delete: if false;
     }
