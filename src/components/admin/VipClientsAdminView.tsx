@@ -233,7 +233,7 @@ export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
       const prev = editingTotalOrdersProfile.totalOrders;
       await adminUpdateVipProfile(editingTotalOrdersProfile.id, {
         totalOrders: customTotalOrders,
-      });
+      }, businessId);
 
       addActivityLog({
         userName: currentUser.name,
