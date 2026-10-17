@@ -12,11 +12,20 @@ import { PlatformAdminPanel } from './components/platform/PlatformAdminPanel';
 import './components/platform/platformTheme.css';
 import './index.css';
 
+/** Enlaces limpios: /negocio/<nombre> equivale a #negocio/<nombre> (los enlaces con # siguen funcionando). */
+const LEGACY_ALIASES: Record<string, string> = { calientito: 'alo-restaurante', 'restaurante-calientito': 'alo-restaurante' };
+
+function currentRouteHash(): string {
+  if (window.location.hash) return window.location.hash;
+  const match = window.location.pathname.match(/^\/negocio\/([^/]+)\/?$/);
+  return match ? `#negocio/${match[1]}` : '';
+}
+
 function RootRouter() {
-  const [hash, setHash] = useState(() => window.location.hash);
+  const [hash, setHash] = useState(() => currentRouteHash());
 
   useEffect(() => {
-    const handleHashChange = () => setHash(window.location.hash);
+    const handleHashChange = () => setHash(currentRouteHash());
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
@@ -45,11 +54,12 @@ function RootRouter() {
   // Página pública de un negocio (lo que ve el cliente). Calientito conserva su propia app.
   const routeHash = hash.includes('?') ? hash.slice(0, hash.indexOf('?')) : hash;
   const publicMatch = routeHash.match(/^#negocio\/([^/]+)$/);
-  if (publicMatch && decodeURIComponent(publicMatch[1]) !== 'alo-restaurante') {
-    return <BusinessPublicPage businessId={decodeURIComponent(publicMatch[1])} />;
+  const publicId = publicMatch ? (LEGACY_ALIASES[decodeURIComponent(publicMatch[1]).toLowerCase()] || decodeURIComponent(publicMatch[1])) : '';
+  if (publicMatch && publicId !== 'alo-restaurante') {
+    return <BusinessPublicPage businessId={publicId} />;
   }
 
-  if (publicMatch && decodeURIComponent(publicMatch[1]) === 'alo-restaurante') {
+  if (publicMatch && publicId === 'alo-restaurante') {
     return <App />;
   }
 

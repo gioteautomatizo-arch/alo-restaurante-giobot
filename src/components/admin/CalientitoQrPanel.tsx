@@ -3,40 +3,16 @@ import { Printer } from 'lucide-react';
 import { QrLinkCard } from '../platform/QrLinkCard';
 import { SiteUrlSetting } from '../platform/SiteUrlSetting';
 import { calientitoMenuUrl, calientitoTableUrl } from '../../lib/siteUrl';
-import { qrToDataUrl } from '../../lib/qrCode';
+import { printQrSheet } from '../../lib/qrSheet';
 
 const TABLES = [1, 2, 4, 5, 6, 7, 8, 9];
-
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
-}
 
 /** Enlaces y QR de Restaurante Calientito: menú (para Google) y una hoja imprimible con todas las mesas. */
 export const CalientitoQrPanel: React.FC = () => {
   const [, setVersion] = useState(0);
   const menuUrl = calientitoMenuUrl();
 
-  const printSheet = () => {
-    const win = window.open('', '_blank');
-    if (!win) {
-      window.alert('Tu navegador bloqueó la ventana. Permite ventanas emergentes e inténtalo de nuevo.');
-      return;
-    }
-    const cards = TABLES.map((n) => {
-      const url = calientitoTableUrl(n);
-      return `<div class="card"><h2>Mesa ${n}</h2><img src="${qrToDataUrl(url, 8)}" alt="QR mesa ${n}"/><p>Escanea para ver el menú y pedir</p><small>${escapeHtml(url)}</small></div>`;
-    }).join('');
-    win.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>QR de mesas · Restaurante Calientito</title><style>
-      body{font-family:Georgia,serif;margin:16px;color:#2B1B13}
-      .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
-      .card{border:2px solid #3A2418;border-radius:16px;padding:14px;text-align:center;page-break-inside:avoid}
-      h1{text-align:center;margin:0 0 12px}h2{margin:0 0 6px;font-size:28px}img{width:210px;height:210px}
-      p{margin:6px 0 2px;font-weight:bold}small{font-size:9px;word-break:break-all;color:#6B4028}
-      @media print{button{display:none}}
-    </style></head><body><h1>Restaurante Calientito</h1><div class="grid">${cards}</div>
-    <p style="text-align:center"><button onclick="window.print()" style="padding:12px 20px;font-size:16px">Imprimir</button></p></body></html>`);
-    win.document.close();
-  };
+  const printSheet = () => printQrSheet('Restaurante Calientito', TABLES.map((n) => ({ label: `Mesa ${n}`, url: calientitoTableUrl(n) })));
 
   return (
     <section className="space-y-4 rounded-3xl border border-[#E7D7C4] bg-white p-4 sm:p-6">

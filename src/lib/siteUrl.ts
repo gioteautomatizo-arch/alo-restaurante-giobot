@@ -10,7 +10,7 @@ function clean(url: string): string {
 }
 
 export function getCurrentOrigin(): string {
-  return clean(`${window.location.origin}${window.location.pathname}`);
+  return clean(window.location.origin);
 }
 
 export function getSavedSiteBaseUrl(): string {
@@ -42,16 +42,21 @@ export function isValidBaseUrl(url: string): boolean {
 
 /** Página pública de un negocio de la plataforma. */
 export function businessPageUrl(businessId: string): string {
-  return `${getSiteBaseUrl()}/#negocio/${encodeURIComponent(businessId)}`;
+  return `${getSiteBaseUrl()}/negocio/${encodeURIComponent(businessId)}`;
 }
 
 /** Menú público de Restaurante Calientito (la dirección que va en Google). */
 export function calientitoMenuUrl(): string {
-  return `${getSiteBaseUrl()}/`;
+  return `${getSiteBaseUrl()}/negocio/restaurante-calientito`;
 }
 
 export function calientitoTableUrl(tableNumber: number): string {
-  return `${getSiteBaseUrl()}/?table=${tableNumber}`;
+  return `${getSiteBaseUrl()}/negocio/restaurante-calientito?table=${tableNumber}`;
+}
+
+/** QR de una mesa de cualquier negocio de la plataforma. */
+export function businessTableUrl(businessId: string, tableNumber: number): string {
+  return `${businessPageUrl(businessId)}?table=${tableNumber}`;
 }
 
 /** Las direcciones temporales de AI Studio (ais-dev) dejan de funcionar al cambiar o reiniciar la app. */

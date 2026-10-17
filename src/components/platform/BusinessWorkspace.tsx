@@ -1,7 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { QrLinkCard } from './QrLinkCard';
-import { SiteUrlSetting } from './SiteUrlSetting';
-import { businessPageUrl } from '../../lib/siteUrl';
+import React, { useEffect, useState } from 'react';
+import { BusinessQrPanel } from './BusinessQrPanel';
 import { ArrowLeft, BarChart3, BookOpen, Bot, Clock, Heart, HandCoins, Landmark, PiggyBank, Receipt, ScrollText, ExternalLink, LayoutDashboard, Settings, ShoppingBag, Store, Users } from 'lucide-react';
 import { BusinessSummaryTab } from './BusinessSummaryTab';
 import { BusinessCustomersView } from './BusinessCustomersView';
@@ -81,8 +79,6 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     return () => Object.keys(vars).forEach((key) => root.style.removeProperty(key));
   }, [business]);
 
-  const [urlVersion, setUrlVersion] = useState(0);
-  const publicUrl = useMemo(() => businessPageUrl(businessId), [businessId, urlVersion]);
   const [isPublished, setIsPublished] = useState(false);
   const [publicationBusy, setPublicationBusy] = useState(false);
   const [publicationMessage, setPublicationMessage] = useState<string | null>(null);
@@ -262,8 +258,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
         <BusinessModuleToggles businessId={businessId} enabled={enabledCapabilities} isOwner={role === 'OWNER' || role === 'SUPER_ADMIN'} onChanged={(caps) => setBusiness({ ...business, capabilities: caps })} />
         <section className="rounded-2xl border border-[#3A3022] bg-[#111111] p-4">
           <p className="text-[10px] font-black uppercase tracking-wide text-[#E3BC6B]">Enlace para tus clientes</p>
-          <div className="mt-3"><QrLinkCard tone="dark" title="Tu página y su QR" url={publicUrl} fileName={`qr-${businessId}`} hint="Compártelo por WhatsApp, redes o imprime el QR. Tus clientes verán solo tu menú, nunca el panel." /></div>
-          <div className="mt-3"><SiteUrlSetting tone="dark" onChanged={() => setUrlVersion((v) => v + 1)} /></div>
+          <div className="mt-3"><BusinessQrPanel businessId={businessId} businessName={business.branding.restaurantName} /></div>
           {role === 'OWNER' && (
             <div className="mt-4 border-t border-[#3A3022] pt-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
