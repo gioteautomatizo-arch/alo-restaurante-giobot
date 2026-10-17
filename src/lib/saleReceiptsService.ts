@@ -105,9 +105,16 @@ export async function createFinalSaleReceipt(input: {
   }
 
   const receiptRef = doc(db, SALE_RECEIPTS_COLLECTION, receiptDocumentId(input.session));
-  const existing = await getDoc(receiptRef);
-  if (existing.exists()) {
-    return { ...(existing.data() as SaleReceipt), id: existing.id };
+  // En Firestore, la lectura de un documento aún inexistente puede estar denegada
+  // por reglas basadas en resource.data. Si eso ocurre, intentamos crear; las reglas
+  // de create siguen siendo la autoridad y rechazarán cualquier escritura no autorizada.
+  try {
+    const existing = await getDoc(receiptRef);
+    if (existing.exists()) {
+      return { ...(existing.data() as SaleReceipt), id: existing.id };
+    }
+  } catch (readError) {
+    console.warn('[saleReceiptsService] no se pudo consultar ticket previo; se intentará crear sin sobrescribir:', readError);
   }
 
   const openedAtMs = Date.parse(input.session.openedAt || '') || 0;
@@ -180,8 +187,12 @@ export async function createOffTableSaleReceipt(
   if (!order.id) throw new Error('El pedido no tiene identificador para el ticket.');
   if (order.billingStatus !== 'PAGADO') throw new Error('No se puede generar ticket para una venta que no está pagada.');
   const receiptRef = doc(db, SALE_RECEIPTS_COLLECTION, `offtable-${order.id}`);
-  const existing = await getDoc(receiptRef);
-  if (existing.exists()) return { ...(existing.data() as SaleReceipt), id: existing.id };
+  try {
+    const existing = await getDoc(receiptRef);
+    if (existing.exists()) return { ...(existing.data() as SaleReceipt), id: existing.id };
+  } catch (readError) {
+    console.warn('[saleReceiptsService] no se pudo consultar ticket previo de venta rápida; se intentará crear sin sobrescribir:', readError);
+  }
   const paidAt = order.paidAt || order.updatedAt || new Date().toISOString();
   const total = Number(order.total || 0);
   const receipt: SaleReceipt = {
