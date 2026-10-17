@@ -30,7 +30,7 @@ function RootRouter() {
   });
   const hasTableQr = qrParams.has('table') || qrParams.has('qr') || qrParams.get('staffOrder') === '1';
 
-  if (hash === '#explorar' || hash === '#' || (!hash && !hasTableQr)) {
+  if (hash === '#explorar' || hash === '#') {
     return <div className="giote-platform-theme"><BusinessDirectory /></div>;
   }
 
