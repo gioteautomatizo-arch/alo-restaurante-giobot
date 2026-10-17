@@ -20,7 +20,8 @@ import {
   TableServiceRequest,
   TableSession,
 } from '../../types';
-import { subscribeToRestaurantOrders } from '../../lib/ordersService';
+import { subscribeToRestaurantOrders, chargeOffTableOrder } from '../../lib/ordersService';
+import { isOffTableOrder, offTableSalesForDay } from '../../lib/shiftSales';
 import {
   initTablesRealtimeSync,
   setTableStatus,
@@ -209,10 +210,48 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     : receiptGroups.filter((group) => group.date === receiptDateFilter);
 
   const todayPayments = useMemo(() => payments.filter((p) => p.status === 'PAGADO' && isToday(p.createdAt)), [payments]);
-  const todayTotal = todayPayments.reduce((sum, p) => sum + p.total, 0);
-  const todayCash = todayPayments.reduce((sum, p) => sum + paymentAmountByMethod(p, 'EFECTIVO'), 0);
-  const todayCard = todayPayments.reduce((sum, p) => sum + paymentAmountByMethod(p, 'TARJETA'), 0);
-  const todayTransfer = todayPayments.reduce((sum, p) => sum + paymentAmountByMethod(p, 'TRANSFERENCIA'), 0);
+  const todayKeyMx = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
+  const offTableToday = useMemo(
+    () => orders.filter((o) => isOffTableOrder(o) && o.status !== 'CANCELADO' && o.billingStatus === 'PAGADO'
+      && new Date(o.paidAt || o.createdAt || '').toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' }) === todayKeyMx),
+    [orders, todayKeyMx]
+  );
+  const offTableByMethod = (method: string) => offTableToday
+    .filter((o) => o.paymentMethod === method)
+    .reduce((sum, o) => sum + Number(o.total || 0), 0);
+  const offTablePending = useMemo(
+    () => orders
+      .filter((o) => isOffTableOrder(o) && o.status !== 'CANCELADO' && o.billingStatus !== 'PAGADO')
+      .sort((a, b) => Date.parse(a.createdAt || '') - Date.parse(b.createdAt || '')),
+    [orders]
+  );
+  const [chargingOrderId, setChargingOrderId] = useState<string | null>(null);
+  const handleChargeOffTable = async (order: RestaurantOrder, method: 'efectivo' | 'tarjeta' | 'transferencia') => {
+    if (!order.id) return;
+    setChargingOrderId(order.id);
+    setError(null);
+    try {
+      await chargeOffTableOrder(order, method, currentUser);
+      setSuccess(`Pedido ${order.code} cobrado (${method}) · ${money(Number(order.total || 0))}`);
+      addActivityLog({
+        userName: currentUser.name,
+        userId: currentUser.id,
+        userRole: currentUser.role,
+        action: `Cobró pedido ${order.code} (${order.orderType === 'delivery' ? 'domicilio' : 'para llevar'}) por ${money(Number(order.total || 0))} en ${method}`,
+        category: 'sistema',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      setError(err?.message || 'No se pudo cobrar el pedido.');
+    } finally {
+      setChargingOrderId(null);
+    }
+  };
+  const offTableTotal = offTableToday.reduce((sum, o) => sum + Number(o.total || 0), 0);
+  const todayTotal = todayPayments.reduce((sum, p) => sum + p.total, 0) + offTableTotal;
+  const todayCash = todayPayments.reduce((sum, p) => sum + paymentAmountByMethod(p, 'EFECTIVO'), 0) + offTableByMethod('efectivo');
+  const todayCard = todayPayments.reduce((sum, p) => sum + paymentAmountByMethod(p, 'TARJETA'), 0) + offTableByMethod('tarjeta');
+  const todayTransfer = todayPayments.reduce((sum, p) => sum + paymentAmountByMethod(p, 'TRANSFERENCIA'), 0) + offTableByMethod('transferencia');
 
   const selectedAllOrders = selectedTable
     ? getUnpaidOrdersForTable(
@@ -441,7 +480,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
           <div className="rounded-2xl bg-[#4A2E1F] border border-[#C9974D]/30 px-4 py-3 min-w-[180px]">
             <span className="text-[10px] uppercase tracking-wider text-[#C9974D] font-bold">Cobrado hoy</span>
             <strong className="block text-2xl font-serif mt-0.5">{money(todayTotal)}</strong>
-            <span className="text-[10px] text-[#F4E3C8]/70">{todayPayments.length} pago(s)</span>
+            <span className="text-[10px] text-[#F4E3C8]/70">{todayPayments.length + offTableToday.length} pago(s)</span>
           </div>
         </div>
       </div>
@@ -463,6 +502,60 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
 
       {error && !selectedTable && (
         <div className="rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 text-sm">{error}</div>
+      )}
+
+      {success && !selectedTable && (
+        <div className="rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 text-sm">{success}</div>
+      )}
+
+      {offTablePending.length > 0 && (
+        <section className="bg-white rounded-3xl border border-[#C9974D]/40 shadow-xs overflow-hidden">
+          <div className="px-4 sm:px-5 py-4 bg-[#FFF7EA] border-b border-[#F4E3C8] flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-serif font-bold text-[#2B1B13]">Pedidos para llevar y a domicilio por cobrar</h3>
+              <p className="text-[11px] text-[#7A5A45]">Pedidos de la app, WhatsApp o capturados en caja que no son de mesa.</p>
+            </div>
+            <strong className="font-serif text-[#2B1B13]">{money(offTablePending.reduce((s, o) => s + Number(o.total || 0), 0))}</strong>
+          </div>
+          <div className="divide-y divide-[#F4E3C8]">
+            {offTablePending.map((order) => (
+              <div key={order.id || order.code} className="px-4 sm:px-5 py-3 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <strong className="text-sm text-[#2B1B13]">#{order.code}</strong>
+                      <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800">
+                        {order.orderType === 'delivery' ? 'DOMICILIO' : 'PARA LLEVAR'}
+                      </span>
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#F4E3C8] text-[#5C3825]">{order.status}</span>
+                    </div>
+                    <div className="text-[11px] text-[#7A5A45] mt-0.5">
+                      {order.customerName || 'Cliente'}{order.phone ? ' · ' + order.phone : ''} · {new Date(order.createdAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                    <div className="text-[11px] text-[#6B4028] mt-1">
+                      {order.items.map((item) => `${item.quantity}× ${item.name}`).join(', ')}
+                    </div>
+                    <div className="text-[10px] text-[#A86B3D] mt-0.5">Eligió pagar con: {order.paymentMethod}</div>
+                  </div>
+                  <strong className="font-serif text-lg text-[#2B1B13] shrink-0">{money(Number(order.total || 0))}</strong>
+                </div>
+                <div className="flex gap-2">
+                  {(['efectivo', 'tarjeta', 'transferencia'] as const).map((method) => (
+                    <button
+                      key={method}
+                      type="button"
+                      disabled={chargingOrderId === order.id}
+                      onClick={() => handleChargeOffTable(order, method)}
+                      className={`flex-1 px-3 py-2 rounded-xl text-xs font-black border transition-all disabled:opacity-50 ${order.paymentMethod === method ? 'bg-[#3A2418] text-[#FFF7EA] border-[#3A2418]' : 'bg-[#FFF7EA] text-[#5C3825] border-[#DEC8AE]'}`}
+                    >
+                      Cobrar {method === 'efectivo' ? 'efectivo' : method === 'tarjeta' ? 'tarjeta' : 'transf.'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

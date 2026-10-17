@@ -472,3 +472,26 @@ export async function updateRestaurantOrderStatus(
     updatedAt: now,
   })).catch(() => {});
 }
+/**
+ * Cobra un pedido para llevar / domicilio / WhatsApp directamente en Caja.
+ * Marca el pedido como PAGADO con su método y quién cobró; de ahí suma a Caja,
+ * Resumen y Control de Turno.
+ */
+export async function chargeOffTableOrder(
+  order: RestaurantOrder,
+  method: 'efectivo' | 'tarjeta' | 'transferencia',
+  user: Pick<StaffUser, 'id' | 'name'>
+): Promise<void> {
+  if (!order.id) throw new Error('El pedido no tiene identificador.');
+  if (order.billingStatus === 'PAGADO') return;
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, ORDERS_COLLECTION, order.id), sanitizeFirestorePayload({
+    status: order.status,
+    billingStatus: 'PAGADO',
+    paymentMethod: method,
+    paidAt: now,
+    chargedById: user.id,
+    chargedByName: user.name,
+    updatedAt: now,
+  }));
+}

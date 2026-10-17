@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { subscribeToSaleReceipts } from '../../lib/saleReceiptsService';
-import { computeShiftSalesFromReceipts } from '../../lib/shiftSales';
+import { computeShiftSalesCombined } from '../../lib/shiftSales';
+import { subscribeToRestaurantOrders } from '../../lib/ordersService';
 import { SaleReceipt } from '../../types';
 import { StaffUser, ShiftRecord, UserRole } from '../../types';
 import {
@@ -98,13 +99,15 @@ export const ShiftControlView: React.FC<ShiftControlViewProps> = ({
   const [receipts, setReceipts] = useState<SaleReceipt[]>([]);
   const lastSyncedKey = useRef<string>('');
 
+  const [orders, setOrders] = useState<any[]>([]);
   useEffect(() => {
     const unsub = subscribeToSaleReceipts(setReceipts);
-    return () => unsub();
+    const unsubOrders = subscribeToRestaurantOrders(setOrders);
+    return () => { unsub(); unsubOrders(); };
   }, []);
 
   const ticketTotals = currentShift
-    ? computeShiftSalesFromReceipts(receipts, currentShift.openedAtTimestamp || currentShift.createdAt)
+    ? computeShiftSalesCombined(receipts, orders, currentShift.openedAtTimestamp || currentShift.createdAt)
     : null;
 
   useEffect(() => {

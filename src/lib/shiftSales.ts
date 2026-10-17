@@ -81,3 +81,43 @@ export function computeShiftSalesFromOrders(
   platforms = round2(platforms);
   return { cash, card, platforms, total: round2(cash + card + platforms), count };
 }
+
+/** Pedido para llevar / domicilio / WhatsApp: se cobra directo en Caja (no pasa por mesa). */
+export function isOffTableOrder(order: { orderType?: string }): boolean {
+  return order.orderType === 'pickup' || order.orderType === 'delivery';
+}
+
+/** Une lo cobrado en tickets de mesa con lo cobrado en pedidos para llevar/domicilio. */
+export function computeShiftSalesCombined(
+  receipts: SaleReceipt[],
+  orders: Array<{ orderType?: string; status?: string; billingStatus?: string; paymentMethod?: string; total?: number; paidAt?: string; createdAt?: string }>,
+  shiftStartIso?: string,
+  shiftEndIso?: string,
+): ShiftSalesTotals {
+  const fromReceipts = computeShiftSalesFromReceipts(receipts, shiftStartIso, shiftEndIso);
+  const off = computeShiftSalesFromOrders(orders.filter(isOffTableOrder), shiftStartIso || '', shiftEndIso);
+  return {
+    cash: round2(fromReceipts.cash + off.cash),
+    card: round2(fromReceipts.card + off.card),
+    platforms: round2(fromReceipts.platforms + off.platforms),
+    total: round2(fromReceipts.total + off.total),
+    count: fromReceipts.count + off.count,
+  };
+}
+
+/** Total cobrado en un día (clave yyyy-mm-dd, zona México) por pedidos para llevar/domicilio. */
+export function offTableSalesForDay(
+  orders: Array<{ orderType?: string; status?: string; billingStatus?: string; total?: number; paidAt?: string; createdAt?: string }>,
+  dayKey: string,
+): { total: number; count: number } {
+  let total = 0;
+  let count = 0;
+  for (const o of orders) {
+    if (!isOffTableOrder(o) || o.status === 'CANCELADO' || o.billingStatus !== 'PAGADO') continue;
+    const at = o.paidAt || o.createdAt || '';
+    if (!at || new Date(at).toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' }) !== dayKey) continue;
+    total += Number(o.total || 0);
+    count += 1;
+  }
+  return { total: round2(total), count };
+}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StaffUser, ServiceMode, EffectiveService } from '../../types';
+import { StaffUser, ServiceMode, EffectiveService, RestaurantOrder } from '../../types';
 import {
   getAuthSession,
   logoutStaff,
@@ -13,6 +13,7 @@ import {
   getServiceMode,
   getEffectiveService,
   setServiceMode,
+  updateShiftSales,
 } from '../../lib/adminStorage';
 import {
   subscribeToSyncState,
@@ -39,6 +40,7 @@ import { ShiftHistoryView } from './ShiftHistoryView';
 import { ActivityLogsView } from './ActivityLogsView';
 import { StaffManagementView } from './StaffManagementView';
 import { RestaurantInfoEditorView } from './RestaurantInfoEditorView';
+import { CalientitoQrPanel } from './CalientitoQrPanel';
 import { VipClientsAdminView } from './VipClientsAdminView';
 import { LocalDataMigrationModal } from './LocalDataMigrationModal';
 import { TablesView } from './TablesView';
@@ -48,6 +50,7 @@ import type { SaleReceipt } from '../../types';
 import { subscribeToSaleReceipts } from '../../lib/saleReceiptsService';
 import { subscribeToPendingTableRequests } from '../../lib/tableRequestsService';
 import { subscribeToRestaurantOrders } from '../../lib/ordersService';
+import { computeShiftSalesCombined, offTableSalesForDay } from '../../lib/shiftSales';
 import {
   getOperationalSoundProfile,
   getOperationalSoundProfileLabel,
@@ -156,6 +159,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const device = getDeviceIdentifier();
 
   useEffect(() => subscribeToSaleReceipts(setSaleReceipts), []);
+
+  // Pedidos para llevar/domicilio cobrados en Caja: suman a Resumen y Turno.
+  const [allOrders, setAllOrders] = useState<RestaurantOrder[]>([]);
+  useEffect(() => subscribeToRestaurantOrders(setAllOrders), []);
 
   useEffect(() => {
     const unsubSync = subscribeToSyncState((state) => {
@@ -334,9 +341,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!receipt.closedAt) return false;
     return new Date(receipt.closedAt).toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' }) === todayKey;
   });
-  const todayClosedSales = todayClosedReceipts.reduce((sum, receipt) => sum + Number(receipt.totalPaid || 0), 0);
+  const offTableToday = offTableSalesForDay(allOrders, todayKey);
+  const todayClosedSales = todayClosedReceipts.reduce((sum, receipt) => sum + Number(receipt.totalPaid || 0), 0) + offTableToday.total;
 
   const currentShift = getCurrentShift();
+
+  // El total del turno se mantiene solo (sin abrir la pestaña Turno).
+  const shiftSyncKeyRef = useRef('');
+  const shiftTotals = currentShift
+    ? computeShiftSalesCombined(saleReceipts, allOrders, currentShift.openedAtTimestamp || currentShift.createdAt)
+    : null;
+  useEffect(() => {
+    if (!currentShift || !shiftTotals) return;
+    if (!saleReceipts.length && !allOrders.length) return;
+    const key = `${currentShift.id}|${shiftTotals.cash}|${shiftTotals.card}|${shiftTotals.platforms}`;
+    if (shiftSyncKeyRef.current === key) return;
+    shiftSyncKeyRef.current = key;
+    if (
+      currentShift.salesCash !== shiftTotals.cash ||
+      currentShift.salesCard !== shiftTotals.card ||
+      currentShift.salesPlatforms !== shiftTotals.platforms
+    ) {
+      updateShiftSales(shiftTotals.cash, shiftTotals.card, shiftTotals.platforms, undefined, currentUser)
+        .then(() => setRefreshTrigger((p) => p + 1))
+        .catch((e) => console.warn('[AdminDashboard] no se pudo sincronizar ventas del turno', e));
+    }
+  }, [currentShift?.id, shiftTotals?.cash, shiftTotals?.card, shiftTotals?.platforms, saleReceipts.length, allOrders.length]);
   const shiftExpenses = currentShift ? getExpenses(currentShift.id) : [];
   const totalExpensesToday = shiftExpenses.reduce((sum, e) => sum + e.amount, 0);
   const inventoryList = getInventory();
@@ -851,7 +881,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ${todayClosedSales.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
                 <span className="text-[11px] text-[#6B4028] block">
-                  {todayClosedReceipts.length} ticket(s) cobrados hoy · según Caja & Cobro
+                  {todayClosedReceipts.length + offTableToday.count} cobro(s) hoy · según Caja & Cobro
                 </span>
               </div>
 
@@ -1031,7 +1061,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {safeActiveTab === 'info_restaurante' && (
-          <RestaurantInfoEditorView currentUser={currentUser} onRefreshStats={handleRefreshStats} />
+          <div className="space-y-6">
+            <RestaurantInfoEditorView currentUser={currentUser} onRefreshStats={handleRefreshStats} />
+            <CalientitoQrPanel />
+          </div>
         )}
 
         {safeActiveTab === 'historial' && <ShiftHistoryView />}

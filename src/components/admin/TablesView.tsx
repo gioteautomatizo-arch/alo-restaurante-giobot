@@ -1,3 +1,4 @@
+import { calientitoTableUrl } from '../../lib/siteUrl';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Users,
@@ -2386,7 +2387,7 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
                       Código QR Mesa {selectedTable.tableNumber}
                     </span>
                     <span className="text-[11px] text-[#5C3825] truncate block font-mono">
-                      {window.location.origin}/?table={selectedTable.tableNumber}
+                      {calientitoTableUrl(selectedTable.tableNumber)}
                     </span>
                   </div>
                 </div>
@@ -2395,7 +2396,7 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
                   <button
                     type="button"
                     onClick={() => {
-                      const url = `${window.location.origin}/?table=${selectedTable.tableNumber}`;
+                      const url = calientitoTableUrl(selectedTable.tableNumber);
                       navigator.clipboard.writeText(url);
                       setCopiedTableQr(selectedTable.tableNumber);
                       setTimeout(() => setCopiedTableQr(null), 2500);
@@ -2414,7 +2415,7 @@ export const TablesView: React.FC<TablesViewProps> = ({ currentUser }) => {
                   </button>
 
                   <a
-                    href={`/?table=${selectedTable.tableNumber}`}
+                    href={calientitoTableUrl(selectedTable.tableNumber)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-2 rounded-xl border border-[#DEC8AE] bg-[#FFF7EA] hover:bg-[#F4E3C8] text-[#5C3825] hover:text-[#2B1B13] transition-all flex items-center justify-center cursor-pointer"
