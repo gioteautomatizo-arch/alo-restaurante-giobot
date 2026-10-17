@@ -413,9 +413,10 @@ export const clearVipProfile = (): void => {
 /**
  * Consulta la lista de clientes VIP en Firestore (solo para administradores autenticados)
  */
-export const adminFetchVipProfiles = async (): Promise<VipProfile[]> => {
+export const adminFetchVipProfiles = async (businessId: string = RESTAURANT_ID): Promise<VipProfile[]> => {
+  if (!businessId.trim()) throw new Error('Se requiere el identificador del negocio.');
   try {
-    const q = query(collection(db, 'vip_profiles'), where('restaurantId', '==', RESTAURANT_ID));
+    const q = query(collection(db, 'vip_profiles'), where('restaurantId', '==', businessId));
     const snap = await getDocs(q);
     const profiles: VipProfile[] = [];
     snap.forEach((docSnap) => {
@@ -436,10 +437,16 @@ export const adminFetchVipProfiles = async (): Promise<VipProfile[]> => {
  * Elimina una tarjeta VIP desde administración.
  * Firestore es la fuente de verdad; la copia local del mismo perfil también se invalida.
  */
-export const adminDeleteVipProfile = async (profileId: string): Promise<void> => {
+export const adminDeleteVipProfile = async (profileId: string, businessId: string = RESTAURANT_ID): Promise<void> => {
   if (!profileId) throw new Error('No se proporcionó el ID de la tarjeta VIP.');
+  if (!businessId.trim()) throw new Error('Se requiere el identificador del negocio.');
 
   const docRef = doc(db, 'vip_profiles', profileId);
+  const snapshot = await getDoc(docRef);
+  if (!snapshot.exists()) throw new Error('La tarjeta VIP ya no existe.');
+  if ((snapshot.data() as VipProfile).restaurantId !== businessId) {
+    throw new Error('La tarjeta VIP no pertenece a este negocio.');
+  }
   await deleteDoc(docRef);
 
   const local = getVipProfile();
@@ -453,9 +460,16 @@ export const adminDeleteVipProfile = async (profileId: string): Promise<void> =>
  */
 export const adminUpdateVipProfile = async (
   profileId: string,
-  updates: Partial<VipProfile>
+  updates: Partial<VipProfile>,
+  businessId: string = RESTAURANT_ID
 ): Promise<void> => {
+  if (!profileId || !businessId.trim()) throw new Error('Se requiere la tarjeta y el negocio.');
   const docRef = doc(db, 'vip_profiles', profileId);
+  const snapshot = await getDoc(docRef);
+  if (!snapshot.exists()) throw new Error('La tarjeta VIP ya no existe.');
+  if ((snapshot.data() as VipProfile).restaurantId !== businessId) {
+    throw new Error('La tarjeta VIP no pertenece a este negocio.');
+  }
   const dataToUpdate = {
     ...updates,
     updatedAt: new Date().toISOString(),
