@@ -11,6 +11,7 @@ import { BusinessOnboardingDemo } from './components/platform/BusinessOnboarding
 import { PlatformAdminPanel } from './components/platform/PlatformAdminPanel';
 import './components/platform/platformTheme.css';
 import './index.css';
+import { RESERVED_PATHS } from './lib/siteUrl';
 
 /** Enlaces limpios: /negocio/<nombre> equivale a #negocio/<nombre> (los enlaces con # siguen funcionando). */
 const LEGACY_ALIASES: Record<string, string> = { calientito: 'alo-restaurante', 'restaurante-calientito': 'alo-restaurante' };
@@ -18,7 +19,11 @@ const LEGACY_ALIASES: Record<string, string> = { calientito: 'alo-restaurante', 
 function currentRouteHash(): string {
   if (window.location.hash) return window.location.hash;
   const match = window.location.pathname.match(/^\/negocio\/([^/]+)\/?$/);
-  return match ? `#negocio/${match[1]}` : '';
+  if (match) return `#negocio/${match[1]}`;
+  // Enlace corto: /nombre-del-negocio (sin "negocio" ni #). Solo un tramo, sin punto, y que no sea una ruta de la app.
+  const short = window.location.pathname.match(/^\/([^/.]+)\/?$/);
+  if (short && !RESERVED_PATHS.includes(short[1].toLowerCase())) return `#negocio/${short[1]}`;
+  return '';
 }
 
 function RootRouter() {

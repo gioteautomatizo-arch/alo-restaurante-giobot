@@ -40,18 +40,24 @@ export function isValidBaseUrl(url: string): boolean {
   return /^https?:\/\/[^\s/]+\.[^\s/]+/i.test(url.trim());
 }
 
-/** Página pública de un negocio de la plataforma. */
+/** Nombres que no pueden usarse como enlace corto porque la app los usa para otra cosa. */
+export const RESERVED_PATHS = ['api', 'assets', 'negocio', 'admin', 'explorar', 'business', 'business-new', 'platform-admin', 'index', 'favicon'];
+
+/** Página pública de un negocio de la plataforma (enlace corto: /nombre-del-negocio). */
 export function businessPageUrl(businessId: string): string {
-  return `${getSiteBaseUrl()}/negocio/${encodeURIComponent(businessId)}`;
+  const id = encodeURIComponent(businessId);
+  return RESERVED_PATHS.includes(businessId.toLowerCase())
+    ? `${getSiteBaseUrl()}/negocio/${id}`
+    : `${getSiteBaseUrl()}/${id}`;
 }
 
 /** Menú público de Restaurante Calientito (la dirección que va en Google). */
 export function calientitoMenuUrl(): string {
-  return `${getSiteBaseUrl()}/negocio/restaurante-calientito`;
+  return `${getSiteBaseUrl()}/restaurante-calientito`;
 }
 
 export function calientitoTableUrl(tableNumber: number): string {
-  return `${getSiteBaseUrl()}/negocio/restaurante-calientito?table=${tableNumber}`;
+  return `${getSiteBaseUrl()}/restaurante-calientito?table=${tableNumber}`;
 }
 
 /** QR de una mesa de cualquier negocio de la plataforma. */
