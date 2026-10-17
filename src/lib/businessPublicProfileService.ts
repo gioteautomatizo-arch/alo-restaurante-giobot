@@ -19,6 +19,11 @@ export type PublicBusinessProfile = {
     hoursText?: string;
     instagramUrl?: string;
     facebookUrl?: string;
+    primaryColor?: string;
+    accentColor?: string;
+    backgroundColor?: string;
+    surfaceColor?: string;
+    textColor?: string;
     vipEnabled?: boolean;
     loyaltyProgramName?: string;
     vipStampsRequired?: number;
@@ -37,6 +42,10 @@ export function makePublicBusinessProfile(businessId: string, tenant: Restaurant
   for (const key of ['logoUrl','coverUrl','tagline','description','whatsapp','address','hoursText','instagramUrl','facebookUrl'] as const) {
     const value = b[key];
     if (typeof value === 'string' && value.trim()) branding[key] = value.trim();
+  }
+  for (const key of ['primaryColor','accentColor','backgroundColor','surfaceColor','textColor'] as const) {
+    const value = b[key];
+    if (typeof value === 'string' && /^#[0-9a-f]{3,8}$/i.test(value.trim())) branding[key] = value.trim();
   }
   if (b.vipEnabled) {
     branding.vipEnabled = true;
@@ -74,4 +83,21 @@ export async function setBusinessPublication(businessId: string, tenant: Restaur
 export async function getBusinessPublicationStatus(businessId: string): Promise<boolean> {
   const snap = await getDoc(doc(db, 'publicBusinessProfiles', businessId));
   return snap.exists() && snap.data().published === true;
+}
+
+
+/**
+ * Mantiene al día la copia pública del negocio (colores, logo, VIP…).
+ * Solo escribe si el negocio está publicado y la copia quedó distinta; lo hace el dueño.
+ */
+export async function syncPublicProfileIfNeeded(businessId: string, tenant: RestaurantTenant): Promise<boolean> {
+  const user = auth.currentUser;
+  if (!user) return false;
+  const snap = await getDoc(doc(db, 'publicBusinessProfiles', businessId));
+  if (!snap.exists() || snap.data().published !== true) return false;
+  const expected = makePublicBusinessProfile(businessId, tenant).branding;
+  const sortedJson = (value: unknown) => JSON.stringify(value, (_k, v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v));
+  if (sortedJson(snap.data().branding) === sortedJson(expected)) return false;
+  await setBusinessPublication(businessId, tenant, true);
+  return true;
 }

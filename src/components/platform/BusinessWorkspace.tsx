@@ -20,7 +20,7 @@ import { getBusinessTemplateConfig } from '../../data/businessTemplates';
 import { hasBusinessPermission } from '../../lib/restaurantCore';
 import type { BusinessRole, RestaurantTenant } from '../../lib/restaurantCore';
 import { getBusinessForUser, getBusinessMembership } from '../../lib/businessAuthService';
-import { getBusinessPublicationStatus, setBusinessPublication } from '../../lib/businessPublicProfileService';
+import { getBusinessPublicationStatus, setBusinessPublication, syncPublicProfileIfNeeded } from '../../lib/businessPublicProfileService';
 import { subscribeToAuth } from '../../lib/firebase';
 import type { User as FirebaseUser } from 'firebase/auth';
 
@@ -92,6 +92,12 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
       window.prompt('Copia el enlace de tu página:', publicUrl);
     }
   };
+
+  // Si el negocio ya está publicado y su copia pública quedó vieja (colores, logo, VIP), el dueño la actualiza al entrar.
+  useEffect(() => {
+    if (!business || role !== 'OWNER') return;
+    syncPublicProfileIfNeeded(businessId, business).catch((err) => console.warn('No se pudo sincronizar la página pública:', err));
+  }, [business, role, businessId]);
 
   useEffect(() => {
     let cancelled = false;

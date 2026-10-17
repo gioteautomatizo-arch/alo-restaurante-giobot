@@ -1,3 +1,4 @@
+import { syncPublicProfileIfNeeded } from '../../lib/businessPublicProfileService';
 import React, { useState } from 'react';
 import { ArrowLeft, ImagePlus, Save, Store, Upload } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -111,7 +112,13 @@ export const BusinessBrandingSettings: React.FC<{
     try {
       await updateDoc(doc(db, 'businesses', business.restaurantId), { branding: updated.branding });
       onSaved(updated);
-      setMessage('Identidad guardada para este negocio.');
+      let publicSynced = false;
+      try {
+        publicSynced = await syncPublicProfileIfNeeded(business.restaurantId, updated);
+      } catch (syncError) {
+        console.warn('[BusinessBrandingSettings] no se pudo actualizar la página pública:', syncError);
+      }
+      setMessage(publicSynced ? 'Identidad guardada y tu página pública ya se actualizó.' : 'Identidad guardada para este negocio.');
     } catch (err) {
       console.error('[BusinessBrandingSettings] save failed:', err);
       setError('No se pudo guardar. Verifica que tu usuario tenga rol de propietario o administrador y vuelve a intentarlo.');
