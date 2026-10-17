@@ -616,6 +616,7 @@ export interface SaleReceiptPaymentSnapshot {
 
 export interface SaleReceipt {
   id?: string;
+  receiptType?: 'TABLE' | 'OFF_TABLE';
   code: string;
   restaurantId: string;
   tableNumber: number;
