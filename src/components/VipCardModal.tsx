@@ -40,6 +40,7 @@ interface VipCardModalProps {
   onOpenCart: () => void;
   vipProfile: VipProfile | null;
   onProfileUpdated: () => void;
+  businessId?: string;
 }
 
 type ModalMode = 'view' | 'register' | 'recover' | 'edit' | 'migrate_pin';
@@ -50,6 +51,7 @@ export const VipCardModal: React.FC<VipCardModalProps> = ({
   onOpenCart,
   vipProfile,
   onProfileUpdated,
+  businessId,
 }) => {
   const [restaurantInfo, setRestaurantInfo] = useState(getRestaurantInfo());
   const [mode, setMode] = useState<ModalMode>(vipProfile ? 'view' : 'register');
@@ -170,6 +172,7 @@ export const VipCardModal: React.FC<VipCardModalProps> = ({
         reference,
         preferredPayment,
         preferredOrderType,
+        businessId,
       });
 
       setSuccessMsg('🎉 ¡Tarjeta VIP creada con éxito y respaldada en la nube!');
@@ -202,7 +205,7 @@ export const VipCardModal: React.FC<VipCardModalProps> = ({
 
     setIsBusy(true);
     try {
-      const recovered = await recoverCloudVipProfile(normPhone, recoverPin);
+      const recovered = await recoverCloudVipProfile(normPhone, recoverPin, businessId);
       setSuccessMsg(`✓ ¡Bienvenido de vuelta, ${recovered.customerName}! Tu tarjeta VIP ha sido recuperada.`);
       setRecoverPin('');
       onProfileUpdated();
@@ -260,7 +263,7 @@ export const VipCardModal: React.FC<VipCardModalProps> = ({
 
     setIsBusy(true);
     try {
-      await migrateLocalVipProfileWithPin(migrationPin);
+      await migrateLocalVipProfileWithPin(migrationPin, businessId);
       setSuccessMsg('🎉 ¡Tarjeta protegida y respaldada en la nube con éxito!');
       setMigrationPin('');
       onProfileUpdated();
