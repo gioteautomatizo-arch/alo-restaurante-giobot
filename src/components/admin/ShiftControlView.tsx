@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { subscribeToSaleReceipts } from '../../lib/saleReceiptsService';
-import { computeShiftSalesCombined } from '../../lib/shiftSales';
+import { computeShiftSalesAll, effectiveShiftStart } from '../../lib/shiftSales';
+import { subscribeToTablePayments } from '../../lib/paymentsService';
 import { subscribeToRestaurantOrders } from '../../lib/ordersService';
 import { SaleReceipt } from '../../types';
 import { StaffUser, ShiftRecord, UserRole } from '../../types';
@@ -18,6 +19,7 @@ import {
   getLocalShiftType,
   getShiftDisplayDate,
   getShiftDisplayTime,
+  getShiftsHistory,
 } from '../../lib/adminStorage';
 import {
   Clock,
@@ -100,14 +102,23 @@ export const ShiftControlView: React.FC<ShiftControlViewProps> = ({
   const lastSyncedKey = useRef<string>('');
 
   const [orders, setOrders] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
   useEffect(() => {
     const unsub = subscribeToSaleReceipts(setReceipts);
     const unsubOrders = subscribeToRestaurantOrders(setOrders);
-    return () => { unsub(); unsubOrders(); };
+    const unsubPayments = subscribeToTablePayments(setPayments);
+    return () => { unsub(); unsubOrders(); unsubPayments(); };
   }, []);
 
   const ticketTotals = currentShift
-    ? computeShiftSalesCombined(receipts, orders, currentShift.openedAtTimestamp || currentShift.createdAt)
+    ? computeShiftSalesAll(
+        payments,
+        orders,
+        effectiveShiftStart(
+          currentShift.openedAtTimestamp || currentShift.createdAt || currentShift.openedAt,
+          getShiftsHistory().filter((h) => h.id !== currentShift.id).map((h) => h.openedAtTimestamp || h.createdAt || '').filter(Boolean)
+        )
+      )
     : null;
 
   useEffect(() => {

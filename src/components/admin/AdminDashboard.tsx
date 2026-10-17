@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StaffUser, ServiceMode, EffectiveService, RestaurantOrder } from '../../types';
+import { StaffUser, ServiceMode, EffectiveService, RestaurantOrder, TablePayment } from '../../types';
 import {
   getAuthSession,
   logoutStaff,
@@ -50,7 +50,8 @@ import type { SaleReceipt } from '../../types';
 import { subscribeToSaleReceipts } from '../../lib/saleReceiptsService';
 import { subscribeToPendingTableRequests } from '../../lib/tableRequestsService';
 import { subscribeToRestaurantOrders } from '../../lib/ordersService';
-import { computeShiftSalesCombined, offTableSalesForDay } from '../../lib/shiftSales';
+import { computeShiftSalesAll, effectiveShiftStart, offTableSalesForDay, paymentsSalesForDay } from '../../lib/shiftSales';
+import { subscribeToTablePayments } from '../../lib/paymentsService';
 import {
   getOperationalSoundProfile,
   getOperationalSoundProfileLabel,
@@ -163,6 +164,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Pedidos para llevar/domicilio cobrados en Caja: suman a Resumen y Turno.
   const [allOrders, setAllOrders] = useState<RestaurantOrder[]>([]);
   useEffect(() => subscribeToRestaurantOrders(setAllOrders), []);
+  const [allPayments, setAllPayments] = useState<TablePayment[]>([]);
+  useEffect(() => subscribeToTablePayments(setAllPayments), []);
 
   useEffect(() => {
     const unsubSync = subscribeToSyncState((state) => {
@@ -342,18 +345,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return new Date(receipt.closedAt).toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' }) === todayKey;
   });
   const offTableToday = offTableSalesForDay(allOrders, todayKey);
-  const todayClosedSales = todayClosedReceipts.reduce((sum, receipt) => sum + Number(receipt.totalPaid || 0), 0) + offTableToday.total;
+  const tablePaymentsToday = paymentsSalesForDay(allPayments, todayKey);
+  const todayClosedSales = tablePaymentsToday.total + offTableToday.total;
 
   const currentShift = getCurrentShift();
 
   // El total del turno se mantiene solo (sin abrir la pestaña Turno).
   const shiftSyncKeyRef = useRef('');
   const shiftTotals = currentShift
-    ? computeShiftSalesCombined(saleReceipts, allOrders, currentShift.openedAtTimestamp || currentShift.createdAt)
+    ? computeShiftSalesAll(
+        allPayments,
+        allOrders,
+        effectiveShiftStart(
+          currentShift.openedAtTimestamp || currentShift.createdAt || currentShift.openedAt,
+          getShiftsHistory().filter((h) => h.id !== currentShift.id).map((h) => h.openedAtTimestamp || h.createdAt || '').filter(Boolean)
+        )
+      )
     : null;
   useEffect(() => {
     if (!currentShift || !shiftTotals) return;
-    if (!saleReceipts.length && !allOrders.length) return;
+    if (!allPayments.length && !allOrders.length) return;
     const key = `${currentShift.id}|${shiftTotals.cash}|${shiftTotals.card}|${shiftTotals.platforms}`;
     if (shiftSyncKeyRef.current === key) return;
     shiftSyncKeyRef.current = key;
@@ -366,7 +377,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         .then(() => setRefreshTrigger((p) => p + 1))
         .catch((e) => console.warn('[AdminDashboard] no se pudo sincronizar ventas del turno', e));
     }
-  }, [currentShift?.id, shiftTotals?.cash, shiftTotals?.card, shiftTotals?.platforms, saleReceipts.length, allOrders.length]);
+  }, [currentShift?.id, shiftTotals?.cash, shiftTotals?.card, shiftTotals?.platforms, allPayments.length, allOrders.length]);
   const shiftExpenses = currentShift ? getExpenses(currentShift.id) : [];
   const totalExpensesToday = shiftExpenses.reduce((sum, e) => sum + e.amount, 0);
   const inventoryList = getInventory();
@@ -881,7 +892,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ${todayClosedSales.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
                 <span className="text-[11px] text-[#6B4028] block">
-                  {todayClosedReceipts.length + offTableToday.count} cobro(s) hoy · según Caja & Cobro
+                  {tablePaymentsToday.count + offTableToday.count} cobro(s) hoy · según Caja & Cobro
                 </span>
               </div>
 

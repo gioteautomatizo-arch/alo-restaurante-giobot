@@ -52,6 +52,14 @@ function notifyRestaurantOrdersSubscribers(orders: RestaurantOrder[]) {
   }
 }
 
+/** Los pedidos viejos de Calientito se guardaron con folio ALO-; se muestran como CAL- (el dato guardado no se toca). */
+export function normalizeLegacyOrderCode<T extends { code?: string; restaurantId?: string }>(order: T): T {
+  if (order.restaurantId === 'alo-restaurante' && typeof order.code === 'string' && /^ALO-/i.test(order.code)) {
+    return { ...order, code: 'CAL-' + order.code.slice(4) };
+  }
+  return order;
+}
+
 function ensureRestaurantOrdersListener() {
   if (restaurantOrdersFirestoreUnsubscribe) return;
 
@@ -65,7 +73,7 @@ function ensureRestaurantOrdersListener() {
     (snapshot) => {
       const orders: RestaurantOrder[] = [];
       snapshot.forEach((snap) => {
-        const data = snap.data() as RestaurantOrder;
+        const data = normalizeLegacyOrderCode(snap.data() as RestaurantOrder);
         orders.push({ ...data, id: snap.id });
       });
 
