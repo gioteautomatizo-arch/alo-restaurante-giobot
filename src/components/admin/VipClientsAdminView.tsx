@@ -27,11 +27,13 @@ import {
 interface VipClientsAdminViewProps {
   currentUser: StaffUser;
   onRefreshStats?: () => void;
+  businessId?: string;
 }
 
 export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
   currentUser,
   onRefreshStats,
+  businessId,
 }) => {
   const [profiles, setProfiles] = useState<VipProfile[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -52,7 +54,7 @@ export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const data = await adminFetchVipProfiles();
+      const data = await adminFetchVipProfiles(businessId);
       // Ordenar por última actualización o creación más reciente
       data.sort((a, b) => {
         const dateA = a.updatedAt || a.createdAt || '';
@@ -73,7 +75,7 @@ export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
 
   useEffect(() => {
     fetchProfiles();
-  }, []);
+  }, [businessId]);
 
   const showNotification = (msg: string) => {
     setSuccessMessage(msg);
@@ -96,7 +98,7 @@ export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
         stamps: newStamps,
         totalOrders: profile.totalOrders + 1,
         rewardAvailable: newReward,
-      });
+      }, businessId);
 
       addActivityLog({
         userName: currentUser.name,
@@ -127,7 +129,7 @@ export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
       const newStamps = Math.max(0, profile.stamps - 1);
       await adminUpdateVipProfile(profile.id, {
         stamps: newStamps,
-      });
+      }, businessId);
 
       addActivityLog({
         userName: currentUser.name,
@@ -157,7 +159,7 @@ export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
     try {
       await adminUpdateVipProfile(profile.id, {
         rewardAvailable: newStatus,
-      });
+      }, businessId);
 
       addActivityLog({
         userName: currentUser.name,
@@ -202,7 +204,7 @@ export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
         stamps: newStamps,
         pendingStampsToValidate: 0,
         rewardAvailable: newReward,
-      });
+      }, businessId);
 
       addActivityLog({
         userName: currentUser.name,
