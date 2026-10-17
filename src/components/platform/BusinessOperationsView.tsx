@@ -37,7 +37,8 @@ export const BusinessOperationsView: React.FC<{
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
-  const [activeTab, setActiveTab] = useState<'pos' | 'orders'>('pos');
+  const [activeTab, setActiveTab] = useState<'pos' | 'orders' | 'comandas'>('pos');
+  const [commandFilter, setCommandFilter] = useState<'TODAS' | RestaurantOrderStatus>('TODAS');
 
   useEffect(() => subscribeToBusinessCatalog(
     businessId,
@@ -62,6 +63,10 @@ export const BusinessOperationsView: React.FC<{
   }, [orders]);
 
   const activeOrders = orders.filter((order) => ['NUEVO', 'PREPARANDO', 'LISTO'].includes(order.status));
+  const commandOrders = useMemo(() => {
+    const filtered = commandFilter === 'TODAS' ? orders : orders.filter((order) => order.status === commandFilter);
+    return [...filtered].sort((a, b) => (Date.parse(b.createdAt || '') || 0) - (Date.parse(a.createdAt || '') || 0));
+  }, [orders, commandFilter]);
   const paidLikeOrders = todayOrders.filter((order) => order.billingStatus === 'PAGADO');
 
   const addToCart = (item: BusinessCatalogItem) => {
@@ -198,7 +203,8 @@ export const BusinessOperationsView: React.FC<{
 
         <div className="mt-6 flex gap-2 rounded-2xl border border-[#DEC8AE] bg-white p-2 w-fit">
           <button onClick={() => setActiveTab('pos')} className={activeTab === 'pos' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Venta rápida</button>
-          <button onClick={() => setActiveTab('orders')} className={activeTab === 'orders' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Cola de pedidos</button>
+          <button onClick={() => setActiveTab('orders')} className={activeTab === 'orders' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Pedidos activos</button>
+          <button onClick={() => setActiveTab('comandas')} className={activeTab === 'comandas' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Comandas</button>
         </div>
 
         {message && <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-900">{message}</div>}
@@ -256,7 +262,7 @@ export const BusinessOperationsView: React.FC<{
               </div>
             </aside>
           </div>
-        ) : (
+        ) : activeTab === 'orders' ? (
           <section className="mt-6 rounded-[2rem] border border-[#D9C5AC] bg-white overflow-hidden">
             <div className="px-5 py-4 border-b border-[#E8D8C4]"><h2 className="font-serif text-xl font-black text-[#2B1B13]">Pedidos activos</h2></div>
             {activeOrders.length === 0 ? (
@@ -288,6 +294,26 @@ export const BusinessOperationsView: React.FC<{
                   );
                 })}
               </div>
+            )}
+          </section>
+        ) : (
+          <section className="mt-6 rounded-[2rem] border border-[#D9C5AC] bg-white overflow-hidden">
+            <div className="px-5 py-4 border-b border-[#E8D8C4] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div><h2 className="font-serif text-xl font-black text-[#2B1B13]">Comandas del negocio</h2><p className="mt-1 text-xs text-[#6B4028]">Historial completo del negocio activo, ordenado de más reciente a más antiguo.</p></div>
+              <select aria-label="Filtrar comandas por estado" value={commandFilter} onChange={(event) => setCommandFilter(event.target.value as typeof commandFilter)} className="rounded-xl border border-[#DEC8AE] bg-white px-3 py-2 text-xs font-bold text-[#3A2418]">
+                <option value="TODAS">Todos los estados</option><option value="NUEVO">Nuevas</option><option value="PREPARANDO">Preparando</option><option value="LISTO">Listas</option><option value="ENTREGADO">Entregadas</option><option value="CANCELADO">Canceladas</option>
+              </select>
+            </div>
+            {commandOrders.length === 0 ? <div className="p-10 text-center text-sm text-[#6B4028]">No hay comandas para este filtro.</div> : (
+              <div className="divide-y divide-[#F0E5D9]">{commandOrders.map((order) => (
+                <article key={order.id || order.code} className="p-5 flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><strong className="text-base text-[#2B1B13]">#{order.code}</strong><span className="rounded-full bg-[#FFF7EA] px-2 py-1 text-[10px] font-black text-[#A86B3D]">{STATUS_LABELS[order.status]}</span><span className="text-[10px] text-[#7A5A45]">{order.orderType === 'dine_in' ? (order.tableNumber ? 'Mesa ' + order.tableNumber : 'En sucursal') : order.orderType === 'delivery' ? 'Domicilio' : 'Para llevar'}</span></div>
+                  <p className="mt-1 text-sm text-[#6B4028]">{order.customerName || 'Cliente'} · {order.createdAt ? new Date(order.createdAt).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Mexico_City' }) : 'Fecha no disponible'}</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">{order.items.map((item, index) => <span key={item.productId + '-' + index} className="rounded-lg bg-[#FFFDF9] border border-[#E8D8C4] px-2 py-1 text-[11px] text-[#2B1B13]">{item.quantity}× {item.name}</span>)}</div>
+                  {order.notes && <p className="mt-2 text-xs text-[#7A5A45]">Nota: {order.notes}</p>}</div>
+                  <div className="flex items-center gap-3"><strong className="text-lg text-[#2B1B13]">{money(Number(order.total || 0))}</strong>{['NUEVO','PREPARANDO','LISTO'].includes(order.status) && <button onClick={() => advanceStatus(order)} className="rounded-xl bg-[#3A2418] px-3 py-2 text-xs font-black text-white">Avanzar</button>}{order.status !== 'CANCELADO' && order.status !== 'ENTREGADO' && <button onClick={() => cancelOrder(order)} className="rounded-xl border border-red-200 p-2 text-red-700" title="Cancelar comanda"><XCircle className="w-4 h-4" /></button>}</div>
+                </article>
+              ))}</div>
             )}
           </section>
         )}
