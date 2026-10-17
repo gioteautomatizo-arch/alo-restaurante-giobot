@@ -41,7 +41,7 @@ import {
 } from '../../lib/paymentsService';
 import { subscribeToTableSession } from '../../lib/tableSessionsService';
 import { addActivityLog } from '../../lib/adminStorage';
-import { createFinalSaleReceipt, subscribeToSaleReceipts } from '../../lib/saleReceiptsService';
+import { createFinalSaleReceipt, createOffTableSaleReceipt, subscribeToSaleReceipts } from '../../lib/saleReceiptsService';
 
 interface TableAccountsViewProps {
   currentUser: StaffUser;
@@ -289,7 +289,12 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
       });
       try {
         await chargeOffTableOrder(order, quickPaymentMethod, currentUser);
-        setSuccess(`Venta rápida cobrada · ${order.code} · ${money(total)}. Ya se registró para Caja y Control de turno.`);
+        try {
+          await createOffTableSaleReceipt({ ...order, billingStatus: 'PAGADO', paymentMethod: quickPaymentMethod, paidAt: new Date().toISOString() }, currentUser);
+          setSuccess(`Venta rápida cobrada y ticket creado · ${order.code} · ${money(total)}.`);
+        } catch (ticketError: any) {
+          setSuccess(`Venta ${order.code} cobrada y registrada. No se pudo crear el ticket: ${ticketError?.message || 'error de permisos o conexión'}. No vuelvas a cobrarla.`);
+        }
       } catch (chargeError: any) {
         setSuccess(`Pedido ${order.code} guardado, pero quedó pendiente de cobro. Puedes cobrarlo en la sección de pedidos por cobrar. ${chargeError?.message || ''}`);
       }
@@ -307,7 +312,12 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     setError(null);
     try {
       await chargeOffTableOrder(order, method, currentUser);
-      setSuccess(`Pedido ${order.code} cobrado (${method}) · ${money(Number(order.total || 0))}`);
+      try {
+        await createOffTableSaleReceipt({ ...order, billingStatus: 'PAGADO', paymentMethod: method, paidAt: new Date().toISOString() }, currentUser);
+        setSuccess(`Pedido ${order.code} cobrado y ticket creado (${method}) · ${money(Number(order.total || 0))}`);
+      } catch (ticketError: any) {
+        setSuccess(`Pedido ${order.code} cobrado. Falló el ticket: ${ticketError?.message || 'error de permisos o conexión'}. No vuelvas a cobrarlo.`);
+      }
       addActivityLog({
         userName: currentUser.name,
         userId: currentUser.id,
