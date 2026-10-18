@@ -43,7 +43,6 @@ import { StaffManagementView } from './StaffManagementView';
 import { RestaurantInfoEditorView } from './RestaurantInfoEditorView';
 import { CalientitoQrPanel } from './CalientitoQrPanel';
 import { VipClientsAdminView } from './VipClientsAdminView';
-import { BusinessActivityBell } from '../platform/BusinessActivityBell';
 import { LocalDataMigrationModal } from './LocalDataMigrationModal';
 import { TablesView } from './TablesView';
 import { OrdersView } from './OrdersView';
@@ -548,7 +547,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* V3.2: sonido operativo + perfil de volumen por dispositivo */}
           <div className="flex items-center gap-1.5">
               {['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'].includes(currentUser.role) && googleUser && <BusinessActivityBell businessId="alo-restaurante" legacy />}
-            <BusinessActivityBell businessId="alo-restaurante" legacy allowRead={!!googleUser && ['DUEÑA','ADMINISTRADOR','ENCARGADO'].includes(currentUser.role)} />
             <button
               onClick={handleToggleSound}
               className={`p-2 sm:px-3 sm:py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
