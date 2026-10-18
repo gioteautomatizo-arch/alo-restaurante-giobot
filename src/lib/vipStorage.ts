@@ -19,6 +19,32 @@ function assertVipBusiness(profile: VipProfile, businessId: string): void {
   throw new Error('La tarjeta VIP pertenece a otro negocio.');
 }
 
+// Activación gradual: solo probar cuando el servidor tenga credenciales administrativas seguras.
+const SECURE_VIP_API = import.meta.env.VITE_SECURE_VIP_API === 'true';
+const sessionKey = (businessId: string) => `gioteautomatizo_vip_session__${businessId}`;
+function tokenFor(businessId: string): string | null {
+  try { return sessionStorage.getItem(sessionKey(businessId)); } catch { return null; }
+}
+function storeSession(businessId: string, token: string): void {
+  try { sessionStorage.setItem(sessionKey(businessId), token); } catch { /* sin almacenamiento persistente */ }
+}
+async function vipRequest<T>(path: string, method: 'GET' | 'POST' | 'PATCH', businessId: string, body?: unknown): Promise<T> {
+  const token = tokenFor(businessId);
+  const url = method === 'GET' ? `${path}?businessId=${encodeURIComponent(businessId)}` : path;
+  const response = await fetch(url, {
+    method,
+    cache: 'no-store',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const result = await response.json().catch(() => ({})) as T & { error?: string };
+  if (!response.ok) throw new Error(result.error || 'No se pudo completar la operación VIP.');
+  return result;
+}
+
 export const VIP_DATA_EVENT = 'alo_vip_data_updated';
 
 function notifyVipChange(): void {
@@ -86,6 +112,14 @@ export const createCloudVipProfile = async (params: {
   }
 
   const businessId = params.businessId?.trim() || RESTAURANT_ID;
+  if (SECURE_VIP_API) {
+    const result = await vipRequest<{ profile: VipProfile; sessionToken: string }>(
+      '/api/vip/register', 'POST', businessId, { ...params, businessId },
+    );
+    storeSession(businessId, result.sessionToken);
+    saveLocalVipProfile(result.profile, businessId);
+    return result.profile;
+  }
   const baseDocId = await computeVipDocId(normPhone, normPin);
   const docId = businessId === RESTAURANT_ID ? baseDocId : `${businessId}_${baseDocId}`;
   const pinHash = await computePinHash(normPin, normPhone);
@@ -153,8 +187,16 @@ export const recoverCloudVipProfile = async (phone: string, pin: string, busines
     throw new Error('Por favor ingresa tu PIN de 4 dígitos.');
   }
 
-  const baseDocId = await computeVipDocId(normPhone, normPin);
   const scopedBusinessId = businessId.trim() || RESTAURANT_ID;
+  if (SECURE_VIP_API) {
+    const result = await vipRequest<{ profile: VipProfile; sessionToken: string }>(
+      '/api/vip/recover', 'POST', scopedBusinessId, { businessId: scopedBusinessId, phone: normPhone, pin: normPin },
+    );
+    storeSession(scopedBusinessId, result.sessionToken);
+    saveLocalVipProfile(result.profile, scopedBusinessId);
+    return result.profile;
+  }
+  const baseDocId = await computeVipDocId(normPhone, normPin);
   const docId = scopedBusinessId === RESTAURANT_ID ? baseDocId : `${scopedBusinessId}_${baseDocId}`;
   const docRef = doc(db, 'vip_profiles', docId);
   const docSnap = await getDoc(docRef);
@@ -185,6 +227,12 @@ export const refreshCloudVipProfile = async (businessId: string = RESTAURANT_ID)
   if (!local || !local.id) return local;
 
   try {
+    if (SECURE_VIP_API) {
+      if (!tokenFor(businessId)) return local;
+      const result = await vipRequest<{ profile: VipProfile }>('/api/vip/profile', 'GET', businessId);
+      saveLocalVipProfile(result.profile, businessId);
+      return result.profile;
+    }
     const docRef = doc(db, 'vip_profiles', local.id);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
@@ -243,6 +291,20 @@ export const updatePersonalVipInfo = async (params: {
     updatedAt: now,
   };
 
+  if (SECURE_VIP_API) {
+    const result = await vipRequest<{ profile: VipProfile }>('/api/vip/profile', 'PATCH', businessId, {
+      businessId,
+      updates: {
+        customerName: updatedLocal.customerName,
+        address: updatedLocal.address,
+        reference: updatedLocal.reference,
+        preferredPayment: updatedLocal.preferredPayment,
+        preferredOrderType: updatedLocal.preferredOrderType,
+      },
+    });
+    saveLocalVipProfile(result.profile, businessId);
+    return result.profile;
+  }
   saveLocalVipProfile(updatedLocal, businessId);
 
   // Si ya tiene ID en la nube, actualizar únicamente los campos permitidos en Firestore
@@ -436,6 +498,7 @@ export const redeemVipReward = (): VipProfile | null => {
 export const clearVipProfile = (businessId: string = RESTAURANT_ID): void => {
   if (!businessId.trim()) return;
   localStorage.removeItem(vipKey(businessId));
+  try { sessionStorage.removeItem(sessionKey(businessId)); } catch { /* ignorar */ }
   notifyVipChange();
 };
 
