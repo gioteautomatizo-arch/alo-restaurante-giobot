@@ -148,7 +148,7 @@ export const OffTableOrderModal: React.FC<Props> = ({ order, currentUser, onClos
   const cancelOrder = async () => {
     if (!order) return;
     if (!window.confirm(`¿Cancelar el pedido ${order.code}? Dejará de aparecer por cobrar, pero conservará su historial.`)) return;
-    const reason = window.prompt('Motivo de cancelación (obligatorio):', 'Pedido de prueba');
+    const reason = window.prompt('Motivo de cancelación (obligatorio):', '');
     if (!reason?.trim()) { setError('Indica un motivo para cancelar.'); return; }
     setSaving(true);
     setError(null);
