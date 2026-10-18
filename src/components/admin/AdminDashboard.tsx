@@ -46,6 +46,7 @@ import { LocalDataMigrationModal } from './LocalDataMigrationModal';
 import { TablesView } from './TablesView';
 import { OrdersView } from './OrdersView';
 import { TableAccountsView } from './TableAccountsView';
+import { QuickOrdersView } from './QuickOrdersView';
 import type { SaleReceipt } from '../../types';
 import { subscribeToSaleReceipts } from '../../lib/saleReceiptsService';
 import { subscribeToPendingTableRequests } from '../../lib/tableRequestsService';
@@ -107,6 +108,7 @@ type AdminTab =
   | 'resumen'
   | 'mesas'
   | 'caja'
+  | 'pedidos_rapidos'
   | 'comandas'
   | 'turno'
   | 'gastos'
@@ -389,6 +391,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     { id: 'resumen', label: 'Resumen', icon: LayoutDashboard, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'] },
     { id: 'mesas', label: 'Mesas', icon: Grid3X3, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'EMPLEADO'] },
     { id: 'caja', label: 'Caja & Cobro', icon: Wallet, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
+    { id: 'pedidos_rapidos', label: 'Pedidos rápidos', icon: Smartphone, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
     { id: 'comandas', label: 'Comandas', icon: ChefHat, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'COCINA', 'EMPLEADO'] },
     { id: 'turno', label: 'Control de Turno', icon: Clock, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA'] },
     { id: 'gastos', label: 'Gastos & Comprobantes', icon: Receipt, allowed: ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO'] },
@@ -1037,6 +1040,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {safeActiveTab === 'caja' && (
           <TableAccountsView currentUser={currentUser} />
+        )}
+
+        {safeActiveTab === 'pedidos_rapidos' && (
+          <QuickOrdersView currentUser={currentUser} />
         )}
 
         {safeActiveTab === 'comandas' && (
