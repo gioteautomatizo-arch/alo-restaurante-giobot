@@ -290,7 +290,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     }
     const confirmed = window.confirm(`¿Cancelar el pedido ${order.code} por ${money(Number(order.total || 0))}? No se borrará el registro y dejará de aparecer por cobrar.`);
     if (!confirmed) return;
-    const reason = window.prompt('Motivo de cancelación (obligatorio, por ejemplo: pedido de prueba):', 'Pedido de prueba');
+    const reason = window.prompt('Motivo de cancelación (obligatorio, por ejemplo: pedido de prueba):', '');
     if (!reason?.trim()) {
       setError('La cancelación requiere un motivo. No se hicieron cambios.');
       return;
