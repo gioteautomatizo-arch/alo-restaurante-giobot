@@ -243,9 +243,12 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     setRecoverMessage(null);
     try {
       const result = await recoverMissingReceipts(missingWork, currentUser);
+      const permissionIssue = result.failed.some((failure) => /permission|permiso|insufficient/i.test(failure));
       setRecoverMessage(result.failed.length === 0
         ? `Listo: se generaron ${result.created} ticket(s).`
-        : `Se generaron ${result.created} ticket(s). Fallaron: ${result.failed.join(' · ')}`);
+        : `Se generaron ${result.created} ticket(s). Fallaron: ${result.failed.join(' · ')}${permissionIssue
+          ? ' · Firebase rechazó la escritura. Revisa que hayas iniciado sesión con Google y que las reglas de firestore.rules se hayan desplegado en el proyecto/base de datos correctos. No vuelvas a cobrar esos pedidos.'
+          : ''}`);
     } catch (err: any) {
       setRecoverMessage(err?.message || 'No se pudieron generar los tickets.');
     } finally {
