@@ -31,6 +31,7 @@ interface VipClientsAdminViewProps {
   businessId?: string;
   stampsRequiredOverride?: number;
   rewardOverride?: string;
+  programNameOverride?: string;
 }
 
 export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
@@ -39,6 +40,7 @@ export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
   businessId,
   stampsRequiredOverride,
   rewardOverride,
+  programNameOverride,
 }) => {
   const [profiles, setProfiles] = useState<VipProfile[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -61,7 +63,8 @@ export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
     addCalientitoActivityLog(data);
   };
   const stampsRequired = Math.max(1, stampsRequiredOverride ?? (restaurantInfo.vipStampsRequired || 5));
-  const rewardDescription = rewardOverride || restaurantInfo.vipRewardDescription || 'Café americano o postre gratis';
+  const rewardDescription = rewardOverride || (businessId && businessId !== 'alo-restaurante' ? 'Recompensa del programa de membresías' : restaurantInfo.vipRewardDescription || 'Café americano o postre gratis');
+  const programName = programNameOverride || (businessId && businessId !== 'alo-restaurante' ? 'Membresías VIP' : restaurantInfo.loyaltyProgramName || 'Calientito VIP');
 
   const fetchProfiles = async () => {
     setIsLoading(true);
@@ -79,7 +82,7 @@ export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
       console.error('Error al cargar perfiles VIP:', err);
       setErrorMessage(
         err?.message ||
-          'No se pudieron cargar los clientes VIP. Asegúrate de tener sesión iniciada con Google en el panel administrativo.'
+          'No se pudieron cargar las membresías. Revisa tu sesión y los permisos de este negocio.'
       );
     } finally {
       setIsLoading(false);
@@ -294,7 +297,7 @@ export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
               <Star className="w-3.5 h-3.5 text-[#C9974D]" /> Gestión de Fidelidad
             </span>
             <span className="px-2 py-0.5 rounded-md bg-[#4A2E1F] text-[#F4E3C8] text-[10px] font-semibold border border-[#C9974D]/20">
-              {restaurantInfo.loyaltyProgramName || 'Calientito VIP'} Cloud
+              {programName} Cloud
             </span>
           </div>
           <h1 className="font-serif font-bold text-2xl sm:text-3xl text-white">
@@ -322,7 +325,7 @@ export const VipClientsAdminView: React.FC<VipClientsAdminViewProps> = ({
         <div className="bg-amber-950/80 border border-amber-500/50 rounded-2xl p-4 text-amber-200 text-xs flex items-center gap-3">
           <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
           <span>
-            <strong>Atención:</strong> Inicia sesión con Google en la barra superior para poder consultar y modificar las tarjetas VIP en Firestore.
+            <strong>Atención:</strong> Inicia sesión con una cuenta autorizada para este negocio para consultar y modificar sus membresías.
           </span>
         </div>
       )}
