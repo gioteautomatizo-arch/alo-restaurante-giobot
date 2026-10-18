@@ -22,6 +22,7 @@ import {
 } from '../../types';
 import { subscribeToRestaurantOrders, chargeOffTableOrder } from '../../lib/ordersService';
 import { isOffTableOrder, offTableSalesForDay } from '../../lib/shiftSales';
+import { OffTableOrderModal } from './OffTableOrderModal';
 import {
   initTablesRealtimeSync,
   setTableStatus,
@@ -226,6 +227,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     [orders]
   );
   const [chargingOrderId, setChargingOrderId] = useState<string | null>(null);
+  const [orderModal, setOrderModal] = useState<{ order?: RestaurantOrder } | null>(null);
   const handleChargeOffTable = async (order: RestaurantOrder, method: 'efectivo' | 'tarjeta' | 'transferencia') => {
     if (!order.id) return;
     setChargingOrderId(order.id);
@@ -508,6 +510,20 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
         <div className="rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 text-sm">{success}</div>
       )}
 
+      <div className="flex justify-end">
+        <button type="button" onClick={() => setOrderModal({})} className="rounded-2xl bg-[#3A2418] px-4 py-3 text-xs font-black text-[#FFF7EA] shadow-xs">
+          + Registrar pedido (WhatsApp / teléfono / mostrador)
+        </button>
+      </div>
+      {orderModal && (
+        <OffTableOrderModal
+          order={orderModal.order}
+          currentUser={currentUser}
+          onClose={() => setOrderModal(null)}
+          onDone={(message) => { setSuccess(message); setError(null); }}
+        />
+      )}
+
       {offTablePending.length > 0 && (
         <section className="bg-white rounded-3xl border border-[#C9974D]/40 shadow-xs overflow-hidden">
           <div className="px-4 sm:px-5 py-4 bg-[#FFF7EA] border-b border-[#F4E3C8] flex items-center justify-between gap-3">
@@ -540,6 +556,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
                   <strong className="font-serif text-lg text-[#2B1B13] shrink-0">{money(Number(order.total || 0))}</strong>
                 </div>
                 <div className="flex gap-2">
+                  <button type="button" onClick={() => setOrderModal({ order })} className="px-3 py-2 rounded-xl text-xs font-black border border-[#C9974D] bg-white text-[#A86B3D]">Editar</button>
                   {(['efectivo', 'tarjeta', 'transferencia'] as const).map((method) => (
                     <button
                       key={method}

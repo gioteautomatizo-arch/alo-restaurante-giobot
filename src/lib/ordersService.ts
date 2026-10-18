@@ -503,3 +503,24 @@ export async function chargeOffTableOrder(
     updatedAt: now,
   }));
 }
+
+/** Corrige un pedido para llevar / domicilio que todavía no se cobra (productos, datos del cliente, tipo, cancelación). */
+export async function updateOffTableOrderDetails(
+  order: RestaurantOrder,
+  patch: Partial<Pick<RestaurantOrder,
+    'orderType' | 'customerName' | 'phone' | 'address' | 'addressReference' | 'paymentMethod' | 'notes' |
+    'items' | 'subtotal' | 'discountAmount' | 'deliveryFee' | 'total' | 'status'>>,
+  user: Pick<StaffUser, 'id' | 'name'>
+): Promise<void> {
+  if (!order.id) throw new Error('El pedido no tiene identificador.');
+  if (order.billingStatus === 'PAGADO') throw new Error('Este pedido ya está cobrado y no se puede editar.');
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, ORDERS_COLLECTION, order.id), sanitizeFirestorePayload({
+    ...patch,
+    status: patch.status || order.status,
+    editedById: user.id,
+    editedByName: user.name,
+    editedAt: now,
+    updatedAt: now,
+  }));
+}
