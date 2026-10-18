@@ -57,7 +57,7 @@ function notifyVipChange(): void {
  * Lee el perfil VIP guardado en localStorage (operación instantánea local-first)
  */
 export const getVipProfile = (businessId: string = RESTAURANT_ID): VipProfile | null => {
-  if (!businessId.trim()) return null;
+  if (!businessId.trim() || (SECURE_VIP_API && !tokenFor(businessId))) return null;
   try {
     const dataStr = localStorage.getItem(vipKey(businessId));
     if (!dataStr) return null;
