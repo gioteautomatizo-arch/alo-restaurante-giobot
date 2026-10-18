@@ -513,11 +513,27 @@ export async function updateOffTableOrderDetails(
   user: Pick<StaffUser, 'id' | 'name'>
 ): Promise<void> {
   if (!order.id) throw new Error('El pedido no tiene identificador.');
-  if (order.billingStatus === 'PAGADO') throw new Error('Este pedido ya está cobrado y no se puede editar.');
+  const ref = doc(db, ORDERS_COLLECTION, order.id);
+  // No confiar en una copia antigua recibida por la interfaz.
+  const freshSnap = await getDoc(ref);
+  if (!freshSnap.exists()) throw new Error('El pedido ya no existe.');
+  const fresh = freshSnap.data() as RestaurantOrder;
+  if (fresh.restaurantId !== getActiveRestaurantId() || (order.restaurantId && fresh.restaurantId !== order.restaurantId)) {
+    throw new Error('El pedido pertenece a otro negocio.');
+  }
+  if (fresh.orderType === 'dine_in') throw new Error('Los pedidos de mesa no se editan desde este formulario.');
+  if (fresh.billingStatus === 'PAGADO') throw new Error('Este pedido ya está cobrado y no se puede editar o cancelar.');
+  if (fresh.status === 'CANCELADO') throw new Error('Este pedido ya fue cancelado.');
+  if (patch.status && patch.status !== 'CANCELADO') throw new Error('Solo se permite cancelar el pedido desde este formulario.');
   const now = new Date().toISOString();
-  await updateDoc(doc(db, ORDERS_COLLECTION, order.id), sanitizeFirestorePayload({
+  await updateDoc(ref, sanitizeFirestorePayload({
     ...patch,
-    status: patch.status || order.status,
+    status: patch.status || fresh.status,
+    ...(patch.status === 'CANCELADO' ? {
+      cancelledAt: now,
+      cancelledBy: user.name,
+      cancelledById: user.id,
+    } : {}),
     editedById: user.id,
     editedByName: user.name,
     editedAt: now,
