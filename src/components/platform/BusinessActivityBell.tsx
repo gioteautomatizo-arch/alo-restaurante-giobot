@@ -61,7 +61,9 @@ export const BusinessActivityBell: React.FC<{
       const ids = new Set(next.map(x => x.id));
       const previous = seen.current;
       if (previous) {
-        const fresh = next.filter(x => !previous.has(x.id) && Date.parse(x.at) >= startedAt.current - 3000);
+        // Acepta retrasos de sincronización de hasta cinco minutos; los IDs vistos
+        // en el primer snapshot nunca generan alertas del historial.
+        const fresh = next.filter(x => !previous.has(x.id) && Date.parse(x.at) >= startedAt.current - 5 * 60 * 1000);
         if (fresh.length) {
           setUnread(n => Math.min(99, n + fresh.length));
           const registration = fresh.find(x => x.kind === 'vip');
