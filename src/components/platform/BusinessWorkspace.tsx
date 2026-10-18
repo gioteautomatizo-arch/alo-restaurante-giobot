@@ -1,5 +1,6 @@
 import { BusinessActivityBell } from './BusinessActivityBell';
 import React, { useEffect, useState } from 'react';
+import { BusinessActivityBell } from './BusinessActivityBell';
 import { BusinessQrPanel } from './BusinessQrPanel';
 import { ArrowLeft, BarChart3, BookOpen, Bot, Clock, Heart, HandCoins, Landmark, PiggyBank, Receipt, ScrollText, ExternalLink, LayoutDashboard, Settings, ShoppingBag, Store, Users } from 'lucide-react';
 import { BusinessSummaryTab } from './BusinessSummaryTab';
