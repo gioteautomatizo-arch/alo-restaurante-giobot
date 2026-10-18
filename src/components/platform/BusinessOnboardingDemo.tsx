@@ -26,6 +26,8 @@ export const BusinessOnboardingDemo: React.FC = () => {
         logoUrl: profile.logoDataUrl,
         templateId: profile.type,
         capabilities: getBusinessTemplateConfig(profile.type).capabilities,
+        assistantName: profile.assistantName,
+        assistantMode: profile.assistantMode,
       });
       window.location.hash = '#business';
     } catch (err: any) {
