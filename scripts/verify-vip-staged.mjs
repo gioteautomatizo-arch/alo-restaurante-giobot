@@ -51,6 +51,9 @@ assert.match(stagedVip, /allow create:\s*if request\.resource\.data\.restaurantI
 assert.match(stagedVip, /request\.resource\.data\.restaurantId == resource\.data\.restaurantId/);
 assert.match(stagedVip, /request\.resource\.data\.pinHash == resource\.data\.pinHash/);
 assert.match(stagedVip, /request\.resource\.data\.memberId == resource\.data\.memberId/);
+assert.match(stagedVip, /vipCountersValid\(request\.resource\.data\)/);
+assert.match(stagedVip, /\.hasOnly\(\['stamps', 'totalOrders', 'rewardAvailable', 'pendingStampsToValidate', 'updatedAt'\]\)/);
+assert.match(stagedVip, /request\.resource\.data\.stamps == 0/);
 assert.doesNotMatch(stagedVip, /allow (?:get|list|read|write|create|update|delete):\s*if true\s*;/);
 assert.doesNotMatch(stagedVip, /isKnownRestaurant\(request\.resource\.data\)/);
 
