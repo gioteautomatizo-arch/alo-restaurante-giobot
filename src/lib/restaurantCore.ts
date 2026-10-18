@@ -96,6 +96,8 @@ export interface RestaurantFeatureFlags {
 
 export interface RestaurantTenant {
   restaurantId: string;
+  /** UID del usuario que registró el negocio. Obligatorio para nuevos tenants; opcional por legado. */
+  ownerUserId?: string;
   /** Giro elegido al crear el negocio. Se usa para activar la plantilla/módulos correctos. */
   businessType?: BusinessType;
   templateId?: string;
@@ -180,6 +182,7 @@ export function normalizeRestaurantSlug(value: string): string {
 
 export function createRestaurantTenant(input: {
   restaurantId: string;
+  ownerUserId?: string;
   templateId?: string;
   capabilities?: string[];
   restaurantName: string;
@@ -194,6 +197,7 @@ export function createRestaurantTenant(input: {
 
   return {
     restaurantId: input.restaurantId.trim(),
+    ...(input.ownerUserId ? { ownerUserId: input.ownerUserId } : {}),
     businessType: (input.businessType as BusinessType) || 'restaurant',
     templateId: input.templateId,
     capabilities: input.capabilities,
