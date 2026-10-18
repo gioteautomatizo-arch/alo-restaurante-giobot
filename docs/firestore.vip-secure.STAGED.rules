@@ -372,8 +372,7 @@ service cloud.firestore {
     }
 
     // ACTIVAR SOLO DESPUES DE VALIDAR LOGIN, MIGRACION Y PRUEBAS CON EMULATOR.
-    // El acceso publico a tarjetas VIP se hace exclusivamente via /api/vip/*,
-    // respaldado por Firebase Admin SDK (que no usa estas reglas de cliente).
+    // Las rutas publicas /api/vip/* usan Firebase Admin SDK solo en servidor.
     function canManageVipProfiles(businessId) {
       return isPlatformSuperAdmin()
         || (
@@ -383,24 +382,52 @@ service cloud.firestore {
         );
     }
 
+    // Validacion basica de integridad. Es independiente del negocio y evita
+    // sellos negativos o valores no numericos incluso para administradores.
+    function vipCountersValid(data) {
+      return data.stamps is int
+        && data.stamps >= 0
+        && data.stamps <= 1000000
+        && data.totalOrders is int
+        && data.totalOrders >= 0
+        && data.totalOrders <= 1000000
+        && data.rewardAvailable is bool
+        && data.get('pendingStampsToValidate', 0) is int
+        && data.get('pendingStampsToValidate', 0) >= 0
+        && data.get('pendingStampsToValidate', 0) <= 1000000;
+    }
+
     match /vip_profiles/{profileId} {
-      // Prohibido consultar perfiles privados desde la web publica.
+      // Los perfiles solo son visibles para los responsables del mismo negocio.
       allow get, list: if resource.data.restaurantId is string
         && canManageVipProfiles(resource.data.restaurantId);
 
-      // La creacion de tarjetas de clientes se procesa en /api/vip/register.
-      // Administracion autenticada del negocio sigue habilitada cuando aplica.
+      // La pagina publica crea perfiles mediante el servidor. Las altas de
+      // administradores autenticados deben comenzar sin puntos regalados.
       allow create: if request.resource.data.restaurantId is string
-        && canManageVipProfiles(request.resource.data.restaurantId);
+        && canManageVipProfiles(request.resource.data.restaurantId)
+        && request.resource.data.customerName is string
+        && request.resource.data.phone is string
+        && request.resource.data.pinHash is string
+        && request.resource.data.memberId is string
+        && vipCountersValid(request.resource.data)
+        && request.resource.data.stamps == 0
+        && request.resource.data.totalOrders == 0
+        && request.resource.data.rewardAvailable == false
+        && request.resource.data.get('pendingStampsToValidate', 0) == 0;
 
-      // Impedir que una edicion administrativa mueva un perfil de negocio,
-      // cambie el telefono, PIN o ID de membresia.
+      // Desde el SDK cliente de administracion solamente se pueden editar
+      // sellos, compras, recompensas y fecha; la informacion personal del
+      // titular la modifica el backend autentificado con sesion propia.
       allow update: if resource.data.restaurantId is string
         && canManageVipProfiles(resource.data.restaurantId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['stamps', 'totalOrders', 'rewardAvailable', 'pendingStampsToValidate', 'updatedAt'])
         && request.resource.data.restaurantId == resource.data.restaurantId
         && request.resource.data.phone == resource.data.phone
         && request.resource.data.pinHash == resource.data.pinHash
-        && request.resource.data.memberId == resource.data.memberId;
+        && request.resource.data.memberId == resource.data.memberId
+        && vipCountersValid(request.resource.data);
 
       allow delete: if resource.data.restaurantId is string
         && canManageVipProfiles(resource.data.restaurantId);
