@@ -158,7 +158,7 @@ export function registerVipRecoveryApi(app: Express): void {
         preferredOrderType: updates.preferredOrderType, updatedAt: new Date().toISOString(),
       };
       await ref.update(changes);
-      const { pinHash: _secret, ...safe } = { ...before, ...changes };
+      const { pinHash: _secret, ...safe } = ({ ...before, ...changes } as Record<string, unknown>);
       return res.json({ profile: { ...safe, id: snap.id, syncedWithCloud: true } });
     } catch (err) {
       console.error('VIP update backend unavailable', err);
