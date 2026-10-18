@@ -24,3 +24,5 @@ jobs:
         run: node scripts/verify-vip-staged.mjs
       - name: Test tenant isolation with Firestore Emulator
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-security-test --config scripts/firebase.security-emulator.json "node scripts/test-firestore-vip.mjs"
+      - name: Test staged order and catalog permissions
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-launch-security-test --config scripts/firebase.launch-security-emulator.json "node scripts/test-launch-security.mjs"
