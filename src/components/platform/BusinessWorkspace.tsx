@@ -1,3 +1,4 @@
+import { BusinessActivityBell } from './BusinessActivityBell';
 import React, { useEffect, useState } from 'react';
 import { BusinessQrPanel } from './BusinessQrPanel';
 import { ArrowLeft, BarChart3, BookOpen, Bot, Clock, Heart, HandCoins, Landmark, PiggyBank, Receipt, ScrollText, ExternalLink, LayoutDashboard, Settings, ShoppingBag, Store, Users } from 'lucide-react';
@@ -287,6 +288,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
               </span>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              <BusinessActivityBell businessId={businessId} allowRead={!!role && ['OWNER', 'ADMIN', 'MANAGER', 'SUPER_ADMIN'].includes(role)} />
               <span className="hidden rounded-full border px-3 py-1 text-[11px] font-bold md:inline" style={{ borderColor: 'color-mix(in srgb, var(--biz-primary, #D6A34A) 40%, transparent)' }}>{role || '…'}</span>
               <a href={`#negocio/${encodeURIComponent(businessId)}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-black" style={{ background: bizPrimary, color: bizBg }}>
                 <ExternalLink className="h-4 w-4" /> <span className="hidden sm:inline">Ver mi página</span>
