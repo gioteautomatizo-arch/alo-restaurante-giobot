@@ -41,7 +41,13 @@ async function vipRequest<T>(path: string, method: 'GET' | 'POST' | 'PATCH', bus
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const result = await response.json().catch(() => ({})) as T & { error?: string };
-  if (!response.ok) throw new Error(result.error || 'No se pudo completar la operación VIP.');
+  if (!response.ok) {
+    if (response.status === 401 && token) {
+      try { sessionStorage.removeItem(sessionKey(businessId)); } catch { /* ignorar */ }
+      notifyVipChange();
+    }
+    throw new Error(result.error || 'No se pudo completar la operación VIP.');
+  }
   return result;
 }
 
