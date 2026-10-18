@@ -35,6 +35,64 @@ async function allowAttempt(businessId: string, phone: string) {
 }
 
 export function registerVipRecoveryApi(app: Express): void {
+  // No se confía en los sellos, recompensas ni identificadores enviados por el cliente.
+  app.post('/api/vip/register', async (req, res) => {
+    res.setHeader('Cache-Control', NO_STORE);
+    const { businessId, phone, pin, customerName, address, reference, preferredPayment, preferredOrderType } = req.body || {};
+    const safeName = typeof customerName === 'string' ? customerName.trim() : '';
+    if (!validBusiness(businessId) || !validPhone(phone) || !validPin(pin) ||
+        safeName.length < 2 || safeName.length > 120 ||
+        (address !== undefined && (typeof address !== 'string' || address.length > 200)) ||
+        (reference !== undefined && (typeof reference !== 'string' || reference.length > 200))) {
+      return res.status(400).json({ error: 'Revisa nombre, teléfono y PIN (4 a 6 dígitos).' });
+    }
+    try {
+      if (!(await allowAttempt(businessId, phone))) {
+        return res.status(429).json({ error: 'Demasiados intentos. Espera 15 minutos.' });
+      }
+      // Los negocios nuevos deben haber publicado expresamente su programa VIP.
+      if (businessId !== 'alo-restaurante') {
+        const business = await db().collection('publicBusinessProfiles').doc(businessId).get();
+        if (!business.exists || business.data()?.published !== true ||
+            business.data()?.branding?.vipEnabled !== true) {
+          return res.status(404).json({ error: 'Este programa de membresías no está disponible.' });
+        }
+      }
+      const baseId = await computeVipDocId(phone, pin);
+      const profileId = businessId === 'alo-restaurante' ? baseId : businessId + '_' + baseId;
+      const ref = db().collection('vip_profiles').doc(profileId);
+      const now = new Date().toISOString();
+      const pinHash = await computePinHash(pin, phone);
+      const profile = {
+        restaurantId: businessId,
+        memberId: 'VIP-' + randomBytes(5).toString('hex').toUpperCase(),
+        customerName: safeName, phone, pinHash,
+        address: typeof address === 'string' ? address.trim() : '',
+        reference: typeof reference === 'string' ? reference.trim() : '',
+        preferredPayment: ['efectivo', 'transferencia', 'tarjeta'].includes(preferredPayment) ? preferredPayment : 'efectivo',
+        preferredOrderType: ['dine_in', 'pickup', 'delivery'].includes(preferredOrderType) ? preferredOrderType : 'pickup',
+        stamps: 0, totalOrders: 0, rewardAvailable: false, pendingStampsToValidate: 0,
+        createdAt: now, updatedAt: now,
+      };
+      try {
+        await ref.create(profile);
+      } catch (error: any) {
+        if (error?.code === 6 || error?.code === 'already-exists') {
+          return res.status(409).json({ error: 'Ya existe una tarjeta con esos datos. Usa Recuperar tarjeta.' });
+        }
+        throw error;
+      }
+      const token = randomBytes(32).toString('base64url');
+      await db().collection('vip_sessions').doc(hash(token)).set({
+        businessId, profileId, expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+      });
+      const { pinHash: _secret, ...safe } = profile;
+      return res.status(201).json({ profile: { ...safe, id: profileId, syncedWithCloud: true }, sessionToken: token });
+    } catch (err) {
+      console.error('VIP registration backend unavailable', err);
+      return res.status(503).json({ error: 'No pudimos crear la membresía en este momento.' });
+    }
+  });
   app.post('/api/vip/recover', async (req, res) => {
     res.setHeader('Cache-Control', NO_STORE);
     const { businessId, phone, pin } = req.body || {};
@@ -67,6 +125,47 @@ export function registerVipRecoveryApi(app: Express): void {
       return res.status(503).json({ error: 'La recuperación no está disponible en este momento.' });
     }
   });
+  app.patch('/api/vip/profile', async (req, res) => {
+    res.setHeader('Cache-Control', NO_STORE);
+    const { businessId, updates } = req.body || {};
+    const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.header('authorization') || '');
+    if (!validBusiness(businessId) || !match) return res.status(401).json({ error: 'Recupera tu tarjeta para editarla.' });
+    if (!updates || typeof updates !== 'object' || Array.isArray(updates) ||
+        Object.keys(updates).sort().join(',') !==
+        ['address','customerName','preferredOrderType','preferredPayment','reference'].sort().join(',')) {
+      return res.status(400).json({ error: 'Solo puedes modificar tus datos personales.' });
+    }
+    if (typeof updates.customerName !== 'string' || updates.customerName.trim().length < 2 ||
+        updates.customerName.trim().length > 120 ||
+        typeof updates.address !== 'string' || updates.address.length > 200 ||
+        typeof updates.reference !== 'string' || updates.reference.length > 200 ||
+        !['efectivo', 'transferencia', 'tarjeta'].includes(updates.preferredPayment) ||
+        !['dine_in', 'pickup', 'delivery'].includes(updates.preferredOrderType)) {
+      return res.status(400).json({ error: 'Revisa tus datos personales.' });
+    }
+    try {
+      const session = (await db().collection('vip_sessions').doc(hash(match[1])).get()).data();
+      if (!session || session.businessId !== businessId || Number(session.expiresAt) <= Date.now()) {
+        return res.status(401).json({ error: 'Tu sesión VIP caducó. Recupera tu tarjeta.' });
+      }
+      const ref = db().collection('vip_profiles').doc(String(session.profileId));
+      const snap = await ref.get();
+      const before = snap.data();
+      if (!before || before.restaurantId !== businessId) return res.status(404).json({ error: 'Tarjeta no encontrada.' });
+      const changes = {
+        customerName: updates.customerName.trim(), address: updates.address.trim(),
+        reference: updates.reference.trim(), preferredPayment: updates.preferredPayment,
+        preferredOrderType: updates.preferredOrderType, updatedAt: new Date().toISOString(),
+      };
+      await ref.update(changes);
+      const { pinHash: _secret, ...safe } = { ...before, ...changes };
+      return res.json({ profile: { ...safe, id: snap.id, syncedWithCloud: true } });
+    } catch (err) {
+      console.error('VIP update backend unavailable', err);
+      return res.status(503).json({ error: 'No pudimos guardar los cambios.' });
+    }
+  });
+
   app.get('/api/vip/profile', async (req, res) => {
     res.setHeader('Cache-Control', NO_STORE);
     const businessId = req.query.businessId;
