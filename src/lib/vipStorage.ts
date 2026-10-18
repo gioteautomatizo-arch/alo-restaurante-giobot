@@ -582,6 +582,18 @@ export const adminUpdateVipProfile = async (
   if (Object.keys(safeUpdates).length !== Object.keys(updates).length) {
     throw new Error('No se permite modificar la identidad de una membresía.');
   }
+  // Los sellos y las compras deben mantener integridad en todos los negocios,
+  // aun antes de desplegar reglas mas restrictivas de Firestore.
+  for (const key of ['stamps', 'totalOrders', 'pendingStampsToValidate'] as const) {
+    const value = safeUpdates[key];
+    if (value !== undefined && (!Number.isInteger(value) || value < 0 || value > 1000000)) {
+      throw new Error('Los contadores VIP deben ser enteros no negativos.');
+    }
+  }
+  if (safeUpdates.rewardAvailable !== undefined && typeof safeUpdates.rewardAvailable !== 'boolean') {
+    throw new Error('La recompensa VIP debe ser verdadera o falsa.');
+  }
+  if (!Object.keys(safeUpdates).length) return;
   const dataToUpdate = {
     ...safeUpdates,
     updatedAt: new Date().toISOString(),
