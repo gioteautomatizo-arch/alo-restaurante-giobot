@@ -147,11 +147,16 @@ export const OffTableOrderModal: React.FC<Props> = ({ order, currentUser, onClos
 
   const cancelOrder = async () => {
     if (!order) return;
-    if (!window.confirm(`¿Cancelar el pedido ${order.code}? Dejará de aparecer por cobrar.`)) return;
+    if (!window.confirm(`¿Cancelar el pedido ${order.code}? Dejará de aparecer por cobrar, pero conservará su historial.`)) return;
+    const reason = window.prompt('Motivo de cancelación (obligatorio):', 'Pedido de prueba');
+    if (!reason?.trim()) { setError('Indica un motivo para cancelar.'); return; }
     setSaving(true);
     setError(null);
     try {
-      await updateOffTableOrderDetails(order, { status: 'CANCELADO' }, currentUser);
+      await updateOffTableOrderDetails(order, {
+        status: 'CANCELADO',
+        notes: [order.notes, `CANCELADO: ${reason.trim()}`].filter(Boolean).join(' · '),
+      }, currentUser);
       onDone(`Pedido ${order.code} cancelado`);
       onClose();
     } catch (err: any) {
