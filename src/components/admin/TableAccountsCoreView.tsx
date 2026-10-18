@@ -228,6 +228,8 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
   );
   const [chargingOrderId, setChargingOrderId] = useState<string | null>(null);
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
+  const [cancelPendingOrder, setCancelPendingOrder] = useState<RestaurantOrder | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
   const [receiptsLoaded, setReceiptsLoaded] = useState(false);
   const [recovering, setRecovering] = useState(false);
   const [recoverMessage, setRecoverMessage] = useState<string | null>(null);
@@ -282,32 +284,45 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
       setChargingOrderId(null);
     }
   };
-  const handleCancelOffTable = async (order: RestaurantOrder) => {
+  // Confirmación interna compatible con Preview e interfaces móviles.
+  const requestCancelOffTable = (order: RestaurantOrder) => {
     if (!order.id || cancellingOrderId || chargingOrderId) return;
     if (order.billingStatus === 'PAGADO' || order.status === 'CANCELADO') {
       setError('Este pedido ya fue pagado o cancelado y no se puede cancelar desde Caja.');
       return;
     }
-    const confirmed = window.confirm(`¿Cancelar el pedido ${order.code} por ${money(Number(order.total || 0))}? No se borrará el registro y dejará de aparecer por cobrar.`);
-    if (!confirmed) return;
-    const reason = window.prompt('Motivo de cancelación (obligatorio, por ejemplo: pedido de prueba):', '');
-    if (!reason?.trim()) {
-      setError('La cancelación requiere un motivo. No se hicieron cambios.');
+    setCancelPendingOrder(order);
+    setCancelReason('');
+    setError(null);
+    setSuccess(null);
+  };
+
+  const confirmCancelOffTable = async () => {
+    const order = cancelPendingOrder;
+    const reason = cancelReason.trim();
+    if (!order?.id || cancellingOrderId || chargingOrderId) return;
+    if (!reason) {
+      setError('Escribe el motivo de cancelación. No se hicieron cambios.');
       return;
     }
     setCancellingOrderId(order.id);
     setError(null);
     setSuccess(null);
     try {
-      await updateOffTableOrderDetails(order, { status: 'CANCELADO', notes: [order.notes, `CANCELADO: ${reason.trim()}`].filter(Boolean).join(' · ') }, currentUser);
-      setSuccess(`Pedido ${order.code} cancelado. Quedó registrado el motivo: ${reason.trim()}.`);
+      await updateOffTableOrderDetails(order, {
+        status: 'CANCELADO',
+        notes: [order.notes, `CANCELADO: ${reason}`].filter(Boolean).join(' · '),
+      }, currentUser);
+      setCancelPendingOrder(null);
+      setCancelReason('');
+      setSuccess(`Pedido ${order.code} cancelado. Motivo: ${reason}. Se conservó el registro.`);
       addActivityLog({
         userName: currentUser.name, userId: currentUser.id, userRole: currentUser.role,
-        action: `Canceló pedido ${order.code} por ${reason.trim()}`,
+        action: `Canceló pedido ${order.code} por ${reason}`,
         category: 'sistema', timestamp: new Date().toISOString(),
       });
     } catch (err: any) {
-      setError(err?.message || 'No se pudo cancelar el pedido.');
+      setError(err?.message || 'No se pudo cancelar el pedido. Revisa permisos de Firebase.');
     } finally {
       setCancellingOrderId(null);
     }
@@ -584,6 +599,42 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
           onDone={(message) => { setSuccess(message); setError(null); }}
         />
       )}
+      {cancelPendingOrder && (
+        <div className="rounded-3xl border-2 border-rose-200 bg-rose-50 p-4 sm:p-5 space-y-3" role="group" aria-label="Confirmar cancelación del pedido">
+          <div>
+            <h3 className="font-serif text-lg font-bold text-rose-900">Cancelar pedido #{cancelPendingOrder.code}</h3>
+            <p className="mt-1 text-xs text-rose-800">
+              Importe: {money(Number(cancelPendingOrder.total || 0))}. El pedido dejará de estar por cobrar,
+              pero seguirá en el historial como CANCELADO. No se modifica ningún pago.
+            </p>
+          </div>
+          <label className="block text-xs font-bold text-rose-900">
+            Motivo de cancelación (obligatorio)
+            <input
+              type="text"
+              value={cancelReason}
+              maxLength={200}
+              onChange={(event) => { setCancelReason(event.target.value); setError(null); }}
+              placeholder="Ej. Pedido de prueba o cliente canceló"
+              className="mt-2 w-full rounded-xl border border-rose-300 bg-white px-3 py-3 text-sm font-normal text-[#2B1B13] outline-none focus:border-rose-500"
+            />
+          </label>
+          {error && <p role="alert" className="text-xs font-semibold text-rose-800">{error}</p>}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => void confirmCancelOffTable()}
+              disabled={Boolean(cancellingOrderId) || !cancelReason.trim()}
+              className="rounded-xl bg-rose-700 px-4 py-3 text-sm font-black text-white disabled:opacity-40">
+              {cancellingOrderId ? 'Cancelando pedido…' : 'Confirmar cancelación'}
+            </button>
+            <button type="button"
+              onClick={() => { setCancelPendingOrder(null); setCancelReason(''); setError(null); }}
+              disabled={Boolean(cancellingOrderId)}
+              className="rounded-xl border border-rose-300 bg-white px-4 py-3 text-sm font-bold text-rose-900 disabled:opacity-50">
+              Conservar pedido
+            </button>
+          </div>
+        </div>
+      )}
       {offTablePending.length > 0 && (
         <section className="bg-white rounded-3xl border border-[#C9974D]/40 shadow-xs overflow-hidden">
           <div className="px-4 sm:px-5 py-4 bg-[#FFF7EA] border-b border-[#F4E3C8] flex items-center justify-between gap-3">
@@ -617,7 +668,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
                 </div>
                 <div className="flex gap-2">
                   <button type="button" disabled={cancellingOrderId === order.id} onClick={() => setOrderModal({ order })} className="px-3 py-2 rounded-xl text-xs font-black border border-[#C9974D] bg-white text-[#A86B3D] disabled:opacity-50">Editar</button>
-                  <button type="button" disabled={cancellingOrderId === order.id || chargingOrderId === order.id} onClick={() => void handleCancelOffTable(order)} className="px-3 py-2 rounded-xl text-xs font-black border border-rose-300 bg-rose-50 text-rose-800 disabled:opacity-50">
+                  <button type="button" disabled={cancellingOrderId === order.id || chargingOrderId === order.id} onClick={() => requestCancelOffTable(order)} className="px-3 py-2 rounded-xl text-xs font-black border border-rose-300 bg-rose-50 text-rose-800 disabled:opacity-50">
                     {cancellingOrderId === order.id ? 'Cancelando…' : 'Cancelar'}
                   </button>
                   {(['efectivo', 'tarjeta', 'transferencia'] as const).map((method) => (
