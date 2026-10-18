@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { BusinessQrPanel } from './BusinessQrPanel';
 import { ArrowLeft, BarChart3, BookOpen, Bot, Clock, Heart, HandCoins, Landmark, PiggyBank, Receipt, ScrollText, ExternalLink, LayoutDashboard, Settings, ShoppingBag, Store, Users } from 'lucide-react';
 import { BusinessSummaryTab } from './BusinessSummaryTab';
-import { BusinessCustomersView } from './BusinessCustomersView';
 import { BusinessShiftView } from './BusinessShiftView';
 import { BusinessExpensesView } from './BusinessExpensesView';
 import { BusinessAuditView } from './BusinessAuditView';
@@ -31,8 +30,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const [role, setRole] = useState<BusinessRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [customersTab, setCustomersTab] = useState<'list' | 'vip'>('list');
-  const [view, setView] = useState<'workspace' | 'catalog' | 'employees' | 'customers' | 'shifts' | 'expenses' | 'vault' | 'receivables' | 'payables' | 'audit' | 'operations' | 'menuImport' | 'modules' | 'branding' | 'reports'>('workspace');
+  const [view, setView] = useState<'workspace' | 'catalog' | 'employees' | 'memberships' | 'shifts' | 'expenses' | 'vault' | 'receivables' | 'payables' | 'audit' | 'operations' | 'menuImport' | 'modules' | 'branding' | 'reports'>('workspace');
 
   useEffect(() => subscribeToAuth((user) => setAuthUser(user)), []);
 
@@ -166,7 +164,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     { id: 'payables', label: 'Por pagar', icon: Landmark, allowed: hasCap('PAYABLES') && (!!role && hasBusinessPermission(role, 'pos.use')) },
     { id: 'audit', label: 'Bitácora', icon: ScrollText, allowed: hasCap('AUDIT_LOG') && !!role && ['OWNER', 'ADMIN', 'MANAGER', 'SUPER_ADMIN'].includes(role) },
     { id: 'reports', label: 'Reportes', icon: BarChart3, allowed: canSeeReports },
-    { id: 'customers', label: 'Clientes', icon: Heart, allowed: canPos || canSeeReports },
+    { id: 'memberships', label: 'Membresías', icon: Heart, allowed: hasCap('VIP') && (canPos || canSeeReports) },
     { id: 'employees', label: 'Empleados', icon: Users, allowed: canManageEmployees },
     { id: 'branding', label: 'Info', icon: Settings, allowed: canManageBusiness },
   ];
@@ -179,11 +177,12 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const renderContent = () => {
     const goHome = () => setView('workspace');
     if (view === 'modules') {
-      return <BusinessModulesView businessName={business.branding.restaurantName} templateName={template.name} modules={template.modules} enabledCapabilities={business.capabilities || []} onBack={() => goHome()} onOpen={(module) => {
+      return <BusinessModulesView businessName={business.branding.restaurantName} templateName={template.name} modules={template.modules.filter((module) => module.capability !== 'CUSTOMERS')} enabledCapabilities={business.capabilities || []} onBack={() => goHome()} onOpen={(module) => {
         if (module.capability === 'CATALOG') setView('catalog');
         else if (module.capability === 'POS' || module.capability === 'ORDERS' || module.capability === 'ORDER_QUEUE') setView('operations');
         else if (module.capability === 'MENU_IMPORT') setView('menuImport');
         else if (module.capability === 'STAFF' && canManageEmployees) setView('employees');
+        else if (module.capability === 'VIP' && hasCap('VIP') && (canPos || canSeeReports)) setView('memberships');
         else if (module.capability === 'RECEIPTS' && !!role && hasBusinessPermission(role, 'reports.view')) setView('reports');
         else if (module.capability === 'BUSINESS_SETTINGS' && !!role && hasBusinessPermission(role, 'business.manage')) setView('branding');
       }} />;
@@ -209,22 +208,9 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
       return <BusinessShiftView businessId={businessId} />;
     }
 
-    if (view === 'customers') {
-      const showVip = hasCap('VIP');
-      return (
-        <div className="space-y-4">
-          {showVip && (
-            <div className="flex gap-2">
-              {([['list', 'Clientes'], ['vip', 'Tarjeta VIP']] as const).map(([id, label]) => (
-                <button key={id} type="button" onClick={() => setCustomersTab(id)} className={`rounded-full px-4 py-2 text-xs font-black ${customersTab === id ? 'bg-[#D6A34A] text-[#050505]' : 'border border-[#3A3022] text-[#F7F7F7]'}`}>{label}</button>
-              ))}
-            </div>
-          )}
-          {showVip && customersTab === 'vip'
-            ? <BusinessVipPanel businessId={businessId} business={business} isOwner={role === 'OWNER' || role === 'SUPER_ADMIN'} isPublished={isPublished} onBusinessUpdated={setBusiness} />
-            : <BusinessCustomersView businessId={businessId} />}
-        </div>
-      );
+    // Un único módulo reutilizable de membresías para cualquier negocio con VIP activo.
+    if (view === 'memberships' && hasCap('VIP') && (canPos || canSeeReports)) {
+      return <BusinessVipPanel businessId={businessId} business={business} isOwner={role === 'OWNER' || role === 'SUPER_ADMIN'} isPublished={isPublished} onBusinessUpdated={setBusiness} />;
     }
 
     if (view === 'reports') {
