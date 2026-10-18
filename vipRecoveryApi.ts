@@ -67,4 +67,30 @@ export function registerVipRecoveryApi(app: Express): void {
       return res.status(503).json({ error: 'La recuperación no está disponible en este momento.' });
     }
   });
+  app.get('/api/vip/profile', async (req, res) => {
+    res.setHeader('Cache-Control', NO_STORE);
+    const businessId = req.query.businessId;
+    const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.header('authorization') || '');
+    if (!validBusiness(businessId) || !match) {
+      return res.status(401).json({ error: 'Debes recuperar tu tarjeta para continuar.' });
+    }
+    try {
+      const session = await db().collection('vip_sessions').doc(hash(match[1])).get();
+      const data = session.data();
+      if (!data || data.businessId !== businessId || Number(data.expiresAt) <= Date.now()) {
+        return res.status(401).json({ error: 'Tu sesión VIP caducó.' });
+      }
+      const snap = await db().collection('vip_profiles').doc(String(data.profileId)).get();
+      const profile = snap.data();
+      if (!profile || profile.restaurantId !== businessId) {
+        return res.status(404).json({ error: 'La tarjeta VIP no está disponible.' });
+      }
+      const { pinHash: _secret, ...safe } = profile;
+      return res.json({ profile: { ...safe, id: snap.id, syncedWithCloud: true } });
+    } catch (err) {
+      console.error('VIP profile backend unavailable', err);
+      return res.status(503).json({ error: 'No pudimos actualizar tu tarjeta.' });
+    }
+  });
+
 }
