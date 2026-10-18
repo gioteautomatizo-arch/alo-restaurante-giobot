@@ -624,7 +624,7 @@ service cloud.firestore {
         && request.resource.data.closedById is string
         && request.resource.data.closedByName is string
         && (
-          (request.resource.data.receiptType == 'OFF_TABLE'
+          (('receiptType' in request.resource.data) && request.resource.data.receiptType == 'OFF_TABLE'
             && request.resource.data.tableNumber == 0
             && request.resource.data.orderIds.size() == 1
             && !('tableSessionId' in request.resource.data))
