@@ -546,6 +546,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* V3.2: sonido operativo + perfil de volumen por dispositivo */}
           <div className="flex items-center gap-1.5">
+            <BusinessActivityBell businessId="alo-restaurante" legacy allowRead={!!googleUser && ['DUEÑA','ADMINISTRADOR','ENCARGADO'].includes(currentUser.role)} />
             <button
               onClick={handleToggleSound}
               className={`p-2 sm:px-3 sm:py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
