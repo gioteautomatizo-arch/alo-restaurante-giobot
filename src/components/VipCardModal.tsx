@@ -135,7 +135,7 @@ export const VipCardModal: React.FC<VipCardModalProps> = ({
   const handleSilentRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await refreshCloudVipProfile();
+      await refreshCloudVipProfile(businessId);
       onProfileUpdated();
     } catch {
       // Silencioso
@@ -241,7 +241,7 @@ export const VipCardModal: React.FC<VipCardModalProps> = ({
         reference,
         preferredPayment,
         preferredOrderType,
-      });
+      }, businessId);
 
       setSuccessMsg('✓ Datos personales actualizados correctamente.');
       onProfileUpdated();
@@ -287,7 +287,7 @@ export const VipCardModal: React.FC<VipCardModalProps> = ({
         '¿Deseas desvincular esta tarjeta VIP de este dispositivo? Solo se quitará la copia local de este equipo. La cuenta, los sellos y el historial en la nube se conservarán; podrás volver a vincularla con tu teléfono y PIN.'
       )
     ) {
-      clearVipProfile();
+      clearVipProfile(businessId);
       onProfileUpdated();
       setMode('register');
     }
