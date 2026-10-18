@@ -42,7 +42,7 @@ import {
 } from '../../lib/paymentsService';
 import { subscribeToTableSession } from '../../lib/tableSessionsService';
 import { addActivityLog } from '../../lib/adminStorage';
-import { createFinalSaleReceipt, createOffTableSaleReceipt, subscribeToSaleReceipts } from '../../lib/saleReceiptsService';
+import { createFinalSaleReceipt, createOffTableSaleReceipt, findMissingReceiptWork, recoverMissingReceipts, subscribeToSaleReceipts } from '../../lib/saleReceiptsService';
 
 interface TableAccountsViewProps {
   currentUser: StaffUser;
@@ -174,7 +174,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     );
     const unsubOrders = subscribeToRestaurantOrders(setOrders);
     const unsubPayments = subscribeToTablePayments(setPayments);
-    const unsubReceipts = subscribeToSaleReceipts(setReceipts);
+    const unsubReceipts = subscribeToSaleReceipts((list) => { setReceipts(list); setReceiptsLoaded(true); });
     const unsubRequests = subscribeToPendingTableRequests(setRequests);
 
     return () => {
@@ -229,6 +229,30 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     [orders]
   );
   const [chargingOrderId, setChargingOrderId] = useState<string | null>(null);
+  const [receiptsLoaded, setReceiptsLoaded] = useState(false);
+  const [recovering, setRecovering] = useState(false);
+  const [recoverMessage, setRecoverMessage] = useState<string | null>(null);
+  // Cobros de los últimos 7 días que no tienen ticket (por permisos o errores de conexión al cobrar).
+  const missingWork = useMemo(
+    () => receiptsLoaded ? findMissingReceiptWork(payments, orders, receipts, Date.now() - 7 * 24 * 60 * 60 * 1000) : { sessions: [], offTable: [] },
+    [receiptsLoaded, payments, orders, receipts]
+  );
+  const missingCount = missingWork.sessions.length + missingWork.offTable.length;
+  const handleRecoverReceipts = async () => {
+    if (recovering) return;
+    setRecovering(true);
+    setRecoverMessage(null);
+    try {
+      const result = await recoverMissingReceipts(missingWork, currentUser);
+      setRecoverMessage(result.failed.length === 0
+        ? `Listo: se generaron ${result.created} ticket(s).`
+        : `Se generaron ${result.created} ticket(s). Fallaron: ${result.failed.join(' · ')}`);
+    } catch (err: any) {
+      setRecoverMessage(err?.message || 'No se pudieron generar los tickets.');
+    } finally {
+      setRecovering(false);
+    }
+  };
   const [orderModal, setOrderModal] = useState<{ order?: RestaurantOrder } | null>(null);
   const [quickItemName, setQuickItemName] = useState('');
   const [quickItemPrice, setQuickItemPrice] = useState('');
@@ -824,6 +848,22 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
           </label>
           <span className="text-[10px] text-[#7A5A45]">{receipts.length} ticket(s) · {receiptGroups.length} día(s)</span>
         </div>
+
+        {(missingCount > 0 || recoverMessage) && (
+          <div className="mx-4 mb-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 sm:mx-5">
+            {missingCount > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs font-semibold text-amber-900">
+                  Hay {missingCount} cobro(s) de los últimos días que sí se registraron pero no tienen ticket.
+                </p>
+                <button type="button" disabled={recovering} onClick={() => void handleRecoverReceipts()} className="rounded-xl bg-[#3A2418] px-4 py-2 text-xs font-black text-[#FFF7EA] disabled:opacity-50">
+                  {recovering ? 'Generando…' : 'Generar tickets faltantes'}
+                </button>
+              </div>
+            )}
+            {recoverMessage && <p className="mt-2 text-xs font-semibold text-amber-900">{recoverMessage}</p>}
+          </div>
+        )}
 
         {receipts.length === 0 ? (
           <div className="px-5 py-7 text-center text-xs text-[#7A5A45]">Todavía no hay tickets finales registrados.</div>

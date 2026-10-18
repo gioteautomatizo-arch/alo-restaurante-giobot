@@ -218,3 +218,107 @@ export async function createOffTableSaleReceipt(
   await setDoc(receiptRef, sanitizeFirestorePayload(receipt));
   return { ...receipt, id: receiptRef.id };
 }
+
+export interface MissingReceiptWork {
+  sessions: Array<{ key: string; tableNumber: number; payments: TablePayment[]; orders: RestaurantOrder[] }>;
+  offTable: RestaurantOrder[];
+}
+
+/**
+ * Busca cobros ya registrados (pagos de mesa y ventas fuera de mesa) que no tienen ticket.
+ * Solo considera mesas cuya cuenta quedó totalmente pagada.
+ */
+export function findMissingReceiptWork(
+  payments: TablePayment[],
+  orders: RestaurantOrder[],
+  receipts: SaleReceipt[],
+  sinceMs: number
+): MissingReceiptWork {
+  const receiptSessionIds = new Set(receipts.map((r) => r.tableSessionId).filter(Boolean) as string[]);
+  const receiptOrderIds = new Set(receipts.flatMap((r) => r.orderIds || []));
+  const byKey = new Map<string, TablePayment[]>();
+  payments
+    .filter((p) => p.status === 'PAGADO' && (Date.parse(p.createdAt || '') || 0) >= sinceMs)
+    .forEach((p) => {
+      const key = p.tableSessionId || `pago-${p.id || p.code}`;
+      if (receiptSessionIds.has(key)) return;
+      if ((p.orderIds || []).length > 0 && p.orderIds.every((id) => receiptOrderIds.has(id))) return;
+      byKey.set(key, [...(byKey.get(key) || []), p]);
+    });
+
+  const sessions: MissingReceiptWork['sessions'] = [];
+  byKey.forEach((group, key) => {
+    const paymentOrderIds = new Set(group.flatMap((p) => p.orderIds || []));
+    const sessionOrders = orders.filter((o) =>
+      o.orderType === 'dine_in' &&
+      o.status !== 'CANCELADO' &&
+      (paymentOrderIds.has(o.id || '') || (group[0].tableSessionId && o.tableSessionId === group[0].tableSessionId))
+    );
+    // Si aún queda algo sin cobrar en esa mesa, la cuenta sigue abierta y no se genera ticket.
+    if (sessionOrders.some((o) => o.billingStatus !== 'PAGADO')) return;
+    sessions.push({ key, tableNumber: group[0].tableNumber, payments: group, orders: sessionOrders });
+  });
+
+  const offTable = orders.filter((o) =>
+    (o.orderType === 'pickup' || o.orderType === 'delivery') &&
+    o.status !== 'CANCELADO' &&
+    o.billingStatus === 'PAGADO' &&
+    Boolean(o.id) &&
+    !receiptOrderIds.has(o.id as string) &&
+    (Date.parse(o.paidAt || o.updatedAt || o.createdAt || '') || 0) >= sinceMs
+  );
+  return { sessions, offTable };
+}
+
+/** Crea los tickets que faltan a partir de los cobros guardados. Cada ticket usa un id fijo: no se duplica. */
+export async function recoverMissingReceipts(
+  work: MissingReceiptWork,
+  user: Pick<StaffUser, 'id' | 'name'>
+): Promise<{ created: number; failed: string[] }> {
+  let created = 0;
+  const failed: string[] = [];
+
+  for (const group of work.sessions) {
+    try {
+      const sortedPayments = [...group.payments].sort((a, b) => (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0));
+      const sortedOrders = [...group.orders].sort((a, b) => (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0));
+      const lastPayment = sortedPayments[sortedPayments.length - 1];
+      const waiterOrder = sortedOrders.find((o) => o.orderSource === 'MESERO' && Boolean(o.capturedByName?.trim()));
+      const receipt: SaleReceipt = {
+        code: receiptCode(group.tableNumber),
+        restaurantId: lastPayment.restaurantId || getActiveRestaurantId(),
+        tableNumber: group.tableNumber,
+        tableSessionId: group.key,
+        guestCount: 0,
+        waiterName: waiterOrder?.capturedByName?.trim(),
+        openedAt: sortedOrders[0]?.createdAt || sortedPayments[0].createdAt,
+        closedAt: lastPayment.createdAt,
+        closedById: lastPayment.chargedById || user.id,
+        closedByName: lastPayment.chargedByName || user.name,
+        orderIds: sortedOrders.map((o) => o.id).filter(Boolean) as string[],
+        paymentIds: sortedPayments.map((p) => p.id).filter(Boolean) as string[],
+        orders: sortedOrders.map(orderSnapshot),
+        payments: sortedPayments.map(paymentSnapshot),
+        subtotal: sortedPayments.reduce((s, p) => s + Number(p.subtotal || 0), 0),
+        discountAmount: sortedPayments.reduce((s, p) => s + Number(p.discountAmount || 0), 0),
+        tipAmount: sortedPayments.reduce((s, p) => s + Number(p.tipAmount || 0), 0),
+        totalPaid: sortedPayments.reduce((s, p) => s + Number(p.total || 0), 0),
+        status: 'PAGADO',
+      };
+      await setDoc(doc(db, SALE_RECEIPTS_COLLECTION, `recovered-${group.key}`), sanitizeFirestorePayload(receipt));
+      created += 1;
+    } catch (err: any) {
+      failed.push(`Mesa ${group.tableNumber}: ${err?.message || 'error'}`);
+    }
+  }
+
+  for (const order of work.offTable) {
+    try {
+      await createOffTableSaleReceipt(order, { id: (order as any).chargedById || user.id, name: (order as any).chargedByName || user.name });
+      created += 1;
+    } catch (err: any) {
+      failed.push(`Pedido ${order.code}: ${err?.message || 'error'}`);
+    }
+  }
+  return { created, failed };
+}
