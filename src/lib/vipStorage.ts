@@ -503,8 +503,18 @@ export const adminUpdateVipProfile = async (
   if ((snapshot.data() as VipProfile).restaurantId !== businessId) {
     throw new Error('La tarjeta VIP no pertenece a este negocio.');
   }
+  // Impide alterar identidad, negocio, teléfono o PIN desde la edición administrativa.
+  const allowedFields: Array<keyof VipProfile> = [
+    'stamps', 'totalOrders', 'rewardAvailable', 'pendingStampsToValidate',
+  ];
+  const safeUpdates = Object.fromEntries(
+    Object.entries(updates).filter(([field]) => allowedFields.includes(field as keyof VipProfile)),
+  ) as Partial<VipProfile>;
+  if (Object.keys(safeUpdates).length !== Object.keys(updates).length) {
+    throw new Error('No se permite modificar la identidad de una membresía.');
+  }
   const dataToUpdate = {
-    ...updates,
+    ...safeUpdates,
     updatedAt: new Date().toISOString(),
   };
   await updateDoc(docRef, dataToUpdate);
@@ -514,7 +524,7 @@ export const adminUpdateVipProfile = async (
   if (local && local.id === profileId) {
     saveLocalVipProfile({
       ...local,
-      ...updates,
+      ...safeUpdates,
       updatedAt: dataToUpdate.updatedAt,
     }, businessId);
   }
