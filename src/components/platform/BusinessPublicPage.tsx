@@ -21,7 +21,7 @@ import { hasPriceFrom, selectionKey, selectionSummary } from '../../lib/catalogO
 import type { OptionSelection } from '../../lib/catalogOptions';
 import { BusinessProductModal } from './BusinessProductModal';
 import { VipCardModal } from '../VipCardModal';
-import { getVipProfile, setActiveVipBusiness, VIP_DATA_EVENT } from '../../lib/vipStorage';
+import { getVipProfile, VIP_DATA_EVENT } from '../../lib/vipStorage';
 import type { VipProfile } from '../../types';
 
 /**
@@ -115,13 +115,11 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
   const [vipProfile, setVipProfile] = useState<VipProfile | null>(null);
   useEffect(() => {
     if (!vipEnabled) return;
-    setActiveVipBusiness(businessId);
-    const sync = () => setVipProfile(getVipProfile());
+    const sync = () => setVipProfile(getVipProfile(businessId));
     sync();
     window.addEventListener(VIP_DATA_EVENT, sync);
     return () => {
       window.removeEventListener(VIP_DATA_EVENT, sync);
-      setActiveVipBusiness(undefined);
     };
   }, [businessId, vipEnabled]);
 
@@ -379,7 +377,7 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
           onClose={() => setVipOpen(false)}
           onOpenCart={() => { setVipOpen(false); setCartOpen(true); }}
           vipProfile={vipProfile}
-          onProfileUpdated={() => setVipProfile(getVipProfile())}
+          onProfileUpdated={() => setVipProfile(getVipProfile(businessId))}
           businessId={businessId}
           vipConfig={{ programName: b.loyaltyProgramName || `${b.restaurantName} VIP`, stampsRequired: b.vipStampsRequired || 5, rewardDescription: b.vipRewardDescription, businessName: b.restaurantName }}
         />
