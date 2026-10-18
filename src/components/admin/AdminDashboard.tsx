@@ -1,3 +1,4 @@
+import { BusinessActivityBell } from '../platform/BusinessActivityBell';
 import React, { useState, useEffect, useRef } from 'react';
 import { StaffUser, ServiceMode, EffectiveService, RestaurantOrder, TablePayment } from '../../types';
 import {
