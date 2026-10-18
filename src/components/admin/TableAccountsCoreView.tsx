@@ -600,7 +600,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
         />
       )}
       {cancelPendingOrder && (
-        <div className="rounded-3xl border-2 border-rose-200 bg-rose-50 p-4 sm:p-5 space-y-3" role="group" aria-label="Confirmar cancelación del pedido">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" role="presentation"><div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl border-2 border-rose-200 bg-rose-50 p-4 sm:p-5 space-y-3 shadow-2xl" role="dialog" aria-modal="true" aria-label="Confirmar cancelación del pedido">
           <div>
             <h3 className="font-serif text-lg font-bold text-rose-900">Cancelar pedido #{cancelPendingOrder.code}</h3>
             <p className="mt-1 text-xs text-rose-800">
@@ -633,7 +633,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
               Conservar pedido
             </button>
           </div>
-        </div>
+        </div></div>
       )}
       {offTablePending.length > 0 && (
         <section className="bg-white rounded-3xl border border-[#C9974D]/40 shadow-xs overflow-hidden">
