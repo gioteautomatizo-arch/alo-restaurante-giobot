@@ -10,8 +10,8 @@ import {
   getDoc,
   getDocs,
   query,
-  setDoc,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { saveBusinessCatalog, createCatalogItemId } from './businessCatalogService';
@@ -69,8 +69,8 @@ function removeUndefinedDeep<T>(value: T): T {
 
 export async function registerBusiness(input: RegisterBusinessInput): Promise<RegisterBusinessResult> {
   const businessId = normalizeRestaurantSlug(input.handle || input.businessName);
-  if (!businessId) {
-    throw new Error('El nombre de usuario del negocio no es válido.');
+  if (!businessId || businessId === 'alo-restaurante') {
+    throw new Error('El nombre de usuario del negocio no es válido o está reservado.');
   }
 
   // La regla de Firestore impide crear un ID que ya exista. No leemos fichas privadas
@@ -103,6 +103,7 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
 
   const tenant = removeUndefinedDeep(createRestaurantTenant({
     restaurantId: businessId,
+    ownerUserId: userId,
     restaurantName: input.businessName,
     businessType: (input.businessType as BusinessType) || 'restaurant',
     publicSlug: businessId,
@@ -118,21 +119,13 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
     active: true,
   };
 
-  // Crear primero el negocio y después su membresía.
-  // Esto mantiene el alta compatible con las reglas de Firestore que
-  // requieren que businesses/{businessId} exista antes de crear
-  // businessMemberships/{businessId}_{userId}.
-  const ref = businessRef(businessId);
-  await setDoc(ref, tenant);
-
-  try {
-    await setDoc(membershipRef(businessId, userId), membership);
-  } catch (err) {
-    console.error('El negocio se creó, pero no se pudo crear la membresía del propietario:', err);
-    throw new Error(
-      'El negocio se creó, pero no pudimos asignarte como propietario. No vuelvas a registrarlo todavía; revisaremos los permisos de Firebase.'
-    );
-  }
+  // El tenant y su OWNER se crean en una sola operación: ambos se guardan
+  // o ninguno. Las reglas validan el UID del creador mediante getAfter().
+  // Un fallo no deja negocios huérfanos sin acceso administrativo.
+  const batch = writeBatch(db);
+  batch.set(businessRef(businessId), tenant);
+  batch.set(membershipRef(businessId, userId), membership);
+  await batch.commit();
 
   // A business starts with a real, editable catalog instead of an empty shell.
   // The template is structural starter data; the owner can replace it immediately.
