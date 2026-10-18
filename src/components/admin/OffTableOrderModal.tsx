@@ -36,6 +36,8 @@ export const OffTableOrderModal: React.FC<Props> = ({ order, currentUser, onClos
   const [customPrice, setCustomPrice] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cancelConfirmationOpen, setCancelConfirmationOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
 
   useEffect(() => subscribeToMenuCatalog((doc) => setCatalog(doc?.items || [])), []);
 
@@ -146,21 +148,23 @@ export const OffTableOrderModal: React.FC<Props> = ({ order, currentUser, onClos
   };
 
   const cancelOrder = async () => {
-    if (!order) return;
-    if (!window.confirm(`¿Cancelar el pedido ${order.code}? Dejará de aparecer por cobrar, pero conservará su historial.`)) return;
-    const reason = window.prompt('Motivo de cancelación (obligatorio):', '');
-    if (!reason?.trim()) { setError('Indica un motivo para cancelar.'); return; }
+    const reason = cancelReason.trim();
+    if (!order || saving) return;
+    if (!reason) {
+      setError('Escribe el motivo para cancelar.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       await updateOffTableOrderDetails(order, {
         status: 'CANCELADO',
-        notes: [order.notes, `CANCELADO: ${reason.trim()}`].filter(Boolean).join(' · '),
+        notes: [order.notes, `CANCELADO: ${reason}`].filter(Boolean).join(' · '),
       }, currentUser);
-      onDone(`Pedido ${order.code} cancelado`);
+      onDone(`Pedido ${order.code} cancelado · ${reason}`);
       onClose();
     } catch (err: any) {
-      setError(err?.message || 'No se pudo cancelar el pedido.');
+      setError(err?.message || 'No se pudo cancelar el pedido. Verifica tu sesión de Firebase.');
     } finally {
       setSaving(false);
     }
@@ -292,14 +296,42 @@ export const OffTableOrderModal: React.FC<Props> = ({ order, currentUser, onClos
             <strong className="font-serif text-xl">{money(total)}</strong>
           </div>
 
-          {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">{error}</div>}
+          {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">{error}</div>}
+          {editing && cancelConfirmationOpen && (
+            <section className="space-y-3 rounded-2xl border-2 border-rose-200 bg-rose-50 p-4">
+              <h4 className="font-serif text-base font-bold text-rose-900">Confirmar cancelación de {order?.code}</h4>
+              <p className="text-xs text-rose-800">
+                El pedido dejará de figurar por cobrar, pero su historial se conserva.
+                No se modifica ningún pago.
+              </p>
+              <label className="block text-xs font-bold text-rose-900">
+                Motivo obligatorio
+                <input type="text" maxLength={200} value={cancelReason}
+                  onChange={(event) => { setCancelReason(event.target.value); setError(null); }}
+                  className="mt-2 w-full rounded-xl border border-rose-300 bg-white px-3 py-3 text-sm font-normal text-[#2B1B13]"
+                  placeholder="Ej. Pedido de prueba o cliente canceló" />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => void cancelOrder()}
+                  disabled={saving || !cancelReason.trim()}
+                  className="rounded-xl bg-rose-700 px-4 py-3 text-xs font-black text-white disabled:opacity-40">
+                  {saving ? 'Cancelando…' : 'Confirmar cancelación'}
+                </button>
+                <button type="button" disabled={saving}
+                  onClick={() => { setCancelConfirmationOpen(false); setCancelReason(''); setError(null); }}
+                  className="rounded-xl border border-rose-300 bg-white px-4 py-3 text-xs font-bold text-rose-900">
+                  Conservar pedido
+                </button>
+              </div>
+            </section>
+          )}
 
           <div className="flex flex-wrap gap-2">
             <button type="button" disabled={saving} onClick={() => void save()} className="flex-1 rounded-xl bg-[#3A2418] px-4 py-3 text-sm font-black text-[#FFF7EA] disabled:opacity-50">
               {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Registrar pedido'}
             </button>
             {editing && (
-              <button type="button" disabled={saving} onClick={() => void cancelOrder()} className="rounded-xl border border-rose-300 bg-white px-4 py-3 text-sm font-black text-rose-700 disabled:opacity-50">Cancelar pedido</button>
+              <button type="button" disabled={saving} onClick={() => { setCancelConfirmationOpen(true); setError(null); }} className="rounded-xl border border-rose-300 bg-white px-4 py-3 text-sm font-black text-rose-700 disabled:opacity-50">Cancelar pedido</button>
             )}
           </div>
         </div>
