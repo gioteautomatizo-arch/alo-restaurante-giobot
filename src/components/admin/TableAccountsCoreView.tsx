@@ -5,8 +5,6 @@ import {
   CreditCard,
   Landmark,
   Loader2,
-  Plus,
-  Minus,
   ReceiptText,
   Sparkles,
   Wallet,
@@ -22,7 +20,7 @@ import {
   TableServiceRequest,
   TableSession,
 } from '../../types';
-import { subscribeToRestaurantOrders, chargeOffTableOrder, createRestaurantOrder } from '../../lib/ordersService';
+import { subscribeToRestaurantOrders, chargeOffTableOrder, updateOffTableOrderDetails } from '../../lib/ordersService';
 import { isOffTableOrder, offTableSalesForDay } from '../../lib/shiftSales';
 import { OffTableOrderModal } from './OffTableOrderModal';
 import {
@@ -229,6 +227,7 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     [orders]
   );
   const [chargingOrderId, setChargingOrderId] = useState<string | null>(null);
+  const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
   const [receiptsLoaded, setReceiptsLoaded] = useState(false);
   const [recovering, setRecovering] = useState(false);
   const [recoverMessage, setRecoverMessage] = useState<string | null>(null);
@@ -254,84 +253,6 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     }
   };
   const [orderModal, setOrderModal] = useState<{ order?: RestaurantOrder } | null>(null);
-  const [quickItemName, setQuickItemName] = useState('');
-  const [quickItemPrice, setQuickItemPrice] = useState('');
-  const [quickItemQuantity, setQuickItemQuantity] = useState('1');
-  const [quickCustomerName, setQuickCustomerName] = useState('Pedido WhatsApp');
-  const [quickPaymentMethod, setQuickPaymentMethod] = useState<'efectivo' | 'tarjeta' | 'transferencia'>('efectivo');
-  const [quickLines, setQuickLines] = useState<Array<{ id: string; name: string; unitPrice: number; quantity: number }>>([]);
-  const [savingQuickSale, setSavingQuickSale] = useState(false);
-  const quickTotal = quickLines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
-
-  const addQuickLine = () => {
-    const name = quickItemName.trim();
-    const price = Number(quickItemPrice);
-    const quantity = Math.floor(Number(quickItemQuantity));
-    if (!name || !Number.isFinite(price) || price <= 0 || !Number.isFinite(quantity) || quantity < 1) {
-      setError('Escribe el producto, un precio mayor a cero y una cantidad válida.');
-      return;
-    }
-    setQuickLines((lines) => [...lines, { id: `${Date.now()}-${lines.length}`, name, unitPrice: price, quantity }]);
-    setQuickItemName('');
-    setQuickItemPrice('');
-    setQuickItemQuantity('1');
-    setError(null);
-  };
-
-  const updateQuickLineQuantity = (id: string, delta: number) => {
-    setQuickLines((lines) => lines
-      .map((line) => line.id === id ? { ...line, quantity: line.quantity + delta } : line)
-      .filter((line) => line.quantity > 0));
-  };
-
-  const submitQuickSale = async () => {
-    if (savingQuickSale || quickLines.length === 0) return;
-    setSavingQuickSale(true);
-    setError(null);
-    setSuccess(null);
-    const total = Math.round(quickTotal * 100) / 100;
-    try {
-      const order = await createRestaurantOrder({
-        orderType: 'pickup',
-        orderSource: 'CAJA',
-        orderOrigin: 'DIRECTO',
-        capturedById: currentUser.id,
-        capturedByName: currentUser.name,
-        customerName: quickCustomerName.trim() || 'Pedido WhatsApp',
-        paymentMethod: quickPaymentMethod,
-        bringOwnContainer: false,
-        items: quickLines.map((line) => ({
-          productId: `manual-${line.id}`,
-          name: line.name,
-          quantity: line.quantity,
-          unitPrice: line.unitPrice,
-          totalPrice: Math.round(line.unitPrice * line.quantity * 100) / 100,
-        })),
-        subtotal: total,
-        discountAmount: 0,
-        deliveryFee: 0,
-        total,
-        notes: 'Venta rápida registrada desde Caja para pedido de WhatsApp/mostrador.',
-      });
-      try {
-        await chargeOffTableOrder(order, quickPaymentMethod, currentUser);
-        try {
-          await createOffTableSaleReceipt({ ...order, billingStatus: 'PAGADO', paymentMethod: quickPaymentMethod, paidAt: new Date().toISOString() }, currentUser);
-          setSuccess(`Venta rápida cobrada y ticket creado · ${order.code} · ${money(total)}.`);
-        } catch (ticketError: any) {
-          setSuccess(`Venta ${order.code} cobrada y registrada. No se pudo crear el ticket: ${ticketError?.message || 'error de permisos o conexión'}. No vuelvas a cobrarla.`);
-        }
-      } catch (chargeError: any) {
-        setSuccess(`Pedido ${order.code} guardado, pero quedó pendiente de cobro. Puedes cobrarlo en la sección de pedidos por cobrar. ${chargeError?.message || ''}`);
-      }
-      setQuickLines([]);
-      setQuickCustomerName('Pedido WhatsApp');
-    } catch (err: any) {
-      setError(err?.message || 'No se pudo registrar la venta rápida.');
-    } finally {
-      setSavingQuickSale(false);
-    }
-  };
   const handleChargeOffTable = async (order: RestaurantOrder, method: 'efectivo' | 'tarjeta' | 'transferencia') => {
     if (!order.id) return;
     setChargingOrderId(order.id);
@@ -356,6 +277,36 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
       setError(err?.message || 'No se pudo cobrar el pedido.');
     } finally {
       setChargingOrderId(null);
+    }
+  };
+  const handleCancelOffTable = async (order: RestaurantOrder) => {
+    if (!order.id || cancellingOrderId || chargingOrderId) return;
+    if (order.billingStatus === 'PAGADO' || order.status === 'CANCELADO') {
+      setError('Este pedido ya fue pagado o cancelado y no se puede cancelar desde Caja.');
+      return;
+    }
+    const confirmed = window.confirm(`¿Cancelar el pedido ${order.code} por ${money(Number(order.total || 0))}? No se borrará el registro y dejará de aparecer por cobrar.`);
+    if (!confirmed) return;
+    const reason = window.prompt('Motivo de cancelación (obligatorio, por ejemplo: pedido de prueba):', 'Pedido de prueba');
+    if (!reason?.trim()) {
+      setError('La cancelación requiere un motivo. No se hicieron cambios.');
+      return;
+    }
+    setCancellingOrderId(order.id);
+    setError(null);
+    setSuccess(null);
+    try {
+      await updateOffTableOrderDetails(order, { status: 'CANCELADO', notes: [order.notes, `CANCELADO: ${reason.trim()}`].filter(Boolean).join(' · ') }, currentUser);
+      setSuccess(`Pedido ${order.code} cancelado. Quedó registrado el motivo: ${reason.trim()}.`);
+      addActivityLog({
+        userName: currentUser.name, userId: currentUser.id, userRole: currentUser.role,
+        action: `Canceló pedido ${order.code} por ${reason.trim()}`,
+        category: 'sistema', timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      setError(err?.message || 'No se pudo cancelar el pedido.');
+    } finally {
+      setCancellingOrderId(null);
     }
   };
   const offTableTotal = offTableToday.reduce((sum, o) => sum + Number(o.total || 0), 0);
@@ -622,11 +573,6 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
         <div className="rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 text-sm">{success}</div>
       )}
 
-      <div className="flex justify-end">
-        <button type="button" onClick={() => setOrderModal({})} className="rounded-2xl bg-[#3A2418] px-4 py-3 text-xs font-black text-[#FFF7EA] shadow-xs">
-          + Registrar pedido (WhatsApp / teléfono / mostrador)
-        </button>
-      </div>
       {orderModal && (
         <OffTableOrderModal
           order={orderModal.order}
@@ -635,74 +581,12 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
           onDone={(message) => { setSuccess(message); setError(null); }}
         />
       )}
-      <section className="overflow-hidden rounded-3xl border border-[#C9974D]/50 bg-white shadow-xs">
-        <div className="border-b border-[#F4E3C8] bg-[#FFF7EA] px-4 py-4 sm:px-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-wider text-[#A86B3D]">Sin abrir mesa</div>
-              <h3 className="font-serif text-xl font-black text-[#2B1B13]">Venta rápida · WhatsApp / mostrador</h3>
-              <p className="mt-1 text-xs text-[#6B4028]">Agrega café, pan, refresco u otros productos, elige cómo pagaron y registra la venta directo a Caja.</p>
-            </div>
-            <strong className="font-serif text-2xl text-[#2B1B13]">{money(quickTotal)}</strong>
-          </div>
-        </div>
-        <div className="space-y-4 p-4 sm:p-5">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="text-xs font-bold text-[#6B4028]">Nombre / referencia
-              <input value={quickCustomerName} onChange={(e) => setQuickCustomerName(e.target.value)} placeholder="Pedido WhatsApp" className="mt-1 w-full rounded-xl border border-[#DEC8AE] bg-[#FFFDF8] px-3 py-3 text-sm font-normal text-[#2B1B13]" />
-            </label>
-            <label className="text-xs font-bold text-[#6B4028]">Forma de pago
-              <select value={quickPaymentMethod} onChange={(e) => setQuickPaymentMethod(e.target.value as 'efectivo' | 'tarjeta' | 'transferencia')} className="mt-1 w-full rounded-xl border border-[#DEC8AE] bg-[#FFFDF8] px-3 py-3 text-sm text-[#2B1B13]">
-                <option value="efectivo">Efectivo</option>
-                <option value="tarjeta">Tarjeta</option>
-                <option value="transferencia">Transferencia</option>
-              </select>
-            </label>
-          </div>
-          <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[minmax(0,1fr)_120px_90px_auto]">
-            <label className="text-xs font-bold text-[#6B4028]">Producto
-              <input value={quickItemName} onChange={(e) => setQuickItemName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addQuickLine(); } }} placeholder="Ej. Café americano" className="mt-1 w-full rounded-xl border border-[#DEC8AE] px-3 py-3 text-sm font-normal text-[#2B1B13]" />
-            </label>
-            <label className="text-xs font-bold text-[#6B4028]">Precio unitario ($)
-              <input type="number" min="0.01" step="0.01" value={quickItemPrice} onChange={(e) => setQuickItemPrice(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addQuickLine(); } }} placeholder="35.00" className="mt-1 w-full rounded-xl border border-[#DEC8AE] px-3 py-3 text-sm font-normal text-[#2B1B13]" />
-            </label>
-            <label className="text-xs font-bold text-[#6B4028]">Cantidad
-              <input type="number" min="1" step="1" value={quickItemQuantity} onChange={(e) => setQuickItemQuantity(e.target.value)} className="mt-1 w-full rounded-xl border border-[#DEC8AE] px-3 py-3 text-sm font-normal text-[#2B1B13]" />
-            </label>
-            <button type="button" onClick={addQuickLine} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#F4E3C8] px-4 py-3 text-xs font-black text-[#3A2418]"><Plus className="h-4 w-4" /> Agregar</button>
-          </div>
-          {quickLines.length > 0 && (
-            <div className="divide-y divide-[#F4E3C8] rounded-2xl border border-[#F4E3C8]">
-              {quickLines.map((line) => (
-                <div key={line.id} className="flex items-center justify-between gap-3 px-3 py-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-bold text-[#2B1B13]">{line.name}</div>
-                    <div className="text-[11px] text-[#7A5A45]">{line.quantity} × {money(line.unitPrice)} = {money(line.quantity * line.unitPrice)}</div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button type="button" aria-label={`Quitar una unidad de ${line.name}`} onClick={() => updateQuickLineQuantity(line.id, -1)} className="rounded-lg border border-[#DEC8AE] p-2 text-[#5C3825]"><Minus className="h-3.5 w-3.5" /></button>
-                    <button type="button" aria-label={`Agregar una unidad de ${line.name}`} onClick={() => updateQuickLineQuantity(line.id, 1)} className="rounded-lg border border-[#DEC8AE] p-2 text-[#5C3825]"><Plus className="h-3.5 w-3.5" /></button>
-                    <strong className="min-w-[76px] text-right text-sm text-[#2B1B13]">{money(line.quantity * line.unitPrice)}</strong>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-            <span className="text-xs text-[#7A5A45]">{quickLines.length} producto(s) · El pedido queda registrado sin asignar mesa.</span>
-            <button type="button" disabled={savingQuickSale || quickLines.length === 0} onClick={submitQuickSale} className="rounded-xl bg-[#3A2418] px-5 py-3 text-sm font-black text-[#FFF7EA] disabled:cursor-not-allowed disabled:opacity-40">
-              {savingQuickSale ? 'Registrando y cobrando…' : `Registrar y cobrar · ${money(quickTotal)}`}
-            </button>
-          </div>
-        </div>
-      </section>
-
       {offTablePending.length > 0 && (
         <section className="bg-white rounded-3xl border border-[#C9974D]/40 shadow-xs overflow-hidden">
           <div className="px-4 sm:px-5 py-4 bg-[#FFF7EA] border-b border-[#F4E3C8] flex items-center justify-between gap-3">
             <div>
               <h3 className="font-serif font-bold text-[#2B1B13]">Pedidos para llevar y a domicilio por cobrar</h3>
-              <p className="text-[11px] text-[#7A5A45]">Pedidos de la app, WhatsApp o capturados en caja que no son de mesa.</p>
+              <p className="text-[11px] text-[#7A5A45]">Cobros pendientes de la app, WhatsApp o mostrador. Para registrar pedidos nuevos utiliza la pestaña Pedidos rápidos.</p>
             </div>
             <strong className="font-serif text-[#2B1B13]">{money(offTablePending.reduce((s, o) => s + Number(o.total || 0), 0))}</strong>
           </div>
@@ -729,12 +613,15 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
                   <strong className="font-serif text-lg text-[#2B1B13] shrink-0">{money(Number(order.total || 0))}</strong>
                 </div>
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setOrderModal({ order })} className="px-3 py-2 rounded-xl text-xs font-black border border-[#C9974D] bg-white text-[#A86B3D]">Editar</button>
+                  <button type="button" disabled={cancellingOrderId === order.id} onClick={() => setOrderModal({ order })} className="px-3 py-2 rounded-xl text-xs font-black border border-[#C9974D] bg-white text-[#A86B3D] disabled:opacity-50">Editar</button>
+                  <button type="button" disabled={cancellingOrderId === order.id || chargingOrderId === order.id} onClick={() => void handleCancelOffTable(order)} className="px-3 py-2 rounded-xl text-xs font-black border border-rose-300 bg-rose-50 text-rose-800 disabled:opacity-50">
+                    {cancellingOrderId === order.id ? 'Cancelando…' : 'Cancelar'}
+                  </button>
                   {(['efectivo', 'tarjeta', 'transferencia'] as const).map((method) => (
                     <button
                       key={method}
                       type="button"
-                      disabled={chargingOrderId === order.id}
+                      disabled={chargingOrderId === order.id || cancellingOrderId === order.id}
                       onClick={() => handleChargeOffTable(order, method)}
                       className={`flex-1 px-3 py-2 rounded-xl text-xs font-black border transition-all disabled:opacity-50 ${order.paymentMethod === method ? 'bg-[#3A2418] text-[#FFF7EA] border-[#3A2418]' : 'bg-[#FFF7EA] text-[#5C3825] border-[#DEC8AE]'}`}
                     >
