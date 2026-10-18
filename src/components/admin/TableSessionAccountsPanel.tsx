@@ -61,11 +61,16 @@ export const TableSessionAccountsPanel: React.FC<TableSessionAccountsPanelProps>
         id: currentUser.id,
         name: currentUser.name,
       });
+      // La URL actual puede terminar en #admin. Reutilizar ese hash abre
+      // nuevamente el panel, en vez de la carta para tomar la comanda.
+      // Navegar en la misma pestaña también evita que el móvil bloquee un
+      // window.open() ejecutado después de esperar a Firestore.
       const url = new URL(window.location.href);
       url.search = '';
+      url.hash = '#negocio/alo-restaurante';
       url.searchParams.set('table', String(table.tableNumber));
       url.searchParams.set('staffOrder', '1');
-      window.open(url.toString(), '_blank', 'noopener,noreferrer');
+      window.location.assign(url.toString());
     } catch (err: any) {
       setError(err?.message || 'No se pudo abrir la captura de pedido.');
     } finally {
