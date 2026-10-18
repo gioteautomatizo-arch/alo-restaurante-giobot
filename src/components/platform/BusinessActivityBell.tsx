@@ -44,7 +44,7 @@ export const BusinessActivityBell: React.FC<{
       ? query(ref, where('restaurantId', '==', businessId), limit(100))
       : query(ref, orderBy('at', 'desc'), limit(80));
     return onSnapshot(q, (snapshot) => {
-      const next: Movement[] = snapshot.docs.map((d) => {
+      const next: Movement[] = snapshot.docs.map((d): Movement => {
         const data = d.data();
         const action = String(data.action || '');
         const vip = action === 'vip.register' || action === 'Nueva membresía VIP';
@@ -79,6 +79,9 @@ export const BusinessActivityBell: React.FC<{
       setError(true);
     });
   }, [businessId, legacy, allowRead]);
+
+  // No mostramos un control que no puede leer actividad privada.
+  if (!allowRead) return null;
 
   return (
     <div className={`relative ${className}`}>
