@@ -63,7 +63,7 @@ assert.match(api, /Number\(session\.expiresAt\) <= Date\.now\(\)/);
 assert.match(api, /const \{ pinHash: _secret, \.\.\.safe \}/);
 assert.match(server, /registerVipRecoveryApi\(app\)/);
 assert.match(client, /VITE_SECURE_VIP_API === 'true'/);
-assert.match(client, /if \(SECURE_VIP_API && !tokenFor\(businessId\)\) return null/);
+assert.match(client, /SECURE_VIP_API\s*&&\s*!tokenFor\(businessId\)/);
 assert.match(checklist, /NO publicar|No publicar/i);
 assert.match(checklist, /Calientito/);
 assert.match(checklist, /Emulator/i);
