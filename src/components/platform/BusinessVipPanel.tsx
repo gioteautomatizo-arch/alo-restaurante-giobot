@@ -79,7 +79,7 @@ export const BusinessVipPanel: React.FC<{
       </section>
 
       <section className="rounded-2xl border border-[#3A3022] bg-[#111111] p-1 text-[#F7F7F7]">
-        <VipClientsAdminView currentUser={staff} businessId={businessId} stampsRequiredOverride={Math.max(1, Math.round(Number(b.vipStampsRequired) || 5))} rewardOverride={b.vipRewardDescription} />
+        <VipClientsAdminView currentUser={staff} businessId={businessId} stampsRequiredOverride={Math.max(1, Math.round(Number(b.vipStampsRequired) || 5))} rewardOverride={b.vipRewardDescription} programNameOverride={b.loyaltyProgramName || `${b.restaurantName} VIP`} />
       </section>
     </div>
   );
