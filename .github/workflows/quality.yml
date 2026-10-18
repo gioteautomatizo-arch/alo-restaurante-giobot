@@ -36,3 +36,5 @@ jobs:
         run: npm run lint
       - name: Production build
         run: npm run build
+      - name: Verify staged VIP isolation (no deployment)
+        run: node scripts/verify-vip-staged.mjs
