@@ -268,9 +268,9 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
           {step === 6 && (
             <section className="text-center py-4">
               <div className="mx-auto w-20 h-20 rounded-full bg-emerald-400 text-[#052e1a] flex items-center justify-center shadow-2xl shadow-emerald-500/20"><Check className="w-10 h-10" /></div>
-              <p className="mt-6 text-xs font-black uppercase tracking-[0.18em] text-emerald-300">Perfil listo</p>
+              <p className="mt-6 text-xs font-black uppercase tracking-[0.18em] text-emerald-300">Listo para registrar</p>
               <h1 className="mt-2 text-3xl font-black">Tu negocio ya tiene identidad.</h1>
-              <p className="mt-2 text-sm text-slate-400">Así se verá dentro de tu cuenta antes de conectar sus módulos reales.</p>
+              <p className="mt-2 text-sm text-slate-400">Revisa tu información. Al continuar crearemos tu cuenta y el espacio de tu negocio.</p>
               <div className="mt-7 rounded-[2rem] border border-white/10 bg-white/5 p-5 text-left">
                 <div className="flex items-center gap-4">
                   <div className="w-20 h-20 rounded-3xl bg-white/10 overflow-hidden flex items-center justify-center shrink-0">{logoDataUrl ? <img src={logoDataUrl} alt={businessName} className="w-full h-full object-cover" /> : <Store className="w-8 h-8 text-amber-300" />}</div>
@@ -278,7 +278,7 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
                 </div>
                 <div className="mt-4 rounded-2xl bg-black/20 p-3 flex items-center gap-3"><Bot className="w-5 h-5 text-amber-300" /><div><span className="block text-[10px] text-slate-500 uppercase font-bold">Asistente IA</span><strong className="text-sm">{assistantMode === 'GIOBOT_BASE' ? 'Giobot' : assistantName}</strong></div></div>
               </div>
-              <p className="mt-4 text-[11px] leading-relaxed text-slate-500">Este alta todavía es una simulación visual. No almacenamos la contraseña ni creamos datos productivos hasta conectar autenticación y tenants reales.</p>
+              <p className="mt-4 text-[11px] leading-relaxed text-slate-500">Tu acceso utilizará Firebase Authentication. El catálogo inicial será editable y podrás personalizar los módulos de tu negocio.</p>
             </section>
           )}
         </div>
@@ -292,7 +292,7 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
           {step < TOTAL_STEPS ? (
             <button type="button" onClick={goNext} disabled={!canContinue} className="w-full rounded-2xl bg-amber-300 px-5 py-4 text-sm font-black text-[#111827] disabled:opacity-35 flex items-center justify-center gap-2 active:scale-[0.99]">Siguiente <ArrowRight className="w-4 h-4" /></button>
           ) : (
-            <button type="button" onClick={finish} disabled={isFinishing} className="w-full rounded-2xl bg-emerald-400 px-5 py-4 text-sm font-black text-[#052e1a] flex items-center justify-center gap-2 active:scale-[0.99] disabled:opacity-60">{isFinishing ? 'Guardando…' : 'Entrar a mi espacio'} <ArrowRight className="w-4 h-4" /></button>
+            <button type="button" onClick={finish} disabled={isFinishing} className="w-full rounded-2xl bg-emerald-400 px-5 py-4 text-sm font-black text-[#052e1a] flex items-center justify-center gap-2 active:scale-[0.99] disabled:opacity-60">{isFinishing ? 'Creando negocio…' : 'Crear mi negocio'} <ArrowRight className="w-4 h-4" /></button>
           )}
           {step === 4 && <button type="button" onClick={goNext} className="mt-3 w-full py-2 text-xs font-bold text-slate-400">Omitir por ahora</button>}
         </div>
