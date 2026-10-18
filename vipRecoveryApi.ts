@@ -75,7 +75,29 @@ export function registerVipRecoveryApi(app: Express): void {
         createdAt: now, updatedAt: now,
       };
       try {
-        await ref.create(profile);
+        // Registro y aviso son una sola escritura atomica: nunca se emite un
+        // aviso si no se pudo crear la tarjeta. Se reutiliza la bitacora del
+        // negocio; no se necesita una coleccion nueva ni reglas publicas.
+        const batch = db().batch();
+        batch.create(ref, profile);
+        if (businessId === 'alo-restaurante') {
+          const logRef = db().collection('activity_logs').doc('vip_register_' + profileId);
+          batch.create(logRef, {
+            id: logRef.id, restaurantId: businessId, timestamp: now, createdAt: now,
+            userName: 'Registro en linea', userId: 'public-vip', userRole: 'CLIENTE',
+            action: 'Nueva membresía VIP', category: 'sistema',
+            details: safeName, eventType: 'vip.register', targetId: profileId,
+          });
+        } else {
+          const logRef = db().collection('businesses').doc(businessId)
+            .collection('auditLog').doc('vip_register_' + baseId);
+          batch.create(logRef, {
+            businessId, actorId: 'public-vip', actorName: 'Registro en línea',
+            action: 'vip.register', module: 'vip', targetId: profileId,
+            summary: 'Nueva membresía VIP: ' + safeName, at: now,
+          });
+        }
+        await batch.commit();
       } catch (error: any) {
         if (error?.code === 6 || error?.code === 'already-exists') {
           return res.status(409).json({ error: 'Ya existe una tarjeta con esos datos. Usa Recuperar tarjeta.' });
