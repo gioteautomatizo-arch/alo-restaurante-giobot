@@ -37,6 +37,8 @@ export interface RegisterBusinessInput {
   logoUrl?: string;
   templateId?: string;
   capabilities?: string[];
+  assistantName?: string;
+  assistantMode?: 'GIOBOT_BASE' | 'CUSTOM_AVATAR';
 }
 
 export interface RegisterBusinessResult {
@@ -110,6 +112,10 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
     logoUrl: input.logoUrl,
     templateId: input.templateId,
     capabilities: input.capabilities,
+    assistant: {
+      name: input.assistantMode === 'CUSTOM_AVATAR' ? (input.assistantName?.trim() || 'Giobot') : 'Giobot',
+      plan: input.assistantMode === 'CUSTOM_AVATAR' ? 'CUSTOM_AVATAR' : 'GIOBOT_BASE',
+    },
   }));
 
   const membership: RestaurantMembership = {
