@@ -137,12 +137,15 @@ service cloud.firestore {
         && request.resource.data.userId == employeeUserId
         && request.resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
         && request.resource.data.active is bool
+        // Un encargado no puede rebajar ni modificar a un ADMIN/MANAGER.
+        && canAssignRole(getCallerMembershipRole(businessId), resource.data.role)
         && canAssignRole(getCallerMembershipRole(businessId), request.resource.data.role);
 
       allow delete: if canManageMembership(businessId)
         && resource.data.restaurantId == businessId
         && resource.data.userId == employeeUserId
-        && resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE'];
+        && resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+        && canAssignRole(getCallerMembershipRole(businessId), resource.data.role);
     }
 
     match /publicBusinessProfiles/{businessId} {
@@ -282,6 +285,10 @@ service cloud.firestore {
         && request.resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
         && canAssignRole(
           getCallerMembershipRole(resource.data.restaurantId),
+          resource.data.role
+        )
+        && canAssignRole(
+          getCallerMembershipRole(resource.data.restaurantId),
           request.resource.data.role
         )
         && request.resource.data.active is bool;
@@ -295,6 +302,7 @@ service cloud.firestore {
       ) || (
         resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
         && canManageMembership(resource.data.restaurantId)
+        && canAssignRole(getCallerMembershipRole(resource.data.restaurantId), resource.data.role)
       );
     }
 
