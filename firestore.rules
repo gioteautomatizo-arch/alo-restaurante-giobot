@@ -77,12 +77,27 @@ service cloud.firestore {
       allow read: if isPlatformSuperAdmin()
         || (isSignedIn() && hasActiveMembership(businessId));
 
+      // Cada nuevo negocio queda vinculado al UID que lo crea.
       allow create: if isSignedIn()
         && request.resource.data.restaurantId == businessId
+        && request.resource.data.ownerUserId == request.auth.uid
         && businessId != 'alo-restaurante'
         && !exists(/databases/$(database)/documents/businesses/$(businessId));
 
-      allow update, delete: if isSignedIn()
+      // Identificadores inmutables para propietarios y administradores.
+      // get(..., null) permite actualizar negocios históricos sin ownerUserId.
+      allow update: if isSignedIn()
+        && request.resource.data.restaurantId == resource.data.restaurantId
+        && request.resource.data.get('ownerUserId', null) == resource.data.get('ownerUserId', null)
+        && (
+          (
+            hasActiveMembership(businessId)
+            && getCallerMembershipRole(businessId) == 'OWNER'
+          )
+          || isPlatformSuperAdmin()
+        );
+
+      allow delete: if isSignedIn()
         && (
           (
             hasActiveMembership(businessId)
@@ -234,6 +249,7 @@ service cloud.firestore {
         && request.resource.data.restaurantId != 'alo-restaurante'
         && membershipId == request.resource.data.restaurantId + '_' + request.auth.uid
         && existsAfter(/databases/$(database)/documents/businesses/$(request.resource.data.restaurantId))
+        && getAfter(/databases/$(database)/documents/businesses/$(request.resource.data.restaurantId)).data.ownerUserId == request.auth.uid
       ) || (
         // Alta de empleado por un responsable activo del mismo negocio.
         isSignedIn()
