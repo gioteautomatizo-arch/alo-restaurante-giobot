@@ -7,14 +7,17 @@ import { normalizePhone, normalizePin, computeVipDocId, computePinHash } from '.
 const VIP_KEY = 'calientito_vip_profile';
 export const RESTAURANT_ID = 'alo-restaurante';
 
-// Cada negocio guarda su tarjeta en una llave distinta para que no se mezclen en un mismo teléfono.
-// Calientito conserva su llave de siempre.
-let activeVipBusinessId: string = RESTAURANT_ID;
-export function setActiveVipBusiness(businessId?: string): void {
-  activeVipBusinessId = businessId && businessId.trim() ? businessId : RESTAURANT_ID;
-  notifyVipChange();
+// La identidad del negocio es explícita por operación; no hay estado global mutable.
+// Conservar la llave original permite que Calientito siga leyendo las tarjetas existentes.
+const vipKey = (businessId: string): string =>
+  businessId === RESTAURANT_ID ? VIP_KEY : `${VIP_KEY}__${businessId}`;
+
+function assertVipBusiness(profile: VipProfile, businessId: string): void {
+  // Los registros locales anteriores a multinegocio no tenían restaurantId.
+  if (profile.restaurantId === businessId) return;
+  if (businessId === RESTAURANT_ID && !profile.restaurantId) return;
+  throw new Error('La tarjeta VIP pertenece a otro negocio.');
 }
-const vipKey = (): string => (activeVipBusinessId === RESTAURANT_ID ? VIP_KEY : `${VIP_KEY}__${activeVipBusinessId}`);
 
 export const VIP_DATA_EVENT = 'alo_vip_data_updated';
 
@@ -27,11 +30,14 @@ function notifyVipChange(): void {
 /**
  * Lee el perfil VIP guardado en localStorage (operación instantánea local-first)
  */
-export const getVipProfile = (): VipProfile | null => {
+export const getVipProfile = (businessId: string = RESTAURANT_ID): VipProfile | null => {
+  if (!businessId.trim()) return null;
   try {
-    const dataStr = localStorage.getItem(vipKey());
+    const dataStr = localStorage.getItem(vipKey(businessId));
     if (!dataStr) return null;
-    return JSON.parse(dataStr) as VipProfile;
+    const profile = JSON.parse(dataStr) as VipProfile;
+    assertVipBusiness(profile, businessId);
+    return profile;
   } catch (err) {
     console.error('Error reading VIP profile from localStorage:', err);
     return null;
@@ -41,9 +47,11 @@ export const getVipProfile = (): VipProfile | null => {
 /**
  * Guarda o actualiza el perfil en localStorage
  */
-export const saveLocalVipProfile = (profile: VipProfile): void => {
+export const saveLocalVipProfile = (profile: VipProfile, businessId: string = RESTAURANT_ID): void => {
+  if (!businessId.trim()) throw new Error('Se requiere el identificador del negocio.');
+  assertVipBusiness(profile, businessId);
   try {
-    localStorage.setItem(vipKey(), JSON.stringify(profile));
+    localStorage.setItem(vipKey(businessId), JSON.stringify(profile));
     notifyVipChange();
   } catch (err) {
     console.error('Error saving VIP profile to localStorage:', err);
@@ -89,17 +97,20 @@ export const createCloudVipProfile = async (params: {
   if (docSnap.exists()) {
     // Si ya existe con este teléfono y PIN, recuperamos el perfil existente
     const existingCloudData = docSnap.data() as VipProfile;
+    if (existingCloudData.restaurantId !== businessId) {
+      throw new Error('Esta tarjeta VIP pertenece a otro negocio.');
+    }
     const syncedProfile: VipProfile = {
       ...existingCloudData,
       id: docId,
       syncedWithCloud: true,
     };
-    saveLocalVipProfile(syncedProfile);
+    saveLocalVipProfile(syncedProfile, businessId);
     return syncedProfile;
   }
 
   const now = new Date().toISOString();
-  const existingLocal = getVipProfile();
+  const existingLocal = getVipProfile(businessId);
   const memberId = existingLocal?.memberId || `VIP-${Math.floor(1000 + Math.random() * 9000)}`;
 
   // Perfil nuevo: cumple estrictamente las reglas públicas de Firestore
@@ -124,7 +135,7 @@ export const createCloudVipProfile = async (params: {
   };
 
   await setDoc(docRef, newProfile);
-  saveLocalVipProfile(newProfile);
+  saveLocalVipProfile(newProfile, businessId);
   return newProfile;
 };
 
@@ -162,15 +173,15 @@ export const recoverCloudVipProfile = async (phone: string, pin: string, busines
     syncedWithCloud: true,
   };
 
-  saveLocalVipProfile(recovered);
+  saveLocalVipProfile(recovered, scopedBusinessId);
   return recovered;
 };
 
 /**
  * Refresca los sellos y datos del perfil local consultando Firestore (lectura O(1) segura)
  */
-export const refreshCloudVipProfile = async (): Promise<VipProfile | null> => {
-  const local = getVipProfile();
+export const refreshCloudVipProfile = async (businessId: string = RESTAURANT_ID): Promise<VipProfile | null> => {
+  const local = getVipProfile(businessId);
   if (!local || !local.id) return local;
 
   try {
@@ -178,20 +189,23 @@ export const refreshCloudVipProfile = async (): Promise<VipProfile | null> => {
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const cloudData = docSnap.data() as VipProfile;
+      if (cloudData.restaurantId !== businessId) {
+        throw new Error('La tarjeta recuperada pertenece a otro negocio.');
+      }
       const updated: VipProfile = {
         ...local,
         ...cloudData,
         id: local.id,
         syncedWithCloud: true,
       };
-      saveLocalVipProfile(updated);
+      saveLocalVipProfile(updated, businessId);
       return updated;
     }
 
     // Solo eliminamos la copia local si este perfil ya estaba sincronizado
     // con Firestore. Los perfiles locales/legacy deben conservarse y poder migrarse.
     if (local.syncedWithCloud === true) {
-      clearVipProfile();
+      clearVipProfile(businessId);
       return null;
     }
 
@@ -212,8 +226,8 @@ export const updatePersonalVipInfo = async (params: {
   reference?: string;
   preferredPayment?: 'efectivo' | 'transferencia' | 'tarjeta';
   preferredOrderType?: OrderType;
-}): Promise<VipProfile> => {
-  const existing = getVipProfile();
+}, businessId: string = RESTAURANT_ID): Promise<VipProfile> => {
+  const existing = getVipProfile(businessId);
   if (!existing) {
     throw new Error('No se encontró un perfil VIP activo.');
   }
@@ -229,7 +243,7 @@ export const updatePersonalVipInfo = async (params: {
     updatedAt: now,
   };
 
-  saveLocalVipProfile(updatedLocal);
+  saveLocalVipProfile(updatedLocal, businessId);
 
   // Si ya tiene ID en la nube, actualizar únicamente los campos permitidos en Firestore
   if (existing.id) {
@@ -257,7 +271,7 @@ export const updatePersonalVipInfo = async (params: {
  * Mantiene los sellos existentes en pendingStampsToValidate para revisión administrativa segura
  */
 export const migrateLocalVipProfileWithPin = async (pin: string, businessId: string = RESTAURANT_ID): Promise<VipProfile> => {
-  const existing = getVipProfile();
+  const existing = getVipProfile(businessId);
   if (!existing) {
     throw new Error('No hay perfil local para migrar.');
   }
@@ -419,8 +433,9 @@ export const redeemVipReward = (): VipProfile | null => {
   return updated;
 };
 
-export const clearVipProfile = (): void => {
-  localStorage.removeItem(vipKey());
+export const clearVipProfile = (businessId: string = RESTAURANT_ID): void => {
+  if (!businessId.trim()) return;
+  localStorage.removeItem(vipKey(businessId));
   notifyVipChange();
 };
 
@@ -467,9 +482,9 @@ export const adminDeleteVipProfile = async (profileId: string, businessId: strin
   }
   await deleteDoc(docRef);
 
-  const local = getVipProfile();
+  const local = getVipProfile(businessId);
   if (local?.id === profileId) {
-    clearVipProfile();
+    clearVipProfile(businessId);
   }
 };
 
@@ -495,13 +510,13 @@ export const adminUpdateVipProfile = async (
   await updateDoc(docRef, dataToUpdate);
 
   // Si el perfil que se modificó es el mismo activo en esta pantalla local, sincronizar localmente
-  const local = getVipProfile();
+  const local = getVipProfile(businessId);
   if (local && local.id === profileId) {
     saveLocalVipProfile({
       ...local,
       ...updates,
       updatedAt: dataToUpdate.updatedAt,
-    });
+    }, businessId);
   }
 };
 
