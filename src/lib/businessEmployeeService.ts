@@ -234,56 +234,23 @@ export async function createBusinessEmployee(input: {
     updatedAt: now,
   };
 
-  // Separar las escrituras identifica de forma inequívoca qué regla de
-  // Firestore deniega el acceso. Si actualizar el índice falla después de
-  // crear la membresía, intentamos revertir la primera escritura.
+  // Membresía e índice de empleados se confirman juntos o se revierten juntos.
+  // Esto evita dejar empleados sin acceso visible o IDs huérfanos si fallan las reglas.
+  const batch = writeBatch(db);
+  batch.set(membershipRef(input.businessId, userId), employee);
+  batch.update(doc(db, 'businesses', input.businessId), {
+    employeeUserIds: arrayUnion(userId),
+  });
   try {
-    await setDoc(membershipRef(input.businessId, userId), employee);
+    await batch.commit();
   } catch (error: any) {
-    console.error('Firestore denegó crear la membresía del empleado:', {
+    console.error('No se pudo vincular al empleado con el negocio:', {
       code: error?.code,
-      message: error?.message,
-      managerUid: managerUser.uid,
-      managerEmail: managerUser.email,
-      employeeUid: userId,
-      employeeEmail: email,
       businessId: input.businessId,
-      operation: 'create-membership',
+      operation: 'create-employee-atomic',
     });
     throw new Error(
-      `Firebase rechazó crear la membresía del empleado (${error?.code || 'error sin código'}). Esto apunta a la regla de creación de businessMemberships en la base de datos activa.`
-    );
-  }
-
-  try {
-    await updateDoc(doc(db, 'businesses', input.businessId), {
-      employeeUserIds: arrayUnion(userId),
-    });
-  } catch (error: any) {
-    console.error('Firestore denegó actualizar la lista de empleados:', {
-      code: error?.code,
-      message: error?.message,
-      managerUid: managerUser.uid,
-      managerEmail: managerUser.email,
-      employeeUid: userId,
-      employeeEmail: email,
-      businessId: input.businessId,
-      operation: 'update-employee-roster',
-    });
-
-    try {
-      await deleteDoc(membershipRef(input.businessId, userId));
-    } catch (rollbackError: any) {
-      console.error('No se pudo revertir la membresía tras fallar el roster:', {
-        code: rollbackError?.code,
-        message: rollbackError?.message,
-        employeeUid: userId,
-        businessId: input.businessId,
-      });
-    }
-
-    throw new Error(
-      `La membresía fue creada, pero Firebase rechazó actualizar employeeUserIds del negocio (${error?.code || 'error sin código'}). Esto apunta a la regla de actualización de businesses.`
+      `No pudimos vincular al empleado con el negocio (${error?.code || 'error'}). No se guardaron accesos parciales. La cuenta de acceso creada puede requerir vinculación posterior.`,
     );
   }
 
