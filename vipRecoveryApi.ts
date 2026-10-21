@@ -16,7 +16,7 @@ const MAX_TRIES = 5;
 // registraban restaurantId. Nunca extender esta excepción a otro tenant.
 function profileBelongsToBusiness(profile: Record<string, any>, businessId: string): boolean {
   return profile.restaurantId === businessId
-    || (businessId === 'alo-restaurante' && !profile.restaurantId);
+    || (businessId === 'alo-restaurante' && profile.restaurantId === undefined);
 }
 function publicVipProfile(profile: Record<string, any>, businessId: string, id: string) {
   const { pinHash: _secret, ...safe } = profile;
