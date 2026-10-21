@@ -4,6 +4,8 @@ import App from './App.tsx';
 import { AdminTabOrderManager } from './components/admin/AdminTabOrderManager';
 import { AdminOwnerTitaGate } from './components/admin/AdminOwnerTitaGate';
 import { BusinessPortal } from './components/platform/BusinessPortal';
+import { BusinessInviteAccept } from './components/platform/BusinessInviteAccept';
+import { BUSINESS_INVITES_ENABLED } from './lib/businessInvitesService';
 import { BusinessWorkspace } from './components/platform/BusinessWorkspace';
 import { BusinessPublicPage } from './components/platform/BusinessPublicPage';
 import { BusinessDirectory } from './components/platform/BusinessDirectory';
@@ -50,6 +52,12 @@ function RootRouter() {
 
   if (hash === '#platform-admin') {
     return <div className="giote-platform-theme"><PlatformAdminPanel /></div>;
+  }
+
+  const inviteMatch = hash.match(/^#invite\/([A-Za-z0-9_-]{43})$/);
+  if (inviteMatch && BUSINESS_INVITES_ENABLED) {
+    // El token viaja exclusivamente por el fragmento, no por la solicitud HTTP.
+    return <div className="giote-platform-theme"><BusinessInviteAccept token={inviteMatch[1]} /></div>;
   }
 
   if (hash === '#business-new') {
