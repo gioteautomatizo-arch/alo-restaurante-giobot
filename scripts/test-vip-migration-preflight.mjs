@@ -48,5 +48,16 @@ input=base();
 input.expectedAdmins.push({uid:'owner-2',role:'OWNER',identityVerifiedByOwner:true});
 assert(auditVipMigration(input).blockers.includes('admin_membership_missing'),
   'la declaración verbal de un segundo OWNER no crea una membresía');
+input=base();
+input.memberships.push({id:'alo-restaurante_admin-unknown',restaurantId:'alo-restaurante',userId:'admin-unknown',role:'ADMIN',active:true});
+assert(auditVipMigration(input).blockers.includes('privileged_memberships_not_reviewed'),
+  'ningún administrador privilegiado puede omitirse de la revisión');
+input.expectedAdmins.push({uid:'admin-unknown',role:'ADMIN',identityVerifiedByOwner:true});
+assert.equal(auditVipMigration(input).readiness,'PREFLIGHT_PASSED',
+  'un ADMIN revisado no bloquea la migración');
+input=base();
+input.memberships.push({id:'another-business_admin-unknown',restaurantId:'another-business',userId:'admin-unknown',role:'ADMIN',active:true});
+assert.equal(auditVipMigration(input).readiness,'PREFLIGHT_PASSED',
+  'un administrador de otro negocio no forma parte del inventario de Calientito');
 assert.throws(()=>auditVipMigration({businessId:'bad/id',profiles:[],memberships:[],expectedAdmins:[]}));
 console.log('PASS: auditoría local VIP detecta bloqueos, no aprueba despliegue y respeta negocio.');
