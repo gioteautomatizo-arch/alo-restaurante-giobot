@@ -30,3 +30,5 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-owner-security-test --config scripts/firebase.launch-security-emulator.json "node scripts/test-owner-registration.mjs"
       - name: Test invitation API with Auth and Firestore emulators
         run: npx firebase emulators:exec --only auth,firestore --project gioteautomatizo-invites-test --config scripts/firebase.invites-emulator.json "node --import tsx scripts/test-business-invites.mjs"
+      - name: Test VIP backend with dummy profiles in Firestore emulator
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-vip-api-test --config scripts/firebase.launch-security-emulator.json "node --import tsx scripts/test-vip-recovery-api.mjs"
