@@ -1,5 +1,5 @@
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, setDoc, updateDoc, getDoc, getDocs, collection } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, deleteDoc, getDoc, getDocs, collection } from 'firebase/firestore';
 import { readFileSync } from 'node:fs';
 const env=await initializeTestEnvironment({projectId:'gioteautomatizo-launch-security-test',firestore:{rules:readFileSync('docs/firestore.launch-security.STAGED.rules','utf8'),host:'127.0.0.1',port:8080}});
 const db=u=>env.authenticatedContext(u).firestore(), guest=()=>env.unauthenticatedContext().firestore();
@@ -11,11 +11,24 @@ for(const role of ['OWNER','KITCHEN','EMPLOYEE','CASHIER'])await setDoc(doc(admi
 await setDoc(doc(admin,'businessMemberships/business-a_manager'),{restaurantId:'business-a',userId:'manager',role:'MANAGER',active:true});
 await setDoc(doc(admin,'businessMemberships/business-a_admin'),{restaurantId:'business-a',userId:'admin',role:'ADMIN',active:true});
 await setDoc(doc(admin,'businessMemberships/business-a_staff'),{restaurantId:'business-a',userId:'staff',role:'EMPLOYEE',active:true});
+await setDoc(doc(admin,'businessMemberships/business-a_disabled'),{restaurantId:'business-a',userId:'disabled',role:'MANAGER',active:false});
 await setDoc(doc(admin,'restaurant_orders/first'),order('business-a'));
 await setDoc(doc(admin,'businesses/business-a/catalog/draft'),{businessId:'business-a',name:'Prueba'});
 await setDoc(doc(admin,'businesses/business-b/catalog/draft'),{businessId:'business-b',name:'Oculto'});
 });
 await assertSucceeds(getDoc(doc(guest(),'businesses/business-a/catalog/draft')));
+// Seguridad completa del catálogo: lectura pública solo del publicado;
+// crear, editar y eliminar únicamente con roles de administración activos.
+await assertFails(setDoc(doc(guest(),'businesses/business-a/catalog/anonymous'),{businessId:'business-a',name:'Producto falso'}));
+await assertFails(setDoc(doc(db('cashier'),'businesses/business-a/catalog/unauthorized'),{businessId:'business-a',name:'Precio falso'}));
+await assertFails(deleteDoc(doc(db('cashier'),'businesses/business-a/catalog/draft')));
+await assertFails(setDoc(doc(db('disabled'),'businesses/business-a/catalog/revoked'),{businessId:'business-a',name:'Sin acceso'}));
+await assertFails(setDoc(doc(db('manager'),'businesses/business-b/catalog/cross-tenant'),{businessId:'business-b',name:'Otro negocio'}));
+await assertFails(setDoc(doc(db('manager'),'businesses/business-a/catalog/id-injection'),{businessId:'business-b',name:'ID alterado'}));
+await assertSucceeds(setDoc(doc(db('owner'),'businesses/business-a/catalog/owner'),{businessId:'business-a',name:'Autorizado propietario'}));
+await assertSucceeds(setDoc(doc(db('admin'),'businesses/business-a/catalog/admin'),{businessId:'business-a',name:'Autorizado administrador'}));
+await assertSucceeds(setDoc(doc(db('manager'),'businesses/business-a/catalog/manager'),{businessId:'business-a',name:'Autorizado encargado'}));
+await assertSucceeds(deleteDoc(doc(db('manager'),'businesses/business-a/catalog/manager')));
 await assertFails(updateDoc(doc(db('cashier'),'businesses/business-a/catalog/draft'),{name:'Precio manipulado'}));
 await assertFails(updateDoc(doc(db('kitchen'),'businesses/business-a/catalog/draft'),{name:'Precio manipulado'}));
 await assertFails(updateDoc(doc(db('employee'),'businesses/business-a/catalog/draft'),{name:'Precio manipulado'}));
