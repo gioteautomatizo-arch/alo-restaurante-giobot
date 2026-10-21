@@ -19,6 +19,7 @@ import { BusinessReportsView } from './BusinessReportsView';
 import { BusinessModulesView } from './BusinessModulesView';
 import { getBusinessTemplateConfig } from '../../data/businessTemplates';
 import { hasBusinessPermission } from '../../lib/restaurantCore';
+import { canAdministerBusinessVip } from '../../lib/businessVipPermissions';
 import type { BusinessRole, RestaurantTenant } from '../../lib/restaurantCore';
 import { getBusinessForUser, getBusinessMembership } from '../../lib/businessAuthService';
 import { getBusinessPublicationStatus, setBusinessPublication, syncPublicProfileIfNeeded } from '../../lib/businessPublicProfileService';
@@ -150,6 +151,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const canSeeReports = !!role && hasBusinessPermission(role, 'reports.view');
   const canManageBusiness = !!role && hasBusinessPermission(role, 'business.manage');
   const canPos = !!business.features.pos && canUsePos;
+  const canManageVip = canAdministerBusinessVip(role);
 
   const enabledCapabilities = new Set<string>(business.capabilities && business.capabilities.length > 0 ? business.capabilities : template.capabilities);
   const hasCap = (capability: string) => enabledCapabilities.has(capability);
@@ -165,7 +167,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     { id: 'payables', label: 'Por pagar', icon: Landmark, allowed: hasCap('PAYABLES') && (!!role && hasBusinessPermission(role, 'pos.use')) },
     { id: 'audit', label: 'Bitácora', icon: ScrollText, allowed: hasCap('AUDIT_LOG') && !!role && ['OWNER', 'ADMIN', 'MANAGER', 'SUPER_ADMIN'].includes(role) },
     { id: 'reports', label: 'Reportes', icon: BarChart3, allowed: canSeeReports },
-    { id: 'memberships', label: 'Membresías', icon: Heart, allowed: hasCap('VIP') && (canPos || canSeeReports) },
+    { id: 'memberships', label: 'Membresías', icon: Heart, allowed: hasCap('VIP') && canManageVip },
     { id: 'employees', label: 'Empleados', icon: Users, allowed: canManageEmployees },
     { id: 'branding', label: 'Info', icon: Settings, allowed: canManageBusiness },
   ];
@@ -183,7 +185,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
         else if (module.capability === 'POS' || module.capability === 'ORDERS' || module.capability === 'ORDER_QUEUE') setView('operations');
         else if (module.capability === 'MENU_IMPORT') setView('menuImport');
         else if (module.capability === 'STAFF' && canManageEmployees) setView('employees');
-        else if (module.capability === 'VIP' && hasCap('VIP') && (canPos || canSeeReports)) setView('memberships');
+        else if (module.capability === 'VIP' && hasCap('VIP') && canManageVip) setView('memberships');
         else if (module.capability === 'RECEIPTS' && !!role && hasBusinessPermission(role, 'reports.view')) setView('reports');
         else if (module.capability === 'BUSINESS_SETTINGS' && !!role && hasBusinessPermission(role, 'business.manage')) setView('branding');
       }} />;
@@ -210,8 +212,8 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     }
 
     // Un único módulo reutilizable de membresías para cualquier negocio con VIP activo.
-    if (view === 'memberships' && hasCap('VIP') && (canPos || canSeeReports)) {
-      return <BusinessVipPanel businessId={businessId} business={business} isOwner={role === 'OWNER' || role === 'SUPER_ADMIN'} isPublished={isPublished} onBusinessUpdated={setBusiness} />;
+    if (view === 'memberships' && hasCap('VIP') && canManageVip) {
+      return <BusinessVipPanel businessId={businessId} business={business} isOwner={role === 'OWNER' || role === 'SUPER_ADMIN'} managerRole={role!} isPublished={isPublished} onBusinessUpdated={setBusiness} />;
     }
 
     if (view === 'reports') {
