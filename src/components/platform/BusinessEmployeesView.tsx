@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, KeyRound, Lock, Plus, Shield, UserRound, UserRoundX } from 'lucide-react';
 import type { BusinessPermission, BusinessRole } from '../../lib/restaurantCore';
+import { BUSINESS_INVITES_ENABLED, createBusinessInvite } from '../../lib/businessInvitesService';
 import {
   canManageEmployeeRole,
   createBusinessEmployee,
@@ -70,6 +71,7 @@ export const BusinessEmployeesView: React.FC<{
   const [password, setPassword] = useState('');
   const [accountMode, setAccountMode] = useState<'new' | 'existing'>('new');
   const [error, setError] = useState<string | null>(null);
+  const [inviteLink, setInviteLink] = useState('');
 
   const allowedRoles = useMemo(
     () => MANAGEABLE_EMPLOYEE_ROLES.filter((role) => canManageEmployeeRole(managerRole, role)),
@@ -111,6 +113,22 @@ export const BusinessEmployeesView: React.FC<{
     } finally {
       setSaving(false);
     }
+  };
+
+  const createInvite = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!canManageEmployeeRole(managerRole, selectedRole)) {
+      setError('No tienes permiso para invitar a ese rol.');
+      return;
+    }
+    setSaving(true); setError(null); setInviteLink('');
+    try {
+      const result = await createBusinessInvite(businessId, name, email, selectedRole as Parameters<typeof createBusinessInvite>[3]);
+      // URL fragment: tokens are not part of the HTTP request path or analytics.
+      setInviteLink(window.location.origin + window.location.pathname + '#invite/' + result.token);
+    } catch (err: any) {
+      setError(err?.message || 'No pudimos generar la invitación.');
+    } finally { setSaving(false); }
   };
 
   const changeRole = async (userId: string, role: BusinessRole) => {
@@ -158,26 +176,32 @@ export const BusinessEmployeesView: React.FC<{
               <p className="mt-2 text-sm text-[#C8C8C8]">Cada empleado tiene una cuenta propia y solo recibe los permisos de su rol.</p>
             </div>
             <button type="button" onClick={() => setShowForm((value) => !value)} className="rounded-2xl bg-[#D6A34A] px-4 py-3 text-sm font-black text-[#050505] flex items-center justify-center gap-2">
-              <Plus className="w-4 h-4" /> Nuevo empleado
+              <Plus className="w-4 h-4" /> {BUSINESS_INVITES_ENABLED ? 'Invitar empleado' : 'Nuevo empleado'}
             </button>
           </div>
 
           {error && <div className="mt-5 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-200">{error}</div>}
 
+          {inviteLink && <div className="mt-5 rounded-xl border border-emerald-700/40 bg-emerald-950/30 p-4">
+            <p className="text-sm font-bold">Invitación creada. Comparte el enlace únicamente con el empleado.</p>
+            <input readOnly aria-label="Enlace de invitación" className="mt-2 w-full rounded-lg bg-black p-2 text-xs text-white" value={inviteLink} />
+            <button type="button" onClick={() => void navigator.clipboard.writeText(inviteLink).catch(() => setError('Selecciona y copia el enlace manualmente.'))} className="mt-3 rounded-lg bg-amber-300 px-4 py-2 text-xs font-bold text-black">Copiar enlace</button>
+            <p className="mt-2 text-xs text-gray-300">Vence en 72 horas. Solo funciona con el correo invitado y su cuenta verificada.</p>
+          </div>}
           {showForm && (
-            <form onSubmit={create} className="mt-6 grid gap-4 rounded-2xl border border-[#3A3022] bg-[#0B0B0B] p-5 sm:grid-cols-2">
+            <form onSubmit={BUSINESS_INVITES_ENABLED ? createInvite : create} className="mt-6 grid gap-4 rounded-2xl border border-[#3A3022] bg-[#0B0B0B] p-5 sm:grid-cols-2">
               <label className="text-sm font-bold">Nombre<input value={name} onChange={(e) => setName(e.target.value)} required className="mt-1 w-full rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-3 font-normal text-[#F7F7F7]" /></label>
               <label className="text-sm font-bold">Correo de acceso<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="mt-1 w-full rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-3 font-normal text-[#F7F7F7]" /></label>
-              <label className="text-sm font-bold">Tipo de cuenta
+              {!BUSINESS_INVITES_ENABLED && <label className="text-sm font-bold">Tipo de cuenta
                 <select value={accountMode} onChange={(e) => setAccountMode(e.target.value as 'new' | 'existing')} className="mt-1 w-full rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-3 font-normal text-[#F7F7F7]">
                   <option value="new">Crear cuenta nueva</option>
                   <option value="existing">Usar cuenta existente</option>
                 </select>
               </label>
-              <label className="text-sm font-bold">{accountMode === 'new' ? 'Contraseña temporal' : 'Contraseña de la cuenta (opcional si usa Google)'}<input type="password" minLength={accountMode === 'new' ? 6 : undefined} value={password} onChange={(e) => setPassword(e.target.value)} required={accountMode === 'new'} className="mt-1 w-full rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-3 font-normal text-[#F7F7F7]" /></label>
+              {!BUSINESS_INVITES_ENABLED && <label className="text-sm font-bold">{accountMode === 'new' ? 'Contraseña temporal' : 'Contraseña de la cuenta (opcional si usa Google)'}<input type="password" minLength={accountMode === 'new' ? 6 : undefined} value={password} onChange={(e) => setPassword(e.target.value)} required={accountMode === 'new'} className="mt-1 w-full rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-3 font-normal text-[#F7F7F7]" /></label>
               <label className="text-sm font-bold">Rol<select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value as BusinessRole)} className="mt-1 w-full rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-3 font-normal text-[#F7F7F7]">{allowedRoles.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}</select></label>
-              <div className="sm:col-span-2 flex items-center gap-2 text-xs text-[#C8C8C8]"><KeyRound className="w-4 h-4" /> {accountMode === 'new' ? 'Se creará una cuenta nueva con este correo.' : 'La cuenta existente se validará con su contraseña o, si usa Google, podrás seleccionar ese mismo correo en la ventana de Google.'}</div>
-              <button disabled={saving} className="sm:col-span-2 rounded-xl bg-[#D6A34A] px-4 py-3 font-black text-[#050505] disabled:opacity-50">{saving ? 'Creando…' : 'Crear acceso'}</button>
+              {!BUSINESS_INVITES_ENABLED && <div className="sm:col-span-2 flex items-center gap-2 text-xs text-[#C8C8C8]"><KeyRound className="w-4 h-4" /> {accountMode === 'new' ? 'Se creará una cuenta nueva con este correo.' : 'La cuenta existente se validará con su contraseña o, si usa Google, podrás seleccionar ese mismo correo en la ventana de Google.'}</div>
+              <button disabled={saving} className="sm:col-span-2 rounded-xl bg-[#D6A34A] px-4 py-3 font-black text-[#050505] disabled:opacity-50">{saving ? 'Guardando…' : BUSINESS_INVITES_ENABLED ? 'Generar invitación' : 'Crear acceso'}</button>
             </form>
           )}
 
