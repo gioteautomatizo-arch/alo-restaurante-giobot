@@ -12,6 +12,17 @@ const NO_STORE = 'no-store';
 const WINDOW = 15 * 60 * 1000;
 const MAX_TRIES = 5;
 
+// Compatibilidad SOLO de Calientito: algunos perfiles originales no
+// registraban restaurantId. Nunca extender esta excepción a otro tenant.
+function profileBelongsToBusiness(profile: Record<string, any>, businessId: string): boolean {
+  return profile.restaurantId === businessId
+    || (businessId === 'alo-restaurante' && !profile.restaurantId);
+}
+function publicVipProfile(profile: Record<string, any>, businessId: string, id: string) {
+  const { pinHash: _secret, ...safe } = profile;
+  return { ...safe, restaurantId: businessId, id, syncedWithCloud: true };
+}
+
 function db() {
   if (!getApps().length) {
     const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
@@ -132,7 +143,7 @@ export function registerVipRecoveryApi(app: Express): void {
       const pinHash = await computePinHash(pin, phone);
       const storedHash = typeof data?.pinHash === 'string' ? data.pinHash : '';
       const left = Buffer.from(pinHash), right = Buffer.from(storedHash);
-      if (!data || data.restaurantId !== businessId || data.phone !== phone ||
+      if (!data || !profileBelongsToBusiness(data, businessId) || data.phone !== phone ||
           left.length !== right.length || !timingSafeEqual(left, right)) {
         return res.status(401).json({ error: 'No encontramos una tarjeta con esos datos.' });
       }
@@ -140,8 +151,7 @@ export function registerVipRecoveryApi(app: Express): void {
       await db().collection('vip_sessions').doc(hash(token)).set({
         businessId, profileId, expiresAt: Date.now() + 24 * 60 * 60 * 1000,
       });
-      const { pinHash: _secret, ...profile } = data;
-      return res.json({ profile: { ...profile, id: profileId, syncedWithCloud: true }, sessionToken: token });
+      return res.json({ profile: publicVipProfile(data, businessId, profileId), sessionToken: token });
     } catch (err) {
       console.error('VIP recovery backend unavailable', err);
       return res.status(503).json({ error: 'La recuperación no está disponible en este momento.' });
@@ -173,15 +183,14 @@ export function registerVipRecoveryApi(app: Express): void {
       const ref = db().collection('vip_profiles').doc(String(session.profileId));
       const snap = await ref.get();
       const before = snap.data();
-      if (!before || before.restaurantId !== businessId) return res.status(404).json({ error: 'Tarjeta no encontrada.' });
+      if (!before || !profileBelongsToBusiness(before, businessId)) return res.status(404).json({ error: 'Tarjeta no encontrada.' });
       const changes = {
         customerName: updates.customerName.trim(), address: updates.address.trim(),
         reference: updates.reference.trim(), preferredPayment: updates.preferredPayment,
         preferredOrderType: updates.preferredOrderType, updatedAt: new Date().toISOString(),
       };
       await ref.update(changes);
-      const { pinHash: _secret, ...safe } = ({ ...before, ...changes } as Record<string, unknown>);
-      return res.json({ profile: { ...safe, id: snap.id, syncedWithCloud: true } });
+      return res.json({ profile: publicVipProfile({ ...before, ...changes }, businessId, snap.id) });
     } catch (err) {
       console.error('VIP update backend unavailable', err);
       return res.status(503).json({ error: 'No pudimos guardar los cambios.' });
@@ -203,11 +212,10 @@ export function registerVipRecoveryApi(app: Express): void {
       }
       const snap = await db().collection('vip_profiles').doc(String(data.profileId)).get();
       const profile = snap.data();
-      if (!profile || profile.restaurantId !== businessId) {
+      if (!profile || !profileBelongsToBusiness(profile, businessId)) {
         return res.status(404).json({ error: 'La tarjeta VIP no está disponible.' });
       }
-      const { pinHash: _secret, ...safe } = profile;
-      return res.json({ profile: { ...safe, id: snap.id, syncedWithCloud: true } });
+      return res.json({ profile: publicVipProfile(profile, businessId, snap.id) });
     } catch (err) {
       console.error('VIP profile backend unavailable', err);
       return res.status(503).json({ error: 'No pudimos actualizar tu tarjeta.' });
