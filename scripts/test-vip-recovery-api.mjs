@@ -206,6 +206,23 @@ try {
   assert.equal(persistedOlder.data().restaurantId, undefined, 'no hay migración automática');
   assert.equal((await profile('alo-restaurante', oldRecovered.payload.sessionToken)).status, 200);
 
+  // No aceptar restaurantId vacío, nulo o de otro negocio como perfil legado.
+  // Un registro sin campo explícito solamente pertenece al ID histórico de Calientito.
+  for (const [label, value] of [['empty', ''], ['null', null], ['other-tenant', businessB]]) {
+    const testPhone = label === 'empty' ? '5512340006' : label === 'null' ? '5512340007' : '5512340008';
+    const testId = await computeVipDocId(testPhone, pin);
+    await db.collection('vip_profiles').doc(testId).set({
+      restaurantId: value, memberId: 'VIP-BLOCK-' + label,
+      customerName: 'Dato incorrecto', phone: testPhone,
+      pinHash: await computePinHash(pin, testPhone),
+      stamps: 5, totalOrders: 2, rewardAvailable: true,
+    });
+    assert.equal((await recover('alo-restaurante', testPhone)).status, 401,
+      'Calientito rechaza perfil con restaurantId ' + label);
+  }
+  // Los perfiles creados en otro negocio nunca se recuperan con el ID de Calientito.
+  assert.equal((await recover('alo-restaurante', phone, pin)).status, 401);
+
   for (let i = 0; i < 5; i++) {
     const attempt = await recover(businessA, lockPhone, '4000');
     assert.equal(attempt.status, 401);
