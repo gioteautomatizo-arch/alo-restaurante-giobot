@@ -75,13 +75,13 @@ export function registerBusinessInviteApi(app: Express): void {
     }
   });
 
-  app.get('/api/business-invites/:token', async (req, res) => {
+  app.post('/api/business-invites/preview', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     if (process.env.ENABLE_BUSINESS_INVITES !== 'true') return fail(res, 404, 'Invitaciones no disponibles.');
-    if (!validToken(req.params.token)) return fail(res, 404, 'Invitación no válida.');
+    if (!validToken(req.body?.token)) return fail(res, 404, 'Invitación no válida.');
     try {
       const { db } = adminServices();
-      const invite = (await db.collection('business_invites').doc(hash(req.params.token)).get()).data();
+      const invite = (await db.collection('business_invites').doc(hash(req.body?.token)).get()).data();
       if (!invite || invite.status !== 'PENDING' || Number(invite.expiresAt) <= Date.now()) {
         return fail(res, 410, 'Esta invitación venció o ya fue utilizada.');
       }
