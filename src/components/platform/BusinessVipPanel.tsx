@@ -4,6 +4,8 @@ import { db, getCurrentAuthUser } from '../../lib/firebase';
 import { setBusinessPublication } from '../../lib/businessPublicProfileService';
 import type { RestaurantTenant } from '../../lib/restaurantCore';
 import type { StaffUser } from '../../types';
+import type { BusinessRole } from '../../lib/restaurantCore';
+import { legacyVipStaffRole } from '../../lib/businessVipPermissions';
 import { VipClientsAdminView } from '../admin/VipClientsAdminView';
 
 const input = 'w-full rounded-xl border border-[#3A3022] bg-[#0B0B0B] px-3 py-3 text-sm text-[#F7F7F7] outline-none focus:border-[#D6A34A]';
@@ -13,9 +15,10 @@ export const BusinessVipPanel: React.FC<{
   businessId: string;
   business: RestaurantTenant;
   isOwner: boolean;
+  managerRole: BusinessRole;
   isPublished: boolean;
   onBusinessUpdated: (business: RestaurantTenant) => void;
-}> = ({ businessId, business, isOwner, isPublished, onBusinessUpdated }) => {
+}> = ({ businessId, business, isOwner, managerRole, isPublished, onBusinessUpdated }) => {
   const b = business.branding;
   const [enabled, setEnabled] = useState(!!b.vipEnabled);
   const [programName, setProgramName] = useState(b.loyaltyProgramName || `${b.restaurantName} VIP`);
@@ -29,7 +32,7 @@ export const BusinessVipPanel: React.FC<{
     id: user?.uid || 'owner',
     name: user?.displayName || user?.email || 'Responsable',
     username: user?.email || 'owner',
-    role: 'DUEÑA',
+    role: legacyVipStaffRole(managerRole),
     active: true,
     createdAt: new Date().toISOString(),
   };
