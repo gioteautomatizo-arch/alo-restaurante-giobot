@@ -34,3 +34,5 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-vip-api-test --config scripts/firebase.launch-security-emulator.json "node --import tsx scripts/test-vip-recovery-api.mjs"
       - name: Test legacy Calientito VIP admin compatibility in staged rules
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-vip-admin-compat-test --config scripts/firebase.launch-security-emulator.json "node scripts/test-vip-admin-compat.mjs"
+      - name: Verify offline VIP migration preflight blockers
+        run: node scripts/test-vip-migration-preflight.mjs
