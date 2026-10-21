@@ -36,3 +36,7 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-vip-admin-compat-test --config scripts/firebase.launch-security-emulator.json "node scripts/test-vip-admin-compat.mjs"
       - name: Verify offline VIP migration preflight blockers
         run: node scripts/test-vip-migration-preflight.mjs
+      - name: Test quick-sale receipts with repository Firestore rules
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-receipt-security-test --config scripts/firebase.launch-security-emulator.json "env SALE_RECEIPTS_RULES_FILE=firestore.rules node scripts/test-quick-sale-receipt-rules.mjs"
+      - name: Test quick-sale receipts with staged Firestore rules
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-receipt-security-test --config scripts/firebase.launch-security-emulator.json "env SALE_RECEIPTS_RULES_FILE=docs/firestore.launch-security.STAGED.rules node scripts/test-quick-sale-receipt-rules.mjs"
