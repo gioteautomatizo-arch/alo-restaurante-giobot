@@ -4,6 +4,7 @@ import { StaffUser } from '../../types';
 import { createRestaurantOrder, chargeOffTableOrder } from '../../lib/ordersService';
 import { createOffTableSaleReceipt, retryPaidOffTableSaleReceipt } from '../../lib/saleReceiptsService';
 import { getActiveRestaurantId } from '../../lib/restaurantContext';
+import { getCurrentAuthUser } from '../../lib/firebase';
 import { OffTableOrderModal } from './OffTableOrderModal';
 
 const money = (value: number) => '$' + Number(value || 0).toLocaleString('es-MX', {
@@ -56,6 +57,19 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
 
   const submitQuickSale = async () => {
     if (savingQuickSale || quickLines.length === 0) return;
+    // Evitar crear un pedido nuevo si no se podrá registrar el cobro.
+    // No afecta el flujo separado para guardar pedidos PENDIENTES.
+    const googleUser = getCurrentAuthUser();
+    if (!googleUser) {
+      setError('No estás conectado con Google. Inicia sesión antes de registrar y cobrar una venta rápida.');
+      return;
+    }
+    try {
+      await googleUser.getIdToken();
+    } catch {
+      setError('Tu sesión de Google venció. Vuelve a iniciar sesión antes de cobrar.');
+      return;
+    }
     setSavingQuickSale(true);
     setError(null);
     setSuccess(null);
