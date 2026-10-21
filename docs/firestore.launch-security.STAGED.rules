@@ -185,12 +185,16 @@ service cloud.firestore {
         || hasActiveMembership(businessId)
         || isPlatformSuperAdmin();
 
+      // Mismos roles que el editor de catálogo. Caja, meseros, cocina y
+      // empleados solo pueden consultar el menú, nunca alterar precios.
       allow create, update: if isSignedIn()
         && request.resource.data.businessId == businessId
-        && (hasActiveMembership(businessId) || isPlatformSuperAdmin());
+        && (isPlatformSuperAdmin()
+          || getCallerMembershipRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER']);
 
       allow delete: if isSignedIn()
-        && (hasActiveMembership(businessId) || isPlatformSuperAdmin());
+        && (isPlatformSuperAdmin()
+          || getCallerMembershipRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER']);
     }
 
     // ── Módulos administrativos por negocio (turnos, gastos, resguardo, cuentas, bitácora…).
