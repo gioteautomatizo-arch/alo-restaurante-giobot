@@ -219,6 +219,28 @@ export async function createOffTableSaleReceipt(
   return { ...receipt, id: receiptRef.id };
 }
 
+// Solo reintenta crear el comprobante de un pedido YA PAGADO en Firestore.
+// Nunca registra cobros; evita usar el estado del formulario como prueba del pago.
+export async function retryPaidOffTableSaleReceipt(
+  orderId: string,
+  businessId: string,
+  user: Pick<StaffUser, 'id' | 'name'>
+): Promise<SaleReceipt> {
+  if (!orderId || !businessId.trim()) throw new Error('Falta el pedido o el negocio.');
+  const orderSnap = await getDoc(doc(db, 'restaurant_orders', orderId));
+  if (!orderSnap.exists()) throw new Error('No se encontró el pedido registrado.');
+  const paidOrder = orderSnap.data() as RestaurantOrder;
+  if (
+    paidOrder.restaurantId !== businessId ||
+    paidOrder.billingStatus !== 'PAGADO' ||
+    !['pickup', 'delivery'].includes(paidOrder.orderType) ||
+    paidOrder.status === 'CANCELADO'
+  ) {
+    throw new Error('El ticket solo se puede generar para una venta pagada de este negocio.');
+  }
+  return createOffTableSaleReceipt({ ...paidOrder, id: orderSnap.id }, user);
+}
+
 export interface MissingReceiptWork {
   sessions: Array<{ key: string; tableNumber: number; payments: TablePayment[]; orders: RestaurantOrder[] }>;
   offTable: RestaurantOrder[];
