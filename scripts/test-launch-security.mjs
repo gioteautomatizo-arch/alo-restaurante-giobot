@@ -16,6 +16,11 @@ await setDoc(doc(admin,'businesses/business-a/catalog/draft'),{businessId:'busin
 await setDoc(doc(admin,'businesses/business-b/catalog/draft'),{businessId:'business-b',name:'Oculto'});
 });
 await assertSucceeds(getDoc(doc(guest(),'businesses/business-a/catalog/draft')));
+await assertFails(updateDoc(doc(db('cashier'),'businesses/business-a/catalog/draft'),{name:'Precio manipulado'}));
+await assertFails(updateDoc(doc(db('kitchen'),'businesses/business-a/catalog/draft'),{name:'Precio manipulado'}));
+await assertFails(updateDoc(doc(db('employee'),'businesses/business-a/catalog/draft'),{name:'Precio manipulado'}));
+await assertSucceeds(updateDoc(doc(db('manager'),'businesses/business-a/catalog/draft'),{name:'Menú actualizado'}));
+await assertFails(updateDoc(doc(db('manager'),'businesses/business-b/catalog/draft'),{name:'Negocio ajeno'}));
 await assertFails(getDoc(doc(guest(),'businesses/business-b/catalog/draft')));
 await assertSucceeds(setDoc(doc(guest(),'restaurant_orders/public'),order('business-a')));
 await assertFails(setDoc(doc(guest(),'restaurant_orders/unpublished'),order('business-b')));
