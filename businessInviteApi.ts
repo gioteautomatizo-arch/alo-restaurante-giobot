@@ -9,6 +9,31 @@ type ActorRole = InviteRole | 'OWNER';
 const ROLES: InviteRole[] = ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE'];
 const OPERATIONAL_ROLES: InviteRole[] = ['CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE'];
 const EXPIRES_IN_MS = 72 * 60 * 60 * 1000;
+const INVITES_PER_HOUR = 10;
+const INVITES_PER_BUSINESS_DAY = 50;
+const PREVIEWS_PER_MINUTE = 60;
+// Best-effort per-instance backpressure; the invite token itself is 256-bit random.
+const previewLimits = new Map<string, { count: number; resetAt: number }>();
+function allowPreview(ip: string): boolean {
+  const now = Date.now();
+  const existing = previewLimits.get(ip);
+  if (!existing || existing.resetAt <= now) {
+    if (previewLimits.size >= 5000) previewLimits.clear();
+    previewLimits.set(ip, { count: 1, resetAt: now + 60_000 });
+    return true;
+  }
+  existing.count++;
+  return existing.count <= PREVIEWS_PER_MINUTE;
+}
+function canInvite(role: unknown, requestedRole: unknown): boolean {
+  return ['OWNER', 'ADMIN'].includes(String(role))
+    ? ROLES.includes(requestedRole as InviteRole)
+    : role === 'MANAGER' && OPERATIONAL_ROLES.includes(requestedRole as InviteRole);
+}
+function exposedInvite(id: string, data: Record<string, unknown>) {
+  return { id, name: data.name, email: data.email, role: data.role, status: data.status,
+    createdAt: data.createdAt, expiresAt: data.expiresAt };
+}
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const safeId = (v: unknown): v is string =>
   typeof v === 'string' && /^[a-z0-9][a-z0-9-]{1,63}$/.test(v);
@@ -58,16 +83,35 @@ export function registerBusinessInviteApi(app: Express): void {
           !actorRole || !['OWNER', 'ADMIN', 'MANAGER'].includes(actorRole)) {
         return fail(res, 403, 'No tienes permiso para invitar personal de este negocio.');
       }
-      if (actorRole === 'MANAGER' && !OPERATIONAL_ROLES.includes(role as InviteRole)) {
-        return fail(res, 403, 'Un encargado solo puede invitar personal operativo.');
+      if (!canInvite(actorRole, role)) {
+        return fail(res, 403, 'No puedes invitar personal con ese rol.');
       }
       const token = randomBytes(32).toString('base64url');
       const now = Date.now();
-      await db.collection('business_invites').doc(hash(token)).create({
-        businessId, email: email.trim().toLowerCase(), name: name.trim(),
-        role, status: 'PENDING', createdBy: actor.uid, createdAt: now,
-        expiresAt: now + EXPIRES_IN_MS,
+      const inviteRef = db.collection('business_invites').doc(hash(token));
+      const actorLimit = db.collection('business_invite_limits').doc(hash('actor:' + businessId + ':' + actor.uid));
+      const businessLimit = db.collection('business_invite_limits').doc(hash('business:' + businessId));
+      const created = await db.runTransaction(async tx => {
+        const [actorSnap, businessSnap] = await Promise.all([tx.get(actorLimit), tx.get(businessLimit)]);
+        const currentCount = (snap: typeof actorSnap, interval: number) => {
+          const value = snap.data();
+          return value && Number(value.resetAt) > now
+            ? { count: Number(value.count) || 0, resetAt: Number(value.resetAt) }
+            : { count: 0, resetAt: now + interval };
+        };
+        const perActor = currentCount(actorSnap, 60 * 60 * 1000);
+        const perBusiness = currentCount(businessSnap, 24 * 60 * 60 * 1000);
+        if (perActor.count >= INVITES_PER_HOUR || perBusiness.count >= INVITES_PER_BUSINESS_DAY) return false;
+        tx.set(actorLimit, { count: perActor.count + 1, resetAt: perActor.resetAt, updatedAt: now });
+        tx.set(businessLimit, { count: perBusiness.count + 1, resetAt: perBusiness.resetAt, updatedAt: now });
+        tx.create(inviteRef, {
+          businessId, email: email.trim().toLowerCase(), name: name.trim(),
+          role, status: 'PENDING', createdBy: actor.uid, createdAt: now,
+          expiresAt: now + EXPIRES_IN_MS,
+        });
+        return true;
       });
+      if (!created) return fail(res, 429, 'Se alcanzó el límite de invitaciones. Intenta más tarde.');
       return res.status(201).json({ token, expiresAt: now + EXPIRES_IN_MS });
     } catch (error) {
       console.error('[business-invites/create]', error);
@@ -75,10 +119,76 @@ export function registerBusinessInviteApi(app: Express): void {
     }
   });
 
+  app.get('/api/business-invites', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (process.env.ENABLE_BUSINESS_INVITES !== 'true') return fail(res, 404, 'Invitaciones no disponibles.');
+    const businessId = req.query.businessId;
+    if (!safeId(businessId)) return fail(res, 400, 'Negocio inválido.');
+    try {
+      const actor = await authenticated(req);
+      if (!actor) return fail(res, 401, 'Inicia sesión.');
+      const { db } = adminServices();
+      const member = await db.collection('businessMemberships').doc(businessId + '_' + actor.uid).get();
+      const role = member.data()?.role;
+      if (!member.exists || member.data()?.active !== true || !['OWNER','ADMIN','MANAGER'].includes(String(role))) {
+        return fail(res, 403, 'No tienes permiso para ver las invitaciones.');
+      }
+      const matches = await db.collection('business_invites').where('businessId', '==', businessId).limit(150).get();
+      const pending = matches.docs
+        .filter(snap => snap.data().status === 'PENDING')
+        .filter(snap => role !== 'MANAGER' || (snap.data().createdBy === actor.uid &&
+          OPERATIONAL_ROLES.includes(snap.data().role)))
+        .map(snap => exposedInvite(snap.id, snap.data()))
+        .sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
+      return res.json({ invites: pending });
+    } catch (error) {
+      console.error('[business-invites/list]', error);
+      return fail(res, 503, 'No pudimos cargar las invitaciones.');
+    }
+  });
+
+  app.post('/api/business-invites/revoke', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (process.env.ENABLE_BUSINESS_INVITES !== 'true') return fail(res, 404, 'Invitaciones no disponibles.');
+    const { businessId, inviteId } = req.body || {};
+    if (!safeId(businessId) || typeof inviteId !== 'string' || !/^[0-9a-f]{64}$/.test(inviteId)) {
+      return fail(res, 400, 'Invitación inválida.');
+    }
+    try {
+      const actor = await authenticated(req);
+      if (!actor) return fail(res, 401, 'Inicia sesión.');
+      const { db } = adminServices();
+      const memberRef = db.collection('businessMemberships').doc(businessId + '_' + actor.uid);
+      const inviteRef = db.collection('business_invites').doc(inviteId);
+      const result = await db.runTransaction(async tx => {
+        const [member, inviteSnap] = await Promise.all([tx.get(memberRef), tx.get(inviteRef)]);
+        const role = member.data()?.role;
+        if (!member.exists || member.data()?.active !== true || !['OWNER','ADMIN','MANAGER'].includes(String(role))) {
+          return { status: 403, error: 'No tienes permisos para cancelar esta invitación.' };
+        }
+        const invite = inviteSnap.data();
+        if (!invite || invite.businessId !== businessId) return { status: 404, error: 'Invitación no encontrada.' };
+        if (role === 'MANAGER' && (invite.createdBy !== actor.uid ||
+          !OPERATIONAL_ROLES.includes(invite.role as InviteRole))) {
+          return { status: 403, error: 'Solo puedes cancelar tus invitaciones operativas.' };
+        }
+        if (invite.status !== 'PENDING') return { status: 409, error: 'Esta invitación ya fue utilizada o cancelada.' };
+        tx.update(inviteRef, { status: 'REVOKED', revokedAt: Date.now(), revokedBy: actor.uid });
+        return { status: 200 };
+      });
+      if ('error' in result) return fail(res, result.status, result.error!);
+      return res.json({ revoked: true });
+    } catch (error) {
+      console.error('[business-invites/revoke]', error);
+      return fail(res, 503, 'No pudimos cancelar la invitación.');
+    }
+  });
+
   app.post('/api/business-invites/preview', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     if (process.env.ENABLE_BUSINESS_INVITES !== 'true') return fail(res, 404, 'Invitaciones no disponibles.');
     if (!validToken(req.body?.token)) return fail(res, 404, 'Invitación no válida.');
+    if (!allowPreview(req.ip || 'unknown')) return fail(res, 429, 'Demasiadas consultas. Espera un minuto.');
     try {
       const { db } = adminServices();
       const invite = (await db.collection('business_invites').doc(hash(req.body?.token)).get()).data();
@@ -131,8 +241,7 @@ export function registerBusinessInviteApi(app: Express): void {
         if (!business.exists) return { status: 404, error: 'El negocio ya no existe.' };
         const inviterRole = inviter.data()?.role as ActorRole | undefined;
         if (!inviter.exists || inviter.data()?.active !== true ||
-            !inviterRole || !['OWNER', 'ADMIN', 'MANAGER'].includes(inviterRole) ||
-            (inviterRole === 'MANAGER' && !OPERATIONAL_ROLES.includes(invite.role as InviteRole))) {
+            !canInvite(inviterRole, invite.role)) {
           return { status: 403, error: 'La persona que invitó ya no tiene permisos suficientes.' };
         }
         if (membership.exists) return { status: 409, error: 'Esta cuenta ya tiene una membresía en el negocio.' };
