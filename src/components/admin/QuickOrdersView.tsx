@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Minus, Plus, ReceiptText } from 'lucide-react';
 import { StaffUser } from '../../types';
 import { createRestaurantOrder, chargeOffTableOrder } from '../../lib/ordersService';
-import { createOffTableSaleReceipt } from '../../lib/saleReceiptsService';
+import { createOffTableSaleReceipt, retryPaidOffTableSaleReceipt } from '../../lib/saleReceiptsService';
+import { getActiveRestaurantId } from '../../lib/restaurantContext';
 import { OffTableOrderModal } from './OffTableOrderModal';
 
 const money = (value: number) => '$' + Number(value || 0).toLocaleString('es-MX', {
@@ -28,6 +29,8 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
   const [quickPaymentMethod, setQuickPaymentMethod] = useState<'efectivo' | 'tarjeta' | 'transferencia'>('efectivo');
   const [quickLines, setQuickLines] = useState<Array<{ id: string; name: string; unitPrice: number; quantity: number }>>([]);
   const [savingQuickSale, setSavingQuickSale] = useState(false);
+  const [pendingTicketOrder, setPendingTicketOrder] = useState<{ id: string; code: string } | null>(null);
+  const [retryingTicket, setRetryingTicket] = useState(false);
   const quickTotal = quickLines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
 
   const addQuickLine = () => {
@@ -56,6 +59,7 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
     setSavingQuickSale(true);
     setError(null);
     setSuccess(null);
+    setPendingTicketOrder(null);
     const total = Math.round(quickTotal * 100) / 100;
     try {
       const order = await createRestaurantOrder({
@@ -86,7 +90,8 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
           await createOffTableSaleReceipt({ ...order, billingStatus: 'PAGADO', paymentMethod: quickPaymentMethod, paidAt: new Date().toISOString() }, currentUser);
           setSuccess(`Venta rápida cobrada y ticket creado · ${order.code} · ${money(total)}.`);
         } catch (ticketError: any) {
-          setSuccess(`Venta ${order.code} cobrada y registrada. No se pudo crear el ticket: ${ticketError?.message || 'error de permisos o conexión'}. No vuelvas a cobrarla.`);
+          setPendingTicketOrder({ id: order.id!, code: order.code });
+          setSuccess(`Venta ${order.code} cobrada y registrada, pero falta el ticket. No vuelvas a cobrarla. Puedes reintentar SOLO el ticket.`);
         }
       } catch (chargeError: any) {
         setSuccess(`Pedido ${order.code} guardado, pero quedó pendiente de cobro. Puedes cobrarlo en la sección de pedidos por cobrar. ${chargeError?.message || ''}`);
@@ -97,6 +102,20 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
       setError(err?.message || 'No se pudo registrar la venta rápida.');
     } finally {
       setSavingQuickSale(false);
+    }
+  };
+
+  const retryTicketOnly = async () => {
+    if (!pendingTicketOrder || retryingTicket) return;
+    setRetryingTicket(true);
+    try {
+      await retryPaidOffTableSaleReceipt(pendingTicketOrder.id, getActiveRestaurantId(), currentUser);
+      setSuccess(`Ticket generado para ${pendingTicketOrder.code}. La venta NO se cobró otra vez.`);
+      setPendingTicketOrder(null);
+    } catch (err: any) {
+      setSuccess(`La venta ${pendingTicketOrder.code} sigue cobrada. No se pudo crear el ticket: ${err?.message || 'permisos o conexión'}. No vuelvas a cobrarla.`);
+    } finally {
+      setRetryingTicket(false);
     }
   };
 
@@ -115,6 +134,7 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
 
       {error && <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div>}
       {success && <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{success}</div>}
+      {pendingTicketOrder && <button type="button" disabled={retryingTicket} onClick={() => void retryTicketOnly()} className="rounded-xl border border-amber-700 bg-amber-100 px-4 py-3 text-sm font-bold text-amber-950 disabled:opacity-50">{retryingTicket ? 'Verificando el pago…' : `Reintentar solo ticket · ${pendingTicketOrder.code}`}</button>}
 
       <section className="rounded-3xl border border-[#E7D7C4] bg-white px-5 py-5">
         <h3 className="font-serif text-lg font-bold text-[#2B1B13]">Pedido para cobrar después</h3>
