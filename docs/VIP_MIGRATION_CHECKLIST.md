@@ -72,3 +72,8 @@ Ejecutar `node scripts/verify-vip-staged.mjs` para detectar errores de integraci
 
 ## Verificación del avance
 El archivo `docs/firestore.vip-secure.STAGED.rules` solo es una **propuesta**; GitHub no la aplica al Firestore real. La comprobación estática tampoco certifica seguridad efectiva. **NO publicar estas reglas hasta completar la matriz de pruebas con Firebase Emulator, probar en la app y asegurar Calientito.**
+
+## Protección temporal de tarjetas locales — 20/10/2026
+- Se preparó en `src/lib/vipStorage.ts` compatibilidad para **mostrar tarjetas exclusivamente locales sin sesión** al probar el modo seguro; las tarjetas sincronizadas siguen exigiendo sesión. No se otorga acceso a perfiles cloud sin autenticación.
+- La migración automática de una tarjeta local con sellos, pedidos o recompensas se bloquea expresamente en modo seguro hasta contar con un procedimiento de validación administrativa. Esto evita crear una tarjeta cloud con contadores en cero y dar la falsa impresión de que se perdieron puntos.
+- **No hay conversión ni traslado de sellos realizado** y no se debe prometer que los datos locales sobrevivirán a desinstalación, limpieza del navegador o pérdida del dispositivo. Antes de activar, probar en móvil y crear procedimiento de respaldo/validación por negocio.
