@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, KeyRound, Lock, Plus, Shield, UserRound, UserRoundX } from 'lucide-react';
 import type { BusinessPermission, BusinessRole } from '../../lib/restaurantCore';
-import { BUSINESS_INVITES_ENABLED, createBusinessInvite } from '../../lib/businessInvitesService';
+import { BUSINESS_INVITES_ENABLED, createBusinessInvite, listBusinessInvites, revokeBusinessInvite, type PendingBusinessInvite } from '../../lib/businessInvitesService';
 import {
   canManageEmployeeRole,
   createBusinessEmployee,
@@ -72,6 +72,7 @@ export const BusinessEmployeesView: React.FC<{
   const [accountMode, setAccountMode] = useState<'new' | 'existing'>('new');
   const [error, setError] = useState<string | null>(null);
   const [inviteLink, setInviteLink] = useState('');
+  const [pendingInvites, setPendingInvites] = useState<PendingBusinessInvite[]>([]);
 
   const allowedRoles = useMemo(
     () => MANAGEABLE_EMPLOYEE_ROLES.filter((role) => canManageEmployeeRole(managerRole, role)),
@@ -91,6 +92,7 @@ export const BusinessEmployeesView: React.FC<{
   };
 
   useEffect(() => { void load(); }, [businessId]);
+  useEffect(() => { if (BUSINESS_INVITES_ENABLED) void listBusinessInvites(businessId).then(setPendingInvites).catch(() => {}); }, [businessId]);
 
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -126,9 +128,20 @@ export const BusinessEmployeesView: React.FC<{
       const result = await createBusinessInvite(businessId, name, email, selectedRole as Parameters<typeof createBusinessInvite>[3]);
       // URL fragment: tokens are not part of the HTTP request path or analytics.
       setInviteLink(window.location.origin + window.location.pathname + '#invite/' + result.token);
+      setPendingInvites(await listBusinessInvites(businessId));
     } catch (err: any) {
       setError(err?.message || 'No pudimos generar la invitación.');
     } finally { setSaving(false); }
+  };
+
+  const cancelInvite = async (id: string) => {
+    if (!window.confirm('¿Cancelar esta invitación? El enlace dejará de funcionar.')) return;
+    setError(null);
+    try {
+      await revokeBusinessInvite(businessId, id);
+      setInviteLink('');
+      setPendingInvites(await listBusinessInvites(businessId));
+    } catch (err: any) { setError(err?.message || 'No pudimos cancelar la invitación.'); }
   };
 
   const changeRole = async (userId: string, role: BusinessRole) => {
@@ -188,6 +201,15 @@ export const BusinessEmployeesView: React.FC<{
             <button type="button" onClick={() => void navigator.clipboard.writeText(inviteLink).catch(() => setError('Selecciona y copia el enlace manualmente.'))} className="mt-3 rounded-lg bg-amber-300 px-4 py-2 text-xs font-bold text-black">Copiar enlace</button>
             <p className="mt-2 text-xs text-gray-300">Vence en 72 horas. Solo funciona con el correo invitado y su cuenta verificada.</p>
           </div>}
+          {BUSINESS_INVITES_ENABLED && pendingInvites.length > 0 && (
+            <div className="mt-5 space-y-2 rounded-xl border border-white/10 p-4">
+              <strong className="text-sm">Invitaciones pendientes</strong>
+              {pendingInvites.map(invite => <div key={invite.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/5 p-3 text-xs">
+                <span>{invite.name} · {invite.email} · {ROLE_LABELS[invite.role]} · {Date.now() > invite.expiresAt ? 'Vencida' : 'Pendiente'}</span>
+                <button type="button" onClick={() => void cancelInvite(invite.id)} className="rounded-lg border border-red-300/30 px-3 py-2 text-red-200">Cancelar</button>
+              </div>)}
+            </div>
+          )}
           {showForm && (
             <form onSubmit={BUSINESS_INVITES_ENABLED ? createInvite : create} className="mt-6 grid gap-4 rounded-2xl border border-[#3A3022] bg-[#0B0B0B] p-5 sm:grid-cols-2">
               <label className="text-sm font-bold">Nombre<input value={name} onChange={(e) => setName(e.target.value)} required className="mt-1 w-full rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-3 font-normal text-[#F7F7F7]" /></label>
