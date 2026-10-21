@@ -30,3 +30,23 @@ export function previewBusinessInvite(token: string) {
 export function acceptBusinessInvite(token: string) {
   return request<{ businessId: string }>('/api/business-invites/accept', 'POST', { token }, true);
 }
+
+export interface PendingBusinessInvite {
+  id: string; name: string; email: string; role: InviteRole;
+  status: string; createdAt: number; expiresAt: number;
+}
+export async function listBusinessInvites(businessId: string): Promise<PendingBusinessInvite[]> {
+  if (!BUSINESS_INVITES_ENABLED) return [];
+  const user = auth.currentUser;
+  if (!user) throw new Error('Inicia sesión.');
+  const token = await user.getIdToken();
+  const response = await fetch('/api/business-invites?businessId=' + encodeURIComponent(businessId), {
+    cache: 'no-store', headers: { Authorization: 'Bearer ' + token },
+  });
+  const payload = await response.json().catch(() => ({})) as { invites?: PendingBusinessInvite[]; error?: string };
+  if (!response.ok) throw new Error(payload.error || 'No se pudieron cargar las invitaciones.');
+  return payload.invites || [];
+}
+export function revokeBusinessInvite(businessId: string, inviteId: string) {
+  return request<{ revoked: boolean }>('/api/business-invites/revoke', 'POST', { businessId, inviteId }, true);
+}
