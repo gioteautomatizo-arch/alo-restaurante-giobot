@@ -124,8 +124,17 @@ export function registerBusinessInviteApi(app: Express): void {
         const businessId: string = invite.businessId;
         const businessRef = db.collection('businesses').doc(businessId);
         const memberRef = db.collection('businessMemberships').doc(businessId + '_' + actor.uid);
-        const [business, membership] = await Promise.all([tx.get(businessRef), tx.get(memberRef)]);
+        const inviterRef = db.collection('businessMemberships').doc(businessId + '_' + invite.createdBy);
+        const [business, membership, inviter] = await Promise.all([
+          tx.get(businessRef), tx.get(memberRef), tx.get(inviterRef),
+        ]);
         if (!business.exists) return { status: 404, error: 'El negocio ya no existe.' };
+        const inviterRole = inviter.data()?.role as ActorRole | undefined;
+        if (!inviter.exists || inviter.data()?.active !== true ||
+            !inviterRole || !['OWNER', 'ADMIN', 'MANAGER'].includes(inviterRole) ||
+            (inviterRole === 'MANAGER' && !OPERATIONAL_ROLES.includes(invite.role as InviteRole))) {
+          return { status: 403, error: 'La persona que invitó ya no tiene permisos suficientes.' };
+        }
         if (membership.exists) return { status: 409, error: 'Esta cuenta ya tiene una membresía en el negocio.' };
         const time = new Date().toISOString();
         tx.create(memberRef, {
