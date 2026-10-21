@@ -197,8 +197,8 @@ export const BusinessEmployeesView: React.FC<{
                   <option value="new">Crear cuenta nueva</option>
                   <option value="existing">Usar cuenta existente</option>
                 </select>
-              </label>
-              {!BUSINESS_INVITES_ENABLED && <label className="text-sm font-bold">{accountMode === 'new' ? 'Contraseña temporal' : 'Contraseña de la cuenta (opcional si usa Google)'}<input type="password" minLength={accountMode === 'new' ? 6 : undefined} value={password} onChange={(e) => setPassword(e.target.value)} required={accountMode === 'new'} className="mt-1 w-full rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-3 font-normal text-[#F7F7F7]" /></label>
+              </label>}
+              {!BUSINESS_INVITES_ENABLED && <label className="text-sm font-bold">{accountMode === 'new' ? 'Contraseña temporal' : 'Contraseña de la cuenta (opcional si usa Google)'}<input type="password" minLength={accountMode === 'new' ? 6 : undefined} value={password} onChange={(e) => setPassword(e.target.value)} required={accountMode === 'new'} className="mt-1 w-full rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-3 font-normal text-[#F7F7F7]" /></label>}
               <label className="text-sm font-bold">Rol<select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value as BusinessRole)} className="mt-1 w-full rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-3 font-normal text-[#F7F7F7]">{allowedRoles.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}</select></label>
               {!BUSINESS_INVITES_ENABLED && <div className="sm:col-span-2 flex items-center gap-2 text-xs text-[#C8C8C8]"><KeyRound className="w-4 h-4" /> {accountMode === 'new' ? 'Se creará una cuenta nueva con este correo.' : 'La cuenta existente se validará con su contraseña o, si usa Google, podrás seleccionar ese mismo correo en la ventana de Google.'}</div>
               <button disabled={saving} className="sm:col-span-2 rounded-xl bg-[#D6A34A] px-4 py-3 font-black text-[#050505] disabled:opacity-50">{saving ? 'Guardando…' : BUSINESS_INVITES_ENABLED ? 'Generar invitación' : 'Crear acceso'}</button>
