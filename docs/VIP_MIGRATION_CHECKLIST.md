@@ -13,7 +13,7 @@ Proteger los nombres, teléfonos, direcciones, referencias y puntos VIP de cada 
 1. Las reglas actuales permiten **`allow get: if true`** para `vip_profiles`: cualquier cliente con un ID de documento puede leer el perfil, que incluye datos personales. Además existe un flujo público de creación/edición de perfiles. **No publicar el MVP con esta configuración.**
 2. `vipRecoveryApi.ts` ya tiene registro, recuperación, consulta/edición con sesión temporal, límites de intentos y respuestas sin `pinHash`. Requiere credenciales Firebase Admin **solo en el servidor**.
 3. `src/lib/vipStorage.ts` todavía utiliza el acceso directo a Firestore salvo que `VITE_SECURE_VIP_API=true`. No activar reglas restrictivas antes de migrar TODOS los consumidores que dependen de las consultas directas.
-4. Al activar ese flag, `getVipProfile` no muestra el perfil local sin una sesión temporal activa; en dispositivos de Calientito podría parecer que «desapareció» la tarjeta, aunque siga almacenada. Diseñar y probar recuperación explícita con teléfono+PIN y una ruta para tarjetas locales sin sincronizar antes de activar el modo.
+4. En modo seguro, `getVipProfile` conserva la vista de tarjetas **exclusivamente locales** sin sesión, pero los perfiles sincronizados requieren sesión verificada. Las tarjetas locales con historial o sellos no se migran automáticamente: necesitan validación del comercio. Comprobar el comportamiento en dispositivos reales antes de activar el modo.
 5. Las reglas propuestas usan `businessMemberships` para los permisos de administración. El personal histórico de Calientito podría no tener ese vínculo y quedaría sin acceso administrativo hasta migrar los roles.
 6. El identificador y hash actuales dependen de teléfono + PIN corto y una sal estática incluida en código cliente. Esto **no equivale a un hash lento de contraseñas** y podría permitir ataques de fuerza bruta si se filtran hashes. Planificar un esquema nuevo con verificador lento del lado servidor, compatible con la recuperación antigua; no cambiar hashes existentes sin migración probada.
 7. Los nuevos endpoints guardan los intentos y sesiones en colecciones internas (`vip_recovery_attempts`, `vip_sessions`). Verificar reglas de denegación de acceso desde clientes y políticas de eliminación/TTL antes del despliegue.
@@ -22,7 +22,7 @@ Proteger los nombres, teléfonos, direcciones, referencias y puntos VIP de cada 
 
 ### 1. Respaldo y compatibilidad
 - [ ] Realizar un respaldo de `vip_profiles` y de las membresías administrativas; documentar cómo restaurarlo y no descargar datos reales en el repositorio.
-- [ ] Identificar el usuario `OWNER/ADMIN/MANAGER` que gestiona Calientito; migrar roles a `businessMemberships` sin crear propietarios duplicados.
+- [ ] Identificar por UID Firebase y validar con el responsable a cada `OWNER/ADMIN/MANAGER` que gestiona Calientito; bloquear propietarios activos duplicados o sin autorización; seguir `docs/VIP_ADMIN_MIGRATION_RUNBOOK.md`.
 - [ ] Registrar qué tarjetas son antiguas locales, sincronizadas y de otros negocios. Probar recuperación en un segundo teléfono.
 - [ ] Identificar TODOS los lectores y escritores de `vip_profiles` (app pública, panel administrativo, pedidos y sellos). Asegurarse de que no haya flujos directos no migrados.
 - [ ] Acordar qué sucede con tarjetas locales sin PIN y sellos pendientes de validación; nunca borrar ni reiniciar puntos automáticamente.
@@ -77,3 +77,10 @@ El archivo `docs/firestore.vip-secure.STAGED.rules` solo es una **propuesta**; G
 - Se preparó en `src/lib/vipStorage.ts` compatibilidad para **mostrar tarjetas exclusivamente locales sin sesión** al probar el modo seguro; las tarjetas sincronizadas siguen exigiendo sesión. No se otorga acceso a perfiles cloud sin autenticación.
 - La migración automática de una tarjeta local con sellos, pedidos o recompensas se bloquea expresamente en modo seguro hasta contar con un procedimiento de validación administrativa. Esto evita crear una tarjeta cloud con contadores en cero y dar la falsa impresión de que se perdieron puntos.
 - **No hay conversión ni traslado de sellos realizado** y no se debe prometer que los datos locales sobrevivirán a desinstalación, limpieza del navegador o pérdida del dispositivo. Antes de activar, probar en móvil y crear procedimiento de respaldo/validación por negocio.
+
+## Procedimiento operativo de prevalidación (21/10/2026)
+
+- **Disponible en GitHub:** `docs/VIP_ADMIN_MIGRATION_RUNBOOK.md`, con identificación de administradores, clasificación individual de tarjetas, respaldo, QA y reversión.
+- **Auditoría offline:** `node scripts/vip-migration-preflight.mjs --input /ruta/privada/manifiesto.json`; detecta registros sin negocio, contadores inválidos, conflictos de propietario y membresías administrativas. `approvalToDeploy` es siempre `false`.
+- **Ensayo automático:** `node scripts/test-vip-migration-preflight.mjs`, integrado en el workflow de seguridad. Solo usa datos ficticios.
+- [ ] Pendiente revisar el inventario real con el dueño, confirmar costes de respaldo y restaurarlo en un proyecto de prueba. **No se han modificado datos de producción.**
