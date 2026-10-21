@@ -177,6 +177,35 @@ try {
   assert.equal(legacy.payload.profile.totalOrders, 7);
   assert.equal(legacy.payload.profile.memberId, 'VIP-LEGADO');
 
+  // Tarjeta histórica de Calientito sin restaurantId: recuperación y edición sin reiniciar sellos.
+  const olderPhone = '5512340005';
+  const olderId = await computeVipDocId(olderPhone, pin);
+  await db.collection('vip_profiles').doc(olderId).set({
+    memberId: 'VIP-SIN-TENANT', customerName: 'Tarjeta antigua',
+    phone: olderPhone, pinHash: await computePinHash(pin, olderPhone),
+    stamps: 3, totalOrders: 11, rewardAvailable: true,
+  });
+  const oldRecovered = await recover('alo-restaurante', olderPhone);
+  assert.equal(oldRecovered.status, 200, JSON.stringify(oldRecovered.payload));
+  assert.equal(oldRecovered.payload.profile.restaurantId, 'alo-restaurante');
+  assert.equal(oldRecovered.payload.profile.stamps, 3);
+  assert.equal(oldRecovered.payload.profile.totalOrders, 11);
+  assert.equal(oldRecovered.payload.profile.rewardAvailable, true);
+  assert.equal((await profile(businessA, oldRecovered.payload.sessionToken)).status, 401);
+  const oldEdited = await api('/api/vip/profile', {
+    method: 'PATCH', token: oldRecovered.payload.sessionToken,
+    body: { businessId: 'alo-restaurante', updates: {
+      customerName: 'Tarjeta antigua verificada', address: '', reference: '',
+      preferredPayment: 'efectivo', preferredOrderType: 'pickup',
+    } },
+  });
+  assert.equal(oldEdited.status, 200);
+  assert.equal(oldEdited.payload.profile.stamps, 3);
+  const persistedOlder = await db.collection('vip_profiles').doc(olderId).get();
+  assert.equal(persistedOlder.data().stamps, 3);
+  assert.equal(persistedOlder.data().restaurantId, undefined, 'no hay migración automática');
+  assert.equal((await profile('alo-restaurante', oldRecovered.payload.sessionToken)).status, 200);
+
   for (let i = 0; i < 5; i++) {
     const attempt = await recover(businessA, lockPhone, '4000');
     assert.equal(attempt.status, 401);
