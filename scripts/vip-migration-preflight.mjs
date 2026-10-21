@@ -44,6 +44,8 @@ export function auditVipMigration(manifest) {
     adminsMismatched: 0,
     membershipsWithInvalidId: 0,
     membershipDuplicates: 0,
+    activeOwnerMemberships: 0,
+    conflictingOwnerMemberships: 0,
   };
   const profileIds = new Set();
   for (const row of manifest.profiles) {
@@ -90,6 +92,7 @@ export function auditVipMigration(manifest) {
 
   const expectedUids = new Set();
   let ownerConfirmed = false;
+  let confirmedOwnerUid = null;
   for (const admin of manifest.expectedAdmins) {
     // Do not accept legacy staff PINs or names as verified Firebase identity.
     if (!safeRow(admin) || typeof admin.uid !== 'string' || !admin.uid.trim()
@@ -108,11 +111,22 @@ export function auditVipMigration(manifest) {
       counts.adminsMismatched++;
     } else if (admin.role === 'OWNER') {
       ownerConfirmed = true;
+      confirmedOwnerUid = admin.uid;
     }
+  }
+
+  // Los IDs legados no justifican inventar ni duplicar una cuenta propietaria.
+  // Contar todas las membresías OWNER activas, incluso las omitidas en expectedAdmins.
+  for (const membership of memberships.values()) {
+    if (membership.restaurantId !== businessId || membership.role !== 'OWNER' || membership.active !== true) continue;
+    counts.activeOwnerMemberships++;
+    if (confirmedOwnerUid !== membership.userId) counts.conflictingOwnerMemberships++;
   }
 
   const blockers = [];
   if (manifest.expectedAdmins.length === 0 || !ownerConfirmed) blockers.push('owner_not_verified_and_linked');
+  if (counts.activeOwnerMemberships !== 1 || counts.conflictingOwnerMemberships > 0)
+    blockers.push('duplicate_or_unapproved_owner_membership');
   if (counts.profilesWithoutTenant > 0) blockers.push('legacy_profiles_need_individual_owner_review');
   if (counts.profilesWithInvalidTenant > 0) blockers.push('invalid_tenant_identifiers');
   if (counts.profilesFromAnotherBusiness > 0) blockers.push('cross_business_rows_in_manifest');
