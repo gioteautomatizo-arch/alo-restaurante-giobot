@@ -63,12 +63,17 @@ function notifyVipChange(): void {
  * Lee el perfil VIP guardado en localStorage (operación instantánea local-first)
  */
 export const getVipProfile = (businessId: string = RESTAURANT_ID): VipProfile | null => {
-  if (!businessId.trim() || (SECURE_VIP_API && !tokenFor(businessId))) return null;
+  if (!businessId.trim()) return null;
   try {
     const dataStr = localStorage.getItem(vipKey(businessId));
     if (!dataStr) return null;
     const profile = JSON.parse(dataStr) as VipProfile;
     assertVipBusiness(profile, businessId);
+    if (SECURE_VIP_API && !tokenFor(businessId)) {
+      // Mostrar tarjetas solo locales (sin ID ni sincronización) mientras
+      // se completa su migración. Perfiles cloud requieren sesión verificada.
+      if (profile.id || profile.syncedWithCloud === true) return null;
+    }
     return profile;
   } catch (err) {
     console.error('Error reading VIP profile from localStorage:', err);
@@ -353,6 +358,20 @@ export const migrateLocalVipProfileWithPin = async (pin: string, businessId: str
   }
 
   const pendingStamps = existing.stamps || 0;
+
+  // La API protegida jamás debe confiar en sellos enviados por un cliente.
+  // Hasta habilitar un procedimiento administrativo de validación, bloquear
+  // la migración automática si hay historial para no sobrescribirlo por cero.
+  if (SECURE_VIP_API && (
+    pendingStamps > 0 ||
+    (existing.pendingStampsToValidate || 0) > 0 ||
+    (existing.totalOrders || 0) > 0 ||
+    existing.rewardAvailable
+  )) {
+    throw new Error(
+      'Tu tarjeta antigua conserva sellos o historial en este dispositivo. La migración automática está pausada para protegerlos; no borres la tarjeta. Pide al negocio que valide tus sellos antes de migrarla.',
+    );
+  }
 
   return await createCloudVipProfile({
     customerName: existing.customerName,
