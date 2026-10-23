@@ -8,6 +8,10 @@ export interface BusinessOrderSnapshot {
   paidTodayTotal: number;
   pendingTodayCount: number;
   pendingTodayTotal: number;
+  unpaidTotalCount: number;
+  unpaidTotalAmount: number;
+  deliveredUnpaidCount: number;
+  deliveredUnpaidAmount: number;
   paidCancelledCount: number;
   paidMissingDateCount: number;
 }
@@ -36,6 +40,9 @@ export function summarizeBusinessOrders(
     && mexicoDayKey(o.paidAt || o.createdAt || '') === today
   );
   const pendingToday = createdToday.filter((o) => o.billingStatus !== 'PAGADO');
+  // Solo PENDIENTE se considera saldo por revisar. No inferir dinero realmente adeudado.
+  const unpaid = valid.filter((o) => o.billingStatus === 'PENDIENTE');
+  const deliveredUnpaid = unpaid.filter((o) => o.status === 'ENTREGADO');
   return {
     ordersToday: createdToday.length,
     activeOrders: valid.filter((o) => ['NUEVO', 'PREPARANDO', 'LISTO'].includes(o.status)).length,
@@ -43,6 +50,10 @@ export function summarizeBusinessOrders(
     paidTodayTotal: money(paidToday.reduce((sum, o) => sum + amount(o), 0)),
     pendingTodayCount: pendingToday.length,
     pendingTodayTotal: money(pendingToday.reduce((sum, o) => sum + amount(o), 0)),
+    unpaidTotalCount: unpaid.length,
+    unpaidTotalAmount: money(unpaid.reduce((sum, o) => sum + amount(o), 0)),
+    deliveredUnpaidCount: deliveredUnpaid.length,
+    deliveredUnpaidAmount: money(deliveredUnpaid.reduce((sum, o) => sum + amount(o), 0)),
     paidCancelledCount: orders.filter((o) => o.status === 'CANCELADO' && o.billingStatus === 'PAGADO').length,
     paidMissingDateCount: valid.filter((o) => o.billingStatus === 'PAGADO' && !o.paidAt).length,
   };
