@@ -38,5 +38,7 @@ jobs:
         run: npm run build
       - name: Test safe order notifications (no Firebase writes)
         run: node --import tsx scripts/test-business-order-alerts.mts
+      - name: Test paid sales reports (no Firebase writes)
+        run: node --import tsx scripts/test-business-reports.mts
       - name: Verify staged VIP isolation (no deployment)
         run: node scripts/verify-vip-staged.mjs
