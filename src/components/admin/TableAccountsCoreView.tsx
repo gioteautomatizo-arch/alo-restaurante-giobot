@@ -263,14 +263,16 @@ export const TableAccountsView: React.FC<TableAccountsViewProps> = ({ currentUse
     setChargingOrderId(order.id);
     setError(null);
     try {
-      await chargeOffTableOrder(order, method, currentUser);
+      const charge = await chargeOffTableOrder(order, method, currentUser);
       try {
-        await createOffTableSaleReceipt({ ...order, billingStatus: 'PAGADO', paymentMethod: method, paidAt: new Date().toISOString() }, currentUser);
-        setSuccess(`Pedido ${order.code} cobrado y ticket creado (${method}) · ${money(Number(order.total || 0))}`);
+        await createOffTableSaleReceipt(charge.order, currentUser);
+        setSuccess(charge.alreadyPaid
+          ? `El pedido ${charge.order.code} ya estaba pagado. Solo se verificó el ticket, sin cobrar otra vez.`
+          : `Pedido ${order.code} cobrado y ticket creado (${method}) · ${money(Number(order.total || 0))}`);
       } catch (ticketError: any) {
         setSuccess(`Pedido ${order.code} cobrado. Falló el ticket: ${ticketError?.message || 'error de permisos o conexión'}. No vuelvas a cobrarlo.`);
       }
-      addActivityLog({
+      if (!charge.alreadyPaid) addActivityLog({
         userName: currentUser.name,
         userId: currentUser.id,
         userRole: currentUser.role,
