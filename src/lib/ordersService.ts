@@ -164,10 +164,12 @@ export async function createRestaurantOrder(
  */
 export function subscribeToBusinessRestaurantOrders(
   businessId: string,
-  callback: RestaurantOrdersSubscriber
+  callback: RestaurantOrdersSubscriber,
+  onError?: (error: Error) => void
 ): () => void {
   if (!businessId.trim()) {
-    callback([]);
+    if (onError) onError(new Error('Falta identificar el negocio.'));
+    else callback([]);
     return () => {};
   }
 
@@ -188,7 +190,9 @@ export function subscribeToBusinessRestaurantOrders(
     },
     (error) => {
       console.warn('[ordersService] business order listener error:', businessId, error);
-      callback([]);
+      // En Caja no debemos convertir un fallo de permisos/conexión en ventas = 0.
+      if (onError) onError(error);
+      else callback([]); // compatibilidad con consumidores que no manejan errores
     }
   );
 }
