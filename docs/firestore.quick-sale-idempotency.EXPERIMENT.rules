@@ -1,0 +1,878 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isPlatformSuperAdmin() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/platformAdmins/$(request.auth.uid)).data.active != false;
+    }
+
+    // Lee la membresía del usuario autenticado una sola vez por comprobación.
+    // Evitamos encadenar exists/get y volver a ejecutar hasActiveMembership()
+    // dentro de getCallerMembershipRole(), lo que provocaba permission-denied
+    // en consultas a subcolecciones.
+    function hasActiveMembership(businessId) {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true;
+    }
+
+    function getCallerMembershipRole(businessId) {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true
+        ? get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role
+        : (isPlatformSuperAdmin() ? 'SUPER_ADMIN' : 'NONE');
+    }
+
+    function canManageMembership(businessId) {
+      return isSignedIn()
+        && (
+          (
+            get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true
+            && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role in ['OWNER', 'ADMIN', 'MANAGER']
+          )
+          || isPlatformSuperAdmin()
+        );
+    }
+
+    function canAssignRole(managerRole, targetRole) {
+      return managerRole in ['OWNER', 'ADMIN', 'SUPER_ADMIN']
+        || (managerRole == 'MANAGER' && targetRole in ['CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']);
+    }
+
+    function isValidRestaurant(data) {
+      return data.restaurantId == 'alo-restaurante';
+    }
+
+    function isKnownRestaurant(data) {
+      return data.restaurantId is string
+        && (
+          data.restaurantId == 'alo-restaurante'
+          || exists(/databases/$(database)/documents/businesses/$(data.restaurantId))
+        );
+    }
+
+    // Un pedido anónimo multinegocio solo puede dirigirse a una página publicada.
+    function isPublishedBusiness(businessId) {
+      return businessId is string
+        && exists(/databases/$(database)/documents/publicBusinessProfiles/$(businessId))
+        && get(/databases/$(database)/documents/publicBusinessProfiles/$(businessId)).data.published == true;
+    }
+
+    function isAuthorizedRestaurant(data) {
+      return isSignedIn()
+        && data.restaurantId is string
+        && (
+          data.restaurantId == 'alo-restaurante'
+          || hasActiveMembership(data.restaurantId)
+          || isPlatformSuperAdmin()
+        );
+    }
+
+    match /businesses/{businessId} {
+      // La ficha completa del tenant contiene configuración interna; no es pública.
+      allow read: if isPlatformSuperAdmin()
+        || (isSignedIn() && hasActiveMembership(businessId));
+
+      // Cada nuevo negocio queda vinculado al UID que lo crea.
+      allow create: if isSignedIn()
+        && request.resource.data.restaurantId == businessId
+        && request.resource.data.ownerUserId == request.auth.uid
+        && businessId != 'alo-restaurante'
+        && !exists(/databases/$(database)/documents/businesses/$(businessId));
+
+      // Identificadores inmutables para propietarios y administradores.
+      // get(..., null) permite actualizar negocios históricos sin ownerUserId.
+      allow update: if isSignedIn()
+        && request.resource.data.restaurantId == resource.data.restaurantId
+        && request.resource.data.get('ownerUserId', null) == resource.data.get('ownerUserId', null)
+        && (
+          (
+            hasActiveMembership(businessId)
+            && getCallerMembershipRole(businessId) == 'OWNER'
+          )
+          || isPlatformSuperAdmin()
+        );
+
+      allow delete: if isSignedIn()
+        && (
+          (
+            hasActiveMembership(businessId)
+            && getCallerMembershipRole(businessId) == 'OWNER'
+          )
+          || isPlatformSuperAdmin()
+        );
+
+      // El roster de empleados es un índice técnico del negocio. Los responsables
+      // pueden modificar únicamente ese campo; el resto de la configuración sigue
+      // protegido por la regla anterior.
+      allow update: if isSignedIn()
+        && hasActiveMembership(businessId)
+        && getCallerMembershipRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['employeeUserIds']);
+    }
+
+    match /businesses/{businessId}/employees/{employeeUserId} {
+      // Los datos del personal son privados: solo responsables activos del negocio
+      // o un administrador de plataforma pueden consultarlos.
+      allow read: if canManageMembership(businessId);
+
+      allow create: if isSignedIn()
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role in ['OWNER', 'ADMIN', 'MANAGER']
+        && request.resource.data.restaurantId == businessId
+        && request.resource.data.userId == employeeUserId
+        && request.resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+        && request.resource.data.active == true
+        && canAssignRole(getCallerMembershipRole(businessId), request.resource.data.role);
+
+      allow update: if canManageMembership(businessId)
+        && resource.data.restaurantId == businessId
+        && resource.data.userId == employeeUserId
+        && resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+        && request.resource.data.restaurantId == businessId
+        && request.resource.data.userId == employeeUserId
+        && request.resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+        && request.resource.data.active is bool
+        // Un encargado no puede rebajar ni modificar a un ADMIN/MANAGER.
+        && canAssignRole(getCallerMembershipRole(businessId), resource.data.role)
+        && canAssignRole(getCallerMembershipRole(businessId), request.resource.data.role);
+
+      allow delete: if canManageMembership(businessId)
+        && resource.data.restaurantId == businessId
+        && resource.data.userId == employeeUserId
+        && resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+        && canAssignRole(getCallerMembershipRole(businessId), resource.data.role);
+    }
+
+    match /publicBusinessProfiles/{businessId} {
+      // Solo perfiles expresamente publicados son visibles para visitantes.
+      allow get, list: if resource.data.published == true
+        || (isSignedIn() && (
+          isPlatformSuperAdmin()
+          || (
+            exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
+            && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true
+            && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role == 'OWNER'
+          )
+        ));
+
+      allow create, update: if isSignedIn()
+        && (
+          isPlatformSuperAdmin()
+          || (
+            exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
+            && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true
+            && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role == 'OWNER'
+          )
+        )
+        && request.resource.data.businessId == businessId
+        && request.resource.data.restaurantId == businessId
+        && request.resource.data.published is bool
+        && request.resource.data.keys().hasOnly([
+          'businessId', 'restaurantId', 'businessType', 'branding', 'published', 'updatedAt'
+        ]);
+
+      allow delete: if isPlatformSuperAdmin();
+    }
+
+    match /businesses/{businessId}/catalog/{catalogDoc} {
+      // Un menú en borrador no debe exponerse con solo conocer el ID.
+      allow read: if isPublishedBusiness(businessId)
+        || hasActiveMembership(businessId)
+        || isPlatformSuperAdmin();
+
+      // Mismos roles que el editor de catálogo. Caja, meseros, cocina y
+      // empleados solo pueden consultar el menú, nunca alterar precios.
+      allow create, update: if isSignedIn()
+        && request.resource.data.businessId == businessId
+        && (isPlatformSuperAdmin()
+          || getCallerMembershipRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER']);
+
+      allow delete: if isSignedIn()
+        && (isPlatformSuperAdmin()
+          || getCallerMembershipRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER']);
+    }
+
+    // ── Módulos administrativos por negocio (turnos, gastos, resguardo, cuentas, bitácora…).
+    // Un solo bloque cubre a TODOS los negocios: los datos viven en
+    // businesses/{id}/{módulo}/{doc} y el acceso depende de la membresía activa y su rol.
+    // Agregar un negocio nuevo no requiere tocar reglas.
+    function isTenantModule(col) {
+      return col in ['shifts', 'expenses', 'vault', 'receivables', 'payables', 'auditLog'];
+    }
+
+    function tenantRole(businessId) {
+      return getCallerMembershipRole(businessId);
+    }
+
+    match /businesses/{businessId}/{moduleCol}/{moduleDoc} {
+      allow read: if isTenantModule(moduleCol)
+        && (
+          moduleCol == 'auditLog'
+            ? tenantRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER', 'SUPER_ADMIN']
+            : tenantRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER', 'CASHIER', 'SUPER_ADMIN']
+        );
+
+      allow create: if isTenantModule(moduleCol)
+        && request.resource.data.businessId == businessId
+        && (
+          moduleCol == 'auditLog'
+            ? tenantRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE', 'SUPER_ADMIN']
+              && request.resource.data.actorId == request.auth.uid
+            : tenantRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER', 'CASHIER', 'SUPER_ADMIN']
+        );
+
+      // La bitácora no se edita ni se borra. Los turnos tampoco se borran (se cierran).
+      allow update: if isTenantModule(moduleCol)
+        && moduleCol != 'auditLog'
+        && request.resource.data.businessId == businessId
+        && tenantRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER', 'CASHIER', 'SUPER_ADMIN'];
+
+      allow delete: if isTenantModule(moduleCol)
+        && moduleCol != 'auditLog'
+        && moduleCol != 'shifts'
+        && tenantRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER', 'SUPER_ADMIN'];
+    }
+
+    match /businessMemberships/{membershipId} {
+      // Un usuario puede consultar su membresía. Los responsables también pueden
+      // consultar las membresías de su propio negocio para administrar el equipo.
+      allow read: if isSignedIn()
+        && (
+          resource.data.userId == request.auth.uid
+          || canManageMembership(resource.data.restaurantId)
+        );
+
+      // El alta del propietario solo puede crear su propia membresía.
+      // Los demás empleados son creados por el módulo de Empleados.
+      allow create: if (
+        // Alta inicial del propietario.
+        isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.role == 'OWNER'
+        && request.resource.data.active == true
+        && request.resource.data.restaurantId is string
+        && request.resource.data.restaurantId != 'alo-restaurante'
+        && membershipId == request.resource.data.restaurantId + '_' + request.auth.uid
+        && existsAfter(/databases/$(database)/documents/businesses/$(request.resource.data.restaurantId))
+        && getAfter(/databases/$(database)/documents/businesses/$(request.resource.data.restaurantId)).data.ownerUserId == request.auth.uid
+      ) || (
+        // Alta de empleado por un responsable activo del mismo negocio.
+        isSignedIn()
+        && request.resource.data.restaurantId is string
+        && request.resource.data.userId is string
+        && request.resource.data.userId != request.auth.uid
+        && request.resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+        && request.resource.data.active == true
+        && membershipId == request.resource.data.restaurantId + '_' + request.resource.data.userId
+        && exists(/databases/$(database)/documents/businesses/$(request.resource.data.restaurantId))
+        && exists(/databases/$(database)/documents/businessMemberships/$(request.resource.data.restaurantId + '_' + request.auth.uid))
+        && get(/databases/$(database)/documents/businessMemberships/$(request.resource.data.restaurantId + '_' + request.auth.uid)).data.active == true
+        && get(/databases/$(database)/documents/businessMemberships/$(request.resource.data.restaurantId + '_' + request.auth.uid)).data.role in ['OWNER', 'ADMIN', 'MANAGER']
+        && (
+          get(/databases/$(database)/documents/businessMemberships/$(request.resource.data.restaurantId + '_' + request.auth.uid)).data.role in ['OWNER', 'ADMIN']
+          || request.resource.data.role in ['CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+        )
+      );
+
+      // Solo un responsable puede cambiar empleados. Nunca se permite modificar
+      // OWNER/SUPER_ADMIN ni cambiar el userId/restaurantId de una membresía.
+      allow update: if isSignedIn()
+        && resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+        && canManageMembership(resource.data.restaurantId)
+        && resource.data.userId == request.resource.data.userId
+        && resource.data.restaurantId == request.resource.data.restaurantId
+        && request.resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+        && canAssignRole(
+          getCallerMembershipRole(resource.data.restaurantId),
+          resource.data.role
+        )
+        && canAssignRole(
+          getCallerMembershipRole(resource.data.restaurantId),
+          request.resource.data.role
+        )
+        && request.resource.data.active is bool;
+
+      // Un empleado puede abandonar su propia membresía; un responsable puede
+      // retirar a un empleado, pero nunca OWNER/SUPER_ADMIN.
+      allow delete: if (
+        isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+      ) || (
+        resource.data.role in ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']
+        && canManageMembership(resource.data.restaurantId)
+        && canAssignRole(getCallerMembershipRole(resource.data.restaurantId), resource.data.role)
+      );
+    }
+
+    // Administradores de plataforma: los documentos se crean fuera del cliente
+    // (setup seguro). El usuario solo puede consultar su propio estado.
+    match /platformAdmins/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow create, update, delete: if false;
+    }
+
+    // Lectura de datos operativos. Calientito (legado) conserva su acceso actual;
+    // cualquier otro negocio solo es legible por sus miembros activos o el superadmin.
+    function canReadRestaurantDoc(data) {
+      return data.restaurantId == 'alo-restaurante'
+        ? isSignedIn()
+        : isAuthorizedRestaurant(data);
+    }
+
+    match /staff_users/{userId} {
+      allow read: if canReadRestaurantDoc(resource.data);
+      allow create, update: if isAuthorizedRestaurant(request.resource.data) 
+        && request.resource.data.name is string 
+        && request.resource.data.role in ['DUEÑA', 'ADMINISTRADOR', 'ENCARGADO', 'CAJA', 'MESERO', 'COCINA', 'EMPLEADO'];
+      allow delete: if isAuthorizedRestaurant(resource.data);
+    }
+
+    match /shifts/{shiftId} {
+      allow read: if canReadRestaurantDoc(resource.data);
+      allow create, update: if isAuthorizedRestaurant(request.resource.data)
+        && request.resource.data.status in ['abierto', 'cerrado']
+        && request.resource.data.initialCashFund is number;
+      allow delete: if isAuthorizedRestaurant(resource.data);
+    }
+
+    match /expenses/{expenseId} {
+      allow read: if canReadRestaurantDoc(resource.data);
+      allow create, update: if isAuthorizedRestaurant(request.resource.data)
+        && request.resource.data.concept is string
+        && request.resource.data.amount is number
+        && request.resource.data.amount >= 0;
+      allow delete: if isAuthorizedRestaurant(resource.data);
+    }
+
+    match /cxc_records/{cxcId} {
+      allow read: if canReadRestaurantDoc(resource.data);
+      allow create, update: if isAuthorizedRestaurant(request.resource.data)
+        && request.resource.data.person is string
+        && request.resource.data.amount is number
+        && request.resource.data.status in ['Pendiente', 'Pagado', 'Anulado'];
+      allow delete: if isAuthorizedRestaurant(resource.data);
+    }
+
+    match /inventory_items/{itemId} {
+      allow read: if canReadRestaurantDoc(resource.data);
+      allow create, update: if isAuthorizedRestaurant(request.resource.data)
+        && request.resource.data.name is string;
+      allow delete: if isAuthorizedRestaurant(resource.data);
+    }
+
+    match /sobre_movements/{movementId} {
+      allow read: if canReadRestaurantDoc(resource.data);
+      allow create, update: if isAuthorizedRestaurant(request.resource.data)
+        && request.resource.data.amount is number;
+      allow delete: if isAuthorizedRestaurant(resource.data);
+    }
+
+    match /daily_menu/{menuDoc} {
+      allow read: if true;
+      allow create, update: if isAuthorizedRestaurant(request.resource.data);
+      allow delete: if isAuthorizedRestaurant(resource.data);
+    }
+
+    match /activity_logs/{logId} {
+      allow read: if canReadRestaurantDoc(resource.data);
+      allow create: if isAuthorizedRestaurant(request.resource.data)
+        && request.resource.data.action is string;
+      allow update, delete: if false;
+    }
+
+    // ACTIVAR SOLO DESPUES DE VALIDAR LOGIN, MIGRACION Y PRUEBAS CON EMULATOR.
+    // Las rutas publicas /api/vip/* usan Firebase Admin SDK solo en servidor.
+    function canManageVipProfiles(businessId) {
+      return isPlatformSuperAdmin()
+        || (
+          isSignedIn()
+          && hasActiveMembership(businessId)
+          && getCallerMembershipRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER']
+        );
+    }
+
+    // Validacion basica de integridad. Es independiente del negocio y evita
+    // sellos negativos o valores no numericos incluso para administradores.
+    function vipCountersValid(data) {
+      return data.stamps is int
+        && data.stamps >= 0
+        && data.stamps <= 1000000
+        && data.totalOrders is int
+        && data.totalOrders >= 0
+        && data.totalOrders <= 1000000
+        && data.rewardAvailable is bool
+        && data.get('pendingStampsToValidate', 0) is int
+        && data.get('pendingStampsToValidate', 0) >= 0
+        && data.get('pendingStampsToValidate', 0) <= 1000000;
+    }
+
+    match /vip_profiles/{profileId} {
+      // Los perfiles solo son visibles para los responsables del mismo negocio.
+      allow get, list: if resource.data.restaurantId is string
+        && canManageVipProfiles(resource.data.restaurantId);
+
+      // La pagina publica crea perfiles mediante el servidor. Las altas de
+      // administradores autenticados deben comenzar sin puntos regalados.
+      allow create: if request.resource.data.restaurantId is string
+        && canManageVipProfiles(request.resource.data.restaurantId)
+        && request.resource.data.customerName is string
+        && request.resource.data.phone is string
+        && request.resource.data.pinHash is string
+        && request.resource.data.memberId is string
+        && vipCountersValid(request.resource.data)
+        && request.resource.data.stamps == 0
+        && request.resource.data.totalOrders == 0
+        && request.resource.data.rewardAvailable == false
+        && request.resource.data.get('pendingStampsToValidate', 0) == 0;
+
+      // Desde el SDK cliente de administracion solamente se pueden editar
+      // sellos, compras, recompensas y fecha; la informacion personal del
+      // titular la modifica el backend autentificado con sesion propia.
+      allow update: if resource.data.restaurantId is string
+        && canManageVipProfiles(resource.data.restaurantId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['stamps', 'totalOrders', 'rewardAvailable', 'pendingStampsToValidate', 'updatedAt'])
+        && request.resource.data.restaurantId == resource.data.restaurantId
+        && request.resource.data.phone == resource.data.phone
+        && request.resource.data.pinHash == resource.data.pinHash
+        && request.resource.data.memberId == resource.data.memberId
+        && vipCountersValid(request.resource.data);
+
+      allow delete: if resource.data.restaurantId is string
+        && canManageVipProfiles(resource.data.restaurantId);
+    }
+
+    match /tables/{tableId} {
+      allow get: if true;
+      allow list: if canReadRestaurantDoc(resource.data);
+      allow create: if isAuthorizedRestaurant(request.resource.data)
+        && request.resource.data.status in ['LIBRE', 'OCUPADA', 'CUENTA', 'LIMPIEZA'];
+      allow update: if (
+        request.auth == null
+        && isKnownRestaurant(request.resource.data)
+        && request.resource.data.status == 'OCUPADA'
+        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && request.resource.data.tableId == resource.data.tableId
+      ) || (
+        isAuthorizedRestaurant(request.resource.data)
+        && request.resource.data.status in ['LIBRE', 'OCUPADA', 'CUENTA', 'LIMPIEZA']
+      );
+      allow delete: if isAuthorizedRestaurant(resource.data);
+    }
+
+    match /table_service_requests/{requestId} {
+      allow create: if (
+        request.auth == null
+        && isKnownRestaurant(request.resource.data)
+        && request.resource.data.status == 'PENDIENTE'
+        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && request.resource.data.requestType in ['LLAMAR_MESERO', 'TORTILLAS', 'BEBIDAS', 'SEGUNDO_TIEMPO', 'TERCER_TIEMPO', 'PEDIR_CUENTA']
+        && request.resource.data.createdAt is string
+        && request.resource.data.keys().hasOnly(['tableNumber', 'requestType', 'status', 'restaurantId', 'createdAt'])
+      ) || (
+        isAuthorizedRestaurant(request.resource.data)
+      );
+
+      allow read: if true;
+      allow update, delete: if isAuthorizedRestaurant(resource.data);
+    }
+
+    match /restaurant_orders/{orderId} {
+    // EXPERIMENTO AISLADO: NO APTO PARA PRODUCCION.
+    function isQuickSaleId() {
+      return orderId.matches('^quick-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}
+        isKnownRestaurant(request.resource.data)
+        && request.resource.data.status == 'NUEVO'
+        && request.resource.data.orderType in ['dine_in', 'pickup', 'delivery']
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.items.size() <= 100
+        && request.resource.data.total is number
+        && request.resource.data.total >= 0
+        && request.resource.data.code is string
+        && request.resource.data.code.size() > 0
+        && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is string
+        && (
+          // Compatibilidad con los pedidos históricos de Calientito.
+          request.resource.data.restaurantId == 'alo-restaurante'
+          // Caja/POS: solo responsables y empleados con permiso de crear pedidos.
+          // Una membresía de consulta no debe emitir operaciones.
+          || (
+            isSignedIn()
+            && request.resource.data.restaurantId != 'alo-restaurante'
+            && getCallerMembershipRole(request.resource.data.restaurantId)
+              in ['OWNER', 'ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'SUPER_ADMIN']
+            && request.resource.data.billingStatus == 'PENDIENTE'
+          )
+          // Pedido web anónimo: solo para un negocio publicado y con campos públicos permitidos.
+          || (
+            // Un comprador puede haber iniciado sesión en otro comercio:
+            // el pedido sigue siendo público, pero nunca puede marcarse pagado.
+            request.resource.data.orderSource == 'CLIENTE_QR'
+            && isPublishedBusiness(request.resource.data.restaurantId)
+            && request.resource.data.customerName is string
+            && request.resource.data.paymentMethod in ['efectivo', 'transferencia', 'tarjeta']
+            && request.resource.data.billingStatus == 'PENDIENTE'
+            && request.resource.data.subtotal is number
+            && request.resource.data.subtotal >= 0
+            && request.resource.data.discountAmount is number
+            && request.resource.data.discountAmount >= 0
+            && request.resource.data.deliveryFee is number
+            && request.resource.data.deliveryFee >= 0
+            && request.resource.data.keys().hasOnly([
+              'code', 'restaurantId', 'orderType', 'tableNumber', 'tableSessionId',
+              'accountId', 'accountLabel', 'orderSource', 'orderOrigin', 'qrSource',
+              'customerName', 'phone', 'address', 'addressReference', 'paymentMethod',
+              'bringOwnContainer', 'notes', 'items', 'subtotal', 'discountAmount',
+              'deliveryFee', 'total', 'status', 'billingStatus', 'createdAt', 'updatedAt'
+            ])
+          )
+        )
+      ));
+
+      // Calientito conserva compatibilidad con su flujo legado. Los pedidos de
+      // cualquier otro negocio solo son visibles para miembros activos de ese tenant
+      // o para el superadministrador; no basta con haber iniciado sesión.
+      allow read: if (isQuickSaleId()
+        && canOperateQuickSale(resource.data.restaurantId))
+        || (!isQuickSaleId() && (
+          resource.data.restaurantId == 'alo-restaurante'
+            ? isSignedIn() : isAuthorizedRestaurant(resource.data)
+        ));
+
+      // Compatibilidad Calientito: mantener sin cambios su operación histórica
+      // hasta completar pruebas de roles, pagos y caja. No es autorización final.
+      allow update: if (isQuickSaleId()
+        && canOperateQuickSale(resource.data.restaurantId)
+        && request.resource.data.restaurantId == resource.data.restaurantId
+        && (
+          (
+            resource.data.billingStatus == 'PENDIENTE'
+            && request.resource.data.billingStatus == 'PAGADO'
+            && request.resource.data.status == resource.data.status
+            && request.resource.data.paidAt is string
+            && request.resource.data.chargedById is string
+            && request.resource.data.chargedByName is string
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'billingStatus','paymentMethod','paidAt','chargedById','chargedByName','updatedAt','status'
+            ])
+          )
+          ||
+          (
+            request.resource.data.billingStatus == resource.data.billingStatus
+            && request.resource.data.status in ['NUEVO','PREPARANDO','LISTO','ENTREGADO','CANCELADO']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status','updatedAt','claimedById','claimedByName','readyAt',
+              'deliveredAt','cancelledAt','cancelledBy'
+            ])
+          )
+        )
+      ) || (!isQuickSaleId() && (
+        resource.data.restaurantId == 'alo-restaurante'
+        && isAuthorizedRestaurant(resource.data)
+        && isAuthorizedRestaurant(request.resource.data)
+        && request.resource.data.status in ['NUEVO', 'PREPARANDO', 'LISTO', 'ENTREGADO', 'CANCELADO']
+      ) || (
+        // Módulo universal: no permite cambiar el negocio, importe, productos,
+        // estado de cobro ni datos del cliente mediante el cambio de estado.
+        resource.data.restaurantId != 'alo-restaurante'
+        && isSignedIn()
+        && getCallerMembershipRole(resource.data.restaurantId)
+          in ['OWNER', 'ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'SUPER_ADMIN']
+        && request.resource.data.restaurantId == resource.data.restaurantId
+        && request.resource.data.code == resource.data.code
+        && request.resource.data.items == resource.data.items
+        && request.resource.data.total == resource.data.total
+        && request.resource.data.billingStatus == resource.data.billingStatus
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'updatedAt', 'claimedById', 'claimedByName',
+          'readyAt', 'deliveredAt', 'cancelledAt', 'cancelledBy'
+        ])
+        && request.resource.data.status in ['NUEVO', 'PREPARANDO', 'LISTO', 'ENTREGADO', 'CANCELADO']
+      ));
+
+      allow delete: if false;
+    }
+
+);
+    }
+    function canOperateQuickSale(businessId) {
+      return isSignedIn() && getCallerMembershipRole(businessId)
+        in ['OWNER', 'ADMIN', 'MANAGER', 'CASHIER', 'SUPER_ADMIN'];
+    }
+    function quickSalePayloadValid() {
+      return isKnownRestaurant(request.resource.data)
+        && canOperateQuickSale(request.resource.data.restaurantId)
+        && request.resource.data.orderType == 'pickup'
+        && request.resource.data.orderSource == 'CAJA'
+        && request.resource.data.status == 'NUEVO'
+        && request.resource.data.billingStatus == 'PENDIENTE'
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.items.size() <= 100
+        && request.resource.data.total is number
+        && request.resource.data.total > 0
+        && request.resource.data.code is string
+        && request.resource.data.code.size() > 0
+        && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is string
+        && request.resource.data.keys().hasOnly([
+          'code', 'restaurantId', 'orderType', 'orderSource', 'orderOrigin',
+          'capturedById', 'capturedByName', 'customerName', 'paymentMethod',
+          'bringOwnContainer', 'notes', 'items', 'subtotal', 'discountAmount',
+          'deliveryFee', 'total', 'status', 'billingStatus', 'createdAt', 'updatedAt'
+        ]);
+    }
+      allow create: if (isQuickSaleId() && quickSalePayloadValid()) || (!isQuickSaleId() && (
+        isKnownRestaurant(request.resource.data)
+        && request.resource.data.status == 'NUEVO'
+        && request.resource.data.orderType in ['dine_in', 'pickup', 'delivery']
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.items.size() <= 100
+        && request.resource.data.total is number
+        && request.resource.data.total >= 0
+        && request.resource.data.code is string
+        && request.resource.data.code.size() > 0
+        && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is string
+        && (
+          // Compatibilidad con los pedidos históricos de Calientito.
+          request.resource.data.restaurantId == 'alo-restaurante'
+          // Caja/POS: solo responsables y empleados con permiso de crear pedidos.
+          // Una membresía de consulta no debe emitir operaciones.
+          || (
+            isSignedIn()
+            && request.resource.data.restaurantId != 'alo-restaurante'
+            && getCallerMembershipRole(request.resource.data.restaurantId)
+              in ['OWNER', 'ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'SUPER_ADMIN']
+            && request.resource.data.billingStatus == 'PENDIENTE'
+          )
+          // Pedido web anónimo: solo para un negocio publicado y con campos públicos permitidos.
+          || (
+            // Un comprador puede haber iniciado sesión en otro comercio:
+            // el pedido sigue siendo público, pero nunca puede marcarse pagado.
+            request.resource.data.orderSource == 'CLIENTE_QR'
+            && isPublishedBusiness(request.resource.data.restaurantId)
+            && request.resource.data.customerName is string
+            && request.resource.data.paymentMethod in ['efectivo', 'transferencia', 'tarjeta']
+            && request.resource.data.billingStatus == 'PENDIENTE'
+            && request.resource.data.subtotal is number
+            && request.resource.data.subtotal >= 0
+            && request.resource.data.discountAmount is number
+            && request.resource.data.discountAmount >= 0
+            && request.resource.data.deliveryFee is number
+            && request.resource.data.deliveryFee >= 0
+            && request.resource.data.keys().hasOnly([
+              'code', 'restaurantId', 'orderType', 'tableNumber', 'tableSessionId',
+              'accountId', 'accountLabel', 'orderSource', 'orderOrigin', 'qrSource',
+              'customerName', 'phone', 'address', 'addressReference', 'paymentMethod',
+              'bringOwnContainer', 'notes', 'items', 'subtotal', 'discountAmount',
+              'deliveryFee', 'total', 'status', 'billingStatus', 'createdAt', 'updatedAt'
+            ])
+          )
+        )
+      );
+
+      // Calientito conserva compatibilidad con su flujo legado. Los pedidos de
+      // cualquier otro negocio solo son visibles para miembros activos de ese tenant
+      // o para el superadministrador; no basta con haber iniciado sesión.
+      allow read: if resource.data.restaurantId == 'alo-restaurante'
+        ? isSignedIn()
+        : isAuthorizedRestaurant(resource.data);
+
+      // Compatibilidad Calientito: mantener sin cambios su operación histórica
+      // hasta completar pruebas de roles, pagos y caja. No es autorización final.
+      allow update: if (
+        resource.data.restaurantId == 'alo-restaurante'
+        && isAuthorizedRestaurant(resource.data)
+        && isAuthorizedRestaurant(request.resource.data)
+        && request.resource.data.status in ['NUEVO', 'PREPARANDO', 'LISTO', 'ENTREGADO', 'CANCELADO']
+      ) || (
+        // Módulo universal: no permite cambiar el negocio, importe, productos,
+        // estado de cobro ni datos del cliente mediante el cambio de estado.
+        resource.data.restaurantId != 'alo-restaurante'
+        && isSignedIn()
+        && getCallerMembershipRole(resource.data.restaurantId)
+          in ['OWNER', 'ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'SUPER_ADMIN']
+        && request.resource.data.restaurantId == resource.data.restaurantId
+        && request.resource.data.code == resource.data.code
+        && request.resource.data.items == resource.data.items
+        && request.resource.data.total == resource.data.total
+        && request.resource.data.billingStatus == resource.data.billingStatus
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'updatedAt', 'claimedById', 'claimedByName',
+          'readyAt', 'deliveredAt', 'cancelledAt', 'cancelledBy'
+        ])
+        && request.resource.data.status in ['NUEVO', 'PREPARANDO', 'LISTO', 'ENTREGADO', 'CANCELADO']
+      );
+
+      allow delete: if false;
+    }
+
+    match /public_table_orders/{orderId} {
+      allow read: if true;
+
+      allow create: if (
+        isKnownRestaurant(request.resource.data)
+        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && request.resource.data.orderId == orderId
+        && request.resource.data.code is string
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.total is number
+        && request.resource.data.total >= 0
+        && request.resource.data.status == 'NUEVO'
+        && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is string
+      );
+
+      allow update: if isAuthorizedRestaurant(resource.data)
+        && isAuthorizedRestaurant(request.resource.data)
+        && request.resource.data.orderId == resource.data.orderId
+        && request.resource.data.tableNumber == resource.data.tableNumber
+        && request.resource.data.items == resource.data.items
+        && request.resource.data.total == resource.data.total
+        && request.resource.data.code == resource.data.code;
+
+      allow delete: if false;
+    }
+
+    match /table_sessions/{sessionId} {
+      allow get: if true;
+      allow list: if canReadRestaurantDoc(resource.data);
+
+      allow create: if (
+        request.auth == null
+        && isKnownRestaurant(request.resource.data)
+        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && (request.resource.data.guestCount is int || request.resource.data.guestCount is number)
+        && request.resource.data.guestCount >= 1
+        && request.resource.data.guestCount <= 20
+        && request.resource.data.accountMode == 'GENERAL'
+        && request.resource.data.accounts is list
+        && request.resource.data.accounts.size() == 1
+        && request.resource.data.accounts[0].id == 'general'
+        && request.resource.data.accounts[0].label is string
+        && request.resource.data.status == 'ACTIVA'
+        && request.resource.data.openedBy == 'QR'
+        && request.resource.data.openedAt is string
+        && request.resource.data.updatedAt is string
+        && request.resource.data.keys().hasOnly([
+          'restaurantId', 'tableNumber', 'guestCount', 'accountMode', 'accounts',
+          'status', 'openedBy', 'openedAt', 'updatedAt'
+        ])
+      ) || (
+        isAuthorizedRestaurant(request.resource.data)
+        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && request.resource.data.status in ['ACTIVA', 'CUENTA', 'CERRADA']
+        && request.resource.data.accountMode in ['GENERAL', 'SEPARADAS']
+      );
+
+      allow update: if (
+        request.auth == null
+        && resource.data.status == 'CERRADA'
+        && isKnownRestaurant(request.resource.data)
+        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && request.resource.data.tableNumber == resource.data.tableNumber
+        && (request.resource.data.guestCount is int || request.resource.data.guestCount is number)
+        && request.resource.data.guestCount >= 1
+        && request.resource.data.guestCount <= 20
+        && request.resource.data.accountMode == 'GENERAL'
+        && request.resource.data.accounts is list
+        && request.resource.data.accounts.size() == 1
+        && request.resource.data.accounts[0].id == 'general'
+        && request.resource.data.accounts[0].label is string
+        && request.resource.data.status == 'ACTIVA'
+        && request.resource.data.openedBy == 'QR'
+        && request.resource.data.openedAt is string
+        && request.resource.data.updatedAt is string
+        && request.resource.data.keys().hasOnly([
+          'restaurantId', 'tableNumber', 'guestCount', 'accountMode', 'accounts',
+          'status', 'openedBy', 'openedAt', 'updatedAt'
+        ])
+      ) || (
+        request.auth == null
+        && resource.data.openedBy == 'MESERO'
+        && resource.data.status == 'ACTIVA'
+        && isKnownRestaurant(request.resource.data)
+        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && request.resource.data.tableNumber == resource.data.tableNumber
+        && (request.resource.data.guestCount is int || request.resource.data.guestCount is number)
+        && request.resource.data.guestCount >= 1
+        && request.resource.data.guestCount <= 20
+        && request.resource.data.updatedAt is string
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'guestCount', 'updatedAt', 'updatedById', 'updatedByName'
+        ])
+      ) || (
+        isAuthorizedRestaurant(request.resource.data)
+        && request.resource.data.tableNumber == resource.data.tableNumber
+        && request.resource.data.status in ['ACTIVA', 'CUENTA', 'CERRADA']
+        && request.resource.data.accountMode in ['GENERAL', 'SEPARADAS']
+      );
+
+      allow delete: if isAuthorizedRestaurant(resource.data);
+    }
+
+    match /table_payments/{paymentId} {
+      allow read: if canReadRestaurantDoc(resource.data);
+      allow create: if isAuthorizedRestaurant(request.resource.data)
+        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && request.resource.data.orderIds is list
+        && request.resource.data.orderIds.size() > 0
+        && request.resource.data.subtotal is number
+        && request.resource.data.discountAmount is number
+        && request.resource.data.tipAmount is number
+        && request.resource.data.total is number
+        && request.resource.data.total >= 0
+        && request.resource.data.paymentMethod in ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'MERCADO_PAGO', 'MIXTO']
+        && request.resource.data.status == 'PAGADO'
+        && request.resource.data.createdAt is string
+        && request.resource.data.chargedById is string
+        && request.resource.data.chargedByName is string;
+
+      allow update, delete: if false;
+    }
+
+    match /sale_receipts/{receiptId} {
+      allow read: if canReadRestaurantDoc(resource.data);
+      allow create: if isAuthorizedRestaurant(request.resource.data)
+        && request.resource.data.orderIds is list
+        && request.resource.data.paymentIds is list
+        && request.resource.data.orders is list
+        && request.resource.data.payments is list
+        && request.resource.data.subtotal is number
+        && request.resource.data.discountAmount is number
+        && request.resource.data.tipAmount is number
+        && request.resource.data.totalPaid is number
+        && request.resource.data.status == 'PAGADO'
+        && request.resource.data.openedAt is string
+        && request.resource.data.closedAt is string
+        && request.resource.data.closedById is string
+        && request.resource.data.closedByName is string
+        && (
+          (('receiptType' in request.resource.data) && request.resource.data.receiptType == 'OFF_TABLE'
+            && request.resource.data.tableNumber == 0
+            && request.resource.data.orderIds.size() == 1
+            && !('tableSessionId' in request.resource.data))
+          || ((!('receiptType' in request.resource.data) || request.resource.data.receiptType != 'OFF_TABLE')
+            && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+            && request.resource.data.tableSessionId is string)
+        );
+
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
