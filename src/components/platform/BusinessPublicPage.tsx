@@ -14,6 +14,7 @@ import {
   formatMoney,
   groupVisibleCatalog,
   normalizeWhatsapp,
+  outdatedPublicCartKeys,
   safeExternalUrl,
 } from '../../lib/businessPublicPage';
 import type { PublicCartLine } from '../../lib/businessPublicPage';
@@ -106,6 +107,11 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
 
   const groups = useMemo(() => groupVisibleCatalog(items), [items]);
   const categories = useMemo(() => ['Todo', ...groups.map((group) => group.category)], [groups]);
+  const outdatedCartKeys = useMemo(
+    () => catalogReady ? outdatedPublicCartKeys(cart, items) : [],
+    [catalogReady, cart, items],
+  );
+  const cartCanSend = canSubmitPublicCart(catalogStatus, cart.length, sending) && outdatedCartKeys.length === 0;
 
   const visibleGroups = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('es-MX');
@@ -179,7 +185,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
 
   // Registra el pedido en Pedidos y Caja del negocio y, si hay WhatsApp, abre el chat con el código.
   const sendOrder = async () => {
-    if (!canSubmitPublicCart(catalogStatus, cart.length, sending)) return;
+    if (!cartCanSend) return;
     setSending(true);
     setSendError(null);
     // Abrimos la pestaña antes del await para que el navegador no la bloquee.
@@ -431,6 +437,23 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
                 El menú aún no está disponible. Para evitar pedidos con datos incompletos, espera a que cargue o vuelve a intentarlo.
               </p>
             )}
+            {catalogReady && outdatedCartKeys.length > 0 && (
+              <div role="alert" className="mt-4 rounded-xl border border-amber-500/40 p-3 text-sm" style={{ backgroundColor: bg, color: text }}>
+                <p className="font-bold">El menú cambió mientras preparabas tu pedido.</p>
+                <p className="mt-1 opacity-85">{outdatedCartKeys.length} producto(s) ya no coinciden con sus precios, disponibilidad u opciones actuales. Revisa y vuelve a elegirlos antes de enviar.</p>
+                <button
+                  type="button"
+                  onClick={() => setCart((current) => {
+                    const obsolete = new Set(outdatedPublicCartKeys(current, items));
+                    return current.filter((line) => !obsolete.has(line.key));
+                  })}
+                  className="mt-3 rounded-lg border px-4 py-2 text-xs font-bold"
+                  style={{ borderColor: primary }}
+                >
+                  Quitar los productos que cambiaron
+                </button>
+              </div>
+            )}
 
             {cart.length === 0 ? (
               sentCode ? (
@@ -468,7 +491,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
                 <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Tu nombre (opcional)" className="mt-4 w-full rounded-xl border px-3 py-3 text-sm outline-none" style={{ borderColor: border, backgroundColor: bg, color: text }} />
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas: sin cebolla, para llevar, dirección…" rows={2} className="mt-2 w-full rounded-xl border px-3 py-3 text-sm outline-none" style={{ borderColor: border, backgroundColor: bg, color: text }} />
 
-                <button type="button" disabled={!canSubmitPublicCart(catalogStatus, cart.length, sending)} onClick={() => void sendOrder()} className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-4 text-sm font-black disabled:opacity-60" style={{ backgroundColor: whatsappNumber ? '#25D366' : primary, color: whatsappNumber ? '#fff' : bg }}>
+                <button type="button" disabled={!cartCanSend} onClick={() => void sendOrder()} className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-4 text-sm font-black disabled:opacity-60" style={{ backgroundColor: whatsappNumber ? '#25D366' : primary, color: whatsappNumber ? '#fff' : bg }}>
                   <MessageCircle className="h-4 w-4" /> {sending ? 'Enviando…' : whatsappNumber ? 'Enviar pedido (se registra y abre WhatsApp)' : 'Enviar pedido al negocio'}
                 </button>
                 <button type="button" onClick={() => setCart([])} className="mt-3 w-full text-xs underline opacity-70">Vaciar pedido</button>
