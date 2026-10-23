@@ -5,6 +5,7 @@ import {
   cartToOrderItems,
   cartTotal,
   groupVisibleCatalog,
+  outdatedPublicCartKeys,
   type PublicCartLine,
 } from '../src/lib/businessPublicPage.ts';
 
@@ -44,6 +45,28 @@ const lines: PublicCartLine[] = [{
   quantity: 2,
   selection: { extras: ['Queso'] },
 }];
+assert.deepEqual(outdatedPublicCartKeys(lines, [taco]), [], 'El mismo producto y opciones siguen vigentes');
+assert.deepEqual(outdatedPublicCartKeys(lines, []), [lines[0].key], 'No enviar producto eliminado');
+assert.deepEqual(outdatedPublicCartKeys(lines, [{ ...taco, available: false }]), [lines[0].key], 'No enviar agotados');
+assert.deepEqual(outdatedPublicCartKeys(lines, [{ ...taco, price: 22 }]), [lines[0].key], 'No cambiar precio sin avisar');
+assert.deepEqual(outdatedPublicCartKeys(lines, [{ ...taco, name: 'Taco especial' }]), [lines[0].key], 'No cambiar identidad de producto sin revisión');
+assert.deepEqual(outdatedPublicCartKeys(lines, [{ ...taco, price: null }]), [lines[0].key], 'No enviar precios eliminados');
+assert.deepEqual(outdatedPublicCartKeys(lines, [{ ...taco, price: -3 }]), [lines[0].key], 'No enviar precios negativos');
+assert.deepEqual(outdatedPublicCartKeys(lines, [{ ...taco, optionGroups: [{
+  id: 'extras', name: 'Extras', required: false, multiple: true,
+  choices: [{ name: 'Queso', price: 8 }],
+]}]), [lines[0].key], 'No aumentar precio de extras sin avisar');
+assert.deepEqual(outdatedPublicCartKeys(lines, [{ ...taco, optionGroups: [{
+  id: 'extras', name: 'Extras', required: false, multiple: true,
+  choices: [{ name: 'Crema', price: 5 }],
+]}]), [lines[0].key], 'No enviar selección retirada');
+assert.deepEqual(outdatedPublicCartKeys(lines, [{ ...taco, optionGroups: [
+  ...(taco.optionGroups || []),
+  { id: 'salsa', name: 'Salsa', required: true, multiple: false,
+    choices: [{ name: 'Verde', price: 0 }] },
+]}]), [lines[0].key], 'Nuevo grupo obligatorio debe elegirse');
+assert.deepEqual(outdatedPublicCartKeys([{ ...lines[0], quantity: 0 }], [taco]), [lines[0].key], 'La cantidad debe ser positiva');
+assert.deepEqual(outdatedPublicCartKeys([], [taco]), [], 'Carrito vacío no requiere conciliación');
 assert.equal(cartTotal(lines), 46);
 const converted = cartToOrderItems(lines);
 assert.equal(converted.length, 1);
@@ -56,4 +79,4 @@ assert.equal(canSubmitPublicCart('error', 1, false), false);
 assert.equal(canSubmitPublicCart('ready', 0, false), false);
 assert.equal(canSubmitPublicCart('ready', 1, true), false);
 assert.equal(canSubmitPublicCart('ready', Number.NaN, false), false);
-console.log('PASS: carrito público bloquea envíos sin menú confiable y excluye precios inválidos.');
+console.log('PASS: carrito público bloquea envíos sin menú confiable, precios inválidos y partidas desactualizadas.');
