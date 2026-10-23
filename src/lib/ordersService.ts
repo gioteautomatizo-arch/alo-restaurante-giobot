@@ -7,6 +7,7 @@ import {
   query,
   setDoc,
   updateDoc,
+  runTransaction,
   where,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -485,23 +486,56 @@ export async function updateRestaurantOrderStatus(
  * Marca el pedido como PAGADO con su método y quién cobró; de ahí suma a Caja,
  * Resumen y Control de Turno.
  */
+export interface OffTableChargeResult {
+  order: RestaurantOrder;
+  /** true significa que se encontró un pago anterior; NO se hizo otro cobro. */
+  alreadyPaid: boolean;
+}
+
+/**
+ * Idempotencia de cobro por ID de pedido. Una transacción vuelve a leer el
+ * registro de Firestore y modifica PENDIENTE -> PAGADO una sola vez, incluso
+ * si dos dispositivos lo intentan simultáneamente.
+ *
+ * No evita dos pedidos diferentes creados accidentalmente; para esa protección
+ * hace falta un identificador estable al crear el pedido.
+ */
 export async function chargeOffTableOrder(
   order: RestaurantOrder,
   method: 'efectivo' | 'tarjeta' | 'transferencia',
   user: Pick<StaffUser, 'id' | 'name'>
-): Promise<void> {
+): Promise<OffTableChargeResult> {
   if (!order.id) throw new Error('El pedido no tiene identificador.');
-  if (order.billingStatus === 'PAGADO') return;
-  const now = new Date().toISOString();
-  await updateDoc(doc(db, ORDERS_COLLECTION, order.id), sanitizeFirestorePayload({
-    status: order.status,
-    billingStatus: 'PAGADO',
-    paymentMethod: method,
-    paidAt: now,
-    chargedById: user.id,
-    chargedByName: user.name,
-    updatedAt: now,
-  }));
+  const restaurantId = getActiveRestaurantId();
+  const ref = doc(db, ORDERS_COLLECTION, order.id);
+  return runTransaction(db, async (transaction) => {
+    const freshSnap = await transaction.get(ref);
+    if (!freshSnap.exists()) throw new Error('No existe el pedido. Revisa Caja antes de repetir la operación.');
+    const fresh = { ...(freshSnap.data() as RestaurantOrder), id: freshSnap.id };
+    if (fresh.restaurantId !== restaurantId ||
+        (order.restaurantId && order.restaurantId !== fresh.restaurantId)) {
+      throw new Error('El pedido pertenece a otro negocio.');
+    }
+    if (!['pickup', 'delivery'].includes(fresh.orderType) || fresh.status === 'CANCELADO') {
+      throw new Error('El pedido no es una venta válida de mostrador o domicilio.');
+    }
+    if (fresh.billingStatus === 'PAGADO') return { order: fresh, alreadyPaid: true };
+    if (fresh.billingStatus !== 'PENDIENTE') {
+      throw new Error('Estado de cobro desconocido. Revisa el pedido antes de continuar.');
+    }
+    const now = new Date().toISOString();
+    const patch = {
+      status: fresh.status,
+      billingStatus: 'PAGADO' as const,
+      paymentMethod: method,
+      paidAt: now,
+      chargedById: user.id,
+      chargedByName: user.name,
+      updatedAt: now,
+    };
+    transaction.update(ref, sanitizeFirestorePayload(patch));
+    return { order: { ...fresh, ...patch }, alreadyPaid: false };
+  });
 }
 
 /** Corrige un pedido para llevar / domicilio que todavía no se cobra (productos, datos del cliente, tipo, cancelación). */
