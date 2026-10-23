@@ -45,7 +45,7 @@ export function formatMoney(value: number): string {
 export function groupVisibleCatalog(items: BusinessCatalogItem[]): Array<{ category: string; items: BusinessCatalogItem[] }> {
   const groups = new Map<string, BusinessCatalogItem[]>();
   items
-    .filter((item) => item.available && item.name.trim() && typeof item.price === 'number')
+    .filter((item) => item.available && item.name.trim() && typeof item.price === 'number' && Number.isFinite(item.price) && item.price >= 0)
     .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
     .forEach((item) => {
       const category = item.category?.trim() || 'Menú';
@@ -113,4 +113,13 @@ export function cartToOrderItems(lines: PublicCartLine[]): Array<{
       ...(detail ? { customizationSummary: detail } : {}),
     };
   });
+}
+
+/** No confirmar pedidos mientras la lectura del menú no sea fiable. */
+export function canSubmitPublicCart(
+  catalogStatus: 'loading' | 'ready' | 'error',
+  lineCount: number,
+  sending: boolean,
+): boolean {
+  return catalogStatus === 'ready' && Number.isInteger(lineCount) && lineCount > 0 && !sending;
 }
