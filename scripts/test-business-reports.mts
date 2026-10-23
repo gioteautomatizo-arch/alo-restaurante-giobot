@@ -54,4 +54,22 @@ assert.equal(week.averageTicket, 60);
 assert.equal(week.unreconciledPaidCount, 3);
 const cleanReport = buildSalesReport(orders.filter((order) => order.paidAt && order.paidAt !== 'fecha inválida'), 1, now);
 assert.equal(cleanReport.unreconciledPaidCount, 0, 'No alertar cuando no hay pagos sin fecha');
-console.log('PASS: reportes usan fecha de cobro y excluyen pendientes, cancelados y pagos sin fecha verificable; muestran los históricos por conciliar.');
+// Medianoche en CDMX: 05:59 UTC aún es 31 de octubre; 06:00 UTC ya es 1 de noviembre.
+// El reporte no debe usar la fecha de creación ni agrupar cobros en el día equivocado.
+const midnightOrders = [
+  make({ code: 'ANTES-MEDIANOCHE', billingStatus: 'PAGADO',
+    createdAt: '2026-10-30T16:00:00Z', paidAt: '2026-11-01T05:59:59Z', total: 35 }),
+  make({ code: 'DESPUES-MEDIANOCHE', billingStatus: 'PAGADO',
+    createdAt: '2026-10-31T16:00:00Z', paidAt: '2026-11-01T06:00:00Z', total: 65 }),
+];
+const novFirst = new Date('2026-11-01T12:00:00Z');
+const firstDay = buildSalesReport(midnightOrders, 1, novFirst);
+assert.equal(firstDay.totalSales, 65, 'El cobro anterior a medianoche CDMX pertenece al día anterior');
+assert.equal(firstDay.orderCount, 1);
+assert.equal(firstDay.days[0]?.key, '2026-11-01');
+const crossingMonth = buildSalesReport(midnightOrders, 7, novFirst);
+assert.equal(crossingMonth.totalSales, 100, 'El reporte semanal incluye ambos días al cruzar de mes');
+assert.equal(crossingMonth.days.find((day) => day.key === '2026-10-31')?.total, 35);
+assert.equal(crossingMonth.days.find((day) => day.key === '2026-11-01')?.total, 65);
+
+console.log('PASS: reportes concilian fechas de cobro, históricos y medianoche CDMX al cambiar de mes.');
