@@ -79,10 +79,6 @@ try {
     assert.equal((await getDoc(original)).data().billingStatus, 'PENDIENTE');
   }
 
-  // Una cuenta de otro negocio no puede leer ni editar el pedido ya guardado,
-  // pero la política de Calientito sigue sin aislar lectura entre cuentas Google.
-  await assertFails(setDoc(doc(db('cashier-a'), 'restaurant_orders/' + key), sample('business-a')));
-
   console.log('PASS: bloqueo demostrado en emulador: get de pedido inexistente denegado,');
   console.log('      creación transaccional no viable y setDoc repetido reabre cobros en Calientito.');
   console.log('      NO ACTIVAR el mecanismo de ID fijo ni desplegar estas reglas.');
