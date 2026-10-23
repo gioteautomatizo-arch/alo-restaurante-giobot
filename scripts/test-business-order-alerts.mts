@@ -8,7 +8,7 @@ const make = (partial: Partial<RestaurantOrder> = {}): RestaurantOrder => ({
   restaurantId: 'tenant-demo',
   orderType: 'pickup',
   customerName: 'Nombre privado de prueba',
-  customerPhone: '5550001111',
+  phone: '5550001111',
   paymentMethod: 'efectivo',
   bringOwnContainer: false,
   items: [],
