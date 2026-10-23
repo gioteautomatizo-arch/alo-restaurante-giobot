@@ -24,3 +24,15 @@ Además, un `setDoc` repetido con un ID determinístico no sería seguro bajo re
 - Los problemas de permisos de tickets reales siguen abiertos hasta verificar las reglas desplegadas.
 
 **Regla:** no prometer idempotencia completa tras cortes de red mientras no esté probado el flujo de creación.
+
+## Prueba reproducible de permisos — 22/10/2026
+
+Se incorporó `scripts/test-quick-sale-idempotency-staged.mjs` al CI para ensayar con dos conjuntos de reglas existentes en un **emulador aislado**. Compara:
+
+- `getDoc` y transacción sobre ID de pedido que aún no existe;
+- creación inicial por ID fijo;
+- segundo `setDoc` después de que una venta ya figura `PAGADO`.
+
+Estas pruebas **demuestran límites de las reglas actuales**; pasar la suite significa que las condiciones de riesgo fueron reconocidas correctamente, **NO** que sea seguro habilitar el algoritmo. Si falla la suite, revisar logs antes de interpretar el resultado. La versión publicada en Firebase no se consulta ni cambia.
+
+**Criterio antes de activar:** reglas con lectura segura para comprobar IDs propios inexistentes y protección estricta contra sobrescritura de `PAGADO`, respaldadas por pruebas de aislamiento entre negocios y aprobación explícita del responsable.
