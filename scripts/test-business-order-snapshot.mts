@@ -23,4 +23,13 @@ assert.equal(result.paidTodayTotal, 85);
 assert.equal(result.pendingTodayCount, 1);
 assert.equal(result.pendingTodayTotal, 40);
 assert.equal(result.activeOrders, 3);
+assert.equal(result.paidCancelledCount, 1);
+assert.equal(result.paidMissingDateCount, 0);
+const anomalies = summarizeBusinessOrders([
+  make({ billingStatus: 'PAGADO', status: 'CANCELADO' }),
+  make({ billingStatus: 'PAGADO', createdAt: '2026-10-21T14:00:00Z' }),
+], now);
+assert.equal(anomalies.paidCancelledCount, 1);
+assert.equal(anomalies.paidMissingDateCount, 2 - 1);
+assert.equal(anomalies.paidTodayCount, 0);
 console.log('PASS: los pedidos pendientes no cuentan como ventas pagadas y los cobrados hoy sí.');
