@@ -76,6 +76,8 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
   const submitQuickSale = async () => {
     if (quickSaleLock.current || savingQuickSale || quickLines.length === 0) return;
     quickSaleLock.current = true;
+    // Mantener el tenant inicial aunque el usuario cambie de pantalla durante los awaits.
+    const businessId = getActiveRestaurantId();
     // Evitar crear un pedido nuevo si no se podrá registrar el cobro.
     // No afecta el flujo separado para guardar pedidos PENDIENTES.
     const googleUser = getCurrentAuthUser();
@@ -120,15 +122,18 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
         total,
         notes: 'Venta rápida registrada desde Caja para pedido de WhatsApp/mostrador.',
       });
-      const referenceSaved = rememberQuickSaleForReview({ orderId: order.id!, businessId: getActiveRestaurantId(), recordedAt: new Date().toISOString() });
-      setReviewEntries(listQuickSaleReviews(getActiveRestaurantId()));
+      if (order.restaurantId !== businessId || getActiveRestaurantId() !== businessId) {
+        throw new Error('Cambió el negocio durante el registro. Revisa Caja antes de volver a intentar.');
+      }
+      const referenceSaved = rememberQuickSaleForReview({ orderId: order.id!, businessId, recordedAt: new Date().toISOString() });
+      setReviewEntries(listQuickSaleReviews(businessId));
       if (!referenceSaved) setJournalWarning('No se pudo conservar la referencia local. Anota el folio ' + order.code + ' y revisa Caja si falla la conexión.');
       try {
         const charge = await chargeOffTableOrder(order, quickPaymentMethod, currentUser);
         try {
           await createOffTableSaleReceipt(charge.order, currentUser);
-          clearQuickSaleReview(getActiveRestaurantId(), order.id!);
-          setReviewEntries(listQuickSaleReviews(getActiveRestaurantId()));
+          clearQuickSaleReview(businessId, order.id!);
+          setReviewEntries(listQuickSaleReviews(businessId));
           setSuccess(charge.alreadyPaid
             ? `El pedido ${charge.order.code} ya estaba pagado. Ticket recuperado sin otro cobro.`
             : `Venta rápida cobrada y ticket creado · ${order.code} · ${money(total)}.`);
@@ -152,6 +157,7 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
   const checkReviewEntry = async (orderId: string) => {
     if (reviewingId || recoveryLock.current || !reviewEntries.some((entry) => entry.orderId === orderId)) return;
     setReviewingId(orderId);
+    const businessId = getActiveRestaurantId();
     const setResult = (result: ReviewResult) => setReviewResults((current) => ({ ...current, [orderId]: result }));
     // Invalidar la confirmación anterior al iniciar una nueva consulta.
     setResult({ message: 'Consultando Firebase…', canRecoverTicket: false });
@@ -163,7 +169,7 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
         return;
       }
       const saved = snap.data();
-      if (saved.restaurantId !== getActiveRestaurantId()) {
+      if (getActiveRestaurantId() !== businessId || saved.restaurantId !== businessId) {
         setResult({ message: 'La referencia no pertenece a este negocio.', canRecoverTicket: false });
         return;
       }
@@ -200,12 +206,16 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
     if (!info?.canRecoverTicket || !info.code || recoveryLock.current || reviewingId
       || !reviewEntries.some((entry) => entry.orderId === orderId)) return;
     recoveryLock.current = true;
+    const businessId = getActiveRestaurantId();
     setRecoveringReviewedTicketId(orderId);
     try {
       // Vuelve a comprobar PAGADO en Firestore; no crea ni cobra pedidos.
-      await retryPaidOffTableSaleReceipt(orderId, getActiveRestaurantId(), currentUser);
-      const cleared = clearQuickSaleReview(getActiveRestaurantId(), orderId);
-      setReviewEntries(listQuickSaleReviews(getActiveRestaurantId()));
+      if (businessId !== getActiveRestaurantId()) {
+        throw new Error('Cambió el negocio. Comprueba la venta antes de recuperar el ticket.');
+      }
+      await retryPaidOffTableSaleReceipt(orderId, businessId, currentUser);
+      const cleared = clearQuickSaleReview(businessId, orderId);
+      setReviewEntries(listQuickSaleReviews(businessId));
       setReviewResults((current) => {
         const next = { ...current };
         delete next[orderId];
