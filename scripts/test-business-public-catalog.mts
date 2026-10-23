@@ -55,11 +55,11 @@ assert.deepEqual(outdatedPublicCartKeys(lines, [{ ...taco, price: -3 }]), [lines
 assert.deepEqual(outdatedPublicCartKeys(lines, [{ ...taco, optionGroups: [{
   id: 'extras', name: 'Extras', required: false, multiple: true,
   choices: [{ name: 'Queso', price: 8 }],
-]}]), [lines[0].key], 'No aumentar precio de extras sin avisar');
+}]}]), [lines[0].key], 'No aumentar precio de extras sin avisar');
 assert.deepEqual(outdatedPublicCartKeys(lines, [{ ...taco, optionGroups: [{
   id: 'extras', name: 'Extras', required: false, multiple: true,
   choices: [{ name: 'Crema', price: 5 }],
-]}]), [lines[0].key], 'No enviar selección retirada');
+}]}]), [lines[0].key], 'No enviar selección retirada');
 assert.deepEqual(outdatedPublicCartKeys(lines, [{ ...taco, optionGroups: [
   ...(taco.optionGroups || []),
   { id: 'salsa', name: 'Salsa', required: true, multiple: false,
