@@ -28,6 +28,7 @@ import type { User as FirebaseUser } from 'firebase/auth';
 
 export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId }) => {
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [business, setBusiness] = useState<RestaurantTenant | null>(null);
   const [role, setRole] = useState<BusinessRole | null>(null);
