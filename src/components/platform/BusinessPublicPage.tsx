@@ -29,11 +29,13 @@ import type { VipProfile } from '../../types';
  * No muestra nada administrativo. Usa la identidad del negocio (logo, portada, colores)
  * y envía el pedido por WhatsApp, así que no genera costo.
  */
-export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessId }) => {
+const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessId }) => {
   const [business, setBusiness] = useState<RestaurantTenant | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [items, setItems] = useState<BusinessCatalogItem[]>([]);
-  const [catalogReady, setCatalogReady] = useState(false);
+  const [catalogStatus, setCatalogStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
+  const catalogReady = catalogStatus === 'ready';
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('Todo');
   const [cart, setCart] = useState<PublicCartLine[]>([]);
@@ -77,18 +79,25 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
     };
   }, [businessId]);
 
-  useEffect(
-    () =>
-      subscribeToBusinessCatalog(
-        businessId,
-        (catalog) => {
-          setItems(catalog?.items || []);
-          setCatalogReady(true);
-        },
-        () => setCatalogReady(true),
-      ),
-    [businessId],
-  );
+  useEffect(() => {
+    let active = true;
+    setCatalogStatus('loading');
+    setItems([]);
+    const unsubscribe = subscribeToBusinessCatalog(
+      businessId,
+      (catalog) => {
+        if (!active) return;
+        setItems(catalog?.items || []);
+        setCatalogStatus('ready');
+      },
+      () => {
+        if (!active) return;
+        setItems([]);
+        setCatalogStatus('error');
+      },
+    );
+    return () => { active = false; unsubscribe(); };
+  }, [businessId, catalogAttempt]);
 
   useEffect(() => {
     if (business?.branding.restaurantName) document.title = business.branding.restaurantName;
@@ -169,7 +178,7 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
 
   // Registra el pedido en Pedidos y Caja del negocio y, si hay WhatsApp, abre el chat con el código.
   const sendOrder = async () => {
-    if (sending || cart.length === 0) return;
+    if (sending || !catalogReady || cart.length === 0) return;
     setSending(true);
     setSendError(null);
     // Abrimos la pestaña antes del await para que el navegador no la bloquee.
@@ -348,8 +357,16 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
           </div>
         )}
 
-        {!catalogReady ? (
-          <p className="mt-10 text-center text-sm opacity-70">Cargando el menú…</p>
+        {catalogStatus === 'error' ? (
+          <div role="alert" className="mt-8 rounded-xl border border-amber-500/40 p-4 text-sm" style={{ backgroundColor: surface, color: text }}>
+            <p className="font-bold">No pudimos cargar el menú de este negocio.</p>
+            <p className="mt-1 opacity-80">Puede ser un problema de conexión o permisos. No significa que el negocio haya eliminado sus productos.</p>
+            <button type="button" onClick={() => setCatalogAttempt((attempt) => attempt + 1)} className="mt-3 rounded-lg border px-4 py-2 text-xs font-bold" style={{ borderColor: primary }}>
+              Reintentar carga del menú
+            </button>
+          </div>
+        ) : !catalogReady ? (
+          <p role="status" className="mt-10 text-center text-sm opacity-70">Cargando el menú…</p>
         ) : groups.length === 0 ? (
           <p className="mt-10 text-center text-sm opacity-70">Este negocio todavía no publica su menú.</p>
         ) : visibleGroups.length === 0 ? (
@@ -408,6 +425,11 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
                 {sendError}
               </p>
             )}
+            {!catalogReady && (
+              <p role="alert" className="mt-4 rounded-xl border border-amber-500/40 p-3 text-sm" style={{ color: text }}>
+                El menú aún no está disponible. Para evitar pedidos con datos incompletos, espera a que cargue o vuelve a intentarlo.
+              </p>
+            )}
 
             {cart.length === 0 ? (
               sentCode ? (
@@ -445,7 +467,7 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
                 <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Tu nombre (opcional)" className="mt-4 w-full rounded-xl border px-3 py-3 text-sm outline-none" style={{ borderColor: border, backgroundColor: bg, color: text }} />
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas: sin cebolla, para llevar, dirección…" rows={2} className="mt-2 w-full rounded-xl border px-3 py-3 text-sm outline-none" style={{ borderColor: border, backgroundColor: bg, color: text }} />
 
-                <button type="button" disabled={sending} onClick={() => void sendOrder()} className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-4 text-sm font-black disabled:opacity-60" style={{ backgroundColor: whatsappNumber ? '#25D366' : primary, color: whatsappNumber ? '#fff' : bg }}>
+                <button type="button" disabled={sending || !catalogReady} onClick={() => void sendOrder()} className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-4 text-sm font-black disabled:opacity-60" style={{ backgroundColor: whatsappNumber ? '#25D366' : primary, color: whatsappNumber ? '#fff' : bg }}>
                   <MessageCircle className="h-4 w-4" /> {sending ? 'Enviando…' : whatsappNumber ? 'Enviar pedido (se registra y abre WhatsApp)' : 'Enviar pedido al negocio'}
                 </button>
                 <button type="button" onClick={() => setCart([])} className="mt-3 w-full text-xs underline opacity-70">Vaciar pedido</button>
@@ -457,3 +479,9 @@ export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessI
     </div>
   );
 };
+
+// React remonta toda la vista (incluyendo carrito, cliente y suscripciones)
+// cuando cambia el negocio, evitando que un carrito ajeno se envíe al tenant nuevo.
+export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessId }) => (
+  <BusinessPublicPageContent key={businessId} businessId={businessId} />
+);
