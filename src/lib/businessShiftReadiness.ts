@@ -46,3 +46,23 @@ export function parseShiftCashAmount(value: string): number | null {
   const amount = Number(input);
   return Number.isFinite(amount) && amount >= 0 ? amount : null;
 }
+
+/**
+ * Señala cobros cuya fecha real no se puede conciliar dentro de este turno.
+ * Solo considera pedidos creados desde la apertura: los anteriores necesitan
+ * revisión histórica separada porque no sabemos cuándo fueron cobrados.
+ * No cambia el estado de los pedidos ni escribe en Firestore.
+ */
+export function countPaidOrdersMissingPaymentDate(
+  orders: Array<{ status?: string; billingStatus?: string; createdAt?: string; paidAt?: string }>,
+  shiftStartIso: string,
+): number {
+  const start = Date.parse(shiftStartIso);
+  if (!Number.isFinite(start)) return 0;
+  return orders.filter((order) => {
+    if (order.status === 'CANCELADO' || order.billingStatus !== 'PAGADO') return false;
+    const created = Date.parse(order.createdAt || '');
+    if (!Number.isFinite(created) || created < start) return false;
+    return !Number.isFinite(Date.parse(order.paidAt || ''));
+  }).length;
+}
