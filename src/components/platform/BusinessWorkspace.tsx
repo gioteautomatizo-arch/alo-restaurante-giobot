@@ -28,17 +28,22 @@ import type { User as FirebaseUser } from 'firebase/auth';
 
 export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId }) => {
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [business, setBusiness] = useState<RestaurantTenant | null>(null);
   const [role, setRole] = useState<BusinessRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<'workspace' | 'catalog' | 'employees' | 'memberships' | 'shifts' | 'expenses' | 'vault' | 'receivables' | 'payables' | 'audit' | 'operations' | 'menuImport' | 'modules' | 'branding' | 'reports'>('workspace');
 
-  useEffect(() => subscribeToAuth((user) => setAuthUser(user)), []);
+  useEffect(() => subscribeToAuth((user) => { setAuthUser(user); setAuthReady(true); }), []);
 
   useEffect(() => {
+    if (!authReady) return;
     if (!authUser) {
-      setLoading(true);
+      setBusiness(null);
+      setRole(null);
+      setError('Inicia sesión en Acceso para negocios para abrir este panel.');
+      setLoading(false);
       return;
     }
 
@@ -58,7 +63,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
         setError('No pudimos abrir este negocio. Intenta nuevamente.');
       })
       .finally(() => setLoading(false));
-  }, [authUser, businessId]);
+  }, [authReady, authUser, businessId]);
 
   // Paleta del negocio: la leen las pantallas del espacio (ver platformTheme.css).
   useEffect(() => {
