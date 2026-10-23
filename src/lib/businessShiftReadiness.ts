@@ -42,7 +42,7 @@ export function getShiftReadiness(
 /** Devuelve importes de efectivo positivos o cero y con máximo dos decimales. */
 export function parseShiftCashAmount(value: string): number | null {
   const input = value.trim();
-  if (!/^\\d+(?:\\.\\d{1,2})?$/.test(input)) return null;
+  if (!/^\d+(?:\.\d{1,2})?$/.test(input)) return null;
   const amount = Number(input);
   return Number.isFinite(amount) && amount >= 0 ? amount : null;
 }
