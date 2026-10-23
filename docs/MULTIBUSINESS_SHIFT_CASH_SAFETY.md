@@ -6,8 +6,9 @@ Corte de revisión: 23 de octubre de 2026
 - Mientras falte alguna de las cuatro consultas, no se permite abrir ni cerrar turno.
 - Si una consulta falla, se informa y no se presenta el saldo como cero.
 - Si hay dos o más turnos abiertos en el negocio, se bloquea la operación manual en esa vista.
-- El fondo inicial inicia en $0 como valor sugerido, NO en $500; el usuario debe confirmar el efectivo real.
+- El fondo inicial empieza vacío: el usuario debe escribir expresamente el efectivo real (incluido $0 si corresponde); no se precarga $500 ni $0.
 - Efectivo inicial y contado se validan: valores no negativos y dos decimales como máximo.
+- Si un turno abierto carece de fecha de apertura válida, la vista bloquea su cierre y evita calcular ventas desde el inicio de la época Unix (1970). No repara automáticamente el registro.
 - Si un pedido creado durante el turno figura pagado pero carece de fecha de cobro válida, se avisa y se bloquea el cierre de ese turno (no se corrige ni altera el pedido).
 - Se conserva la separación entre estado de entrega y registro de cobro de un pedido.
 - Hay pruebas puras en scripts/test-business-shift-readiness.mts, ejecutadas desde Quality checks.
@@ -23,9 +24,10 @@ Corte de revisión: 23 de octubre de 2026
 ## Prueba visual de bajo riesgo
 1. Abrir la interfaz administrativa de un negocio de DEMO.
 2. Confirmar que la pantalla de Turno muestra consulta de datos antes de mostrar el fondo inicial.
-3. Con acceso adecuado, corroborar que el fondo sugerido es $0 y que se explica la necesidad de ingresar el monto real.
+3. Con acceso adecuado, corroborar que el fondo está vacío y que se exige ingresar el monto real (incluido cero).
 4. Verificar que las lecturas fallidas muestran aviso de error (NO 'sin ventas').
-5. No abrir/cerrar turnos ni registrar cobros de negocios reales durante esta revisión.
+5. Comprobar solo con pruebas unitarias que un turno con fecha de apertura ausente o inválida queda bloqueado; no alterar registros reales para provocar el caso.
+6. No abrir/cerrar turnos ni registrar cobros de negocios reales durante esta revisión.
 
 ## Pendiente para habilitar cobros y cierre de caja en producción
 - Definir operación transaccional backend/Firestore por negocio, turno y pedido, sin doble cargo.
