@@ -31,9 +31,11 @@ export function subscribeToModule<T>(
   module: TenantModule,
   callback: (rows: Array<T & { id: string }>) => void,
   sortField = 'createdAt',
+  onError?: (error: Error) => void,
 ): () => void {
   if (!businessId.trim()) {
-    callback([]);
+    if (onError) onError(new Error('No se indicó el negocio del módulo.'));
+    else callback([]);
     return () => {};
   }
   const q = query(colRef(businessId, module), orderBy(sortField, 'desc'));
@@ -42,7 +44,8 @@ export function subscribeToModule<T>(
     (snap) => callback(snap.docs.map((d) => ({ ...(d.data() as T), id: d.id }))),
     (error) => {
       console.warn(`[tenantModules] ${module}:`, error);
-      callback([]);
+      if (onError) onError(error);
+      else callback([]); // Compatibilidad con vistas antiguas sin control de errores.
     },
   );
 }
