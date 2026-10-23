@@ -111,6 +111,9 @@ export const BusinessReportsView: React.FC<{ businessId: string; businessName: s
             <p className="mt-1 text-xs text-[#B7B7B7]">{report.unreconciledPaidCount > 0
               ? 'Hay pedidos pagados por conciliar. Revisa el aviso anterior: sus importes no se incluyen hasta verificar la fecha de cobro.'
               : 'Cuando registres cobros confirmados en Caja, aquí verás tus ventas, tu producto estrella y cómo te pagan.'}</p>
+            {report.cancelledCount > 0 && (
+              <p className="mt-2 text-xs text-[#B7B7B7]">{report.cancelledCount} pedido{report.cancelledCount === 1 ? '' : 's'} cancelado{report.cancelledCount === 1 ? '' : 's'} en este periodo (no se suman a ventas).</p>
+            )}
           </div>
         ) : (
           <>
