@@ -190,8 +190,19 @@ export async function createOffTableSaleReceipt(
   const receiptRef = doc(db, SALE_RECEIPTS_COLLECTION, `offtable-${order.id}`);
   try {
     const existing = await getDoc(receiptRef);
-    if (existing.exists()) return { ...(existing.data() as SaleReceipt), id: existing.id };
+    if (existing.exists()) {
+      const prior = existing.data() as SaleReceipt;
+      if (prior.restaurantId !== order.restaurantId ||
+          prior.receiptType !== 'OFF_TABLE' ||
+          prior.status !== 'PAGADO' ||
+          !Array.isArray(prior.orderIds) || !prior.orderIds.includes(order.id)) {
+        throw new Error('El ticket existente no coincide con esta venta. Revisar Caja sin sobrescribir.');
+      }
+      return { ...prior, id: existing.id };
+    }
   } catch (readError) {
+    // No convertir una discrepancia de recibo en una operación de escritura.
+    if (readError instanceof Error && readError.message.startsWith('El ticket existente no coincide')) throw readError;
     console.warn('[saleReceiptsService] no se pudo consultar ticket previo de venta rápida; se intentará crear sin sobrescribir:', readError);
   }
   const paidAt = order.paidAt || order.updatedAt || new Date().toISOString();
