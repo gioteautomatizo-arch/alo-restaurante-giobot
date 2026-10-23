@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import { summarizeBusinessOrders } from '../src/lib/businessOrderSnapshot.ts';
+
+const now = new Date('2026-10-22T16:00:00Z');
+const make = (partial = {}) => ({
+  status: 'NUEVO', billingStatus: 'PENDIENTE',
+  createdAt: '2026-10-22T14:00:00Z', total: 40, ...partial,
+});
+const result = summarizeBusinessOrders([
+  make(),
+  make({ billingStatus: 'PAGADO', paidAt: '2026-10-22T15:00:00Z', total: 35 }),
+  make({ createdAt: '2026-10-21T14:00:00Z', billingStatus: 'PAGADO', paidAt: '2026-10-22T13:00:00Z', total: 50 }),
+  make({ status: 'CANCELADO', billingStatus: 'PAGADO', total: 900 }),
+], now);
+assert.equal(result.ordersToday, 2);
+assert.equal(result.paidTodayCount, 2);
+assert.equal(result.paidTodayTotal, 85);
+assert.equal(result.pendingTodayCount, 1);
+assert.equal(result.pendingTodayTotal, 40);
+assert.equal(result.activeOrders, 3);
+console.log('PASS: los pedidos pendientes no cuentan como ventas pagadas y los cobrados hoy sí.');
