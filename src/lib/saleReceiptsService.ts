@@ -190,16 +190,18 @@ export async function createOffTableSaleReceipt(
   if (order.billingStatus !== 'PAGADO') throw new Error('No se puede generar ticket para una venta que no está pagada.');
   const receiptRef = doc(db, SALE_RECEIPTS_COLLECTION, `offtable-${order.id}`);
   try {
-    const existing = await getDoc(receiptRef);
+    // No declarar válido un ticket leído solo del caché del dispositivo.
+    const existing = await getDocFromServer(receiptRef);
     if (existing.exists()) {
       const prior = existing.data() as SaleReceipt;
       assertMatchingOffTableReceipt(prior, order);
       return { ...prior, id: existing.id };
     }
   } catch (readError) {
-    // No convertir una discrepancia de recibo en una operación de escritura.
+    // La lectura de un documento inexistente puede ser denegada por reglas
+    // que dependen de resource.data. Crear sigue sujeto a las reglas de Firebase.
     if (readError instanceof Error && readError.message.startsWith('El ticket existente no coincide')) throw readError;
-    console.warn('[saleReceiptsService] no se pudo consultar ticket previo de venta rápida; se intentará crear sin sobrescribir:', readError);
+    console.warn('[saleReceiptsService] consulta previa del ticket no disponible:', readError);
   }
   const paidAt = order.paidAt || order.updatedAt || new Date().toISOString();
   const total = Number(order.total || 0);
@@ -223,8 +225,27 @@ export async function createOffTableSaleReceipt(
     totalPaid: total,
     status: 'PAGADO',
   };
-  await setDoc(receiptRef, sanitizeFirestorePayload(receipt));
-  return { ...receipt, id: receiptRef.id };
+  try {
+    await setDoc(receiptRef, sanitizeFirestorePayload(receipt));
+    return { ...receipt, id: receiptRef.id };
+  } catch (writeError) {
+    // Es posible que otra caja haya creado el ticket entre la lectura y el
+    // intento de escritura. Releer del SERVIDOR, validar, y no sobrescribir.
+    try {
+      const concurrent = await getDocFromServer(receiptRef);
+      if (concurrent.exists()) {
+        const prior = concurrent.data() as SaleReceipt;
+        assertMatchingOffTableReceipt(prior, order);
+        return { ...prior, id: concurrent.id };
+      }
+    } catch (checkError) {
+      if (checkError instanceof Error && checkError.message.startsWith('El ticket existente no coincide')) {
+        throw checkError;
+      }
+    }
+    // Una denegación real o desconexión sigue siendo un error, nunca éxito falso.
+    throw writeError;
+  }
 }
 
 // Solo reintenta crear el comprobante de un pedido YA PAGADO en Firestore.
