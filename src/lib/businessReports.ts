@@ -27,6 +27,8 @@ export interface SalesReport {
   orderCount: number;
   averageTicket: number;
   cancelledCount: number;
+  /** Pedidos marcados como pagados sin fecha de cobro comprobable, en todo el historial consultado. */
+  unreconciledPaidCount: number;
   byPayment: Record<'efectivo' | 'transferencia' | 'tarjeta', number>;
   topProducts: ReportProduct[];
   days: ReportDay[];
@@ -59,8 +61,15 @@ export function buildSalesReport(orders: RestaurantOrder[], period: ReportPeriod
   let totalSales = 0;
   let orderCount = 0;
   let cancelledCount = 0;
+  let unreconciledPaidCount = 0;
 
   for (const order of orders) {
+    // Nunca atribuir un cobro a la fecha de creación cuando falta paidAt.
+    // Puede haberse cobrado otro día: excluirlo de totales y mostrar alerta.
+    if (order.status !== 'CANCELADO' && order.billingStatus === 'PAGADO' && !Number.isFinite(Date.parse(order.paidAt || ''))) {
+      unreconciledPaidCount += 1;
+      continue;
+    }
     const key = mexicoDayKey(order.paidAt || order.createdAt || '');
     const day = days.get(key);
     if (!day) continue;
@@ -97,6 +106,7 @@ export function buildSalesReport(orders: RestaurantOrder[], period: ReportPeriod
     orderCount,
     averageTicket: orderCount ? round(totalSales / orderCount) : 0,
     cancelledCount,
+    unreconciledPaidCount,
     byPayment: {
       efectivo: round(byPayment.efectivo),
       transferencia: round(byPayment.transferencia),
