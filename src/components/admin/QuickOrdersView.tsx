@@ -10,6 +10,12 @@ import { getActiveRestaurantId } from '../../lib/restaurantContext';
 import { getCurrentAuthUser } from '../../lib/firebase';
 import { OffTableOrderModal } from './OffTableOrderModal';
 
+type ReviewResult = {
+  message: string;
+  code?: string;
+  canRecoverTicket: boolean;
+};
+
 const money = (value: number) => '$' + Number(value || 0).toLocaleString('es-MX', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
@@ -39,10 +45,11 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
   const [retryingTicket, setRetryingTicket] = useState(false);
   const [reviewEntries, setReviewEntries] = useState(() => listQuickSaleReviews(getActiveRestaurantId()));
   const [reviewingId, setReviewingId] = useState<string | null>(null);
-  // Solo se habilita tras comprobar PAGADO contra Firestore online.
-  const [verifiedPaidOrder, setVerifiedPaidOrder] = useState<{ id: string; code: string } | null>(null);
-  const [recoveringReviewedTicket, setRecoveringReviewedTicket] = useState(false);
-  const [reviewMessage, setReviewMessage] = useState<string | null>(null);
+  // Cada referencia tiene su propio estado; nunca compartimos una verificación entre pedidos.
+  const [reviewResults, setReviewResults] = useState<Record<string, ReviewResult>>({});
+  const [recoveringReviewedTicketId, setRecoveringReviewedTicketId] = useState<string | null>(null);
+  const recoveryLock = useRef(false);
+  const [journalWarning, setJournalWarning] = useState<string | null>(null);
   const quickTotal = quickLines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
 
   const addQuickLine = () => {
@@ -87,6 +94,7 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
     setSavingQuickSale(true);
     setError(null);
     setSuccess(null);
+    setJournalWarning(null);
     setPendingTicketOrder(null);
     const total = Math.round(quickTotal * 100) / 100;
     try {
@@ -114,7 +122,7 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
       });
       const referenceSaved = rememberQuickSaleForReview({ orderId: order.id!, businessId: getActiveRestaurantId(), recordedAt: new Date().toISOString() });
       setReviewEntries(listQuickSaleReviews(getActiveRestaurantId()));
-      if (!referenceSaved) setReviewMessage('No se pudo conservar la referencia local. Anota el folio ' + order.code + ' y revisa Caja si falla la conexión.');
+      if (!referenceSaved) setJournalWarning('No se pudo conservar la referencia local. Anota el folio ' + order.code + ' y revisa Caja si falla la conexión.');
       try {
         const charge = await chargeOffTableOrder(order, quickPaymentMethod, currentUser);
         try {
@@ -142,48 +150,82 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
   };
 
   const checkReviewEntry = async (orderId: string) => {
-    if (reviewingId) return;
+    if (reviewingId || recoveryLock.current || !reviewEntries.some((entry) => entry.orderId === orderId)) return;
     setReviewingId(orderId);
-    setReviewMessage(null);
-    setVerifiedPaidOrder(null);
+    const setResult = (result: ReviewResult) => setReviewResults((current) => ({ ...current, [orderId]: result }));
+    // Invalidar la confirmación anterior al iniciar una nueva consulta.
+    setResult({ message: 'Consultando Firebase…', canRecoverTicket: false });
     try {
-      // Nunca considerar el cache sin conexión como confirmación de cobro.
+      // Solo el servidor puede confirmar el pago. El caché sin conexión no basta.
       const snap = await getDocFromServer(doc(db, 'restaurant_orders', orderId));
-      if (!snap.exists()) { setReviewMessage('No aparece el pedido en Firebase. No repitas el cobro; revisa Caja.'); return; }
+      if (!snap.exists()) {
+        setResult({ message: 'No aparece el pedido en Firebase. No repitas el cobro; revisa Caja.', canRecoverTicket: false });
+        return;
+      }
       const saved = snap.data();
-      if (saved.restaurantId !== getActiveRestaurantId()) { setReviewMessage('La referencia no pertenece a este negocio.'); return; }
+      if (saved.restaurantId !== getActiveRestaurantId()) {
+        setResult({ message: 'La referencia no pertenece a este negocio.', canRecoverTicket: false });
+        return;
+      }
       const folio = typeof saved.code === 'string' ? saved.code : orderId;
       if (saved.billingStatus === 'PAGADO') {
         if (saved.status === 'CANCELADO' || !['pickup', 'delivery'].includes(saved.orderType)) {
-          setReviewMessage('Pedido ' + folio + ' pagado con estado no recuperable desde esta pantalla. Revisa Caja.');
+          setResult({ message: 'Pedido ' + folio + ' pagado con estado no recuperable desde esta pantalla. Revisa Caja.', canRecoverTicket: false });
           return;
         }
-        setVerifiedPaidOrder({ id: orderId, code: folio });
-        setReviewMessage('Pedido ' + folio + ' PAGADO, verificado en Firebase. Puedes recuperar SOLO el ticket. No vuelvas a cobrarlo.');
+        setResult({
+          code: folio,
+          canRecoverTicket: true,
+          message: 'Pedido ' + folio + ' PAGADO, comprobado en Firebase. Puedes generar SOLO su ticket. No vuelvas a cobrar.',
+        });
       } else {
-        setReviewMessage('Pedido ' + folio + ' sin pago confirmado. Verifica el cobro en Caja antes de repetirlo.');
+        setResult({
+          code: folio,
+          canRecoverTicket: false,
+          message: 'Pedido ' + folio + ' sin pago confirmado. Verifica en Caja antes de intentar cobrarlo.',
+        });
       }
     } catch (err: any) {
-      setReviewMessage('No se pudo verificar Firebase: ' + (err?.message || 'sin conexión') + '. No repitas el cobro.');
-    } finally { setReviewingId(null); }
+      setResult({
+        canRecoverTicket: false,
+        message: 'No se pudo verificar Firebase: ' + (err?.message || 'sin conexión') + '. No repitas el cobro.',
+      });
+    } finally {
+      setReviewingId(null);
+    }
   };
 
-  const recoverReviewedTicket = async () => {
-    if (!verifiedPaidOrder || recoveringReviewedTicket || reviewingId) return;
-    const entry = verifiedPaidOrder;
-    setRecoveringReviewedTicket(true);
-    setReviewMessage(null);
+  const recoverReviewedTicket = async (orderId: string) => {
+    const info = reviewResults[orderId];
+    if (!info?.canRecoverTicket || !info.code || recoveryLock.current || reviewingId
+      || !reviewEntries.some((entry) => entry.orderId === orderId)) return;
+    recoveryLock.current = true;
+    setRecoveringReviewedTicketId(orderId);
     try {
-      // El servicio vuelve a comprobar PAGADO en Firestore y NO registra cobros.
-      await retryPaidOffTableSaleReceipt(entry.id, getActiveRestaurantId(), currentUser);
-      clearQuickSaleReview(getActiveRestaurantId(), entry.id);
+      // Vuelve a comprobar PAGADO en Firestore; no crea ni cobra pedidos.
+      await retryPaidOffTableSaleReceipt(orderId, getActiveRestaurantId(), currentUser);
+      const cleared = clearQuickSaleReview(getActiveRestaurantId(), orderId);
       setReviewEntries(listQuickSaleReviews(getActiveRestaurantId()));
-      setVerifiedPaidOrder(null);
-      setSuccess('Ticket recuperado para ' + entry.code + '. No se efectuó ningún cobro adicional.');
+      setReviewResults((current) => {
+        const next = { ...current };
+        delete next[orderId];
+        return next;
+      });
+      if (!cleared) setJournalWarning('El ticket se generó, pero la referencia local no se pudo borrar. Comprueba el estado antes de repetir cualquier acción.');
+      setSuccess('Ticket recuperado para ' + info.code + '. No se efectuó ningún cobro adicional.');
     } catch (err: any) {
-      setReviewMessage('El pedido ' + entry.code + ' permanece registrado. No se pudo generar el ticket: ' + (err?.message || 'error de permisos o conexión') + '. No vuelvas a cobrar.');
+      setReviewResults((current) => ({
+        ...current,
+        [orderId]: {
+          code: info.code,
+          canRecoverTicket: true,
+          message: 'El pedido ' + info.code + ' sigue registrado. No se pudo generar el ticket: '
+            + (err?.message || 'error de permisos o conexión') + '. No vuelvas a cobrar.',
+        },
+      }));
     } finally {
-      setRecoveringReviewedTicket(false);
+      setRecoveringReviewedTicketId(null);
+      recoveryLock.current = false;
     }
   };
 
@@ -220,18 +262,24 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
       {success && <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{success}</div>}
       {reviewEntries.length > 0 && <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
         <strong>Ventas por verificar ({reviewEntries.length})</strong>
-        <p className="mt-1 text-xs">Referencias guardadas en este iPad. Consultar no realiza ningún cobro.</p>
-        {reviewEntries.map((entry) => <div key={entry.orderId} className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-amber-200 pt-2">
-          <span className="text-xs">{new Date(entry.recordedAt).toLocaleString('es-MX')}</span>
-          <button type="button" disabled={reviewingId !== null} onClick={() => void checkReviewEntry(entry.orderId)} className="rounded-lg border border-amber-700 bg-white px-3 py-2 text-xs font-bold disabled:opacity-50">{reviewingId === entry.orderId ? 'Verificando…' : 'Consultar sin cobrar'}</button>
-        </div>)}
+        <p className="mt-1 text-xs">Cada referencia se revisa por separado en Firebase. Consultar o recuperar el ticket no cobra otra vez.</p>
+        {reviewEntries.map((entry) => {
+          const result = reviewResults[entry.orderId];
+          return <div key={entry.orderId} className="mt-3 space-y-2 border-t border-amber-200 pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs">Registrada: {new Date(entry.recordedAt).toLocaleString('es-MX')}</span>
+              <button type="button" disabled={reviewingId !== null || recoveringReviewedTicketId !== null} onClick={() => void checkReviewEntry(entry.orderId)} className="rounded-lg border border-amber-700 bg-white px-3 py-2 text-xs font-bold disabled:opacity-50">
+                {reviewingId === entry.orderId ? 'Verificando…' : 'Consultar sin cobrar'}
+              </button>
+            </div>
+            {result && <p role="status" className="text-xs font-semibold">{result.message}</p>}
+            {result?.canRecoverTicket && <button type="button" disabled={recoveringReviewedTicketId !== null || reviewingId !== null} onClick={() => void recoverReviewedTicket(entry.orderId)} className="rounded-lg border border-amber-700 bg-amber-100 px-3 py-2 text-xs font-bold disabled:opacity-50">
+              {recoveringReviewedTicketId === entry.orderId ? 'Generando solo ticket…' : `Generar solo ticket · ${result.code}`}
+            </button>}
+          </div>;
+        })}
       </section>}
-      {reviewMessage && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-950">{reviewMessage}</p>}
-      {verifiedPaidOrder && reviewEntries.some((entry) => entry.orderId === verifiedPaidOrder.id) && (
-        <button type="button" disabled={recoveringReviewedTicket || reviewingId !== null} onClick={() => void recoverReviewedTicket()} className="rounded-xl border border-amber-700 bg-amber-100 px-4 py-3 text-sm font-bold text-amber-950 disabled:opacity-50">
-          {recoveringReviewedTicket ? 'Generando solo ticket…' : `Generar solo ticket · ${verifiedPaidOrder.code}`}
-        </button>
-      )}
+      {journalWarning && <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-950">{journalWarning}</p>}
       {pendingTicketOrder && <button type="button" disabled={retryingTicket} onClick={() => void retryTicketOnly()} className="rounded-xl border border-amber-700 bg-amber-100 px-4 py-3 text-sm font-bold text-amber-950 disabled:opacity-50">{retryingTicket ? 'Verificando el pago…' : `Reintentar solo ticket · ${pendingTicketOrder.code}`}</button>}
 
       <section className="rounded-3xl border border-[#E7D7C4] bg-white px-5 py-5">
