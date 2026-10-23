@@ -20,19 +20,36 @@ const card = 'rounded-2xl border border-[#3A3022] bg-[#111111] p-4';
  * así que no genera costo extra ni usa IA.
  */
 export const BusinessReportsView: React.FC<{ businessId: string; businessName: string; onBack: () => void }> = ({ businessId, businessName, onBack }) => {
-  const [orders, setOrders] = useState<RestaurantOrder[]>([]);
-  const [ready, setReady] = useState(false);
+  // Vincular los datos al tenant evita mostrar cifras del negocio anterior
+  // durante el cambio de interfaz, incluso antes de ejecutar useEffect.
+  const [ordersState, setOrdersState] = useState<{
+    businessId: string;
+    status: 'loading' | 'ready' | 'error';
+    orders: RestaurantOrder[];
+  }>({ businessId, status: 'loading', orders: [] });
   const [period, setPeriod] = useState<ReportPeriod>(7);
 
-  useEffect(
-    () =>
-      subscribeToBusinessRestaurantOrders(businessId, (data) => {
-        setOrders(data);
-        setReady(true);
-      }),
-    [businessId],
-  );
+  useEffect(() => {
+    let active = true;
+    setOrdersState({ businessId, status: 'loading', orders: [] });
+    const unsubscribe = subscribeToBusinessRestaurantOrders(
+      businessId,
+      (data) => {
+        if (active) setOrdersState({ businessId, status: 'ready', orders: data });
+      },
+      () => {
+        if (active) setOrdersState({ businessId, status: 'error', orders: [] });
+      },
+    );
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [businessId]);
 
+  const ready = ordersState.businessId === businessId && ordersState.status === 'ready';
+  const failed = ordersState.businessId === businessId && ordersState.status === 'error';
+  const orders = ready ? ordersState.orders : [];
   const report = useMemo(() => buildSalesReport(orders, period), [orders, period]);
   const maxDay = Math.max(1, ...report.days.map((day) => day.total));
   const paymentRows = [
@@ -76,8 +93,10 @@ export const BusinessReportsView: React.FC<{ businessId: string; businessName: s
           </div>
         </section>
 
-        {!ready ? (
-          <div className={`${card} text-center text-sm text-[#C8C8C8]`}>Cargando tus ventas…</div>
+        {failed ? (
+          <div role="alert" className={`${card} border-red-700 text-center text-sm text-red-200`}>No se pudieron consultar las ventas de este negocio. Revisa la conexión o tus permisos. No significa que las ventas sean cero.</div>
+        ) : !ready ? (
+          <div role="status" className={`${card} text-center text-sm text-[#C8C8C8]`}>Cargando tus ventas…</div>
         ) : report.orderCount === 0 ? (
           <div className={`${card} text-center`}>
             <ShoppingBag className="mx-auto h-8 w-8 text-[#D6A34A]" />
