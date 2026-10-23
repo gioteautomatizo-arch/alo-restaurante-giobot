@@ -8,6 +8,8 @@ export interface BusinessOrderSnapshot {
   paidTodayTotal: number;
   pendingTodayCount: number;
   pendingTodayTotal: number;
+  paidCancelledCount: number;
+  paidMissingDateCount: number;
 }
 
 const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
@@ -41,5 +43,7 @@ export function summarizeBusinessOrders(
     paidTodayTotal: money(paidToday.reduce((sum, o) => sum + amount(o), 0)),
     pendingTodayCount: pendingToday.length,
     pendingTodayTotal: money(pendingToday.reduce((sum, o) => sum + amount(o), 0)),
+    paidCancelledCount: orders.filter((o) => o.status === 'CANCELADO' && o.billingStatus === 'PAGADO').length,
+    paidMissingDateCount: valid.filter((o) => o.billingStatus === 'PAGADO' && !o.paidAt).length,
   };
 }
