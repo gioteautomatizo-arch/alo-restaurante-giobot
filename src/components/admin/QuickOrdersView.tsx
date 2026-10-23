@@ -104,10 +104,12 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
         notes: 'Venta rápida registrada desde Caja para pedido de WhatsApp/mostrador.',
       });
       try {
-        await chargeOffTableOrder(order, quickPaymentMethod, currentUser);
+        const charge = await chargeOffTableOrder(order, quickPaymentMethod, currentUser);
         try {
-          await createOffTableSaleReceipt({ ...order, billingStatus: 'PAGADO', paymentMethod: quickPaymentMethod, paidAt: new Date().toISOString() }, currentUser);
-          setSuccess(`Venta rápida cobrada y ticket creado · ${order.code} · ${money(total)}.`);
+          await createOffTableSaleReceipt(charge.order, currentUser);
+          setSuccess(charge.alreadyPaid
+            ? `El pedido ${charge.order.code} ya estaba pagado. Ticket recuperado sin otro cobro.`
+            : `Venta rápida cobrada y ticket creado · ${order.code} · ${money(total)}.`);
         } catch (ticketError: any) {
           setPendingTicketOrder({ id: order.id!, code: order.code });
           setSuccess(`Venta ${order.code} cobrada y registrada, pero falta el ticket. No vuelvas a cobrarla. Puedes reintentar SOLO el ticket.`);
