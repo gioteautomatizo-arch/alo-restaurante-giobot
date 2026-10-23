@@ -57,6 +57,14 @@ export function rememberQuickSaleForReview(entry: QuickSaleReviewEntry): boolean
     return false;
   }
   try {
+    const key = PREFIX + entry.businessId;
+    const raw = localStorage.getItem(key);
+    // No convertir almacenamiento corrupto en una lista vacía que borre
+    // referencias anteriores; detener y requerir revisión manual.
+    if (raw !== null) {
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed) || parsed.some((item) => !validQuickSaleReviewEntry(item, entry.businessId))) return false;
+    }
     const saved = listQuickSaleReviews(entry.businessId);
     if (saved.some((x) => x.orderId === entry.orderId)) return true;
     // No eliminamos referencias inciertas silenciosamente para hacer espacio.
@@ -73,6 +81,11 @@ export function clearQuickSaleReview(businessId: string, orderId: string): boole
   if (!validBusinessId(businessId) || !FIRESTORE_AUTO_ID.test(orderId)
     || typeof localStorage === 'undefined') return false;
   try {
+    const raw = localStorage.getItem(PREFIX + businessId);
+    if (raw !== null) {
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed) || parsed.some((item) => !validQuickSaleReviewEntry(item, businessId))) return false;
+    }
     const updated = listQuickSaleReviews(businessId).filter((x) => x.orderId !== orderId);
     localStorage.setItem(PREFIX + businessId, JSON.stringify(updated));
     return !listQuickSaleReviews(businessId).some((x) => x.orderId === orderId);
