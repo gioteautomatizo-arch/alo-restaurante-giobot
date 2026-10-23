@@ -43,7 +43,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
   const [orders, setOrders] = useState<RestaurantOrder[]>([]);
   const [expenses, setExpenses] = useState<ExpenseDoc[]>([]);
   const [vault, setVault] = useState<Array<{ kind: 'deposito' | 'retiro'; amount: number; createdAt: string }>>([]);
-  const [fund, setFund] = useState('0');
+  const [fund, setFund] = useState('');
   const [counted, setCounted] = useState('');
   const [notes, setNotes] = useState('');
   const [closing, setClosing] = useState(false);
@@ -83,7 +83,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
 
   const currentShifts = feedStates.shifts.businessId === businessId && feedStates.shifts.status === 'ready' ? shifts : [];
   const openShifts = currentShifts.filter((s) => s.status === 'abierto');
-  const readiness = getShiftReadiness(businessId, feedStates, openShifts.length);
+  const readiness = getShiftReadiness(businessId, feedStates, openShifts.length, openShifts[0]?.openedAt);
   const active = readiness.ready && openShifts.length === 1 ? openShifts[0] : null;
   const history = readiness.ready ? currentShifts.filter((s) => s.status === 'cerrado') : [];
   const missingPaymentDates = active && readiness.ready ? countPaidOrdersMissingPaymentDate(orders, active.openedAt) : 0;
@@ -187,14 +187,18 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
         <strong className="text-sm text-red-300">Hay más de un turno abierto</strong>
         <p className="mt-2 text-xs text-[#C8C8C8]">No abras ni cierres turnos hasta revisar los registros existentes. Se evitó elegir automáticamente un turno incorrecto.</p>
       </div>}
+      {readiness.invalidActiveShiftStart && readiness.errors.length === 0 && <div role="alert" className={card}>
+        <strong className="text-sm text-red-300">El turno abierto no tiene una fecha de apertura válida</strong>
+        <p className="mt-2 text-xs text-[#C8C8C8]">No se puede calcular ni cerrar Caja con seguridad. Revisa el registro del turno; no se modificó automáticamente ningún dato.</p>
+      </div>}
 
       {readiness.ready && (!active ? (
         <section className={card}>
           <div className="flex items-center gap-2 text-sm font-bold text-[#E3BC6B]"><Clock className="h-4 w-4" /> No hay turno abierto</div>
           <p className="mt-2 text-xs text-[#C8C8C8]">Los pedidos de clientes siguen entrando y quedan pendientes de pago aunque no haya turno. Abrir turno no los cobra automáticamente; las ventas se cuentan cuando se registra el pago confirmado.</p>
           <label className="mt-4 block text-xs font-bold text-[#C8C8C8]">Fondo inicial de caja ($)</label>
-          <input type="number" min="0" step="0.01" inputMode="decimal" value={fund} onChange={(e) => setFund(e.target.value)} className={`${input} mt-1 max-w-xs`} />
-          <p className="mt-2 text-xs text-[#C8C8C8]">Verifica el efectivo real antes de abrir; no se asigna un fondo automático.</p>
+          <input type="number" min="0" step="0.01" inputMode="decimal" placeholder="Ingresa el fondo real (ej. 0.00)" value={fund} onChange={(e) => setFund(e.target.value)} className={`${input} mt-1 max-w-xs`} />
+          <p className="mt-2 text-xs text-[#C8C8C8]">Ingresa el efectivo real antes de abrir, incluso si son $0. No se asigna un fondo automáticamente.</p>
           <button type="button" disabled={busy} onClick={() => void openShift()} className="mt-4 flex items-center gap-2 rounded-xl bg-[#D6A34A] px-5 py-3 text-sm font-black text-[#050505] disabled:opacity-50">
             <Play className="h-4 w-4" /> {busy ? 'Abriendo…' : 'Abrir turno'}
           </button>
