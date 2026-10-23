@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { getShiftReadiness, initialShiftFeedStates, SHIFT_FEED_NAMES, type ShiftFeedStates } from '../src/lib/businessShiftReadiness.ts';
+import { getShiftReadiness, initialShiftFeedStates, SHIFT_FEED_NAMES, parseShiftCashAmount, type ShiftFeedStates } from '../src/lib/businessShiftReadiness.ts';
 
 const tenantA = 'giomero';
 const tenantB = 'another-restaurant';
@@ -30,3 +30,11 @@ assert.equal(getShiftReadiness(tenantB, ready, 1).ready, false);
 assert.deepEqual(getShiftReadiness(tenantB, ready, 1).loading, [...SHIFT_FEED_NAMES]);
 assert.equal(getShiftReadiness('', ready, 0).ready, false);
 console.log('PASS: turnos no se abren ni cierran con lecturas incompletas, entre negocios o con turnos duplicados.');
+
+assert.equal(parseShiftCashAmount('0'), 0);
+assert.equal(parseShiftCashAmount('500'), 500);
+assert.equal(parseShiftCashAmount('150.50'), 150.5);
+for (const amount of ['', '  ', '-1', 'NaN', '1.001', '1e3', '1,000', 'Infinity']) {
+  assert.equal(parseShiftCashAmount(amount), null, 'No aceptar ' + amount);
+}
+console.log('PASS: el fondo de apertura y efectivo contado se validan antes de registrar el turno.');
