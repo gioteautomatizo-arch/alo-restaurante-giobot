@@ -93,6 +93,12 @@ export const BusinessReportsView: React.FC<{ businessId: string; businessName: s
           </div>
         </section>
 
+        {ready && report.unreconciledPaidCount > 0 && (
+          <div role="alert" className={`${card} border-amber-500/50 bg-amber-500/10 text-sm text-amber-200`}>
+            <strong>Ventas por conciliar: {report.unreconciledPaidCount}</strong>
+            <p className="mt-1 text-xs">Hay pedidos marcados como pagados sin fecha de cobro verificable en el historial de este negocio. No se incluyen en los totales del periodo hasta revisar cuándo se cobraron. No se modificó ningún pedido.</p>
+          </div>
+        )}
         {failed ? (
           <div role="alert" className={`${card} border-red-700 text-center text-sm text-red-200`}>No se pudieron consultar las ventas de este negocio. Revisa la conexión o tus permisos. No significa que las ventas sean cero.</div>
         ) : !ready ? (
