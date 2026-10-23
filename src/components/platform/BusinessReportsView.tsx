@@ -117,10 +117,10 @@ export const BusinessReportsView: React.FC<{ businessId: string; businessName: s
           </div>
         ) : (
           <>
-            <section className="grid grid-cols-3 gap-2">
-              <div className={card}><span className="text-[10px] font-black uppercase text-[#B7B7B7]">Ventas</span><strong className="mt-1 block text-lg text-[#E3BC6B]">{money(report.totalSales)}</strong></div>
-              <div className={card}><span className="text-[10px] font-black uppercase text-[#B7B7B7]">Pedidos</span><strong className="mt-1 block text-lg text-[#F7F7F7]">{report.orderCount}</strong></div>
-              <div className={card}><span className="text-[10px] font-black uppercase text-[#B7B7B7]">Ticket prom.</span><strong className="mt-1 block text-lg text-[#F7F7F7]">{money(report.averageTicket)}</strong></div>
+            <section className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className={`${card} col-span-2 min-w-0 sm:col-span-1`}><span className="text-[10px] font-black uppercase text-[#B7B7B7]">Ventas</span><strong className="mt-1 block break-words text-lg text-[#E3BC6B]">{money(report.totalSales)}</strong></div>
+              <div className={`${card} min-w-0`}><span className="text-[10px] font-black uppercase text-[#B7B7B7]">Pedidos</span><strong className="mt-1 block break-words text-lg text-[#F7F7F7]">{report.orderCount}</strong></div>
+              <div className={`${card} min-w-0`}><span className="text-[10px] font-black uppercase text-[#B7B7B7]">Ticket prom.</span><strong className="mt-1 block break-words text-lg text-[#F7F7F7]">{money(report.averageTicket)}</strong></div>
             </section>
 
             {period > 1 && (
