@@ -1,6 +1,6 @@
 import type { BusinessCatalogItem } from './businessCatalogService';
 import type { OptionSelection } from './catalogOptions';
-import { selectionSummary, unitPriceFor } from './catalogOptions';
+import { missingRequired, selectionSummary, unitPriceFor } from './catalogOptions';
 
 /**
  * Utilidades de la página pública de un negocio (lo que ve el cliente).
@@ -113,6 +113,34 @@ export function cartToOrderItems(lines: PublicCartLine[]): Array<{
       ...(detail ? { customizationSummary: detail } : {}),
     };
   });
+}
+
+/**
+ * Detecta partidas cuyo producto, precio o personalización ya no coincide con
+ * el último catálogo recibido. No modifica ni confirma pedidos en Firebase.
+ * Hay que volver a elegirlas: nunca cambiar precios de un carrito en silencio.
+ */
+export function outdatedPublicCartKeys(lines: PublicCartLine[], latestCatalog: BusinessCatalogItem[]): string[] {
+  const currentItems = new Map(groupVisibleCatalog(latestCatalog).flatMap((group) => group.items.map((item) => [item.id, item] as const)));
+  return lines.filter((line) => {
+    const latest = currentItems.get(line.item.id);
+    if (!latest || !Number.isInteger(line.quantity) || line.quantity <= 0) return true;
+    if (latest.name !== line.item.name || latest.price !== line.item.price) return true;
+    const selection = line.selection || {};
+    if (missingRequired(latest, selection).length > 0) return true;
+    for (const [groupId, names] of Object.entries(selection)) {
+      if (!Array.isArray(names)) return true;
+      const group = latest.optionGroups?.find((item) => item.id === groupId);
+      const originalGroup = line.item.optionGroups?.find((item) => item.id === groupId);
+      if (names.length > 0 && (!group || (!group.multiple && names.length > 1))) return true;
+      for (const name of names) {
+        const choice = group?.choices.find((item) => item.name === name);
+        const original = originalGroup?.choices.find((item) => item.name === name);
+        if (!choice || !original || choice.price !== original.price) return true;
+      }
+    }
+    return unitPriceFor(latest, selection) !== unitPriceFor(line.item, selection);
+  }).map((line) => line.key);
 }
 
 /** No confirmar pedidos mientras la lectura del menú no sea fiable. */
