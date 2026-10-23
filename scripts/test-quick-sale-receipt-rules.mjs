@@ -59,6 +59,33 @@ try {
   await assertFails(setDoc(doc(guest, 'sale_receipts/forged-public-ticket'), receipt));
   await assertFails(getDoc(doc(guest, 'sale_receipts/offtable-receipt-order-test')));
 
+  // Dos cajas intentan crear el MISMO ticket determinístico. Solo puede
+  // persistirse el primero y jamás sobrescribirse el comprobante anterior.
+  const racePath = 'sale_receipts/offtable-receipt-race-test';
+  const candidates = [
+    { firestore: actor('cashier-one'), payload: { ...receipt, closedById: 'cashier-one', closedByName: 'Cajero uno' } },
+    { firestore: actor('cashier-two'), payload: { ...receipt, closedById: 'cashier-two', closedByName: 'Cajero dos' } },
+  ];
+  const outcomes = await Promise.allSettled(candidates.map(({ firestore, payload }) =>
+    setDoc(doc(firestore, racePath), payload)
+  ));
+  assert.equal(outcomes.filter(x => x.status === 'fulfilled').length, 1,
+    'Solo uno de dos intentos simultáneos debe poder crear el comprobante.');
+  const rejected = outcomes.filter(x => x.status === 'rejected');
+  assert.equal(rejected.length, 1);
+  assert.equal(rejected[0].reason?.code, 'permission-denied');
+  const raceSnap = await assertSucceeds(getDoc(doc(actor('cashier-one'), racePath)));
+  assert.equal(raceSnap.exists(), true);
+  const persisted = raceSnap.data();
+  assert(['cashier-one', 'cashier-two'].includes(persisted.closedById));
+  assert.equal(persisted.totalPaid, receipt.totalPaid);
+  assert.equal(persisted.orderIds[0], 'receipt-order-test');
+  await assertFails(setDoc(doc(actor('cashier-one'), racePath),
+    { ...receipt, totalPaid: 999, closedById: 'altered' }));
+  const unchanged = await assertSucceeds(getDoc(doc(actor('cashier-two'), racePath)));
+  assert.equal(unchanged.data().closedById, persisted.closedById);
+  assert.equal(unchanged.data().totalPaid, 35);
+
   // En negocio nuevo, solo un miembro autorizado o superadmin puede registrar.
   await env.withSecurityRulesDisabled(async ctx => {
     await setDoc(doc(ctx.firestore(), 'businesses/other-business'), { restaurantId: 'other-business', ownerUserId: 'other-owner' });
