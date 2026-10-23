@@ -72,4 +72,24 @@ assert.equal(crossingMonth.totalSales, 100, 'El reporte semanal incluye ambos d�
 assert.equal(crossingMonth.days.find((day) => day.key === '2026-10-31')?.total, 35);
 assert.equal(crossingMonth.days.find((day) => day.key === '2026-11-01')?.total, 65);
 
-console.log('PASS: reportes concilian fechas de cobro, históricos y medianoche CDMX al cambiar de mes.');
+
+ // Cambio de año: el filtro de 30 días incluye diciembre y enero, pero no cobros fuera de ventana.
+const yearEndOrders = [
+  make({ code: 'FUERA-30-DIAS', billingStatus: 'PAGADO',
+    paidAt: '2026-12-01T18:00:00Z', total: 900 }),
+  make({ code: 'ULTIMO-DIA-2026', billingStatus: 'PAGADO',
+    paidAt: '2027-01-01T05:59:59Z', total: 40 }),
+  make({ code: 'PRIMER-DIA-2027', billingStatus: 'PAGADO',
+    paidAt: '2027-01-01T06:00:00Z', total: 60 }),
+];
+const janFirst = new Date('2027-01-01T18:00:00Z');
+const yearStartToday = buildSalesReport(yearEndOrders, 1, janFirst);
+assert.equal(yearStartToday.totalSales, 60, 'El cobro anterior a medianoche pertenece a diciembre');
+const yearStartMonth = buildSalesReport(yearEndOrders, 30, janFirst);
+assert.equal(yearStartMonth.totalSales, 100, 'La ventana de 30 días cruza de año y excluye cobros antiguos');
+assert.equal(yearStartMonth.orderCount, 2);
+assert.equal(yearStartMonth.days.find((day) => day.key === '2026-12-31')?.total, 40);
+assert.equal(yearStartMonth.days.find((day) => day.key === '2027-01-01')?.total, 60);
+assert.equal(yearStartMonth.days.length, 30, 'El filtro de 30 días conserva exactamente 30 fechas');
+
+console.log('PASS: reportes concilian fechas de cobro, históricos y medianoche CDMX al cambiar de mes y año.');
