@@ -18,11 +18,13 @@ export function getShiftReadiness(
   businessId: string,
   sources: ShiftFeedStates,
   openShifts: number,
+  activeShiftOpenedAt?: string,
 ): {
   ready: boolean;
   loading: ShiftFeedName[];
   errors: ShiftFeedName[];
   duplicateOpenShifts: boolean;
+  invalidActiveShiftStart: boolean;
 } {
   const loading = SHIFT_FEED_NAMES.filter((key) =>
     sources[key].businessId !== businessId || sources[key].status === 'loading',
@@ -31,11 +33,15 @@ export function getShiftReadiness(
     sources[key].businessId === businessId && sources[key].status === 'error',
   );
   const duplicateOpenShifts = openShifts > 1;
+  // Sin apertura válida, sumar ventas desde epoch (0) daría un corte falso.
+  const parsedStart = Date.parse(activeShiftOpenedAt || '');
+  const invalidActiveShiftStart = openShifts === 1 && (!Number.isFinite(parsedStart) || parsedStart <= 0);
   return {
-    ready: businessId.trim().length > 0 && loading.length === 0 && errors.length === 0 && !duplicateOpenShifts,
+    ready: businessId.trim().length > 0 && loading.length === 0 && errors.length === 0 && !duplicateOpenShifts && !invalidActiveShiftStart,
     loading,
     errors,
     duplicateOpenShifts,
+    invalidActiveShiftStart,
   };
 }
 
