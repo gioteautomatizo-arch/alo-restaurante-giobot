@@ -2,6 +2,9 @@ import React, { useRef, useState } from 'react';
 import { Minus, Plus, ReceiptText } from 'lucide-react';
 import { StaffUser } from '../../types';
 import { createRestaurantOrder, chargeOffTableOrder } from '../../lib/ordersService';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import { listQuickSaleReviews, rememberQuickSaleForReview, clearQuickSaleReview } from '../../lib/quickSaleRecoveryJournal';
 import { createOffTableSaleReceipt, retryPaidOffTableSaleReceipt } from '../../lib/saleReceiptsService';
 import { getActiveRestaurantId } from '../../lib/restaurantContext';
 import { getCurrentAuthUser } from '../../lib/firebase';
@@ -34,6 +37,9 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
   const quickSaleLock = useRef(false);
   const [pendingTicketOrder, setPendingTicketOrder] = useState<{ id: string; code: string } | null>(null);
   const [retryingTicket, setRetryingTicket] = useState(false);
+  const [reviewEntries, setReviewEntries] = useState(() => listQuickSaleReviews(getActiveRestaurantId()));
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [reviewMessage, setReviewMessage] = useState<string | null>(null);
   const quickTotal = quickLines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
 
   const addQuickLine = () => {
@@ -103,10 +109,15 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
         total,
         notes: 'Venta rápida registrada desde Caja para pedido de WhatsApp/mostrador.',
       });
+      const referenceSaved = rememberQuickSaleForReview({ orderId: order.id!, businessId: getActiveRestaurantId(), recordedAt: new Date().toISOString() });
+      setReviewEntries(listQuickSaleReviews(getActiveRestaurantId()));
+      if (!referenceSaved) setReviewMessage('No se pudo conservar la referencia local. Anota el folio ' + order.code + ' y revisa Caja si falla la conexión.');
       try {
         const charge = await chargeOffTableOrder(order, quickPaymentMethod, currentUser);
         try {
           await createOffTableSaleReceipt(charge.order, currentUser);
+          clearQuickSaleReview(getActiveRestaurantId(), order.id!);
+          setReviewEntries(listQuickSaleReviews(getActiveRestaurantId()));
           setSuccess(charge.alreadyPaid
             ? `El pedido ${charge.order.code} ya estaba pagado. Ticket recuperado sin otro cobro.`
             : `Venta rápida cobrada y ticket creado · ${order.code} · ${money(total)}.`);
@@ -127,11 +138,33 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
     }
   };
 
+  const checkReviewEntry = async (orderId: string) => {
+    if (reviewingId) return;
+    setReviewingId(orderId);
+    setReviewMessage(null);
+    try {
+      const snap = await getDoc(doc(db, 'restaurant_orders', orderId));
+      if (!snap.exists()) { setReviewMessage('No aparece el pedido en Firebase. No repitas el cobro; revisa Caja.'); return; }
+      const saved = snap.data();
+      if (saved.restaurantId !== getActiveRestaurantId()) { setReviewMessage('La referencia no pertenece a este negocio.'); return; }
+      const folio = typeof saved.code === 'string' ? saved.code : orderId;
+      if (saved.billingStatus === 'PAGADO') {
+        setReviewMessage('Pedido ' + folio + ' PAGADO. No vuelvas a cobrarlo. Si falta ticket, usa Tickets cerrados.');
+      } else {
+        setReviewMessage('Pedido ' + folio + ' sin pago confirmado. Verifica el cobro en Caja antes de repetirlo.');
+      }
+    } catch (err: any) {
+      setReviewMessage('No se pudo verificar Firebase: ' + (err?.message || 'sin conexión') + '. No repitas el cobro.');
+    } finally { setReviewingId(null); }
+  };
+
   const retryTicketOnly = async () => {
     if (!pendingTicketOrder || retryingTicket) return;
     setRetryingTicket(true);
     try {
       await retryPaidOffTableSaleReceipt(pendingTicketOrder.id, getActiveRestaurantId(), currentUser);
+      clearQuickSaleReview(getActiveRestaurantId(), pendingTicketOrder.id);
+      setReviewEntries(listQuickSaleReviews(getActiveRestaurantId()));
       setSuccess(`Ticket generado para ${pendingTicketOrder.code}. La venta NO se cobró otra vez.`);
       setPendingTicketOrder(null);
     } catch (err: any) {
@@ -156,6 +189,15 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
 
       {error && <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div>}
       {success && <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{success}</div>}
+      {reviewEntries.length > 0 && <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+        <strong>Ventas por verificar ({reviewEntries.length})</strong>
+        <p className="mt-1 text-xs">Referencias guardadas en este iPad. Consultar no realiza ningún cobro.</p>
+        {reviewEntries.map((entry) => <div key={entry.orderId} className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-amber-200 pt-2">
+          <span className="text-xs">{new Date(entry.recordedAt).toLocaleString('es-MX')}</span>
+          <button type="button" disabled={reviewingId !== null} onClick={() => void checkReviewEntry(entry.orderId)} className="rounded-lg border border-amber-700 bg-white px-3 py-2 text-xs font-bold disabled:opacity-50">{reviewingId === entry.orderId ? 'Verificando…' : 'Consultar sin cobrar'}</button>
+        </div>)}
+      </section>}
+      {reviewMessage && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-950">{reviewMessage}</p>}
       {pendingTicketOrder && <button type="button" disabled={retryingTicket} onClick={() => void retryTicketOnly()} className="rounded-xl border border-amber-700 bg-amber-100 px-4 py-3 text-sm font-bold text-amber-950 disabled:opacity-50">{retryingTicket ? 'Verificando el pago…' : `Reintentar solo ticket · ${pendingTicketOrder.code}`}</button>}
 
       <section className="rounded-3xl border border-[#E7D7C4] bg-white px-5 py-5">
