@@ -49,9 +49,10 @@ try {
   // Un getDoc sobre un documento inexistente no puede utilizar resource.data
   // para resolver el tenant. La transacción de creación actual depende de él.
   for (const [uid, businessId] of [['cashier-cal', 'alo-restaurante'], ['cashier-a', 'business-a']]) {
-    const missingRef = doc(db(uid), 'restaurant_orders', key + '-' + businessId);
+    const userDb = db(uid);
+    const missingRef = doc(userDb, 'restaurant_orders', key + '-' + businessId);
     await assertFails(getDoc(missingRef));
-    await assertFails(runTransaction(db(uid), async transaction => {
+    await assertFails(runTransaction(userDb, async transaction => {
       const missing = await transaction.get(missingRef);
       if (!missing.exists()) transaction.set(missingRef, sample(businessId));
     }));
