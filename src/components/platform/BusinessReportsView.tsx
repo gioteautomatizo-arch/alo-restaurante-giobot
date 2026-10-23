@@ -106,8 +106,10 @@ export const BusinessReportsView: React.FC<{ businessId: string; businessName: s
         ) : report.orderCount === 0 ? (
           <div className={`${card} text-center`}>
             <ShoppingBag className="mx-auto h-8 w-8 text-[#D6A34A]" />
-            <p className="mt-2 font-bold text-[#F7F7F7]">Todavía no hay ventas en este periodo</p>
-            <p className="mt-1 text-xs text-[#B7B7B7]">Cuando registres pedidos en Caja, aquí verás tus ventas, tu producto estrella y cómo te pagan.</p>
+            <p className="mt-2 font-bold text-[#F7F7F7]">No hay ventas con cobro verificable en este periodo</p>
+            <p className="mt-1 text-xs text-[#B7B7B7]">{report.unreconciledPaidCount > 0
+              ? 'Hay pedidos pagados por conciliar. Revisa el aviso anterior: sus importes no se incluyen hasta verificar la fecha de cobro.'
+              : 'Cuando registres cobros confirmados en Caja, aquí verás tus ventas, tu producto estrella y cómo te pagan.'}</p>
           </div>
         ) : (
           <>
