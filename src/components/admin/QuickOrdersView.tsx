@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Minus, Plus, ReceiptText } from 'lucide-react';
 import { StaffUser } from '../../types';
 import { createRestaurantOrder, chargeOffTableOrder } from '../../lib/ordersService';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDocFromServer } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { listQuickSaleReviews, rememberQuickSaleForReview, clearQuickSaleReview } from '../../lib/quickSaleRecoveryJournal';
 import { createOffTableSaleReceipt, retryPaidOffTableSaleReceipt } from '../../lib/saleReceiptsService';
@@ -39,6 +39,9 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
   const [retryingTicket, setRetryingTicket] = useState(false);
   const [reviewEntries, setReviewEntries] = useState(() => listQuickSaleReviews(getActiveRestaurantId()));
   const [reviewingId, setReviewingId] = useState<string | null>(null);
+  // Solo se habilita tras comprobar PAGADO contra Firestore online.
+  const [verifiedPaidOrder, setVerifiedPaidOrder] = useState<{ id: string; code: string } | null>(null);
+  const [recoveringReviewedTicket, setRecoveringReviewedTicket] = useState(false);
   const [reviewMessage, setReviewMessage] = useState<string | null>(null);
   const quickTotal = quickLines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
 
@@ -142,20 +145,46 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
     if (reviewingId) return;
     setReviewingId(orderId);
     setReviewMessage(null);
+    setVerifiedPaidOrder(null);
     try {
-      const snap = await getDoc(doc(db, 'restaurant_orders', orderId));
+      // Nunca considerar el cache sin conexión como confirmación de cobro.
+      const snap = await getDocFromServer(doc(db, 'restaurant_orders', orderId));
       if (!snap.exists()) { setReviewMessage('No aparece el pedido en Firebase. No repitas el cobro; revisa Caja.'); return; }
       const saved = snap.data();
       if (saved.restaurantId !== getActiveRestaurantId()) { setReviewMessage('La referencia no pertenece a este negocio.'); return; }
       const folio = typeof saved.code === 'string' ? saved.code : orderId;
       if (saved.billingStatus === 'PAGADO') {
-        setReviewMessage('Pedido ' + folio + ' PAGADO. No vuelvas a cobrarlo. Si falta ticket, usa Tickets cerrados.');
+        if (saved.status === 'CANCELADO' || !['pickup', 'delivery'].includes(saved.orderType)) {
+          setReviewMessage('Pedido ' + folio + ' pagado con estado no recuperable desde esta pantalla. Revisa Caja.');
+          return;
+        }
+        setVerifiedPaidOrder({ id: orderId, code: folio });
+        setReviewMessage('Pedido ' + folio + ' PAGADO, verificado en Firebase. Puedes recuperar SOLO el ticket. No vuelvas a cobrarlo.');
       } else {
         setReviewMessage('Pedido ' + folio + ' sin pago confirmado. Verifica el cobro en Caja antes de repetirlo.');
       }
     } catch (err: any) {
       setReviewMessage('No se pudo verificar Firebase: ' + (err?.message || 'sin conexión') + '. No repitas el cobro.');
     } finally { setReviewingId(null); }
+  };
+
+  const recoverReviewedTicket = async () => {
+    if (!verifiedPaidOrder || recoveringReviewedTicket || reviewingId) return;
+    const entry = verifiedPaidOrder;
+    setRecoveringReviewedTicket(true);
+    setReviewMessage(null);
+    try {
+      // El servicio vuelve a comprobar PAGADO en Firestore y NO registra cobros.
+      await retryPaidOffTableSaleReceipt(entry.id, getActiveRestaurantId(), currentUser);
+      clearQuickSaleReview(getActiveRestaurantId(), entry.id);
+      setReviewEntries(listQuickSaleReviews(getActiveRestaurantId()));
+      setVerifiedPaidOrder(null);
+      setSuccess('Ticket recuperado para ' + entry.code + '. No se efectuó ningún cobro adicional.');
+    } catch (err: any) {
+      setReviewMessage('El pedido ' + entry.code + ' permanece registrado. No se pudo generar el ticket: ' + (err?.message || 'error de permisos o conexión') + '. No vuelvas a cobrar.');
+    } finally {
+      setRecoveringReviewedTicket(false);
+    }
   };
 
   const retryTicketOnly = async () => {
@@ -198,6 +227,11 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
         </div>)}
       </section>}
       {reviewMessage && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-950">{reviewMessage}</p>}
+      {verifiedPaidOrder && reviewEntries.some((entry) => entry.orderId === verifiedPaidOrder.id) && (
+        <button type="button" disabled={recoveringReviewedTicket || reviewingId !== null} onClick={() => void recoverReviewedTicket()} className="rounded-xl border border-amber-700 bg-amber-100 px-4 py-3 text-sm font-bold text-amber-950 disabled:opacity-50">
+          {recoveringReviewedTicket ? 'Generando solo ticket…' : `Generar solo ticket · ${verifiedPaidOrder.code}`}
+        </button>
+      )}
       {pendingTicketOrder && <button type="button" disabled={retryingTicket} onClick={() => void retryTicketOnly()} className="rounded-xl border border-amber-700 bg-amber-100 px-4 py-3 text-sm font-bold text-amber-950 disabled:opacity-50">{retryingTicket ? 'Verificando el pago…' : `Reintentar solo ticket · ${pendingTicketOrder.code}`}</button>}
 
       <section className="rounded-3xl border border-[#E7D7C4] bg-white px-5 py-5">
