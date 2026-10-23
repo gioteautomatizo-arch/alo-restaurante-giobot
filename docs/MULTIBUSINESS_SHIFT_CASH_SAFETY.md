@@ -8,6 +8,7 @@ Corte de revisión: 23 de octubre de 2026
 - Si hay dos o más turnos abiertos en el negocio, se bloquea la operación manual en esa vista.
 - El fondo inicial inicia en $0 como valor sugerido, NO en $500; el usuario debe confirmar el efectivo real.
 - Efectivo inicial y contado se validan: valores no negativos y dos decimales como máximo.
+- Si un pedido creado durante el turno figura pagado pero carece de fecha de cobro válida, se avisa y se bloquea el cierre de ese turno (no se corrige ni altera el pedido).
 - Se conserva la separación entre estado de entrega y registro de cobro de un pedido.
 - Hay pruebas puras en scripts/test-business-shift-readiness.mts, ejecutadas desde Quality checks.
 
@@ -16,7 +17,7 @@ Corte de revisión: 23 de octubre de 2026
 - Firestore en producción no fue modificado ni se presume igual a las reglas versionadas.
 - onSnapshot puede entregar cache local; antes de un cierre contable real debe existir estrategia de conciliación con estado confirmado en servidor.
 - El cobro universal no está terminado. No convertir manualmente pendientes en pagados sin verificación de reglas y permisos.
-- Pedidos pagados sin fecha de pago requieren conciliación; nunca deben asignarse silenciosamente a un turno.
+- Pedidos pagados sin fecha de pago requieren conciliación; nunca deben asignarse silenciosamente a un turno. La nueva protección cubre los creados desde la apertura; pedidos anteriores cobrados durante el turno podrían seguir sin identificarse: se necesita conciliación backend e historial antes de producción.
 - Los tests automatizados NO equivalen a prueba visual ni a certificación contable.
 
 ## Prueba visual de bajo riesgo
