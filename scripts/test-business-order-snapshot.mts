@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
+import type { RestaurantOrder } from '../src/types';
 import { summarizeBusinessOrders } from '../src/lib/businessOrderSnapshot.ts';
 
 const now = new Date('2026-10-22T16:00:00Z');
-const make = (partial = {}) => ({
+const make = (partial: Partial<RestaurantOrder> = {}): RestaurantOrder => ({
+  code: 'TEST-SALE', restaurantId: 'business-test', orderType: 'pickup',
+  customerName: 'Cliente ficticio', paymentMethod: 'efectivo',
+  bringOwnContainer: false, items: [], subtotal: 40,
+  discountAmount: 0, deliveryFee: 0, updatedAt: '2026-10-22T14:00:00Z',
   status: 'NUEVO', billingStatus: 'PENDIENTE',
   createdAt: '2026-10-22T14:00:00Z', total: 40, ...partial,
 });
