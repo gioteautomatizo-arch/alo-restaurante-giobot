@@ -39,7 +39,7 @@ export const BusinessOperationsView: React.FC<{
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
-  const [activeTab, setActiveTab] = useState<'pos' | 'orders' | 'comandas'>('pos');
+  const [activeTab, setActiveTab] = useState<'pos' | 'orders' | 'comandas' | 'unpaid'>('pos');
   const [commandFilter, setCommandFilter] = useState<'TODAS' | RestaurantOrderStatus>('TODAS');
 
   useEffect(() => subscribeToBusinessCatalog(
@@ -68,6 +68,7 @@ export const BusinessOperationsView: React.FC<{
   const cartTotal = cart.reduce((sum, line) => sum + Number(line.item.price || 0) * line.quantity, 0);
 
   const snapshot = useMemo(() => summarizeBusinessOrders(orders), [orders]);
+  const unpaidOrders = orders.filter((order) => order.status !== 'CANCELADO' && order.billingStatus === 'PENDIENTE');
   const activeOrders = orders.filter((order) => order.status !== 'CANCELADO' && ['NUEVO', 'PREPARANDO', 'LISTO'].includes(order.status));
   const commandOrders = useMemo(() => {
     const filtered = commandFilter === 'TODAS' ? orders : orders.filter((order) => order.status === commandFilter);
@@ -218,6 +219,7 @@ export const BusinessOperationsView: React.FC<{
         <div className="mt-6 flex gap-2 rounded-2xl border border-[#DEC8AE] bg-white p-2 w-fit">
           <button onClick={() => setActiveTab('pos')} className={activeTab === 'pos' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Capturar pedido</button>
           <button onClick={() => setActiveTab('orders')} className={activeTab === 'orders' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Pedidos activos</button>
+          <button onClick={() => setActiveTab('unpaid')} className={activeTab === 'unpaid' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Por cobrar ({unpaidOrders.length})</button>
           <button onClick={() => setActiveTab('comandas')} className={activeTab === 'comandas' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Comandas</button>
         </div>
 
@@ -276,6 +278,17 @@ export const BusinessOperationsView: React.FC<{
               </div>
             </aside>
           </div>
+        ) : activeTab === 'unpaid' ? (
+          <section className="mt-6 rounded-[2rem] border border-[#D9C5AC] bg-white p-5">
+            <h2 className="font-serif text-xl font-black text-[#2B1B13]">Pedidos por cobrar</h2>
+            <p className="mt-2 text-sm text-[#6B4028]">Los pedidos web pueden llegar aunque el turno esté cerrado. No se cuentan como ingresos hasta registrar un cobro autorizado. El cobro universal está pendiente de validación de permisos; no registres el pago dos veces ni cambies el estado manualmente.</p>
+            {unpaidOrders.length === 0 ? <p className="mt-5 text-sm text-[#6B4028]">No hay pedidos pendientes de pago.</p> : <div className="mt-4 divide-y divide-[#E8D8C4]">
+              {unpaidOrders.map((order) => <div key={order.id || order.code} className="flex flex-wrap items-center justify-between gap-3 py-4">
+                <div><strong className="text-sm text-[#2B1B13]">{order.code}</strong><p className="text-xs text-[#6B4028]">{order.customerName || 'Cliente web'} · {order.status} · {new Date(order.createdAt).toLocaleString('es-MX')}</p></div>
+                <div className="text-right"><strong className="text-sm text-[#2B1B13]">{money(Number(order.total || 0))}</strong><p className="text-xs font-bold text-amber-800">PENDIENTE · No cobrado</p></div>
+              </div>)}
+            </div>}
+          </section>
         ) : activeTab === 'orders' ? (
           <section className="mt-6 rounded-[2rem] border border-[#D9C5AC] bg-white overflow-hidden">
             <div className="px-5 py-4 border-b border-[#E8D8C4]"><h2 className="font-serif text-xl font-black text-[#2B1B13]">Pedidos activos</h2></div>
