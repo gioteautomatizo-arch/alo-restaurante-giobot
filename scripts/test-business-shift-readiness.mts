@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { getShiftReadiness, initialShiftFeedStates, SHIFT_FEED_NAMES, parseShiftCashAmount, type ShiftFeedStates } from '../src/lib/businessShiftReadiness.ts';
+import { countPaidOrdersMissingPaymentDate, getShiftReadiness, initialShiftFeedStates, SHIFT_FEED_NAMES, parseShiftCashAmount, type ShiftFeedStates } from '../src/lib/businessShiftReadiness.ts';
 
 const tenantA = 'giomero';
 const tenantB = 'another-restaurant';
@@ -38,3 +38,17 @@ for (const amount of ['', '  ', '-1', 'NaN', '1.001', '1e3', '1,000', 'Infinity'
   assert.equal(parseShiftCashAmount(amount), null, 'No aceptar ' + amount);
 }
 console.log('PASS: el fondo de apertura y efectivo contado se validan antes de registrar el turno.');
+
+const shiftOpened = '2026-10-23T15:00:00.000Z';
+const paidOrders = [
+  { status: 'ENTREGADO', billingStatus: 'PAGADO', createdAt: '2026-10-23T15:01:00.000Z' },
+  { status: 'ENTREGADO', billingStatus: 'PAGADO', createdAt: '2026-10-23T15:02:00.000Z', paidAt: 'fecha inválida' },
+  { status: 'ENTREGADO', billingStatus: 'PAGADO', createdAt: '2026-10-23T15:03:00.000Z', paidAt: '2026-10-23T15:10:00.000Z' },
+  { status: 'NUEVO', billingStatus: 'PENDIENTE', createdAt: '2026-10-23T15:04:00.000Z' },
+  { status: 'CANCELADO', billingStatus: 'PAGADO', createdAt: '2026-10-23T15:05:00.000Z' },
+  { status: 'ENTREGADO', billingStatus: 'PAGADO', createdAt: '2026-10-23T14:59:00.000Z' },
+];
+assert.equal(countPaidOrdersMissingPaymentDate(paidOrders, shiftOpened), 2);
+assert.equal(countPaidOrdersMissingPaymentDate(paidOrders, 'invalid'), 0);
+assert.equal(countPaidOrdersMissingPaymentDate([], shiftOpened), 0);
+console.log('PASS: se identifican pagos recientes sin fecha verificable antes de cerrar turno.');
