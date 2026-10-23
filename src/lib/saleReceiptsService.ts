@@ -20,6 +20,7 @@ import {
 } from '../types';
 import { sanitizeFirestorePayload } from './firestoreService';
 import { getActiveRestaurantId } from './restaurantContext';
+import { assertMatchingOffTableReceipt } from './offTableReceiptGuards';
 
 export const SALE_RECEIPTS_COLLECTION = 'sale_receipts';
 export const RESTAURANT_ID = 'alo-restaurante' as const;
@@ -192,12 +193,7 @@ export async function createOffTableSaleReceipt(
     const existing = await getDoc(receiptRef);
     if (existing.exists()) {
       const prior = existing.data() as SaleReceipt;
-      if (prior.restaurantId !== order.restaurantId ||
-          prior.receiptType !== 'OFF_TABLE' ||
-          prior.status !== 'PAGADO' ||
-          !Array.isArray(prior.orderIds) || !prior.orderIds.includes(order.id)) {
-        throw new Error('El ticket existente no coincide con esta venta. Revisar Caja sin sobrescribir.');
-      }
+      assertMatchingOffTableReceipt(prior, order);
       return { ...prior, id: existing.id };
     }
   } catch (readError) {
