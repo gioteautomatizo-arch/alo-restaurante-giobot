@@ -42,3 +42,7 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-receipt-security-test --config scripts/firebase.launch-security-emulator.json "env SALE_RECEIPTS_RULES_FILE=docs/firestore.launch-security.STAGED.rules node scripts/test-quick-sale-receipt-rules.mjs"
       - name: Test paid and pending business order totals
         run: node --import tsx scripts/test-business-order-snapshot.mts
+      - name: Check quick-sale idempotency blockers in current repository rules
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-idempotency-safety-test --config scripts/firebase.launch-security-emulator.json "env IDEMPOTENCY_RULE_FILE=firestore.rules node scripts/test-quick-sale-idempotency-staged.mjs"
+      - name: Check quick-sale idempotency blockers in staged rules
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-idempotency-safety-test --config scripts/firebase.launch-security-emulator.json "env IDEMPOTENCY_RULE_FILE=docs/firestore.launch-security.STAGED.rules node scripts/test-quick-sale-idempotency-staged.mjs"
