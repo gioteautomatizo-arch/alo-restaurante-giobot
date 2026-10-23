@@ -5,7 +5,7 @@ import { subscribeToBusinessRestaurantOrders } from '../../lib/ordersService';
 import { saveModuleDoc, subscribeToModule } from '../../lib/tenantModules';
 import { computeShiftSalesFromOrders } from '../../lib/shiftSales';
 import { getCurrentAuthUser } from '../../lib/firebase';
-import { getShiftReadiness, initialShiftFeedStates, type ShiftFeedName } from '../../lib/businessShiftReadiness';
+import { getShiftReadiness, initialShiftFeedStates, parseShiftCashAmount, type ShiftFeedName } from '../../lib/businessShiftReadiness';
 
 const money = (v: number) => v.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
 const when = (iso?: string) => {
@@ -43,7 +43,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
   const [orders, setOrders] = useState<RestaurantOrder[]>([]);
   const [expenses, setExpenses] = useState<ExpenseDoc[]>([]);
   const [vault, setVault] = useState<Array<{ kind: 'deposito' | 'retiro'; amount: number; createdAt: string }>>([]);
-  const [fund, setFund] = useState('500');
+  const [fund, setFund] = useState('0');
   const [counted, setCounted] = useState('');
   const [notes, setNotes] = useState('');
   const [closing, setClosing] = useState(false);
@@ -109,12 +109,14 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
     setBusy(true);
     setError('');
     try {
+      const fundAmount = parseShiftCashAmount(fund);
+      if (fundAmount === null) throw new Error('Escribe el fondo real de caja: cero o una cantidad válida con hasta dos decimales.');
       const hour = Number(new Date().toLocaleString('en-US', { hour: '2-digit', hour12: false, timeZone: 'America/Mexico_City' }));
       await saveModuleDoc(
         businessId,
         'shifts',
-        { status: 'abierto', shiftType: hour < 15 ? 'AM' : 'PM', openedAt: new Date().toISOString(), openedByName: userName, initialCashFund: Math.max(0, Number(fund) || 0) },
-        { action: 'shift.open', summary: `Abrió turno con fondo de ${money(Number(fund) || 0)}` },
+        { status: 'abierto', shiftType: hour < 15 ? 'AM' : 'PM', openedAt: new Date().toISOString(), openedByName: userName, initialCashFund: fundAmount },
+        { action: 'shift.open', summary: `Abrió turno con fondo de ${money(fundAmount)}` },
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No pudimos abrir el turno.');
@@ -128,8 +130,8 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
     setBusy(true);
     setError('');
     try {
-      const countedCash = Number(counted);
-      if (!Number.isFinite(countedCash) || counted.trim() === '') throw new Error('Escribe cuánto efectivo contaste en caja.');
+      const countedCash = parseShiftCashAmount(counted);
+      if (countedCash === null) throw new Error('Escribe el efectivo contado: cero o una cantidad válida con hasta dos decimales.');
       const difference = Math.round((countedCash - live.expectedCash) * 100) / 100;
       await saveModuleDoc(
         businessId,
@@ -186,7 +188,8 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
           <div className="flex items-center gap-2 text-sm font-bold text-[#E3BC6B]"><Clock className="h-4 w-4" /> No hay turno abierto</div>
           <p className="mt-2 text-xs text-[#C8C8C8]">Los pedidos de clientes siguen entrando y quedan pendientes de pago aunque no haya turno. Abrir turno no los cobra automáticamente; las ventas se cuentan cuando se registra el pago confirmado.</p>
           <label className="mt-4 block text-xs font-bold text-[#C8C8C8]">Fondo inicial de caja ($)</label>
-          <input type="number" inputMode="decimal" value={fund} onChange={(e) => setFund(e.target.value)} className={`${input} mt-1 max-w-xs`} />
+          <input type="number" min="0" step="0.01" inputMode="decimal" value={fund} onChange={(e) => setFund(e.target.value)} className={`${input} mt-1 max-w-xs`} />
+          <p className="mt-2 text-xs text-[#C8C8C8]">Verifica el efectivo real antes de abrir; no se asigna un fondo automático.</p>
           <button type="button" disabled={busy} onClick={() => void openShift()} className="mt-4 flex items-center gap-2 rounded-xl bg-[#D6A34A] px-5 py-3 text-sm font-black text-[#050505] disabled:opacity-50">
             <Play className="h-4 w-4" /> {busy ? 'Abriendo…' : 'Abrir turno'}
           </button>
@@ -218,8 +221,8 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
             ) : (
               <div className="mt-4 space-y-3 rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-4">
                 <label className="block text-xs font-bold text-[#C8C8C8]">Efectivo contado en caja ($)</label>
-                <input type="number" inputMode="decimal" value={counted} onChange={(e) => setCounted(e.target.value)} className={`${input} max-w-xs`} autoFocus />
-                {counted.trim() !== '' && Number.isFinite(Number(counted)) && (
+                <input type="number" min="0" step="0.01" inputMode="decimal" value={counted} onChange={(e) => setCounted(e.target.value)} className={`${input} max-w-xs`} autoFocus />
+                {parseShiftCashAmount(counted) !== null && (
                   <p className="text-xs text-[#C8C8C8]">Diferencia: <strong className={Number(counted) - live.expectedCash === 0 ? 'text-emerald-300' : 'text-amber-300'}>{money(Number(counted) - live.expectedCash)}</strong></p>
                 )}
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas del corte (opcional)" rows={2} className={input} />
