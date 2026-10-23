@@ -201,14 +201,16 @@ export const BusinessOperationsView: React.FC<{
       <main className="mx-auto max-w-6xl px-4 py-6 sm:py-8">
         {ordersLoadState === 'error' && <p role="alert" className="mb-4 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-900">No se pudieron consultar los pedidos de este negocio. Las cifras de Caja están ocultas; revisa tu conexión o permisos de Firebase. No significa que las ventas sean cero.</p>}
         {ordersLoadState === 'loading' && <p role="status" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">Consultando pedidos y estado de cobro…</p>}
-        {ordersLoadState === 'ready' && <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {ordersLoadState === 'ready' && <>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><ClipboardList className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{snapshot.ordersToday}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Pedidos hoy</span></div>
           <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><PackagePlus className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{snapshot.activeOrders}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">En operación</span></div>
           <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><ShoppingCart className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{money(snapshot.paidTodayTotal)}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Pedidos pagados hoy</span></div>
           <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><CheckCircle2 className="w-5 h-5 text-emerald-600" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{snapshot.pendingTodayCount}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]" >Pendientes de pago</span></div>
         </div>
 
-        <div className="mt-3 text-xs text-[#6B4028]">Las ventas pagadas se contabilizan desde pedidos; los tickets son comprobantes y no se suman otra vez.</div>}
+        <div className="mt-3 text-xs text-[#6B4028]">Las ventas pagadas se contabilizan desde pedidos; los tickets son comprobantes y no se suman otra vez.</div>
+        </>}
 
         <div className="mt-6 flex gap-2 rounded-2xl border border-[#DEC8AE] bg-white p-2 w-fit">
           <button onClick={() => setActiveTab('pos')} className={activeTab === 'pos' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Capturar pedido</button>
