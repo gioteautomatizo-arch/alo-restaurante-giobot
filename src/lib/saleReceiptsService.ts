@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocFromServer,
   onSnapshot,
   query,
   setDoc,
@@ -227,7 +228,9 @@ export async function retryPaidOffTableSaleReceipt(
   user: Pick<StaffUser, 'id' | 'name'>
 ): Promise<SaleReceipt> {
   if (!orderId || !businessId.trim()) throw new Error('Falta el pedido o el negocio.');
-  const orderSnap = await getDoc(doc(db, 'restaurant_orders', orderId));
+  // Para recuperar un ticket exigimos confirmar el pago contra el servidor;
+  // una copia en caché no es prueba suficiente tras un fallo de conexión.
+  const orderSnap = await getDocFromServer(doc(db, 'restaurant_orders', orderId));
   if (!orderSnap.exists()) throw new Error('No se encontró el pedido registrado.');
   const paidOrder = orderSnap.data() as RestaurantOrder;
   if (
