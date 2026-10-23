@@ -8,6 +8,7 @@ import type { BusinessCatalogItem } from '../../lib/businessCatalogService';
 import type { RestaurantTenant } from '../../lib/restaurantCore';
 import {
   buildWhatsappOrderUrl,
+  canSubmitPublicCart,
   cartToOrderItems,
   cartTotal,
   formatMoney,
@@ -178,7 +179,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
 
   // Registra el pedido en Pedidos y Caja del negocio y, si hay WhatsApp, abre el chat con el código.
   const sendOrder = async () => {
-    if (sending || !catalogReady || cart.length === 0) return;
+    if (!canSubmitPublicCart(catalogStatus, cart.length, sending)) return;
     setSending(true);
     setSendError(null);
     // Abrimos la pestaña antes del await para que el navegador no la bloquee.
@@ -467,7 +468,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
                 <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Tu nombre (opcional)" className="mt-4 w-full rounded-xl border px-3 py-3 text-sm outline-none" style={{ borderColor: border, backgroundColor: bg, color: text }} />
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas: sin cebolla, para llevar, dirección…" rows={2} className="mt-2 w-full rounded-xl border px-3 py-3 text-sm outline-none" style={{ borderColor: border, backgroundColor: bg, color: text }} />
 
-                <button type="button" disabled={sending || !catalogReady} onClick={() => void sendOrder()} className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-4 text-sm font-black disabled:opacity-60" style={{ backgroundColor: whatsappNumber ? '#25D366' : primary, color: whatsappNumber ? '#fff' : bg }}>
+                <button type="button" disabled={!canSubmitPublicCart(catalogStatus, cart.length, sending)} onClick={() => void sendOrder()} className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-4 text-sm font-black disabled:opacity-60" style={{ backgroundColor: whatsappNumber ? '#25D366' : primary, color: whatsappNumber ? '#fff' : bg }}>
                   <MessageCircle className="h-4 w-4" /> {sending ? 'Enviando…' : whatsappNumber ? 'Enviar pedido (se registra y abre WhatsApp)' : 'Enviar pedido al negocio'}
                 </button>
                 <button type="button" onClick={() => setCart([])} className="mt-3 w-full text-xs underline opacity-70">Vaciar pedido</button>
