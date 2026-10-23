@@ -5,7 +5,7 @@ import { subscribeToBusinessRestaurantOrders } from '../../lib/ordersService';
 import { saveModuleDoc, subscribeToModule } from '../../lib/tenantModules';
 import { computeShiftSalesFromOrders } from '../../lib/shiftSales';
 import { getCurrentAuthUser } from '../../lib/firebase';
-import { getShiftReadiness, initialShiftFeedStates, parseShiftCashAmount, type ShiftFeedName } from '../../lib/businessShiftReadiness';
+import { countPaidOrdersMissingPaymentDate, getShiftReadiness, initialShiftFeedStates, parseShiftCashAmount, type ShiftFeedName } from '../../lib/businessShiftReadiness';
 
 const money = (v: number) => v.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
 const when = (iso?: string) => {
@@ -86,6 +86,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
   const readiness = getShiftReadiness(businessId, feedStates, openShifts.length);
   const active = readiness.ready && openShifts.length === 1 ? openShifts[0] : null;
   const history = readiness.ready ? currentShifts.filter((s) => s.status === 'cerrado') : [];
+  const missingPaymentDates = active && readiness.ready ? countPaidOrdersMissingPaymentDate(orders, active.openedAt) : 0;
 
   const live = useMemo(() => {
     if (!active || !readiness.ready) return null;
@@ -127,6 +128,10 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
 
   const closeShift = async () => {
     if (!readiness.ready || !active || !live || busy) return;
+    if (missingPaymentDates > 0) {
+      setError('Hay pedidos pagados sin fecha de cobro verificable. Revisa esos pedidos antes de cerrar el turno.');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -214,8 +219,13 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
               <div className="flex justify-between"><span className="text-[#C8C8C8]">− Guardado en resguardo</span><span>{money(live.cashToVault)}</span></div>
               <div className="flex justify-between border-t border-[#3A3022] pt-2 font-black"><span>Efectivo esperado en caja</span><span className="text-[#E3BC6B]">{money(live.expectedCash)}</span></div>
             </div>
+            {missingPaymentDates > 0 && (
+              <div role="alert" className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
+                {missingPaymentDates} pedido(s) pagado(s) creados durante este turno no tienen fecha de cobro válida. El cierre queda bloqueado hasta conciliarlos; no se debe asumir que fueron pagados al crearse.
+              </div>
+            )}
             {!closing ? (
-              <button type="button" onClick={() => setClosing(true)} className="mt-4 flex items-center gap-2 rounded-xl border border-[#D6A34A] px-5 py-3 text-sm font-black text-[#E3BC6B]">
+              <button type="button" disabled={missingPaymentDates > 0} onClick={() => setClosing(true)} className="mt-4 flex items-center gap-2 rounded-xl border border-[#D6A34A] px-5 py-3 text-sm font-black text-[#E3BC6B] disabled:cursor-not-allowed disabled:opacity-50">
                 <Lock className="h-4 w-4" /> Cerrar turno
               </button>
             ) : (
@@ -227,7 +237,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
                 )}
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas del corte (opcional)" rows={2} className={input} />
                 <div className="flex gap-2">
-                  <button type="button" disabled={busy} onClick={() => void closeShift()} className="rounded-xl bg-[#D6A34A] px-5 py-3 text-sm font-black text-[#050505] disabled:opacity-50">{busy ? 'Cerrando…' : 'Confirmar cierre'}</button>
+                  <button type="button" disabled={busy || missingPaymentDates > 0} onClick={() => void closeShift()} className="rounded-xl bg-[#D6A34A] px-5 py-3 text-sm font-black text-[#050505] disabled:opacity-50">{busy ? 'Cerrando…' : 'Confirmar cierre'}</button>
                   <button type="button" onClick={() => setClosing(false)} className="rounded-xl border border-[#3A3022] px-4 py-3 text-sm font-bold">Cancelar</button>
                 </div>
               </div>
