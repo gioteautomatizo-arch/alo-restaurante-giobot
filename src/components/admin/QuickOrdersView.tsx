@@ -1,11 +1,10 @@
 import React, { useRef, useState } from 'react';
 import { Minus, Plus, ReceiptText } from 'lucide-react';
 import { StaffUser } from '../../types';
-import { createIdempotentQuickSaleOrder, inspectQuickSaleOrder, chargeOffTableOrder } from '../../lib/ordersService';
+import { createRestaurantOrder, chargeOffTableOrder } from '../../lib/ordersService';
 import { createOffTableSaleReceipt, retryPaidOffTableSaleReceipt } from '../../lib/saleReceiptsService';
 import { getActiveRestaurantId } from '../../lib/restaurantContext';
 import { getCurrentAuthUser } from '../../lib/firebase';
-import { generateQuickSaleId, rememberPendingQuickSale, forgetPendingQuickSale, listPendingQuickSales } from '../../lib/quickSaleJournal';
 import { OffTableOrderModal } from './OffTableOrderModal';
 
 const money = (value: number) => '$' + Number(value || 0).toLocaleString('es-MX', {
@@ -35,9 +34,6 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
   const quickSaleLock = useRef(false);
   const [pendingTicketOrder, setPendingTicketOrder] = useState<{ id: string; code: string } | null>(null);
   const [retryingTicket, setRetryingTicket] = useState(false);
-  const [pendingOps, setPendingOps] = useState(() => listPendingQuickSales(getActiveRestaurantId()));
-  const [reviewingOp, setReviewingOp] = useState<string | null>(null);
-  const [operationMessage, setOperationMessage] = useState<string | null>(null);
   const quickTotal = quickLines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
 
   const addQuickLine = () => {
@@ -85,10 +81,7 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
     setPendingTicketOrder(null);
     const total = Math.round(quickTotal * 100) / 100;
     try {
-      const businessId = getActiveRestaurantId();
-      const operationId = generateQuickSaleId();
-      setPendingOps(rememberPendingQuickSale({ id: operationId, businessId, createdAt: new Date().toISOString() }));
-      const creation = await createIdempotentQuickSaleOrder(businessId, operationId, {
+      const order = await createRestaurantOrder({
         orderType: 'pickup',
         orderSource: 'CAJA',
         orderOrigin: 'DIRECTO',
@@ -110,10 +103,8 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
         total,
         notes: 'Venta rápida registrada desde Caja para pedido de WhatsApp/mostrador.',
       });
-      const order = creation.order;
       try {
         const charge = await chargeOffTableOrder(order, quickPaymentMethod, currentUser);
-        setPendingOps(forgetPendingQuickSale(businessId, operationId));
         try {
           await createOffTableSaleReceipt(charge.order, currentUser);
           setSuccess(charge.alreadyPaid
@@ -129,32 +120,10 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
       setQuickLines([]);
       setQuickCustomerName('Pedido WhatsApp');
     } catch (err: any) {
-      setError((err?.message || 'No se pudo confirmar la venta rápida.') + ' Revisa las operaciones sin confirmar antes de volver a cobrar.');
+      setError(err?.message || 'No se pudo registrar la venta rápida.');
     } finally {
       setSavingQuickSale(false);
       quickSaleLock.current = false;
-    }
-  };
-
-  const reviewPendingOperation = async (operationId: string) => {
-    if (reviewingOp) return;
-    setReviewingOp(operationId);
-    setOperationMessage(null);
-    try {
-      const businessId = getActiveRestaurantId();
-      const order = await inspectQuickSaleOrder(businessId, operationId);
-      if (!order) {
-        setOperationMessage('No se encontró este pedido en Firestore. Conserva la referencia y revisa Caja antes de volver a capturarlo.');
-      } else if (order.billingStatus === 'PAGADO') {
-        setPendingOps(forgetPendingQuickSale(businessId, operationId));
-        setOperationMessage('Pedido ' + order.code + ' PAGADO. No vuelvas a cobrarlo. Si falta ticket, usa Tickets cerrados.');
-      } else {
-        setOperationMessage('Pedido ' + order.code + ' registrado como PENDIENTE. Revisa Caja & Cobro antes de intentar cobrarlo.');
-      }
-    } catch (err: any) {
-      setOperationMessage('No se pudo comprobar el estado en Firebase: ' + (err?.message || 'error de conexión') + '. No repitas el cobro.');
-    } finally {
-      setReviewingOp(null);
     }
   };
 
@@ -187,15 +156,6 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
 
       {error && <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div>}
       {success && <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{success}</div>}
-      {pendingOps.length > 0 && <section className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-        <strong>Operaciones por verificar ({pendingOps.length})</strong>
-        <p className="mt-1 text-xs">Se conservaron referencias de ventas cuyo cobro no quedó confirmado en este dispositivo. Consultarlas NO vuelve a cobrar.</p>
-        {pendingOps.map((op) => <div key={op.id} className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-amber-200 pt-2">
-          <span className="text-xs">{new Date(op.createdAt).toLocaleString('es-MX')}</span>
-          <button type="button" disabled={Boolean(reviewingOp)} onClick={() => void reviewPendingOperation(op.id)} className="rounded-lg border border-amber-600 bg-white px-3 py-2 text-xs font-bold disabled:opacity-50">{reviewingOp === op.id ? 'Consultando…' : 'Consultar estado (sin cobrar)'}</button>
-        </div>)}
-        {operationMessage && <p role="status" className="mt-2 text-xs font-semibold">{operationMessage}</p>}
-      </section>}
       {pendingTicketOrder && <button type="button" disabled={retryingTicket} onClick={() => void retryTicketOnly()} className="rounded-xl border border-amber-700 bg-amber-100 px-4 py-3 text-sm font-bold text-amber-950 disabled:opacity-50">{retryingTicket ? 'Verificando el pago…' : `Reintentar solo ticket · ${pendingTicketOrder.code}`}</button>}
 
       <section className="rounded-3xl border border-[#E7D7C4] bg-white px-5 py-5">
