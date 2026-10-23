@@ -35,8 +35,8 @@ const all: BusinessCatalogItem[] = [
 
 const visible = groupVisibleCatalog(all);
 assert.equal(visible.length, 2);
-assert.deepEqual(visible.map((group) => group.category), ['Bebidas', 'Antojitos']);
-assert.deepEqual(visible.flatMap((group) => group.items.map((item) => item.id)), ['agua', 'taco-1']);
+assert.deepEqual(visible.map((group) => group.category), ['Antojitos', 'Bebidas']);
+assert.deepEqual(visible.flatMap((group) => group.items.map((item) => item.id)), ['taco-1', 'agua']);
 
 const lines: PublicCartLine[] = [{
   key: 'taco-1::Extras: Queso',
