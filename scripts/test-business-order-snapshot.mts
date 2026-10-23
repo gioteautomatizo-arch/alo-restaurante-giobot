@@ -41,7 +41,7 @@ const reconciliation = summarizeBusinessOrders([
   make({ code: 'GIO-001', status: 'ENTREGADO', total: 140 }),
   make({ code: 'GIO-002', status: 'ENTREGADO', total: 110, createdAt: '2026-10-16T15:00:00Z' }),
   make({ code: 'GIO-003', status: 'ENTREGADO', billingStatus: 'PAGADO', total: 50, paidAt: '2026-10-22T15:30:00Z' }),
-]);
+], now);
 assert.equal(reconciliation.unpaidTotalCount, 2);
 assert.equal(reconciliation.unpaidTotalAmount, 250);
 assert.equal(reconciliation.deliveredUnpaidCount, 2);
