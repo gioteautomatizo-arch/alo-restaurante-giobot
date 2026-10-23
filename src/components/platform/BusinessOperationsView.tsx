@@ -208,7 +208,7 @@ export const BusinessOperationsView: React.FC<{
           <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><ClipboardList className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{snapshot.ordersToday}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Pedidos hoy</span></div>
           <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><PackagePlus className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{snapshot.activeOrders}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">En operación</span></div>
           <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><ShoppingCart className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{money(snapshot.paidTodayTotal)}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Pedidos pagados hoy</span></div>
-          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><CheckCircle2 className="w-5 h-5 text-emerald-600" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{snapshot.pendingTodayCount}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]" >Pendientes de pago</span></div>
+          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><CheckCircle2 className="w-5 h-5 text-emerald-600" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{snapshot.pendingTodayCount}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]" >Pedidos de hoy sin cobro registrado</span></div>
         </div>
 
         <div className="mt-3 text-xs text-[#6B4028]">Las ventas pagadas se contabilizan desde pedidos; los tickets son comprobantes y no se suman otra vez.</div>
@@ -217,12 +217,12 @@ export const BusinessOperationsView: React.FC<{
         </p>}
         </>}
 
-        <div className="mt-6 flex gap-2 rounded-2xl border border-[#DEC8AE] bg-white p-2 w-fit">
+        <nav aria-label="Secciones de pedidos y caja" className="mt-6 flex max-w-full gap-2 overflow-x-auto rounded-2xl border border-[#DEC8AE] bg-white p-2">
           <button onClick={() => setActiveTab('pos')} className={activeTab === 'pos' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Capturar pedido</button>
           <button onClick={() => setActiveTab('orders')} className={activeTab === 'orders' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Pedidos activos</button>
-          <button onClick={() => setActiveTab('unpaid')} className={activeTab === 'unpaid' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Por cobrar ({unpaidOrders.length})</button>
+          <button onClick={() => setActiveTab('unpaid')} className={activeTab === 'unpaid' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Por cobrar ({ordersLoadState === 'ready' ? unpaidOrders.length : '…'})</button>
           <button onClick={() => setActiveTab('comandas')} className={activeTab === 'comandas' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Comandas</button>
-        </div>
+        </nav>
 
         {message && <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-900">{message}</div>}
 
@@ -291,7 +291,7 @@ export const BusinessOperationsView: React.FC<{
               </div>
               {unpaidOrders.length === 0 ? <p className="mt-5 text-sm text-[#6B4028]">No hay pedidos pendientes de pago.</p> : <div className="mt-4 divide-y divide-[#E8D8C4]">
               {unpaidOrders.map((order) => <div key={order.id || order.code} className="flex flex-wrap items-center justify-between gap-3 py-4">
-                <div><strong className="text-sm text-[#2B1B13]">{order.code}</strong><p className="text-xs text-[#6B4028]">{order.customerName || 'Cliente web'} · {order.status} · {new Date(order.createdAt).toLocaleString('es-MX')}</p></div>
+                <div><strong className="text-sm text-[#2B1B13]">{order.code}</strong><p className="text-xs text-[#6B4028]">{order.customerName || 'Cliente web'} · {order.status} · {order.createdAt && Number.isFinite(Date.parse(order.createdAt)) ? new Date(order.createdAt).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Mexico_City' }) : 'Fecha no disponible'}</p></div>
                 <div className="text-right"><strong className="text-sm text-[#2B1B13]">{money(Number(order.total || 0))}</strong><p className="text-xs font-bold text-amber-800">{order.status === 'ENTREGADO' ? 'ENTREGADO · Cobro sin registrar: revisar' : 'PENDIENTE · Cobro sin registrar'}</p></div>
               </div>)}
             </div>}</>}
