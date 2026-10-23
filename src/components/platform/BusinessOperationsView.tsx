@@ -5,6 +5,7 @@ import { subscribeToBusinessCatalog } from '../../lib/businessCatalogService';
 import type { RestaurantOrder, RestaurantOrderItem, RestaurantOrderStatus } from '../../types';
 import { createBusinessRestaurantOrder, subscribeToBusinessRestaurantOrders, updateBusinessRestaurantOrderStatus } from '../../lib/ordersService';
 import { getCurrentAuthUser } from '../../lib/firebase';
+import { summarizeBusinessOrders } from '../../lib/businessOrderSnapshot';
 
 const STATUS_LABELS: Record<RestaurantOrderStatus, string> = {
   NUEVO: 'Nueva',
@@ -57,18 +58,12 @@ export const BusinessOperationsView: React.FC<{
 
   const cartTotal = cart.reduce((sum, line) => sum + Number(line.item.price || 0) * line.quantity, 0);
 
-  const todayOrders = useMemo(() => {
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
-    return orders.filter((order) => order.createdAt?.startsWith(today));
-  }, [orders]);
-
-  const activeOrders = orders.filter((order) => ['NUEVO', 'PREPARANDO', 'LISTO'].includes(order.status));
+  const snapshot = useMemo(() => summarizeBusinessOrders(orders), [orders]);
+  const activeOrders = orders.filter((order) => order.status !== 'CANCELADO' && ['NUEVO', 'PREPARANDO', 'LISTO'].includes(order.status));
   const commandOrders = useMemo(() => {
     const filtered = commandFilter === 'TODAS' ? orders : orders.filter((order) => order.status === commandFilter);
     return [...filtered].sort((a, b) => (Date.parse(b.createdAt || '') || 0) - (Date.parse(a.createdAt || '') || 0));
   }, [orders, commandFilter]);
-  const nonCancelledTodayOrders = todayOrders.filter((order) => order.status !== 'CANCELADO');
-  const paidLikeOrders = nonCancelledTodayOrders.filter((order) => order.billingStatus === 'PAGADO');
 
   const addToCart = (item: BusinessCatalogItem) => {
     setCart((current) => {
@@ -133,7 +128,7 @@ export const BusinessOperationsView: React.FC<{
       setCustomerName('');
       setCustomerPhone('');
       setActiveTab('orders');
-      setMessage('Pedido registrado correctamente.');
+      setMessage('Pedido registrado como PENDIENTE DE PAGO. No se ha cobrado ni sumado a ventas pagadas.');
     } catch (error) {
       console.error('[BusinessOperationsView] no se pudo crear el pedido:', error);
       setMessage(error instanceof Error ? error.message : 'No pudimos registrar el pedido.');
@@ -196,14 +191,14 @@ export const BusinessOperationsView: React.FC<{
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:py-8">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><ClipboardList className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{todayOrders.length}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Pedidos hoy</span></div>
-          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><PackagePlus className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{activeOrders.length}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">En operación</span></div>
-          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><ShoppingCart className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{money(nonCancelledTodayOrders.reduce((sum, order) => sum + Number(order.total || 0), 0))}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Venta registrada</span></div>
-          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><CheckCircle2 className="w-5 h-5 text-emerald-600" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{paidLikeOrders.length}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Pagados</span></div>
+          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><ClipboardList className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{snapshot.ordersToday}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Pedidos hoy</span></div>
+          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><PackagePlus className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{snapshot.activeOrders}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">En operación</span></div>
+          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><ShoppingCart className="w-5 h-5 text-[#A86B3D]" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{money(snapshot.paidTodayTotal)}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]">Pedidos pagados hoy</span></div>
+          <div className="rounded-2xl border border-[#DEC8AE] bg-white p-4"><CheckCircle2 className="w-5 h-5 text-emerald-600" /><strong className="mt-2 block text-2xl text-[#2B1B13]">{snapshot.pendingTodayCount}</strong><span className="text-[10px] font-bold uppercase text-[#6B4028]" >Pendientes de pago</span></div>
         </div>
 
         <div className="mt-6 flex gap-2 rounded-2xl border border-[#DEC8AE] bg-white p-2 w-fit">
-          <button onClick={() => setActiveTab('pos')} className={activeTab === 'pos' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Venta rápida</button>
+          <button onClick={() => setActiveTab('pos')} className={activeTab === 'pos' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Capturar pedido</button>
           <button onClick={() => setActiveTab('orders')} className={activeTab === 'orders' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Pedidos activos</button>
           <button onClick={() => setActiveTab('comandas')} className={activeTab === 'comandas' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Comandas</button>
         </div>
@@ -232,7 +227,7 @@ export const BusinessOperationsView: React.FC<{
 
             <aside className="rounded-[2rem] border border-[#D9C5AC] bg-[#111827] text-white p-5 sm:p-6 h-fit lg:sticky lg:top-24">
               <span className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-300">Ticket</span>
-              <h2 className="mt-1 font-serif text-2xl font-black">Venta rápida</h2>
+              <h2 className="mt-1 font-serif text-2xl font-black">Capturar pedido</h2>
               <div className="mt-5 space-y-3">
                 {cart.length === 0 ? (
                   <p className="rounded-2xl bg-white/5 p-4 text-sm text-slate-400">Selecciona productos para comenzar.</p>
