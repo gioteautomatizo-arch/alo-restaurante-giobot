@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Minus, Plus, ReceiptText } from 'lucide-react';
 import { StaffUser } from '../../types';
 import { createRestaurantOrder, chargeOffTableOrder } from '../../lib/ordersService';
@@ -30,6 +30,8 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
   const [quickPaymentMethod, setQuickPaymentMethod] = useState<'efectivo' | 'tarjeta' | 'transferencia'>('efectivo');
   const [quickLines, setQuickLines] = useState<Array<{ id: string; name: string; unitPrice: number; quantity: number }>>([]);
   const [savingQuickSale, setSavingQuickSale] = useState(false);
+  // Bloquea doble clic incluso durante la validación asíncrona de Google.
+  const quickSaleLock = useRef(false);
   const [pendingTicketOrder, setPendingTicketOrder] = useState<{ id: string; code: string } | null>(null);
   const [retryingTicket, setRetryingTicket] = useState(false);
   const quickTotal = quickLines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
@@ -56,18 +58,21 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
   };
 
   const submitQuickSale = async () => {
-    if (savingQuickSale || quickLines.length === 0) return;
+    if (quickSaleLock.current || savingQuickSale || quickLines.length === 0) return;
+    quickSaleLock.current = true;
     // Evitar crear un pedido nuevo si no se podrá registrar el cobro.
     // No afecta el flujo separado para guardar pedidos PENDIENTES.
     const googleUser = getCurrentAuthUser();
     if (!googleUser) {
       setError('No estás conectado con Google. Inicia sesión antes de registrar y cobrar una venta rápida.');
+      quickSaleLock.current = false;
       return;
     }
     try {
       await googleUser.getIdToken();
     } catch {
       setError('Tu sesión de Google venció. Vuelve a iniciar sesión antes de cobrar.');
+      quickSaleLock.current = false;
       return;
     }
     setSavingQuickSale(true);
@@ -108,7 +113,7 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
           setSuccess(`Venta ${order.code} cobrada y registrada, pero falta el ticket. No vuelvas a cobrarla. Puedes reintentar SOLO el ticket.`);
         }
       } catch (chargeError: any) {
-        setSuccess(`Pedido ${order.code} guardado, pero quedó pendiente de cobro. Puedes cobrarlo en la sección de pedidos por cobrar. ${chargeError?.message || ''}`);
+        setSuccess(`Pedido ${order.code} registrado, pero no se confirmó el cobro. Revisa su estado en Caja antes de cobrarlo de nuevo. ${chargeError?.message || ''}`);
       }
       setQuickLines([]);
       setQuickCustomerName('Pedido WhatsApp');
@@ -116,6 +121,7 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
       setError(err?.message || 'No se pudo registrar la venta rápida.');
     } finally {
       setSavingQuickSale(false);
+      quickSaleLock.current = false;
     }
   };
 
