@@ -36,5 +36,7 @@ jobs:
         run: npm run lint
       - name: Production build
         run: npm run build
+      - name: Test safe order notifications (no Firebase writes)
+        run: node --import tsx scripts/test-business-order-alerts.mts
       - name: Verify staged VIP isolation (no deployment)
         run: node scripts/verify-vip-staged.mjs
