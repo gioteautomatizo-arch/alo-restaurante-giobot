@@ -69,6 +69,7 @@ export const BusinessOperationsView: React.FC<{
 
   const snapshot = useMemo(() => summarizeBusinessOrders(orders), [orders]);
   const unpaidOrders = orders.filter((order) => order.status !== 'CANCELADO' && order.billingStatus === 'PENDIENTE');
+  const deliveredUnpaid = unpaidOrders.filter((order) => order.status === 'ENTREGADO');
   const activeOrders = orders.filter((order) => order.status !== 'CANCELADO' && ['NUEVO', 'PREPARANDO', 'LISTO'].includes(order.status));
   const commandOrders = useMemo(() => {
     const filtered = commandFilter === 'TODAS' ? orders : orders.filter((order) => order.status === commandFilter);
@@ -282,12 +283,18 @@ export const BusinessOperationsView: React.FC<{
           <section className="mt-6 rounded-[2rem] border border-[#D9C5AC] bg-white p-5">
             <h2 className="font-serif text-xl font-black text-[#2B1B13]">Pedidos por cobrar</h2>
             <p className="mt-2 text-sm text-[#6B4028]">Los pedidos web pueden llegar aunque el turno esté cerrado. No se cuentan como ingresos hasta registrar un cobro autorizado. El cobro universal está pendiente de validación de permisos; no registres el pago dos veces ni cambies el estado manualmente.</p>
-            {unpaidOrders.length === 0 ? <p className="mt-5 text-sm text-[#6B4028]">No hay pedidos pendientes de pago.</p> : <div className="mt-4 divide-y divide-[#E8D8C4]">
+            {ordersLoadState !== 'ready' ? <p role="alert" className="mt-4 text-sm font-bold text-red-700">No se pudo confirmar el listado completo de pedidos. Revisa la conexión y permisos.</p> : <>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl bg-amber-50 p-3 text-amber-950"><strong className="text-xl">{snapshot.unpaidTotalCount}</strong><p className="text-xs">Pedidos sin cobro registrado</p><strong>{money(snapshot.unpaidTotalAmount)}</strong></div>
+                <div className="rounded-xl bg-red-50 p-3 text-red-900"><strong className="text-xl">{snapshot.deliveredUnpaidCount}</strong><p className="text-xs">Entregados sin cobro registrado</p><strong>{money(snapshot.deliveredUnpaidAmount)}</strong></div>
+                <div className="rounded-xl bg-white p-3 text-xs text-[#6B4028]">Estos son importes registrados como pendientes en el sistema. No prueban que el cliente deba dinero: antes de cobrar, revisa efectivo, transferencias y tickets externos.</div>
+              </div>
+              {unpaidOrders.length === 0 ? <p className="mt-5 text-sm text-[#6B4028]">No hay pedidos pendientes de pago.</p> : <div className="mt-4 divide-y divide-[#E8D8C4]">
               {unpaidOrders.map((order) => <div key={order.id || order.code} className="flex flex-wrap items-center justify-between gap-3 py-4">
                 <div><strong className="text-sm text-[#2B1B13]">{order.code}</strong><p className="text-xs text-[#6B4028]">{order.customerName || 'Cliente web'} · {order.status} · {new Date(order.createdAt).toLocaleString('es-MX')}</p></div>
-                <div className="text-right"><strong className="text-sm text-[#2B1B13]">{money(Number(order.total || 0))}</strong><p className="text-xs font-bold text-amber-800">PENDIENTE · No cobrado</p></div>
+                <div className="text-right"><strong className="text-sm text-[#2B1B13]">{money(Number(order.total || 0))}</strong><p className="text-xs font-bold text-amber-800">{order.status === 'ENTREGADO' ? 'ENTREGADO · Cobro sin registrar: revisar' : 'PENDIENTE · Cobro sin registrar'}</p></div>
               </div>)}
-            </div>}
+            </div>}</>}
           </section>
         ) : activeTab === 'orders' ? (
           <section className="mt-6 rounded-[2rem] border border-[#D9C5AC] bg-white overflow-hidden">
