@@ -50,3 +50,5 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-charge-race-test --config scripts/firebase.launch-security-emulator.json "node scripts/test-offtable-charge-race.mjs"
       - name: Test quick-sale recovery journal and business isolation
         run: node --import tsx scripts/test-quick-sale-recovery-journal.mts
+      - name: Verify recovered tickets match order folio, tenant and money
+        run: node --import tsx scripts/test-offtable-receipt-guards.mts
