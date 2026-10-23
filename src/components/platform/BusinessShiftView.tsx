@@ -142,6 +142,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
       {!active ? (
         <section className={card}>
           <div className="flex items-center gap-2 text-sm font-bold text-[#E3BC6B]"><Clock className="h-4 w-4" /> No hay turno abierto</div>
+          <p className="mt-2 text-xs text-[#C8C8C8]">Los pedidos de clientes siguen entrando y quedan pendientes de pago aunque no haya turno. Abrir turno no los cobra automáticamente; las ventas se cuentan cuando se registra el pago confirmado.</p>
           <label className="mt-4 block text-xs font-bold text-[#C8C8C8]">Fondo inicial de caja ($)</label>
           <input type="number" inputMode="decimal" value={fund} onChange={(e) => setFund(e.target.value)} className={`${input} mt-1 max-w-xs`} />
           <button type="button" disabled={busy} onClick={() => void openShift()} className="mt-4 flex items-center gap-2 rounded-xl bg-[#D6A34A] px-5 py-3 text-sm font-black text-[#050505] disabled:opacity-50">
