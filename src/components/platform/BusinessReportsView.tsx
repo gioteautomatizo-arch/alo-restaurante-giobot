@@ -85,6 +85,7 @@ export const BusinessReportsView: React.FC<{ businessId: string; businessName: s
                 key={option.value}
                 type="button"
                 onClick={() => setPeriod(option.value)}
+                aria-pressed={period === option.value}
                 className={`flex-1 rounded-xl border px-3 py-2.5 text-xs font-black ${period === option.value ? 'border-[#D6A34A] bg-[#D6A34A] text-[#050505]' : 'border-[#3A3022] bg-[#0B0B0B] text-[#F7F7F7]'}`}
               >
                 {option.label}
