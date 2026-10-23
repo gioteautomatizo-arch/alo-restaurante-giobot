@@ -5,6 +5,7 @@ import { subscribeToBusinessRestaurantOrders } from '../../lib/ordersService';
 import { saveModuleDoc, subscribeToModule } from '../../lib/tenantModules';
 import { computeShiftSalesFromOrders } from '../../lib/shiftSales';
 import { getCurrentAuthUser } from '../../lib/firebase';
+import { getShiftReadiness, initialShiftFeedStates, type ShiftFeedName } from '../../lib/businessShiftReadiness';
 
 const money = (v: number) => v.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
 const when = (iso?: string) => {
@@ -48,17 +49,46 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
   const [closing, setClosing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [feedStates, setFeedStates] = useState(() => initialShiftFeedStates(businessId));
 
-  useEffect(() => subscribeToModule<ShiftDoc>(businessId, 'shifts', setShifts, 'openedAt'), [businessId]);
-  useEffect(() => subscribeToModule<ExpenseDoc>(businessId, 'expenses', setExpenses), [businessId]);
-  useEffect(() => subscribeToModule<{ kind: 'deposito' | 'retiro'; amount: number; createdAt: string }>(businessId, 'vault', setVault), [businessId]);
-  useEffect(() => subscribeToBusinessRestaurantOrders(businessId, setOrders), [businessId]);
+  // Una lectura denegada NO significa ventas/gastos = 0.
+  // Aislar cada suscripción impide utilizar datos del negocio anterior al navegar.
+  useEffect(() => {
+    let alive = true;
+    setFeedStates(initialShiftFeedStates(businessId));
+    setError('');
+    setClosing(false);
+    const mark = (key: ShiftFeedName, status: 'ready' | 'error') => {
+      if (alive) setFeedStates((previous) => ({
+        ...previous,
+        [key]: { businessId, status },
+      }));
+    };
+    const subs = [
+      subscribeToModule<ShiftDoc>(businessId, 'shifts', (rows) => {
+        if (alive) { setShifts(rows); mark('shifts', 'ready'); }
+      }, 'openedAt', () => mark('shifts', 'error')),
+      subscribeToModule<ExpenseDoc>(businessId, 'expenses', (rows) => {
+        if (alive) { setExpenses(rows); mark('expenses', 'ready'); }
+      }, 'createdAt', () => mark('expenses', 'error')),
+      subscribeToModule<{ kind: 'deposito' | 'retiro'; amount: number; createdAt: string }>(businessId, 'vault', (rows) => {
+        if (alive) { setVault(rows); mark('vault', 'ready'); }
+      }, 'createdAt', () => mark('vault', 'error')),
+      subscribeToBusinessRestaurantOrders(businessId, (rows) => {
+        if (alive) { setOrders(rows); mark('orders', 'ready'); }
+      }, () => mark('orders', 'error')),
+    ];
+    return () => { alive = false; subs.forEach((stop) => stop()); };
+  }, [businessId]);
 
-  const active = shifts.find((s) => s.status === 'abierto') || null;
-  const history = shifts.filter((s) => s.status === 'cerrado');
+  const currentShifts = feedStates.shifts.businessId === businessId && feedStates.shifts.status === 'ready' ? shifts : [];
+  const openShifts = currentShifts.filter((s) => s.status === 'abierto');
+  const readiness = getShiftReadiness(businessId, feedStates, openShifts.length);
+  const active = readiness.ready && openShifts.length === 1 ? openShifts[0] : null;
+  const history = readiness.ready ? currentShifts.filter((s) => s.status === 'cerrado') : [];
 
   const live = useMemo(() => {
-    if (!active) return null;
+    if (!active || !readiness.ready) return null;
     const sales = computeShiftSalesFromOrders(orders, active.openedAt);
     const start = Date.parse(active.openedAt) || 0;
     const cashExpenses = expenses
@@ -69,12 +99,13 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
       .reduce((sum, m) => sum + (m.kind === 'deposito' ? 1 : -1) * Number(m.amount || 0), 0);
     const expectedCash = Math.round((Number(active.initialCashFund || 0) + sales.cash - cashExpenses - cashToVault) * 100) / 100;
     return { sales, cashExpenses, cashToVault, expectedCash };
-  }, [active, orders, expenses, vault]);
+  }, [active, orders, expenses, vault, readiness.ready]);
 
   const user = getCurrentAuthUser();
   const userName = user?.displayName || user?.email || 'Usuario';
 
   const openShift = async () => {
+    if (!readiness.ready || openShifts.length !== 0 || busy) return;
     setBusy(true);
     setError('');
     try {
@@ -93,7 +124,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
   };
 
   const closeShift = async () => {
-    if (!active || !live) return;
+    if (!readiness.ready || !active || !live || busy) return;
     setBusy(true);
     setError('');
     try {
@@ -138,8 +169,19 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
       </div>
 
       {error && <div role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs font-semibold text-rose-200">{error}</div>}
+      {readiness.errors.length > 0 && <div role="alert" className={card}>
+        <strong className="text-sm text-red-300">No se puede conciliar la Caja todavía</strong>
+        <p className="mt-2 text-xs text-[#C8C8C8]">No se pudieron consultar: {readiness.errors.join(', ')}. No significa que el saldo sea cero. Se bloquearon apertura y cierre de turno para evitar cortes incorrectos. Revisa permisos o conexión.</p>
+      </div>}
+      {readiness.loading.length > 0 && readiness.errors.length === 0 && <div role="status" className={card}>
+        <p className="text-xs text-[#C8C8C8]">Consultando turnos, pedidos, gastos y resguardo. No se permite operar Caja antes de obtener todos los datos.</p>
+      </div>}
+      {readiness.duplicateOpenShifts && readiness.errors.length === 0 && <div role="alert" className={card}>
+        <strong className="text-sm text-red-300">Hay más de un turno abierto</strong>
+        <p className="mt-2 text-xs text-[#C8C8C8]">No abras ni cierres turnos hasta revisar los registros existentes. Se evitó elegir automáticamente un turno incorrecto.</p>
+      </div>}
 
-      {!active ? (
+      {readiness.ready && (!active ? (
         <section className={card}>
           <div className="flex items-center gap-2 text-sm font-bold text-[#E3BC6B]"><Clock className="h-4 w-4" /> No hay turno abierto</div>
           <p className="mt-2 text-xs text-[#C8C8C8]">Los pedidos de clientes siguen entrando y quedan pendientes de pago aunque no haya turno. Abrir turno no los cobra automáticamente; las ventas se cuentan cuando se registra el pago confirmado.</p>
@@ -189,9 +231,9 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
             )}
           </section>
         </>
-      )}
-
-      <section>
+      ))}
+      
+      {readiness.ready && <section>
         <h3 className="mb-2 flex items-center gap-2 font-serif text-lg font-black"><History className="h-4 w-4 text-[#E3BC6B]" /> Historial de cortes</h3>
         {history.length === 0 ? (
           <div className={`${card} text-sm text-[#C8C8C8]`}>Aún no hay cortes cerrados.</div>
@@ -214,7 +256,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
             ))}
           </ul>
         )}
-      </section>
+      </section>}
     </div>
   );
 };
