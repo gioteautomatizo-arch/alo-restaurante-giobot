@@ -189,6 +189,22 @@ export async function createIdempotentQuickSaleOrder(
   });
 }
 
+/** Consulta del servidor para aclarar una operación incierta; no escribe ni cobra. */
+export async function inspectQuickSaleOrder(
+  businessId: string,
+  operationId: string
+): Promise<RestaurantOrder | null> {
+  if (businessId !== getActiveRestaurantId()
+    || !/^quick-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId)) {
+    throw new Error('ID de operación inválido.');
+  }
+  const snap = await getDoc(doc(db, ORDERS_COLLECTION, operationId));
+  if (!snap.exists()) return null;
+  const order = snap.data() as RestaurantOrder;
+  if (order.restaurantId !== businessId) throw new Error('Operación de otro negocio.');
+  return { ...order, id: snap.id };
+}
+
 /**
  * Suscripción global compartida para el panel administrativo.
  * Todos los consumidores internos reutilizan un único onSnapshot de Firestore.
