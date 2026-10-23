@@ -15,21 +15,30 @@ const ready: ShiftFeedStates = {
   vault: { businessId: tenantA, status: 'ready' },
 };
 assert.equal(getShiftReadiness(tenantA, ready, 0).ready, true);
-assert.equal(getShiftReadiness(tenantA, ready, 1).ready, true);
+const validOpening = '2026-10-23T15:00:00.000Z';
+assert.equal(getShiftReadiness(tenantA, ready, 1, validOpening).ready, true);
+assert.equal(getShiftReadiness(tenantA, ready, 1).ready, false);
+assert.equal(getShiftReadiness(tenantA, ready, 1).invalidActiveShiftStart, true);
+for (const opening of ['', 'fecha inválida', '1970-01-01T00:00:00.000Z']) {
+  const result = getShiftReadiness(tenantA, ready, 1, opening);
+  assert.equal(result.ready, false, 'Bloquear apertura inválida: ' + opening);
+  assert.equal(result.invalidActiveShiftStart, true);
+}
+assert.equal(getShiftReadiness(tenantA, ready, 0).invalidActiveShiftStart, false);
 
 const noOrders = { ...ready, orders: { businessId: tenantA, status: 'error' as const } };
-assert.equal(getShiftReadiness(tenantA, noOrders, 1).ready, false);
-assert.deepEqual(getShiftReadiness(tenantA, noOrders, 1).errors, ['orders']);
+assert.equal(getShiftReadiness(tenantA, noOrders, 1, validOpening).ready, false);
+assert.deepEqual(getShiftReadiness(tenantA, noOrders, 1, validOpening).errors, ['orders']);
 assert.equal(getShiftReadiness(tenantA, ready, 2).duplicateOpenShifts, true);
 assert.equal(getShiftReadiness(tenantA, ready, 2).ready, false);
 
 const missingVault = { ...ready, vault: { businessId: tenantA, status: 'loading' as const } };
-assert.equal(getShiftReadiness(tenantA, missingVault, 1).ready, false);
-assert.deepEqual(getShiftReadiness(tenantA, missingVault, 1).loading, ['vault']);
-assert.equal(getShiftReadiness(tenantB, ready, 1).ready, false);
-assert.deepEqual(getShiftReadiness(tenantB, ready, 1).loading, [...SHIFT_FEED_NAMES]);
+assert.equal(getShiftReadiness(tenantA, missingVault, 1, validOpening).ready, false);
+assert.deepEqual(getShiftReadiness(tenantA, missingVault, 1, validOpening).loading, ['vault']);
+assert.equal(getShiftReadiness(tenantB, ready, 1, validOpening).ready, false);
+assert.deepEqual(getShiftReadiness(tenantB, ready, 1, validOpening).loading, [...SHIFT_FEED_NAMES]);
 assert.equal(getShiftReadiness('', ready, 0).ready, false);
-console.log('PASS: turnos no se abren ni cierran con lecturas incompletas, entre negocios o con turnos duplicados.');
+console.log('PASS: turnos no se abren ni cierran con lecturas incompletas, fechas inválidas, entre negocios o con turnos duplicados.');
 
 assert.equal(parseShiftCashAmount('0'), 0);
 assert.equal(parseShiftCashAmount('500'), 500);
