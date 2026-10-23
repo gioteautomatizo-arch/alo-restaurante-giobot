@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Minus, Plus, ReceiptText } from 'lucide-react';
 import { StaffUser } from '../../types';
 import { createRestaurantOrder, chargeOffTableOrder } from '../../lib/ordersService';
@@ -50,6 +50,16 @@ export const QuickOrdersView: React.FC<{ currentUser: StaffUser }> = ({ currentU
   const [recoveringReviewedTicketId, setRecoveringReviewedTicketId] = useState<string | null>(null);
   const recoveryLock = useRef(false);
   const [journalWarning, setJournalWarning] = useState<string | null>(null);
+  const activeBusinessId = getActiveRestaurantId();
+  useEffect(() => {
+    // No llevar resultados de pago verificados en un tenant a otro tenant.
+    setReviewEntries(listQuickSaleReviews(activeBusinessId));
+    setReviewResults({});
+    setPendingTicketOrder(null);
+    setError(null);
+    setSuccess(null);
+    setJournalWarning(null);
+  }, [activeBusinessId]);
   const quickTotal = quickLines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
 
   const addQuickLine = () => {
