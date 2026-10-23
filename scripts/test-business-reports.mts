@@ -104,4 +104,27 @@ assert.equal(yearStartMonth.days.find((day) => day.key === '2026-12-31')?.total,
 assert.equal(yearStartMonth.days.find((day) => day.key === '2027-01-01')?.total, 60);
 assert.equal(yearStartMonth.days.length, 30, 'El filtro de 30 días conserva exactamente 30 fechas');
 
+
+ // Productos con el mismo nombre pero distinto ID no deben mezclarse.
+ // Los centavos por método deben coincidir con el total y las cancelaciones no suman.
+const sameNameProducts = buildSalesReport([
+  make({ code: 'CAFE-CHICO', billingStatus: 'PAGADO', paidAt: '2026-10-23T14:00:00Z',
+    paymentMethod: 'efectivo', total: 49.9,
+    items: [{ productId: 'cafe-chico', name: 'Café', quantity: 1, unitPrice: 49.9, totalPrice: 49.9 }] }),
+  make({ code: 'CAFE-GRANDE', billingStatus: 'PAGADO', paidAt: '2026-10-23T15:00:00Z',
+    paymentMethod: 'transferencia', total: 65.1,
+    items: [{ productId: 'cafe-grande', name: 'Café', quantity: 1, unitPrice: 65.1, totalPrice: 65.1 }] }),
+  make({ code: 'CAFE-CANCELADO', status: 'CANCELADO', billingStatus: 'PAGADO',
+    paidAt: '2026-10-23T15:30:00Z', total: 999,
+    items: [{ productId: 'cafe-chico', name: 'Café', quantity: 20, unitPrice: 49.95, totalPrice: 999 }] }),
+], 1, now);
+assert.equal(sameNameProducts.totalSales, 115);
+assert.equal(sameNameProducts.orderCount, 2);
+assert.equal(sameNameProducts.cancelledCount, 1);
+assert.equal(sameNameProducts.byPayment.efectivo, 49.9);
+assert.equal(sameNameProducts.byPayment.transferencia, 65.1);
+assert.equal(sameNameProducts.topProducts.length, 2, 'Dos productos distintos con igual nombre no deben fusionarse');
+assert.deepEqual(sameNameProducts.topProducts.map(({ revenue }) => revenue), [65.1, 49.9]);
+assert.equal(sameNameProducts.topProducts.reduce((sum, product) => sum + product.quantity, 0), 2);
+
 console.log('PASS: reportes concilian fechas de cobro, históricos y medianoche CDMX al cambiar de mes y año.');
