@@ -9,6 +9,7 @@ import { BUSINESS_INVITES_ENABLED } from './lib/businessInvitesService';
 import { BusinessWorkspace } from './components/platform/BusinessWorkspace';
 import { BusinessPublicPage } from './components/platform/BusinessPublicPage';
 import { BusinessDirectory } from './components/platform/BusinessDirectory';
+import { PreviewInterfaceNavigator } from './components/platform/PreviewInterfaceNavigator';
 import { BusinessOnboardingDemo } from './components/platform/BusinessOnboardingDemo';
 import { PlatformAdminPanel } from './components/platform/PlatformAdminPanel';
 import './components/platform/platformTheme.css';
@@ -97,5 +98,6 @@ function RootRouter() {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <RootRouter />
+    <PreviewInterfaceNavigator />
   </StrictMode>,
 );
