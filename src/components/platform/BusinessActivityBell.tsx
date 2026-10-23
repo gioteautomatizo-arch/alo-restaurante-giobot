@@ -2,10 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Bell, X } from 'lucide-react';
 import { collection, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { subscribeToBusinessRestaurantOrders } from '../../lib/ordersService';
+import { businessOrderAlert } from '../../lib/businessOrderAlerts';
 import { isOperationalSoundEnabled, playOperationalAlert, showOperationalNotification } from '../../lib/operationalAlerts';
 
-type FeedSource = 'activity' | 'vip';
-type FeedTab = 'clients' | 'admin';
+type FeedSource = 'activity' | 'vip' | 'orders';
+type FeedTab = 'clients' | 'admin' | 'orders';
 
 interface Movement {
   // La misma alta VIP puede aparecer como documento y como evento de backend:
@@ -73,15 +75,15 @@ export const BusinessActivityBell: React.FC<{
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const [readErrors, setReadErrors] = useState<Partial<Record<FeedSource, boolean>>>({});
-  const sourceItems = useRef<Record<FeedSource, Movement[]>>({ activity: [], vip: [] });
-  const knownIds = useRef<Record<FeedSource, Set<string> | null>>({ activity: null, vip: null });
+  const sourceItems = useRef<Record<FeedSource, Movement[]>>({ activity: [], vip: [], orders: [] });
+  const knownIds = useRef<Record<FeedSource, Set<string> | null>>({ activity: null, vip: null, orders: null });
   const notifiedIds = useRef<Set<string>>(new Set());
   const openedAt = useRef(Date.now());
 
   useEffect(() => {
     openedAt.current = Date.now();
-    sourceItems.current = { activity: [], vip: [] };
-    knownIds.current = { activity: null, vip: null };
+    sourceItems.current = { activity: [], vip: [], orders: [] };
+    knownIds.current = { activity: null, vip: null, orders: null };
     notifiedIds.current = new Set();
     setItems([]);
     setUnread(0);
@@ -107,19 +109,19 @@ export const BusinessActivityBell: React.FC<{
           notifiedIds.current.add(event.id);
           // Lo prioritario es avisar sobre movimientos del COMENSAL;
           // las acciones internas permanecen en la pestaña Administración.
-          if (event.kind !== 'clients') continue;
+          if (event.kind !== 'clients' && event.kind !== 'orders') continue;
           setUnread((value) => Math.min(99, value + 1));
         }
-        if (fresh.some((event) => event.kind === 'clients') && isOperationalSoundEnabled()) {
+        if (fresh.some((event) => event.kind === 'clients' || event.kind === 'orders') && isOperationalSoundEnabled()) {
           void playOperationalAlert('ready');
           // El aviso del sistema no revela datos personales en pantalla bloqueada.
-          showOperationalNotification('Nuevo registro de cliente', 'Revisa la actividad de tu negocio.');
+          showOperationalNotification('Nueva actividad', 'Revisa pedidos o membresías de tu negocio.');
         }
       }
 
       knownIds.current[source] = nextIds;
       sourceItems.current[source] = incoming;
-      setItems(orderRecent([...sourceItems.current.activity, ...sourceItems.current.vip]));
+      setItems(orderRecent([...sourceItems.current.activity, ...sourceItems.current.vip, ...sourceItems.current.orders]));
       setReadErrors((old) => ({ ...old, [source]: false }));
     };
 
@@ -160,7 +162,12 @@ export const BusinessActivityBell: React.FC<{
       },
     );
 
+    const unsubOrders = legacy ? () => {} : subscribeToBusinessRestaurantOrders(businessId, (orders) => {
+      receive('orders', orders.map(businessOrderAlert).filter((x): x is NonNullable<typeof x> => x !== null).map((alert) => ({ ...alert, kind: 'orders' as const })));
+    }, () => setReadErrors((old) => ({ ...old, orders: true })));
+
     return () => {
+      unsubOrders();
       unsubActivity();
       unsubVip();
     };
@@ -204,6 +211,7 @@ export const BusinessActivityBell: React.FC<{
               className={`flex-1 rounded-t-lg px-2 py-2 text-xs font-bold ${tab === 'clients' ? 'bg-amber-100 text-amber-900' : 'text-gray-600'}`}>
               Clientes
             </button>
+            <button type="button" role="tab" aria-selected={tab === 'orders'} onClick={() => setTab('orders')} className={`flex-1 rounded-t-lg px-2 py-2 text-xs font-bold ${tab === 'orders' ? 'bg-amber-100 text-amber-900' : 'text-gray-600'}`}>Pedidos</button>
             <button type="button" role="tab" aria-selected={tab === 'admin'} onClick={() => setTab('admin')}
               className={`flex-1 rounded-t-lg px-2 py-2 text-xs font-bold ${tab === 'admin' ? 'bg-amber-100 text-amber-900' : 'text-gray-600'}`}>
               Administración
@@ -211,6 +219,7 @@ export const BusinessActivityBell: React.FC<{
           </div>
 
           <div className="max-h-80 overflow-y-auto">
+            {tab === 'orders' && readErrors.orders && <p className="border-b border-red-100 bg-red-50 px-4 py-3 text-xs text-red-800">No fue posible consultar los pedidos. Revisa permisos o conexión.</p>}
             {tab === 'clients' && missingVip && (
               <p className="border-b border-red-100 bg-red-50 px-4 py-3 text-xs text-red-800">
                 No fue posible consultar todas las altas VIP. Revisa tu acceso a Firebase.
@@ -225,7 +234,7 @@ export const BusinessActivityBell: React.FC<{
               <p className="p-4 text-xs text-gray-600">
                 {tab === 'clients'
                   ? 'Todavía no hay registros VIP visibles para este negocio.'
-                  : 'Todavía no hay movimientos administrativos.'}
+                  : tab === 'orders' ? 'Todavía no hay pedidos visibles para este negocio.' : 'Todavía no hay movimientos administrativos.'}
               </p>
             )}
             {visible.map((item) => (
