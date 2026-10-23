@@ -212,7 +212,7 @@ export const BusinessOperationsView: React.FC<{
         <div className="mt-3 text-xs text-[#6B4028]">Las ventas pagadas se contabilizan desde pedidos; los tickets son comprobantes y no se suman otra vez.</div>
         {(snapshot.paidCancelledCount > 0 || snapshot.paidMissingDateCount > 0) && <p role="alert" className="mt-3 rounded-xl border border-amber-400 bg-amber-50 p-3 text-xs font-bold text-amber-950">
           Revisión de Caja: {snapshot.paidCancelledCount} pedido(s) cancelado(s) marcados como pagados, {snapshot.paidMissingDateCount} pago(s) sin fecha de cobro. Se requiere conciliación manual; no se suman tickets como otro ingreso.
-        </p>
+        </p>}
         </>}
 
         <div className="mt-6 flex gap-2 rounded-2xl border border-[#DEC8AE] bg-white p-2 w-fit">
