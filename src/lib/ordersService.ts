@@ -153,6 +153,43 @@ export async function createRestaurantOrder(
 }
 
 /**
+ * Crea una venta rápida una sola vez por ID persistente. Una transacción lee
+ * antes de crear: si el pedido existe, jamás lo reemplaza ni cobra otra vez.
+ * Solo acepta IDs aleatorios del dispositivo y pedidos internos autenticados.
+ */
+export async function createIdempotentQuickSaleOrder(
+  businessId: string,
+  operationId: string,
+  order: Omit<RestaurantOrder, 'id' | 'code' | 'restaurantId' | 'status' | 'createdAt' | 'updatedAt'>
+): Promise<{ order: RestaurantOrder; existed: boolean }> {
+  if (businessId !== getActiveRestaurantId()
+    || !/^quick-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId)
+    || order.orderSource !== 'CAJA' || order.orderType !== 'pickup') {
+    throw new Error('Operación de Caja inválida para este negocio.');
+  }
+  const ref = doc(db, ORDERS_COLLECTION, operationId);
+  return runTransaction(db, async tx => {
+    const existing = await tx.get(ref);
+    if (existing.exists()) {
+      const saved = existing.data() as RestaurantOrder;
+      if (saved.restaurantId !== businessId || saved.orderSource !== 'CAJA'
+        || saved.orderType !== 'pickup') {
+        throw new Error('Conflicto de identificador. No se modificó el pedido.');
+      }
+      return { order: { ...saved, id: existing.id }, existed: true };
+    }
+    const now = new Date().toISOString();
+    const payload = sanitizeFirestorePayload({
+      ...order, code: buildOrderCode(), restaurantId: businessId,
+      status: 'NUEVO' as RestaurantOrderStatus,
+      billingStatus: 'PENDIENTE', createdAt: now, updatedAt: now,
+    }) as Omit<RestaurantOrder, 'id'>;
+    tx.set(ref, payload);
+    return { order: { ...payload, id: ref.id } as RestaurantOrder, existed: false };
+  });
+}
+
+/**
  * Suscripción global compartida para el panel administrativo.
  * Todos los consumidores internos reutilizan un único onSnapshot de Firestore.
  */
