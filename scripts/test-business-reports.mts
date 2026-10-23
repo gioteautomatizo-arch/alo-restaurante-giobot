@@ -54,6 +54,18 @@ assert.equal(week.averageTicket, 60);
 assert.equal(week.unreconciledPaidCount, 3);
 const cleanReport = buildSalesReport(orders.filter((order) => order.paidAt && order.paidAt !== 'fecha inválida'), 1, now);
 assert.equal(cleanReport.unreconciledPaidCount, 0, 'No alertar cuando no hay pagos sin fecha');
+// Aunque no haya ventas verificadas, las cancelaciones del periodo deben contarse.
+// El estado vacío de Reportes utiliza cancelledCount para explicarlas sin sumarlas a ventas.
+const cancellationsOnly = buildSalesReport([
+  make({ code: 'CANCELADO-PAGADO', status: 'CANCELADO', billingStatus: 'PAGADO',
+    paidAt: '2026-10-23T14:00:00Z', total: 500 }),
+  make({ code: 'CANCELADO-PENDIENTE', status: 'CANCELADO', total: 250 }),
+], 1, now);
+assert.equal(cancellationsOnly.totalSales, 0);
+assert.equal(cancellationsOnly.orderCount, 0);
+assert.equal(cancellationsOnly.cancelledCount, 2, 'Mostrar cancelaciones incluso cuando no hay ventas');
+assert.equal(cancellationsOnly.unreconciledPaidCount, 0);
+assert.deepEqual(cancellationsOnly.topProducts, []);
 // Medianoche en CDMX: 05:59 UTC aún es 31 de octubre; 06:00 UTC ya es 1 de noviembre.
 // El reporte no debe usar la fecha de creación ni agrupar cobros en el día equivocado.
 const midnightOrders = [
