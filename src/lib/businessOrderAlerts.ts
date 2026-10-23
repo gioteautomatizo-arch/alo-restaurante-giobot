@@ -16,7 +16,7 @@ export function businessOrderAlert(order: RestaurantOrder): BusinessOrderAlert |
   return {
     id: 'order:' + order.id,
     title: 'Pedido recibido · ' + code,
-    summary: (order.billingStatus === 'PAGADO' ? 'Pagado' : 'Pendiente de pago') + ' · ' + amount,
+    summary: (order.status === 'CANCELADO' ? 'Cancelado' : order.billingStatus === 'PAGADO' ? 'Pagado' : order.billingStatus === 'PENDIENTE' ? 'Sin cobro registrado' : 'Cobro por verificar') + ' · ' + amount,
     at: order.createdAt,
   };
 }
