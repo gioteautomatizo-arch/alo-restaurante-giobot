@@ -11,7 +11,7 @@ import { missingRequired, selectionSummary, unitPriceFor } from './catalogOption
 
 /** Interpreta la mesa enviada por el QR sin confiar en texto arbitrario. */
 export function parsePublicTableNumber(raw: string | null): number | undefined {
-  if (!raw || !/^\\d{1,3}$/.test(raw)) return undefined;
+  if (!raw || !/^\d{1,3}$/.test(raw)) return undefined;
   const value = Number(raw);
   return Number.isInteger(value) && value > 0 ? value : undefined;
 }
