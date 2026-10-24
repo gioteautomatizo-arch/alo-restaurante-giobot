@@ -163,6 +163,11 @@ export const BusinessReportsView: React.FC<{ businessId: string; businessName: s
                   </div>
                 ))}
               </div>
+              {report.unclassifiedPaymentTotal > 0 && (
+                <p role="status" className="mt-3 rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 text-xs text-amber-200">
+                  {money(report.unclassifiedPaymentTotal)} de ventas pagadas tienen un método no reconocido. Se incluyen en ventas, pero no se atribuyen a efectivo, transferencia ni tarjeta. Revisa los comprobantes antes de conciliar Caja.
+                </p>
+              )}
               {report.cancelledCount > 0 && (
                 <p className="mt-3 flex items-center gap-2 text-xs text-[#B7B7B7]"><Receipt className="h-4 w-4" />{report.cancelledCount} pedido{report.cancelledCount === 1 ? '' : 's'} cancelado{report.cancelledCount === 1 ? '' : 's'} en este periodo (no se suman).</p>
               )}

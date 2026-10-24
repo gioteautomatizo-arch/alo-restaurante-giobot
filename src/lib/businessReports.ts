@@ -29,6 +29,8 @@ export interface SalesReport {
   cancelledCount: number;
   /** Pedidos marcados como pagados sin fecha de cobro comprobable, en todo el historial consultado. */
   unreconciledPaidCount: number;
+  /** Importe pagado con método no reconocido: incluido en ventas, pendiente de clasificar. */
+  unclassifiedPaymentTotal: number;
   byPayment: Record<'efectivo' | 'transferencia' | 'tarjeta', number>;
   topProducts: ReportProduct[];
   days: ReportDay[];
@@ -62,6 +64,7 @@ export function buildSalesReport(orders: RestaurantOrder[], period: ReportPeriod
   let orderCount = 0;
   let cancelledCount = 0;
   let unreconciledPaidCount = 0;
+  let unclassifiedPaymentTotal = 0;
 
   for (const order of orders) {
     // Nunca atribuir un cobro a la fecha de creación cuando falta paidAt.
@@ -87,7 +90,12 @@ export function buildSalesReport(orders: RestaurantOrder[], period: ReportPeriod
     day.total += total;
     day.count += 1;
 
-    if (order.paymentMethod in byPayment) byPayment[order.paymentMethod] += total;
+    if (order.paymentMethod === 'efectivo' || order.paymentMethod === 'transferencia' || order.paymentMethod === 'tarjeta') {
+      byPayment[order.paymentMethod] += total;
+    } else {
+      // No inventar un método para pedidos históricos o registros inesperados.
+      unclassifiedPaymentTotal += total;
+    }
 
     for (const item of order.items || []) {
       const name = String(item.name || 'Producto').trim();
@@ -107,6 +115,7 @@ export function buildSalesReport(orders: RestaurantOrder[], period: ReportPeriod
     averageTicket: orderCount ? round(totalSales / orderCount) : 0,
     cancelledCount,
     unreconciledPaidCount,
+    unclassifiedPaymentTotal: round(unclassifiedPaymentTotal),
     byPayment: {
       efectivo: round(byPayment.efectivo),
       transferencia: round(byPayment.transferencia),

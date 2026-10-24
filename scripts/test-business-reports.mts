@@ -128,3 +128,21 @@ assert.deepEqual(sameNameProducts.topProducts.map(({ revenue }) => revenue), [65
 assert.equal(sameNameProducts.topProducts.reduce((sum, product) => sum + product.quantity, 0), 2);
 
 console.log('PASS: reportes concilian fechas de cobro, históricos y medianoche CDMX al cambiar de mes y año.');
+
+// Un método de pago desconocido en registros históricos no debe desaparecer del total.
+// No se debe atribuir arbitrariamente a efectivo, transferencia o tarjeta.
+const unknownMethod = buildSalesReport([
+  make({ code: 'PAGADO-METODO-DESCONOCIDO', billingStatus: 'PAGADO',
+    paidAt: '2026-10-23T14:00:00Z', paymentMethod: 'MIXTO' as RestaurantOrder['paymentMethod'], total: 75.25 }),
+  make({ code: 'PAGADO-EFECTIVO', billingStatus: 'PAGADO',
+    paidAt: '2026-10-23T14:30:00Z', paymentMethod: 'efectivo', total: 24.75 }),
+  make({ code: 'CANCELADO-METODO-DESCONOCIDO', billingStatus: 'PAGADO', status: 'CANCELADO',
+    paidAt: '2026-10-23T15:00:00Z', paymentMethod: 'MIXTO' as RestaurantOrder['paymentMethod'], total: 500 }),
+], 1, now);
+assert.equal(unknownMethod.totalSales, 100);
+assert.equal(unknownMethod.orderCount, 2);
+assert.equal(unknownMethod.byPayment.efectivo, 24.75);
+assert.equal(unknownMethod.byPayment.transferencia, 0);
+assert.equal(unknownMethod.byPayment.tarjeta, 0);
+assert.equal(unknownMethod.unclassifiedPaymentTotal, 75.25, 'Señalar importe no clasificado sin alterar ventas');
+assert.equal(unknownMethod.cancelledCount, 1);
