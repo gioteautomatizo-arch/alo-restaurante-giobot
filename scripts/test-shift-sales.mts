@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import type { SaleReceipt } from '../src/types';
+import type { RestaurantOrder, SaleReceipt } from '../src/types';
+import { buildSalesReport } from '../src/lib/businessReports.ts';
 import {
   computeShiftSalesAll,
   computeShiftSalesCombined,
@@ -121,3 +122,41 @@ assert.equal(
 );
 
 console.log('PASS: Caja concilia pagos mixtos, tickets y pedidos externos sin duplicar mesas.');
+
+
+// Consistencia entre Caja y Reportes para pedidos externos con paidAt válido.
+// Los dos módulos deben coincidir en importes y conteo al cruzar medianoche CDMX,
+// incluso cuando los centavos se suman en coma flotante.
+const paidOffTableOrder = (
+  code: string, orderType: 'pickup' | 'delivery',
+  paymentMethod: 'efectivo' | 'tarjeta', total: number, paidAt: string,
+): RestaurantOrder => ({
+  id: code, code, restaurantId: 'tenant-demo', orderType,
+  customerName: 'Cliente sintético', paymentMethod, bringOwnContainer: false,
+  items: [], subtotal: total, discountAmount: 0, deliveryFee: 0, total,
+  status: 'ENTREGADO', billingStatus: 'PAGADO',
+  createdAt: '2026-10-22T18:00:00.000Z',
+  updatedAt: '2026-10-22T18:00:00.000Z', paidAt,
+});
+const sharedOrders = [
+  paidOffTableOrder('CENTAVO-1', 'pickup', 'efectivo', 0.1, '2026-10-23T06:00:00.000Z'),
+  paidOffTableOrder('CENTAVO-2', 'delivery', 'tarjeta', 0.2, '2026-10-24T05:59:59.000Z'),
+  paidOffTableOrder('DIA-SIGUIENTE', 'pickup', 'efectivo', 0.4, '2026-10-24T06:00:00.000Z'),
+];
+const endOfMexicoDay = new Date('2026-10-24T05:59:59.000Z');
+const sharedShift = computeShiftSalesFromOrders(
+  sharedOrders, '2026-10-23T06:00:00.000Z', endOfMexicoDay.toISOString(),
+);
+const sharedReport = buildSalesReport(sharedOrders, 1, endOfMexicoDay);
+assert.equal(sharedShift.total, 0.3);
+assert.equal(sharedShift.count, 2);
+assert.equal(sharedReport.totalSales, sharedShift.total,
+  'Caja y Reportes deben coincidir con fechas de cobro verificables');
+assert.equal(sharedReport.orderCount, sharedShift.count);
+assert.deepEqual(
+  { cash: sharedShift.cash, card: sharedShift.card, platforms: sharedShift.platforms },
+  { cash: sharedReport.byPayment.efectivo, card: sharedReport.byPayment.tarjeta,
+    platforms: sharedReport.byPayment.transferencia },
+  'El desglose de métodos debe coincidir sin mezclar el día siguiente',
+);
+console.log('PASS: Caja y Reportes coinciden en pedidos externos, centavos y medianoche CDMX.');
