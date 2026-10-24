@@ -6,6 +6,7 @@ import type { RestaurantOrder, RestaurantOrderItem, RestaurantOrderStatus } from
 import { createBusinessRestaurantOrder, subscribeToBusinessRestaurantOrders, updateBusinessRestaurantOrderStatus } from '../../lib/ordersService';
 import { getCurrentAuthUser } from '../../lib/firebase';
 import { summarizeBusinessOrders } from '../../lib/businessOrderSnapshot';
+import { businessOrderChannelLabel } from '../../lib/businessOrderChannel';
 
 const STATUS_LABELS: Record<RestaurantOrderStatus, string> = {
   NUEVO: 'Nueva',
@@ -291,7 +292,7 @@ export const BusinessOperationsView: React.FC<{
               </div>
               {unpaidOrders.length === 0 ? <p className="mt-5 text-sm text-[#6B4028]">No hay pedidos pendientes de pago.</p> : <div className="mt-4 divide-y divide-[#E8D8C4]">
               {unpaidOrders.map((order) => <div key={order.id || order.code} className="flex flex-wrap items-center justify-between gap-3 py-4">
-                <div><strong className="text-sm text-[#2B1B13]">{order.code}</strong><p className="text-xs text-[#6B4028]">{order.customerName || 'Cliente web'} · {order.status} · {order.createdAt && Number.isFinite(Date.parse(order.createdAt)) ? new Date(order.createdAt).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Mexico_City' }) : 'Fecha no disponible'}</p></div>
+                <div><strong className="text-sm text-[#2B1B13]">{order.code}</strong><p className="text-xs text-[#6B4028]">{order.customerName || 'Cliente web'} · {businessOrderChannelLabel(order)} · {order.status} · {order.createdAt && Number.isFinite(Date.parse(order.createdAt)) ? new Date(order.createdAt).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Mexico_City' }) : 'Fecha no disponible'}</p></div>
                 <div className="text-right"><strong className="text-sm text-[#2B1B13]">{money(Number(order.total || 0))}</strong><p className="text-xs font-bold text-amber-800">{order.status === 'ENTREGADO' ? 'ENTREGADO · Cobro sin registrar: revisar' : 'PENDIENTE · Cobro sin registrar'}</p></div>
               </div>)}
             </div>}</>}
@@ -312,7 +313,7 @@ export const BusinessOperationsView: React.FC<{
                           <strong className="text-base text-[#2B1B13]">{order.code}</strong>
                           <span className="rounded-full bg-[#FFF7EA] px-2 py-1 text-[10px] font-black text-[#A86B3D]">{STATUS_LABELS[order.status]}</span>
                         </div>
-                        <p className="mt-1 text-sm text-[#6B4028]">{order.customerName} · {order.orderType === 'pickup' ? 'Mostrador' : order.orderType}</p>
+                        <p className="mt-1 text-sm text-[#6B4028]">{order.customerName || 'Cliente'} · {businessOrderChannelLabel(order)}</p>
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {order.items.map((item, index) => (
                             <span key={item.productId + '-' + index} className="rounded-lg bg-[#FFFDF9] border border-[#E8D8C4] px-2 py-1 text-[11px] text-[#2B1B13]">{item.quantity}× {item.name}</span>
@@ -341,7 +342,7 @@ export const BusinessOperationsView: React.FC<{
             {commandOrders.length === 0 ? <div className="p-10 text-center text-sm text-[#6B4028]">No hay comandas para este filtro.</div> : (
               <div className="divide-y divide-[#F0E5D9]">{commandOrders.map((order) => (
                 <article key={order.id || order.code} className="p-5 flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><strong className="text-base text-[#2B1B13]">#{order.code}</strong><span className="rounded-full bg-[#FFF7EA] px-2 py-1 text-[10px] font-black text-[#A86B3D]">{STATUS_LABELS[order.status]}</span><span className="text-[10px] text-[#7A5A45]">{order.orderType === 'dine_in' ? (order.tableNumber ? 'Mesa ' + order.tableNumber : 'En sucursal') : order.orderType === 'delivery' ? 'Domicilio' : 'Para llevar'}</span></div>
+                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><strong className="text-base text-[#2B1B13]">#{order.code}</strong><span className="rounded-full bg-[#FFF7EA] px-2 py-1 text-[10px] font-black text-[#A86B3D]">{STATUS_LABELS[order.status]}</span><span className="text-[10px] text-[#7A5A45]">{businessOrderChannelLabel(order)}</span></div>
                   <p className="mt-1 text-sm text-[#6B4028]">{order.customerName || 'Cliente'} · {order.createdAt ? new Date(order.createdAt).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Mexico_City' }) : 'Fecha no disponible'} · Atendió: {order.capturedByName || order.claimedByName || (order.orderSource === 'CAJA' ? 'Caja' : 'Pedido en línea')}</p>
                   <div className="mt-2 flex flex-wrap gap-1.5">{order.items.map((item, index) => <span key={item.productId + '-' + index} className="rounded-lg bg-[#FFFDF9] border border-[#E8D8C4] px-2 py-1 text-[11px] text-[#2B1B13]">{item.quantity}× {item.name}</span>)}</div>
                   {order.notes && <p className="mt-2 text-xs text-[#7A5A45]">Nota: {order.notes}</p>}</div>
