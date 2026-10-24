@@ -187,3 +187,38 @@ assert.deepEqual(
 assert.equal(JSON.stringify(boundaryPayments), boundarySnapshot,
   'Calcular el corte no debe modificar los pagos de entrada');
 console.log('PASS: Caja respeta límites exactos del turno y no modifica pagos sintéticos.');
+
+
+// Bordes de turno para pedidos externos: se usa paidAt y se evitan duplicados de mesa.
+// Estos casos complementan los bordes de pagos de mesa probados arriba.
+const boundaryOrders = [
+  { orderType: 'pickup', status: 'ENTREGADO', billingStatus: 'PAGADO',
+    paymentMethod: 'efectivo', total: 12.5,
+    createdAt: '2026-10-22T12:00:00.000Z', paidAt: shiftStart },
+  { orderType: 'delivery', status: 'ENTREGADO', billingStatus: 'PAGADO',
+    paymentMethod: 'transferencia', total: 17.75,
+    createdAt: '2026-10-22T12:00:00.000Z', paidAt: shiftEnd },
+  { orderType: 'pickup', status: 'ENTREGADO', billingStatus: 'PAGADO',
+    paymentMethod: 'tarjeta', total: 999, paidAt: '2026-10-23T18:00:00.001Z' },
+  { orderType: 'table', status: 'ENTREGADO', billingStatus: 'PAGADO',
+    paymentMethod: 'efectivo', total: 200, paidAt: shiftStart },
+  { orderType: 'delivery', status: 'NUEVO', billingStatus: 'PENDIENTE',
+    paymentMethod: 'efectivo', total: 100, paidAt: shiftStart },
+  { orderType: 'pickup', status: 'CANCELADO', billingStatus: 'PAGADO',
+    paymentMethod: 'tarjeta', total: 50, paidAt: shiftEnd },
+];
+const boundaryOrdersSnapshot = JSON.stringify(boundaryOrders);
+const boundaryOrderTotals = { cash: 12.5, card: 0, platforms: 17.75, total: 30.25, count: 2 };
+assert.deepEqual(
+  computeShiftSalesFromOrders(boundaryOrders.filter(isOffTableOrder), shiftStart, shiftEnd),
+  boundaryOrderTotals,
+  'Pedidos externos cobrados exactamente al abrir/cerrar cuentan; posteriores, pendientes y cancelados no',
+);
+assert.deepEqual(
+  computeShiftSalesAll([], boundaryOrders, shiftStart, shiftEnd),
+  boundaryOrderTotals,
+  'Caja no duplica pedidos de mesa al sumar pedidos externos en los bordes del turno',
+);
+assert.equal(JSON.stringify(boundaryOrders), boundaryOrdersSnapshot,
+  'Conciliar pedidos externos no debe modificar sus registros de entrada');
+console.log('PASS: Pedidos externos respetan bordes del turno, paidAt y exclusión de mesas.');
