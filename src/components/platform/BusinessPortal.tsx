@@ -191,6 +191,10 @@ export const BusinessPortal: React.FC = () => {
                 </div>
               </div>
 
+              <div className="mt-5 lg:hidden w-full aspect-[16/10] overflow-hidden rounded-2xl bg-black">
+                <img src="/brand/gioteautomatizo-oficial.jpg" alt="Gioteautomatizo · Tu negocio más conectado" className="h-full w-full object-cover" />
+              </div>
+
               <p className="mt-5 text-sm text-[#6B4028]">Escribe el correo y contraseña con los que registraste tu negocio.</p>
 
               <form onSubmit={handleLogin} className="mt-6 space-y-4">
