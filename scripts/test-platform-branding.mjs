@@ -20,6 +20,10 @@ for (const screen of screens) {
   for (const tag of fullLogoTags) {
     assert.match(tag, /\bobject-contain\b/,
       `${screen}: el logo oficial no debe recortarse con object-cover`);
+    assert.doesNotMatch(tag, /\bobject-cover\b/,
+      `${screen}: el logo oficial no debe combinar object-contain con object-cover`);
+    assert.match(tag, /\balt=["'][^"']*Gioteautomatizo[^"']*["']/i,
+      `${screen}: el logo oficial debe conservar una descripción accesible`);
   }
 
   assert.ok(platformLogos.length > 0,
