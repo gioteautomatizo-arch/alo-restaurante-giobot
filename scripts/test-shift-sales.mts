@@ -418,3 +418,28 @@ assert.deepEqual(unknownOffTableReport.byPayment,
 assert.equal(JSON.stringify(unknownOffTablePayment), unknownOffTableSnapshot,
   'El diagnóstico no modifica el pedido original');
 console.warn('PENDIENTE: Caja atribuye método desconocido a plataformas; Reportes lo deja sin clasificar (datos sintéticos).');
+
+
+// Diagnóstico pendiente: importes nulos o negativos en pedidos externos.
+// El corte diario y Reportes los contabilizan, pero el corte por turno los omite.
+// Esta prueba solo registra la divergencia actual con pedidos ficticios;
+// NO interpreta los negativos como reembolsos ni altera datos de producción.
+const nonPositiveOrders = [
+  paidOffTableOrder('IMPORTE-CERO', 'pickup', 'efectivo', 0,
+    '2026-10-23T17:00:00.000Z'),
+  paidOffTableOrder('IMPORTE-NEGATIVO', 'delivery', 'tarjeta', -10,
+    '2026-10-23T17:15:00.000Z'),
+];
+const nonPositiveSnapshot = JSON.stringify(nonPositiveOrders);
+const nonPositiveShift = computeShiftSalesFromOrders(nonPositiveOrders, shiftStart, shiftEnd);
+const nonPositiveDaily = offTableSalesForDay(nonPositiveOrders, '2026-10-23');
+const nonPositiveReport = buildSalesReport(nonPositiveOrders, 1, new Date(shiftEnd));
+assert.deepEqual(nonPositiveShift, { cash: 0, card: 0, platforms: 0, total: 0, count: 0 },
+  'Caja por turno omite actualmente pedidos pagados con total cero o negativo');
+assert.deepEqual(nonPositiveDaily, { total: -10, count: 2 },
+  'El corte diario actualmente cuenta ambos pedidos e incluye el importe negativo');
+assert.equal(nonPositiveReport.totalSales, -10);
+assert.equal(nonPositiveReport.orderCount, 2);
+assert.equal(JSON.stringify(nonPositiveOrders), nonPositiveSnapshot,
+  'El diagnóstico no debe modificar pedidos ficticios');
+console.warn('PENDIENTE: pedidos pagados con importes cero/negativos difieren entre turno y corte diario (datos sintéticos).');
