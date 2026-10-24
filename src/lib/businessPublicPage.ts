@@ -1,4 +1,5 @@
 import type { BusinessCatalogItem } from './businessCatalogService';
+import type { RestaurantOrder } from '../types';
 import type { OptionSelection } from './catalogOptions';
 import { missingRequired, selectionSummary, unitPriceFor } from './catalogOptions';
 
@@ -6,6 +7,24 @@ import { missingRequired, selectionSummary, unitPriceFor } from './catalogOption
  * Utilidades de la página pública de un negocio (lo que ve el cliente).
  * Son funciones puras para poder probarlas sin pantalla.
  */
+
+
+/** Interpreta la mesa enviada por el QR sin confiar en texto arbitrario. */
+export function parsePublicTableNumber(raw: string | null): number | undefined {
+  if (!raw || !/^\\d{1,3}$/.test(raw)) return undefined;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+/**
+ * Preserva de dónde llegó el pedido sin convertir automáticamente el QR
+ * en una sesión de mesa ni escribir en colecciones de mesas heredadas.
+ */
+export function publicOrderOrigin(tableNumber?: number): Pick<RestaurantOrder, 'orderOrigin' | 'tableNumber'> {
+  return Number.isInteger(tableNumber) && Number(tableNumber) > 0 && Number(tableNumber) <= 999
+    ? { orderOrigin: 'MESA_QR', tableNumber }
+    : { orderOrigin: 'QR_EXTERNO' };
+}
 
 export interface PublicCartLine {
   /** Producto + opciones elegidas identifican la línea (ver selectionKey). */
