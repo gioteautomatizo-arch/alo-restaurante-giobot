@@ -246,3 +246,30 @@ assert.equal(legacyReport.unreconciledPaidCount, 1, 'Reportes señala el pago hi
 assert.equal(legacyShift.total - legacyReport.totalSales, 50,
   'Diferencia conocida: no interpretarla como ventas adicionales verificadas');
 console.warn('PENDIENTE DE CONCILIACIÓN: fecha de cobro ausente genera diferencia entre Caja y Reportes (datos sintéticos).');
+
+// El corte diario de pedidos externos comparte el fallback histórico de Caja.
+// Esta prueba NO aprueba esa atribución: documenta que debe revisarse antes de
+// ofrecer cifras definitivas. Reportes no inventa paidAt.
+const legacyDaily = offTableSalesForDay(legacySample, '2026-10-23');
+assert.deepEqual(legacyDaily, { total: 70, count: 2 },
+  'Comportamiento actual del corte diario: incluye el histórico sin paidAt');
+assert.equal(legacyDaily.total - legacyReport.totalSales, 50,
+  'La divergencia del corte diario debe permanecer visible hasta conciliar historial');
+console.warn('PENDIENTE: el corte diario también usa createdAt para pedidos pagados sin paidAt.');
+
+// Si paidAt existe pero es inválido, ninguno de los módulos debe sustituirlo
+// silenciosamente por createdAt. La alerta de Reportes sí debe permanecer.
+const malformedPaidAt: RestaurantOrder = {
+  ...legacyOrderWithoutPaidAt,
+  id: 'HISTORICO-FECHA-INVALIDA',
+  code: 'HISTORICO-FECHA-INVALIDA',
+  paidAt: 'fecha inválida',
+};
+assert.equal(computeShiftSalesFromOrders([malformedPaidAt], shiftStart, shiftEnd).total, 0);
+assert.deepEqual(offTableSalesForDay([malformedPaidAt], '2026-10-23'), { total: 0, count: 0 });
+const malformedReport = buildSalesReport([malformedPaidAt], 1, new Date(shiftEnd));
+assert.equal(malformedReport.totalSales, 0);
+assert.equal(malformedReport.unreconciledPaidCount, 1,
+  'Fecha de cobro inválida requiere conciliación, no reasignación automática');
+console.log('PASS: fechas de cobro inválidas no se reemplazan automáticamente por fecha de creación.');
+
