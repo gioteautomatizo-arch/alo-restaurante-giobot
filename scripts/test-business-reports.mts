@@ -146,3 +146,40 @@ assert.equal(unknownMethod.byPayment.transferencia, 0);
 assert.equal(unknownMethod.byPayment.tarjeta, 0);
 assert.equal(unknownMethod.unclassifiedPaymentTotal, 75.25, 'Señalar importe no clasificado sin alterar ventas');
 assert.equal(unknownMethod.cancelledCount, 1);
+
+
+// Invariante contable: los métodos reconocidos más los no clasificados deben
+// explicar todas las ventas verificables, sin arrastrar fechas ni estados ajenos.
+const paymentReconciliation = buildSalesReport([
+  make({ code: 'SIN-CLASIFICAR-HOY', billingStatus: 'PAGADO',
+    paidAt: '2026-10-23T14:00:00Z',
+    paymentMethod: 'vale' as RestaurantOrder['paymentMethod'], total: 33.33 }),
+  make({ code: 'TARJETA-HOY', billingStatus: 'PAGADO',
+    paidAt: '2026-10-23T14:30:00Z', paymentMethod: 'tarjeta', total: 66.67 }),
+  make({ code: 'SIN-CLASIFICAR-SIN-FECHA', billingStatus: 'PAGADO',
+    paymentMethod: 'vale' as RestaurantOrder['paymentMethod'], total: 200 }),
+  make({ code: 'SIN-CLASIFICAR-FUERA-PERIODO', billingStatus: 'PAGADO',
+    paidAt: '2026-10-01T14:00:00Z',
+    paymentMethod: 'vale' as RestaurantOrder['paymentMethod'], total: 500 }),
+  make({ code: 'SIN-CLASIFICAR-PENDIENTE',
+    paymentMethod: 'vale' as RestaurantOrder['paymentMethod'], total: 700 }),
+  make({ code: 'SIN-CLASIFICAR-CANCELADO', billingStatus: 'PAGADO',
+    status: 'CANCELADO', paidAt: '2026-10-23T15:00:00Z',
+    paymentMethod: 'vale' as RestaurantOrder['paymentMethod'], total: 900 }),
+], 7, now);
+assert.equal(paymentReconciliation.totalSales, 100);
+assert.equal(paymentReconciliation.orderCount, 2);
+assert.equal(paymentReconciliation.cancelledCount, 1);
+assert.equal(paymentReconciliation.unreconciledPaidCount, 1);
+assert.equal(paymentReconciliation.unclassifiedPaymentTotal, 33.33);
+assert.equal(paymentReconciliation.byPayment.tarjeta, 66.67);
+assert.equal(paymentReconciliation.byPayment.efectivo, 0);
+assert.equal(paymentReconciliation.byPayment.transferencia, 0);
+const paymentBreakdownTotal = Math.round(100 * (
+  Object.values(paymentReconciliation.byPayment).reduce((sum, amount) => sum + amount, 0)
+  + paymentReconciliation.unclassifiedPaymentTotal
+)) / 100;
+assert.equal(paymentBreakdownTotal, paymentReconciliation.totalSales,
+  'El desglose por método y lo no clasificado deben conciliar con ventas verificadas');
+assert.equal(paymentReconciliation.days.reduce((sum, day) => sum + day.total, 0), 100);
+console.log('PASS: desglose de pagos concilia sin sumar pendientes, cancelados, fechas inválidas ni cobros fuera del periodo.');
