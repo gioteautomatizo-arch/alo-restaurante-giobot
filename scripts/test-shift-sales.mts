@@ -5,6 +5,9 @@ import {
   computeShiftSalesCombined,
   computeShiftSalesFromOrders,
   computeShiftSalesFromPayments,
+  effectiveShiftStart,
+  offTableSalesForDay,
+  paymentsSalesForDay,
 } from '../src/lib/shiftSales.ts';
 
 // Datos sintéticos: ninguna prueba consulta Firebase ni modifica cobros reales.
@@ -75,5 +78,46 @@ const receipt: SaleReceipt = {
 const fromReceipts = computeShiftSalesCombined([receipt], orders, shiftStart, shiftEnd);
 assert.deepEqual(fromReceipts, { cash: 80.5, card: 59.75, platforms: 65.25, total: 205.5, count: 3 },
   'Tickets y pagos concilian importes, aunque su conteo sea diferente');
+
+
+// Las ventanas diarias usan Ciudad de México (UTC-6 en estas fechas), no el día UTC.
+const dayOrders = [
+  { orderType: 'pickup', status: 'ENTREGADO', billingStatus: 'PAGADO',
+    total: 10, paidAt: '2026-10-23T06:00:00.000Z' },
+  { orderType: 'delivery', status: 'ENTREGADO', billingStatus: 'PAGADO',
+    total: 25.5, paidAt: '2026-10-24T05:59:59.000Z' },
+  { orderType: 'pickup', status: 'ENTREGADO', billingStatus: 'PAGADO',
+    total: 99, paidAt: '2026-10-24T06:00:00.000Z' },
+  { orderType: 'pickup', status: 'ENTREGADO', billingStatus: 'PAGADO',
+    total: 90, paidAt: '2026-10-23T05:59:59.000Z' },
+  { orderType: 'table', status: 'ENTREGADO', billingStatus: 'PAGADO',
+    total: 300, paidAt: '2026-10-23T12:00:00.000Z' },
+  { orderType: 'pickup', status: 'CANCELADO', billingStatus: 'PAGADO',
+    total: 100, paidAt: '2026-10-23T12:00:00.000Z' },
+  { orderType: 'delivery', status: 'NUEVO', billingStatus: 'PENDIENTE',
+    total: 70, paidAt: '2026-10-23T12:00:00.000Z' },
+];
+assert.deepEqual(offTableSalesForDay(dayOrders, '2026-10-23'), { total: 35.5, count: 2 },
+  'El corte diario de pedidos externos respeta medianoche de México y excluye mesas/no pagados');
+
+const dayPayments = [
+  { status: 'PAGADO', total: 12, createdAt: '2026-10-23T06:00:00.000Z' },
+  { status: 'PAGADO', total: 4.25, createdAt: '2026-10-24T05:59:59.000Z' },
+  { status: 'PAGADO', total: 99, createdAt: '2026-10-24T06:00:00.000Z' },
+  { status: 'ANULADO', total: 300, createdAt: '2026-10-23T12:00:00.000Z' },
+];
+assert.deepEqual(paymentsSalesForDay(dayPayments, '2026-10-23'), { total: 16.25, count: 2 },
+  'El corte diario de pagos de mesa respeta medianoche de México y excluye anulados');
+
+assert.equal(
+  effectiveShiftStart('2026-10-23T15:00:00.000Z', ['2026-10-23T05:59:59.000Z']),
+  '2026-10-23T06:00:00.000Z',
+  'El primer turno del día incluye cobros previos a su apertura sin absorber el día anterior',
+);
+assert.equal(
+  effectiveShiftStart('2026-10-23T15:00:00.000Z', ['2026-10-23T14:00:00.000Z']),
+  '2026-10-23T15:00:00.000Z',
+  'Un turno posterior no absorbe ventas anteriores si ya existía otro turno del día',
+);
 
 console.log('PASS: Caja concilia pagos mixtos, tickets y pedidos externos sin duplicar mesas.');
