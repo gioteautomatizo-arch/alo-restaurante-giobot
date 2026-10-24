@@ -230,3 +230,28 @@ assert.equal(leapWeek.totalSales, 70, 'La semana cruza febrero y marzo');
 assert.equal(buildSalesReport(leapOrders, 1, leapNow).totalSales, 40,
   'Hoy solo incluye cobros del 1 de marzo');
 console.log('PASS: reportes mantienen ventanas correctas durante el 29 de febrero.');
+
+// Un mismo producto vendido en distintos pedidos debe consolidar unidades e importe.
+// Ni pedidos pendientes ni cancelados pueden inflar el ranking de productos vendidos.
+const repeatedProductReport = buildSalesReport([
+  make({ code: 'PRODUCTO-REPETIDO-1', billingStatus: 'PAGADO',
+    paidAt: '2026-10-23T13:00:00Z', total: 80,
+    items: [{ productId: 'taco', name: 'Taco', quantity: 2, unitPrice: 40, totalPrice: 80 }] }),
+  make({ code: 'PRODUCTO-REPETIDO-2', billingStatus: 'PAGADO',
+    paidAt: '2026-10-23T14:00:00Z', total: 40,
+    items: [{ productId: 'taco', name: 'Taco', quantity: 1, unitPrice: 40, totalPrice: 40 }] }),
+  make({ code: 'PRODUCTO-REPETIDO-PENDIENTE', total: 400,
+    items: [{ productId: 'taco', name: 'Taco', quantity: 10, unitPrice: 40, totalPrice: 400 }] }),
+  make({ code: 'PRODUCTO-REPETIDO-CANCELADO', status: 'CANCELADO', billingStatus: 'PAGADO',
+    paidAt: '2026-10-23T15:00:00Z', total: 800,
+    items: [{ productId: 'taco', name: 'Taco', quantity: 20, unitPrice: 40, totalPrice: 800 }] }),
+], 1, now);
+assert.equal(repeatedProductReport.totalSales, 120);
+assert.equal(repeatedProductReport.orderCount, 2);
+assert.equal(repeatedProductReport.cancelledCount, 1);
+assert.equal(repeatedProductReport.byPayment.efectivo, 120);
+assert.deepEqual(repeatedProductReport.topProducts, [{ name: 'Taco', quantity: 3, revenue: 120 }],
+  'Consolidar productos vendidos sin sumar unidades pendientes ni canceladas');
+assert.equal(repeatedProductReport.days[0]?.total, 120);
+console.log('PASS: productos repetidos concilian unidades e ingresos sin sumar pendientes ni cancelaciones.');
+
