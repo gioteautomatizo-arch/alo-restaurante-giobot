@@ -161,7 +161,7 @@ export const BusinessPortal: React.FC = () => {
         <div className="w-full max-w-5xl grid lg:grid-cols-[1.1fr_0.9fr] overflow-hidden rounded-[2rem] border border-white/10 bg-white shadow-2xl">
           <section className="hidden lg:flex flex-col justify-between bg-gradient-to-br from-[#111827] via-[#1F2937] to-[#3A2418] p-10 text-white">
             <div>
-              <img src="/gioteautomatizo-logo.png" alt="Gio te automatizo" className="w-full max-w-md rounded-2xl" />
+              <img src="/brand/gioteautomatizo-oficial.jpg" alt="Gioteautomatizo — Tu negocio más conectado" className="w-full max-w-md rounded-2xl object-contain" />
               <p className="mb-8 mt-1 max-w-md text-center text-sm font-semibold uppercase tracking-[0.25em] text-[#E3BC6B]">Tu negocio. Más conectado.</p>
               <div className="inline-flex items-center gap-2 rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-amber-300">
                 <Sparkles className="w-3.5 h-3.5" /> Plataforma para negocios
