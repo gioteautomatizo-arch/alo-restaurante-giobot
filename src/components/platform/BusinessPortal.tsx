@@ -162,7 +162,7 @@ export const BusinessPortal: React.FC = () => {
           <section className="hidden lg:flex flex-col justify-between bg-gradient-to-br from-[#111827] via-[#1F2937] to-[#3A2418] p-10 text-white">
             <div>
               <div className="w-full max-w-md aspect-[16/9] overflow-hidden rounded-2xl bg-black">
-                <img src="/brand/gioteautomatizo-oficial.jpg" alt="Gioteautomatizo — Tu negocio más conectado" className="h-full w-full object-cover" />
+                <img src="/brand/gioteautomatizo-oficial.jpg" alt="Gioteautomatizo — Tu negocio más conectado" className="h-full w-full object-contain" />
               </div>
               <div className="inline-flex items-center gap-2 rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-amber-300">
                 <Sparkles className="w-3.5 h-3.5" /> Plataforma para negocios
@@ -192,7 +192,7 @@ export const BusinessPortal: React.FC = () => {
               </div>
 
               <div className="mt-5 lg:hidden w-full aspect-[16/10] overflow-hidden rounded-2xl bg-black">
-                <img src="/brand/gioteautomatizo-oficial.jpg" alt="Gioteautomatizo · Tu negocio más conectado" className="h-full w-full object-cover" />
+                <img src="/brand/gioteautomatizo-oficial.jpg" alt="Gioteautomatizo · Tu negocio más conectado" className="h-full w-full object-contain" />
               </div>
 
               <p className="mt-5 text-sm text-[#6B4028]">Escribe el correo y contraseña con los que registraste tu negocio.</p>
