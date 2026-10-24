@@ -360,3 +360,31 @@ assert.equal(overallocatedFromReceipt.total - overallocatedReceipt.totalPaid, 20
 assert.equal(JSON.stringify(overallocatedReceipt), overallocatedSnapshot,
   'El diagnóstico no debe modificar el ticket original');
 console.warn('PENDIENTE DE CONCILIACIÓN: MIXTO de $90 con desglose de $110 (datos sintéticos).');
+
+
+// Diagnóstico adicional: el resumen diario de pagos utiliza el total declarado,
+// mientras el corte por turno suma el desglose MIXTO. En registros incompletos
+// o excesivos, ambos reportes discrepan aunque consulten el mismo pago.
+// Solo documenta el riesgo con datos sintéticos; NO cambia cifras de producción.
+const mixedDailySamples = [
+  { status: 'PAGADO', createdAt: '2026-10-23T15:30:00.000Z',
+    paymentMethod: 'MIXTO', total: 90, paymentBreakdown: partialMixedParts },
+  { status: 'PAGADO', createdAt: '2026-10-23T15:30:00.000Z',
+    paymentMethod: 'MIXTO', total: 90, paymentBreakdown: overallocatedParts },
+];
+const mixedDailySnapshot = JSON.stringify(mixedDailySamples);
+const partialDaily = paymentsSalesForDay([mixedDailySamples[0]], '2026-10-23');
+const partialByShift = computeShiftSalesFromPayments([mixedDailySamples[0]], shiftStart, shiftEnd);
+assert.deepEqual(partialDaily, { total: 90, count: 1 });
+assert.equal(partialByShift.total, 30);
+assert.equal(partialDaily.total - partialByShift.total, 60,
+  'El resumen diario y el turno difieren $60 por desglose parcial');
+const excessDaily = paymentsSalesForDay([mixedDailySamples[1]], '2026-10-23');
+const excessByShift = computeShiftSalesFromPayments([mixedDailySamples[1]], shiftStart, shiftEnd);
+assert.deepEqual(excessDaily, { total: 90, count: 1 });
+assert.equal(excessByShift.total, 110);
+assert.equal(excessByShift.total - excessDaily.total, 20,
+  'El turno excede el resumen diario $20 por desglose sobreasignado');
+assert.equal(JSON.stringify(mixedDailySamples), mixedDailySnapshot,
+  'El diagnóstico diario/turno no modifica pagos sintéticos');
+console.warn('PENDIENTE: resumen diario y corte por turno discrepan con MIXTO parcial/excesivo.');
