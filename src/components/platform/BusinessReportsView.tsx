@@ -110,7 +110,7 @@ export const BusinessReportsView: React.FC<{ businessId: string; businessName: s
             <p className="mt-2 font-bold text-[#F7F7F7]">No hay ventas con cobro verificable en este periodo</p>
             <p className="mt-1 text-xs text-[#B7B7B7]">{report.unreconciledPaidCount > 0
               ? 'Hay pedidos pagados por conciliar. Revisa el aviso anterior: sus importes no se incluyen hasta verificar la fecha de cobro.'
-              : 'Cuando registres cobros confirmados en Caja, aquí verás tus ventas, tu producto estrella y cómo te pagan.'}</p>
+              : 'Aquí aparecerán los pedidos marcados como pagados con fecha de cobro verificable. Los tickets de mesa registrados por separado requieren conciliación en Caja.'}</p>
             {report.cancelledCount > 0 && (
               <p className="mt-2 text-xs text-[#B7B7B7]">{report.cancelledCount} pedido{report.cancelledCount === 1 ? '' : 's'} cancelado{report.cancelledCount === 1 ? '' : 's'} en este periodo (no se suman a ventas).</p>
             )}
@@ -142,6 +142,9 @@ export const BusinessReportsView: React.FC<{ businessId: string; businessName: s
 
             <section className={card}>
               <h2 className="font-serif text-lg font-black text-[#F7F7F7]">Lo más vendido</h2>
+              {report.topProducts.length === 0 && (
+                <p className="mt-3 text-xs text-[#B7B7B7]">No hay productos detallados en los pedidos pagados de este periodo. Revisa el origen de las ventas antes de interpretar este listado.</p>
+              )}
               <ol className="mt-3 space-y-2">
                 {report.topProducts.map((product, index) => (
                   <li key={product.name + index} className="flex items-center justify-between gap-3 rounded-xl bg-[#0B0B0B] px-3 py-2.5 text-sm">
