@@ -7,6 +7,7 @@ import {
   computeShiftSalesFromOrders,
   computeShiftSalesFromPayments,
   effectiveShiftStart,
+  isOffTableOrder,
   offTableSalesForDay,
   paymentsSalesForDay,
 } from '../src/lib/shiftSales.ts';
