@@ -273,3 +273,31 @@ assert.equal(malformedReport.unreconciledPaidCount, 1,
   'Fecha de cobro inválida requiere conciliación, no reasignación automática');
 console.log('PASS: fechas de cobro inválidas no se reemplazan automáticamente por fecha de creación.');
 
+
+
+// Diagnóstico pendiente: un pago MIXTO sin desglose tiene resultados distintos
+// según el origen (ticket cerrado o pago de mesa). NO es una prueba de corrección:
+// congela un ejemplo sintético para que el riesgo no se pierda durante la revisión.
+// Nunca atribuir automáticamente todo el importe a transferencia/plataformas.
+const incompleteMixedReceipt: SaleReceipt = {
+  ...receipt,
+  code: 'RECIBO-MIXTO-SIN-DESGLOSE',
+  payments: [{ ...receipt.payments[0], paymentBreakdown: [] }],
+  totalPaid: 90,
+};
+const incompleteReceiptShift = computeShiftSalesCombined(
+  [incompleteMixedReceipt], [], shiftStart, shiftEnd,
+);
+const incompletePaymentShift = computeShiftSalesFromPayments([
+  { status: 'PAGADO', createdAt: '2026-10-23T15:30:00.000Z',
+    paymentMethod: 'MIXTO', total: 90, paymentBreakdown: [] },
+], shiftStart, shiftEnd);
+assert.deepEqual(incompleteReceiptShift,
+  { cash: 0, card: 0, platforms: 0, total: 0, count: 1 },
+  'Diagnóstico actual: ticket MIXTO sin desglose cuenta ticket, pero no asigna importe');
+assert.deepEqual(incompletePaymentShift,
+  { cash: 0, card: 0, platforms: 90, total: 90, count: 1 },
+  'Diagnóstico actual: pago MIXTO sin desglose se atribuye a plataformas');
+assert.equal(incompletePaymentShift.total - incompleteReceiptShift.total, 90,
+  'La diferencia debe conciliarse con comprobantes antes de cambiar cálculos reales');
+console.warn('PENDIENTE DE CONCILIACIÓN: MIXTO sin desglose produce cifras diferentes entre tickets y pagos (datos sintéticos).');
