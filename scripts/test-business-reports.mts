@@ -183,3 +183,24 @@ assert.equal(paymentBreakdownTotal, paymentReconciliation.totalSales,
   'El desglose por método y lo no clasificado deben conciliar con ventas verificadas');
 assert.equal(paymentReconciliation.days.reduce((sum, day) => sum + day.total, 0), 100);
 console.log('PASS: desglose de pagos concilia sin sumar pendientes, cancelados, fechas inválidas ni cobros fuera del periodo.');
+
+// Regresión de Caja: tener paidAt no basta si el pedido sigue pendiente,
+// y un cobro con fecha futura no debe anticiparse en el corte de hoy.
+const statusAndDateGuard = buildSalesReport([
+  make({ code: 'PENDIENTE-CON-FECHA', billingStatus: 'PENDIENTE',
+    paidAt: '2026-10-23T15:00:00Z', paymentMethod: 'tarjeta', total: 900,
+    items: [{ productId: 'no-vendido', name: 'No vendido', quantity: 9, unitPrice: 100, totalPrice: 900 }] }),
+  make({ code: 'PAGADO-MANANA', billingStatus: 'PAGADO',
+    paidAt: '2026-10-24T15:00:00Z', paymentMethod: 'transferencia', total: 700 }),
+  make({ code: 'PAGADO-HOY-VALIDO', billingStatus: 'PAGADO',
+    paidAt: '2026-10-23T15:30:00Z', paymentMethod: 'efectivo', total: 12.5 }),
+], 1, now);
+assert.equal(statusAndDateGuard.orderCount, 1, 'Solo pedidos pagados dentro del periodo cuentan');
+assert.equal(statusAndDateGuard.totalSales, 12.5);
+assert.equal(statusAndDateGuard.byPayment.efectivo, 12.5);
+assert.equal(statusAndDateGuard.byPayment.tarjeta, 0, 'Una fecha de pago en un pedido pendiente no lo convierte en venta');
+assert.equal(statusAndDateGuard.byPayment.transferencia, 0, 'No anticipar cobros de fechas futuras');
+assert.deepEqual(statusAndDateGuard.topProducts, [], 'No contar productos de pedidos pendientes');
+assert.equal(statusAndDateGuard.unreconciledPaidCount, 0);
+console.log('PASS: Caja excluye pedidos pendientes con fecha y cobros posteriores al corte.');
+
