@@ -76,7 +76,7 @@ export const BusinessReportsView: React.FC<{ businessId: string; businessName: s
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#E3BC6B]">Reportes</p>
               <h1 className="mt-1 font-serif text-2xl font-black text-[#F7F7F7]">Cómo va tu negocio</h1>
-              <p className="mt-1 text-sm text-[#C8C8C8]">Ventas calculadas con los pedidos que registras en Caja. Las canceladas no se cuentan.</p>
+              <p className="mt-1 text-sm text-[#C8C8C8]">Ventas calculadas con pedidos marcados como pagados. No incluyen tickets de mesa registrados por separado ni sustituyen el corte de Caja. Los pedidos cancelados no se suman.</p>
             </div>
           </div>
           <div className="mt-4 flex gap-2">
@@ -154,6 +154,7 @@ export const BusinessReportsView: React.FC<{ businessId: string; businessName: s
 
             <section className={card}>
               <h2 className="font-serif text-lg font-black text-[#F7F7F7]">Cómo te pagan</h2>
+              <p className="mt-1 text-xs text-[#B7B7B7]">Desglose por método principal del pedido; los pagos mixtos requieren conciliación en Caja.</p>
               <div className="mt-3 space-y-2">
                 {paymentRows.map(({ label, value, icon: Icon }) => (
                   <div key={label} className="flex items-center justify-between rounded-xl bg-[#0B0B0B] px-3 py-2.5 text-sm">
