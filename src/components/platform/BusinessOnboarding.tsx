@@ -158,7 +158,7 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
           {step === 0 && (
             <section className="text-center py-8">
               <div className="mx-auto w-full max-w-[360px] aspect-[16/10] overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl shadow-orange-500/10">
-                <img src="/brand/gioteautomatizo-oficial.jpg" alt="Gioteautomatizo · Tu negocio más conectado" className="h-full w-full object-cover" />
+                <img src="/brand/gioteautomatizo-oficial.jpg" alt="Gioteautomatizo · Tu negocio más conectado" className="h-full w-full object-contain" />
               </div>
               <p className="mt-7 text-xs font-black uppercase tracking-[0.2em] text-amber-300">Gioteautomatizo Business</p>
               <h1 className="mt-3 text-4xl sm:text-5xl font-black leading-tight">Crea el espacio digital de tu negocio.</h1>
