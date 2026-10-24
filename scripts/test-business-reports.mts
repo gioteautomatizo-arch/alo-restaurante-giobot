@@ -204,3 +204,29 @@ assert.deepEqual(statusAndDateGuard.topProducts, [], 'No contar productos de ped
 assert.equal(statusAndDateGuard.unreconciledPaidCount, 0);
 console.log('PASS: Caja excluye pedidos pendientes con fecha y cobros posteriores al corte.');
 
+// Año bisiesto: la ventana de 30 días debe incluir el 29 de febrero y
+// excluir el 31 de enero, sin atribuir cobros al día equivocado.
+const leapNow = new Date('2028-03-01T18:00:00Z');
+const leapOrders = [
+  make({ code: 'FUERA-VENTANA-BISIESTO', billingStatus: 'PAGADO',
+    paidAt: '2028-01-31T14:00:00Z', total: 900 }),
+  make({ code: 'PRIMER-DIA-BISIESTO', billingStatus: 'PAGADO',
+    paidAt: '2028-02-01T14:00:00Z', total: 20 }),
+  make({ code: 'DIA-BISIESTO', billingStatus: 'PAGADO',
+    paidAt: '2028-02-29T14:00:00Z', total: 30 }),
+  make({ code: 'MARZO-BISIESTO', billingStatus: 'PAGADO',
+    paidAt: '2028-03-01T14:00:00Z', total: 40 }),
+];
+const leapMonth = buildSalesReport(leapOrders, 30, leapNow);
+assert.equal(leapMonth.days.length, 30, 'La ventana bisiesta conserva 30 días');
+assert.equal(leapMonth.days[0]?.key, '2028-02-01', 'La ventana comienza el 1 de febrero');
+assert.equal(leapMonth.days.at(-1)?.key, '2028-03-01', 'La ventana termina el 1 de marzo');
+assert.equal(leapMonth.days.find((day) => day.key === '2028-02-29')?.total, 30,
+  'El 29 de febrero existe y conserva su cobro');
+assert.equal(leapMonth.totalSales, 90, 'No incluir cobros del 31 de enero');
+assert.equal(leapMonth.orderCount, 3);
+const leapWeek = buildSalesReport(leapOrders, 7, leapNow);
+assert.equal(leapWeek.totalSales, 70, 'La semana cruza febrero y marzo');
+assert.equal(buildSalesReport(leapOrders, 1, leapNow).totalSales, 40,
+  'Hoy solo incluye cobros del 1 de marzo');
+console.log('PASS: reportes mantienen ventanas correctas durante el 29 de febrero.');
