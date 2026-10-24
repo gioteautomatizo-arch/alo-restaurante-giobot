@@ -160,3 +160,30 @@ assert.deepEqual(
   'El desglose de métodos debe coincidir sin mezclar el día siguiente',
 );
 console.log('PASS: Caja y Reportes coinciden en pedidos externos, centavos y medianoche CDMX.');
+
+
+// Bordes inclusivos del turno: un cobro exactamente al abrir/cerrar pertenece al
+// turno, pero uno posterior por 1 ms no. Usamos pagos ficticios sin Firebase.
+const boundaryPayments = [
+  { status: 'PAGADO', createdAt: shiftStart, paymentMethod: 'EFECTIVO', total: 10 },
+  { status: 'PAGADO', createdAt: shiftEnd, paymentMethod: 'TARJETA', total: 20 },
+  { status: 'PAGADO', createdAt: '2026-10-23T17:00:00.000Z',
+    paymentMethod: 'TRANSFERENCIA', total: 5 },
+  { status: 'PAGADO', createdAt: '2026-10-23T18:00:00.001Z',
+    paymentMethod: 'EFECTIVO', total: 900 },
+  { status: 'ANULADO', createdAt: shiftStart, paymentMethod: 'EFECTIVO', total: 500 },
+];
+const boundarySnapshot = JSON.stringify(boundaryPayments);
+assert.deepEqual(
+  computeShiftSalesFromPayments(boundaryPayments, shiftStart, shiftEnd),
+  { cash: 10, card: 20, platforms: 5, total: 35, count: 3 },
+  'Caja incluye exactamente los límites del turno, no el milisegundo posterior ni pagos anulados',
+);
+assert.deepEqual(
+  computeShiftSalesAll(boundaryPayments, [], shiftStart, shiftEnd),
+  { cash: 10, card: 20, platforms: 5, total: 35, count: 3 },
+  'La conciliación combinada no duplica pagos cuando no hay pedidos externos',
+);
+assert.equal(JSON.stringify(boundaryPayments), boundarySnapshot,
+  'Calcular el corte no debe modificar los pagos de entrada');
+console.log('PASS: Caja respeta límites exactos del turno y no modifica pagos sintéticos.');
