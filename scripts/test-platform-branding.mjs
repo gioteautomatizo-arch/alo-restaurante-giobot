@@ -13,6 +13,14 @@ for (const screen of screens) {
   const images = [...source.matchAll(/<img\b[^>]*\bsrc=["'](\/[^"']+)["']/g)]
     .map((match) => match[1]);
   const platformLogos = images.filter((path) => /gioteautomatizo/i.test(path));
+  const fullLogoTags = [...source.matchAll(/<img\b[^>]*\bsrc=["']\/brand\/gioteautomatizo-oficial\.jpg["'][^>]*>/g)]
+    .map((match) => match[0]);
+  assert.equal(fullLogoTags.length, screen.includes('BusinessPortal') ? 2 : 1,
+    `${screen}: el logo completo debe aparecer en las vistas previstas`);
+  for (const tag of fullLogoTags) {
+    assert.match(tag, /\bobject-contain\b/,
+      `${screen}: el logo oficial no debe recortarse con object-cover`);
+  }
 
   assert.ok(platformLogos.length > 0,
     `${screen}: debe mostrar la marca Gioteautomatizo`);
