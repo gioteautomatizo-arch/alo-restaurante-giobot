@@ -15,6 +15,8 @@ import {
   groupVisibleCatalog,
   normalizeWhatsapp,
   outdatedPublicCartKeys,
+  parsePublicTableNumber,
+  publicOrderOrigin,
   safeExternalUrl,
 } from '../../lib/businessPublicPage';
 import type { PublicCartLine } from '../../lib/businessPublicPage';
@@ -164,9 +166,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
     if (!publicParams.has(key)) publicParams.set(key, value);
   });
   const tableParam = publicParams.get('table');
-  const tableNumber = tableParam && /^\d{1,3}$/.test(tableParam) && Number(tableParam) > 0
-    ? Number(tableParam)
-    : undefined;
+  const tableNumber = parsePublicTableNumber(tableParam);
   const bg = b.backgroundColor || '#111111';
   const surface = b.surfaceColor || '#1A1A1A';
   const text = b.textColor || '#F7F7F7';
@@ -195,7 +195,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
       const saved = await createBusinessRestaurantOrder(businessId, {
         orderType: 'pickup',
         orderSource: 'CLIENTE_QR',
-        orderOrigin: 'QR_EXTERNO',
+        ...publicOrderOrigin(tableNumber),
         customerName: customerName.trim() || 'Cliente web',
         paymentMethod: 'efectivo',
         bringOwnContainer: false,
