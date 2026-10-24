@@ -223,3 +223,26 @@ assert.deepEqual(
 assert.equal(JSON.stringify(boundaryOrders), boundaryOrdersSnapshot,
   'Conciliar pedidos externos no debe modificar sus registros de entrada');
 console.log('PASS: Pedidos externos respetan bordes del turno, paidAt y exclusión de mesas.');
+
+
+// Diagnóstico de deuda histórica (NO es una validación de conciliación resuelta):
+// Caja atribuye el cobro a createdAt si falta paidAt; Reportes lo excluye.
+// Mantener visible esta diferencia hasta definir migración y conciliación verificable.
+// Solo se utilizan pedidos sintéticos; nunca se consulta Firebase.
+const legacyOrderWithoutPaidAt: RestaurantOrder = {
+  ...paidOffTableOrder('HISTORICO-SIN-FECHA', 'pickup', 'efectivo', 50,
+    '2026-10-23T16:00:00.000Z'),
+  paidAt: undefined,
+  createdAt: '2026-10-23T16:00:00.000Z',
+};
+const datedOrder = paidOffTableOrder('COBRO-VERIFICADO', 'delivery', 'tarjeta',
+  20, '2026-10-23T17:00:00.000Z');
+const legacySample = [legacyOrderWithoutPaidAt, datedOrder];
+const legacyShift = computeShiftSalesFromOrders(legacySample, shiftStart, shiftEnd);
+const legacyReport = buildSalesReport(legacySample, 1, new Date(shiftEnd));
+assert.equal(legacyShift.total, 70, 'Comportamiento actual de Caja: usa createdAt sin paidAt');
+assert.equal(legacyReport.totalSales, 20, 'Reportes no inventa fecha de cobro');
+assert.equal(legacyReport.unreconciledPaidCount, 1, 'Reportes señala el pago histórico por conciliar');
+assert.equal(legacyShift.total - legacyReport.totalSales, 50,
+  'Diferencia conocida: no interpretarla como ventas adicionales verificadas');
+console.warn('PENDIENTE DE CONCILIACIÓN: fecha de cobro ausente genera diferencia entre Caja y Reportes (datos sintéticos).');
