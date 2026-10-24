@@ -327,3 +327,36 @@ assert.deepEqual(partialPaymentTotals, partialReceiptTotals,
 assert.equal(partialMixedReceipt.totalPaid - partialReceiptTotals.total, 60,
   'Los $60 sin desglose requieren comprobantes; no atribuirlos a un método supuesto');
 console.warn('PENDIENTE DE CONCILIACIÓN: MIXTO parcial registra $90, pero solo desglosa $30 (datos sintéticos).');
+
+// Diagnóstico pendiente: un MIXTO también puede sobredeclarar sus métodos.
+// Un cobro de $90 desglosado como $60 + $50 no debe considerarse conciliado:
+// ambas rutas pueden coincidir entre sí y aun así superar el total declarado.
+// No corregir importes ni métodos sin revisar comprobantes reales.
+const overallocatedParts = [
+  { method: 'EFECTIVO' as const, amount: 60 },
+  { method: 'TARJETA' as const, amount: 50 },
+];
+const overallocatedReceipt: SaleReceipt = {
+  ...incompleteMixedReceipt,
+  code: 'RECIBO-MIXTO-EXCESO',
+  payments: [{ ...receipt.payments[0], total: 90, paymentBreakdown: overallocatedParts }],
+  totalPaid: 90,
+};
+const overallocatedSnapshot = JSON.stringify(overallocatedReceipt);
+const overallocatedFromReceipt = computeShiftSalesCombined(
+  [overallocatedReceipt], [], shiftStart, shiftEnd,
+);
+const overallocatedFromPayment = computeShiftSalesFromPayments([
+  { status: 'PAGADO', createdAt: '2026-10-23T15:30:00.000Z',
+    paymentMethod: 'MIXTO', total: 90, paymentBreakdown: overallocatedParts },
+], shiftStart, shiftEnd);
+assert.deepEqual(overallocatedFromReceipt,
+  { cash: 60, card: 50, platforms: 0, total: 110, count: 1 },
+  'Diagnóstico actual: un MIXTO sobreasignado suma más que el total cobrado');
+assert.deepEqual(overallocatedFromPayment, overallocatedFromReceipt,
+  'La coincidencia entre rutas no garantiza que el desglose coincida con el cobro');
+assert.equal(overallocatedFromReceipt.total - overallocatedReceipt.totalPaid, 20,
+  'Los $20 excedentes requieren conciliación; no son ingresos comprobados');
+assert.equal(JSON.stringify(overallocatedReceipt), overallocatedSnapshot,
+  'El diagnóstico no debe modificar el ticket original');
+console.warn('PENDIENTE DE CONCILIACIÓN: MIXTO de $90 con desglose de $110 (datos sintéticos).');
