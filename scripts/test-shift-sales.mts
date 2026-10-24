@@ -388,3 +388,33 @@ assert.equal(excessByShift.total - excessDaily.total, 20,
 assert.equal(JSON.stringify(mixedDailySamples), mixedDailySnapshot,
   'El diagnóstico diario/turno no modifica pagos sintéticos');
 console.warn('PENDIENTE: resumen diario y corte por turno discrepan con MIXTO parcial/excesivo.');
+
+
+// Diagnóstico pendiente: método de pago desconocido en pedido externo.
+// Caja lo agrupa como plataformas, mientras Reportes lo deja sin clasificar.
+// Ambos reconocen el total, pero NO hay evidencia de que sea transferencia.
+// Solo datos sintéticos; no se cambia el método ni se consulta Firebase.
+const unknownOffTablePayment: RestaurantOrder = {
+  ...paidOffTableOrder('METODO-NO-RECONOCIDO', 'pickup', 'efectivo', 45,
+    '2026-10-23T17:00:00.000Z'),
+  paymentMethod: 'VALE' as RestaurantOrder['paymentMethod'],
+};
+const unknownOffTableSnapshot = JSON.stringify(unknownOffTablePayment);
+const unknownOffTableShift = computeShiftSalesFromOrders(
+  [unknownOffTablePayment], shiftStart, shiftEnd,
+);
+const unknownOffTableReport = buildSalesReport(
+  [unknownOffTablePayment], 1, new Date(shiftEnd),
+);
+assert.deepEqual(unknownOffTableShift,
+  { cash: 0, card: 0, platforms: 45, total: 45, count: 1 },
+  'Diagnóstico actual: Caja clasifica un método desconocido como plataformas');
+assert.equal(unknownOffTableReport.totalSales, 45);
+assert.equal(unknownOffTableReport.unclassifiedPaymentTotal, 45,
+  'Reportes conserva el importe sin inventar un método de pago');
+assert.deepEqual(unknownOffTableReport.byPayment,
+  { efectivo: 0, transferencia: 0, tarjeta: 0 },
+  'Reportes no atribuye el método desconocido a transferencia');
+assert.equal(JSON.stringify(unknownOffTablePayment), unknownOffTableSnapshot,
+  'El diagnóstico no modifica el pedido original');
+console.warn('PENDIENTE: Caja atribuye método desconocido a plataformas; Reportes lo deja sin clasificar (datos sintéticos).');
