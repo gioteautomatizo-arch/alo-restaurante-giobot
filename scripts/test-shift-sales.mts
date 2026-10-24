@@ -301,3 +301,29 @@ assert.deepEqual(incompletePaymentShift,
 assert.equal(incompletePaymentShift.total - incompleteReceiptShift.total, 90,
   'La diferencia debe conciliarse con comprobantes antes de cambiar cálculos reales');
 console.warn('PENDIENTE DE CONCILIACIÓN: MIXTO sin desglose produce cifras diferentes entre tickets y pagos (datos sintéticos).');
+
+
+// Diagnóstico pendiente: MIXTO con desglose parcial. Aunque ambos orígenes
+// coincidan entre sí, la suma de los métodos puede ser inferior al total cobrado.
+// No asignar automáticamente la diferencia a efectivo/tarjeta/transferencia.
+const partialMixedParts = [{ ...mixedBreakdown[0], amount: 30 }];
+const partialMixedReceipt: SaleReceipt = {
+  ...incompleteMixedReceipt,
+  code: 'RECIBO-MIXTO-PARCIAL',
+  payments: [{ ...receipt.payments[0], paymentBreakdown: partialMixedParts }],
+};
+const partialReceiptTotals = computeShiftSalesCombined(
+  [partialMixedReceipt], [], shiftStart, shiftEnd,
+);
+const partialPaymentTotals = computeShiftSalesFromPayments([
+  { status: 'PAGADO', createdAt: '2026-10-23T15:30:00.000Z',
+    paymentMethod: 'MIXTO', total: 90, paymentBreakdown: partialMixedParts },
+], shiftStart, shiftEnd);
+assert.deepEqual(partialReceiptTotals,
+  { cash: 30, card: 0, platforms: 0, total: 30, count: 1 },
+  'Diagnóstico actual: ticket MIXTO parcial solo suma los métodos declarados');
+assert.deepEqual(partialPaymentTotals, partialReceiptTotals,
+  'Pagos y tickets coinciden en desglose parcial, pero no con el importe declarado');
+assert.equal(partialMixedReceipt.totalPaid - partialReceiptTotals.total, 60,
+  'Los $60 sin desglose requieren comprobantes; no atribuirlos a un método supuesto');
+console.warn('PENDIENTE DE CONCILIACIÓN: MIXTO parcial registra $90, pero solo desglosa $30 (datos sintéticos).');
