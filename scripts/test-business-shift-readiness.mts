@@ -140,3 +140,18 @@ assert.match(shiftViewSource, /getShiftReadiness\(businessId, feedStates,/);
 assert.match(shiftViewSource, /}, \[businessId\]\);/);
 assert.doesNotMatch(shiftViewSource, /\b(?:settleTableAccount|subscribeToRestaurantOrders|getActiveRestaurantId|RESTAURANT_ID)\b/);
 console.log('PASS: la vista de turno mantiene suscripciones multinegocio y no usa cobro legado (revisión estática).');
+
+ 
+// Guardia visual de cierre: un pedido pagado sin paidAt no debe habilitar
+// el cierre, y el fondo/contado no deben recibir un valor inventado por defecto.
+// Solo verifica el código fuente; no ejecuta Firebase ni operaciones de Caja.
+assert.match(shiftViewSource, /const missingPaymentDates = active && readiness\.ready \? countPaidOrdersMissingPaymentDate\(orders, active\.openedAt\) : 0;/);
+assert.match(shiftViewSource, /if \(missingPaymentDates > 0\) \{\s*setError\(/);
+assert.match(shiftViewSource, /disabled=\{missingPaymentDates > 0\}/);
+assert.match(shiftViewSource, /disabled=\{busy \|\| missingPaymentDates > 0\}/);
+assert.match(shiftViewSource, /const \[fund, setFund\] = useState\(''\)/);
+assert.match(shiftViewSource, /const \[counted, setCounted\] = useState\(''\)/);
+assert.match(shiftViewSource, /const fundAmount = parseShiftCashAmount\(fund\)/);
+assert.match(shiftViewSource, /const countedCash = parseShiftCashAmount\(counted\)/);
+console.log('PASS: guardia visual de cierre por fecha de pago y captura explícita de efectivo (revisión estática).');
+
