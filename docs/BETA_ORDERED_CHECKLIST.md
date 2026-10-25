@@ -63,3 +63,12 @@ Formato del reporte: paso actual → cambio concreto → prueba y evidencia → 
 - **Reglas intactas:** se revirtió el intento de cambio staged tras fallar el guard de CI; no se modificó `firestore.rules`, no se desplegaron reglas ni se accedió a datos reales. La corrección de la reserva huérfana requiere una propuesta de seguridad separada y aprobación.
 - **Evidencia de regresión:** el commit `f79fbd2` pasó Quality checks, pero falló el guard staged (no las pruebas de emulador). Se respetó el guard y se revirtió el cambio de reglas. Confirmar el nuevo CI antes de considerar aprobada la matriz ampliada.
 - **Paso 2 permanece abierto:** faltan pruebas de alta/configuración/publicación en interfaz, invitación, cambio de sesión y validación visual Android/iPad con dos cuentas en entorno aislado. Próximo: corregir regresiones de CI, luego completar recorrido UI antes del paso 3.
+
+### Evidencia CI del paso 2 (commit `5e9a3126`)
+
+- [Quality checks #40227069644](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40227069644): **success**, incluidas TypeScript, compilación y regresiones existentes.
+- [Staged Firestore security tests #40227069603](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40227069603): **success**. El paso `Test atomic owner registration and employee access` imprimió `PASS: alta atómica, dos negocios ficticios, publicación, catálogo, turnos privados y revocación en emulador.`
+- **PENDIENTE de seguridad confirmado en el log:** `staged permite crear businesses/{id} sin membresía OWNER atómica`. La prueba diagnóstica termina correctamente para no alterar las reglas protegidas; NO significa que el defecto esté resuelto.
+- El primer intento `f79fbd2` falló en `Verify staged-only guard` porque modificaba una regla ajena a la propuesta de migración. Se revirtió íntegramente ese cambio de reglas en `5e9a3126`; no debilitar el guard para ocultar el problema.
+- **Estado del paso 2: parcial, NO cerrado.** Cobertura de reglas staged con dos negocios ficticios aprobada; pendiente revisión de seguridad de alta huérfana, recorrido UI de alta/configuración/publicación/invitaciones/cambio de cuenta y pruebas en entorno aislado de extremo a extremo.
+- **Siguiente paso:** mantener paso 2, abordar primero propuesta revisable para cerrar la reserva huérfana sin desplegar reglas; continuar con pruebas de interfaz/cuentas de prueba. No iniciar paso 3 como si el aislamiento ya estuviera certificado.
