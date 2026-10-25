@@ -61,3 +61,13 @@ Los siguientes casos están cubiertos por `scripts/test-shift-sales.mts`. **PASS
 5. Exigir revisión de seguridad, aislamiento por negocio y pruebas visuales de Caja/Reportes antes de dar por conciliado el MVP.
 
 No se ejecutó migración, escritura de Firestore, cobro, despliegue ni publicación al documentar esta matriz.
+
+## Bloqueo identificado: cobro de mesa legado frente a nuevos negocios (24 de octubre de 2026)
+
+Revisión estática, **sin ejecutar cobros ni acceder a datos de clientes**:
+
+- En `src/lib/paymentsService.ts`, `subscribeToTablePayments` consulta pagos filtrados por `getActiveRestaurantId()`, pero `settleTableAccount` acepta órdenes frescas solo cuando `order.restaurantId === RESTAURANT_ID`; esa constante sigue siendo `'alo-restaurante'`. El pago que se construiría, en cambio, usa `restaurantId: getActiveRestaurantId()`. **Riesgo funcional:** si el flujo legado se utiliza para cobrar una mesa de otro negocio, no encontrará órdenes elegibles y rechazará el cobro. No asumir que el POS multinegocio usa esta ruta sin trazar antes sus llamadas.
+- En `src/lib/shiftSales.ts`, `computeShiftSalesAll` y `computeShiftSalesCombined` reciben listas de pagos y pedidos y **no comprueban por sí mismas el negocio**. El aislamiento depende de que los suscriptores/llamadores entreguen listas del mismo tenant; la coincidencia de totales no prueba aislamiento.
+- En `src/lib/ordersService.ts` existe una suscripción multinegocio explícita `subscribeToBusinessRestaurantOrders(businessId, ...)`, distinta del listener histórico basado en el negocio activo. No mezclar ambas rutas sin validar el cambio de contexto.
+
+**Criterio de salida antes de habilitar cobros de mesa multinegocio:** trazar qué interfaz llama a `settleTableAccount`, diseñar un identificador de negocio consistente para lectura/transacción/escritura, comprobar en emuladores dos tenants con pedidos de mesa sintéticos y verificar permisos/aislamiento, idempotencia y conciliación del turno. Cualquier cambio de cobro o reglas necesita revisión y autorización separadas. **No se corrigió ni habilitó este flujo en producción.**
