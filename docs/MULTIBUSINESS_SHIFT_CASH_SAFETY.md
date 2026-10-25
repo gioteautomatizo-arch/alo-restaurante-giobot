@@ -36,3 +36,28 @@ Corte de revisión: 23 de octubre de 2026
 - Validar roles autorizados con emulador y reglas efectivamente desplegadas.
 - Conciliar fecha de pago, tickets, gastos y movimientos de efectivo y simular carreras de dos cajeros.
 - Preparar despliegue solo tras revisión y autorización explícita, sin tocar producción por defecto.
+
+## Matriz de conciliación sintética (24 de octubre de 2026)
+
+Los siguientes casos están cubiertos por `scripts/test-shift-sales.mts`. **PASS en GitHub Actions significa que se verificó el comportamiento descrito, no que las discrepancias hayan sido corregidas.** Todos los importes son ficticios.
+
+| Caso | Comportamiento observado | Estado y criterio de salida |
+| --- | --- | --- |
+| MIXTO con desglose completo | $90 = $30.25 efectivo + $59.75 tarjeta | Verificado en pruebas; conservar centavos y método. |
+| MIXTO sin desglose | Ticket cerrado: $0 clasificado; pago de mesa: $90 a plataformas | **Pendiente:** no atribuir automáticamente los $90 a transferencia; contrastar comprobantes. |
+| MIXTO parcial | Total declarado $90; métodos suman $30 | **Pendiente:** identificar documentalmente los $60 faltantes. |
+| MIXTO excesivo | Total declarado $90; métodos suman $110 | **Pendiente:** investigar $20 de exceso; no considerarlos ingresos. |
+| Pedido pagado sin `paidAt` | Caja usa `createdAt` y suma $50; Reportes no lo suma y alerta | **Pendiente:** reconstruir fecha de cobro verificable sin inventarla. |
+| Método externo no reconocido | Caja clasifica $45 como plataformas; Reportes conserva $45 sin clasificar | **Pendiente:** mantener método desconocido visible hasta tener evidencia. |
+| Pedido externo de $0 y −$10 | Turno: $0 / 0 pedidos; diario y Reportes: −$10 / 2 pedidos | **Pendiente:** definir tratamiento contable de ceros/negativos; no presumir devoluciones. |
+| Pagos de mesa de $0 y −$10 | Turno: $0 / 2 pagos; diario: −$10 / 2 pagos | **Pendiente:** alinear criterios solo tras revisión contable. |
+
+### Orden seguro para resolver
+
+1. Crear un inventario **sin datos personales** de los tipos de discrepancia y su frecuencia en un entorno autorizado; no consultar ni modificar producción en esta fase.
+2. Definir invariantes contables: total declarado, suma del desglose, método desconocido, fecha de cobro comprobable y tratamiento explícito de cero/negativos.
+3. Añadir pruebas de regresión con datos sintéticos para cada política aprobada, incluyendo bordes de turno y medianoche de Ciudad de México.
+4. Proponer por separado un cambio de cálculo, revisable y reversible, con comparación antes/después; no activarlo ni desplegarlo sin autorización.
+5. Exigir revisión de seguridad, aislamiento por negocio y pruebas visuales de Caja/Reportes antes de dar por conciliado el MVP.
+
+No se ejecutó migración, escritura de Firestore, cobro, despliegue ni publicación al documentar esta matriz.
