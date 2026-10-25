@@ -71,3 +71,15 @@ Revisión estática, **sin ejecutar cobros ni acceder a datos de clientes**:
 - En `src/lib/ordersService.ts` existe una suscripción multinegocio explícita `subscribeToBusinessRestaurantOrders(businessId, ...)`, distinta del listener histórico basado en el negocio activo. No mezclar ambas rutas sin validar el cambio de contexto.
 
 **Criterio de salida antes de habilitar cobros de mesa multinegocio:** trazar qué interfaz llama a `settleTableAccount`, diseñar un identificador de negocio consistente para lectura/transacción/escritura, comprobar en emuladores dos tenants con pedidos de mesa sintéticos y verificar permisos/aislamiento, idempotencia y conciliación del turno. Cualquier cambio de cobro o reglas necesita revisión y autorización separadas. **No se corrigió ni habilitó este flujo en producción.**
+
+
+## Trazado de llamadas: cobro legado frente a turno multinegocio (24 de octubre de 2026)
+
+Revisión estática de las referencias de código, sin ejecutar operaciones de Caja:
+
+- Ruta de cobro de mesa **legada**: `src/components/admin/AdminDashboard.tsx` muestra `TableAccountsView`; `src/components/admin/TableAccountsView.tsx` envuelve `TableAccountsCoreView`; `src/components/admin/TableAccountsCoreView.tsx` llama directamente a `settleTableAccount` de `src/lib/paymentsService.ts`. La búsqueda de referencias de GitHub encontró **un único llamador directo** de `settleTableAccount` en el código fuente. Esto confirma que el riesgo del identificador fijo sí está conectado a una pantalla administrativa, pero **no demuestra** que esa pantalla esté habilitada para todos los negocios.
+- Ruta de turno **multinegocio**: `src/components/platform/BusinessShiftView.tsx` recibe `businessId`, consulta pedidos con `subscribeToBusinessRestaurantOrders(businessId, ...)` y módulos de turnos/gastos/resguardo con `subscribeToModule(businessId, ...)`. Calcula ventas con `computeShiftSalesFromOrders`; **no llama** a `settleTableAccount`. Esto separa los dos flujos en el código, pero no certifica que los cobros de mesa sean seguros para un tenant nuevo.
+- Ruta de corte **legada**: `src/components/admin/ShiftControlView.tsx` y `src/components/admin/AdminDashboard.tsx` reciben pagos con `subscribeToTablePayments` y pedidos con `subscribeToRestaurantOrders`, y llaman a `computeShiftSalesAll`. La función suma las listas recibidas y no verifica por sí misma `restaurantId`; hay que auditar los filtros de cada suscripción y los cambios de negocio.
+- Prueba previa a cualquier habilitación: con **dos negocios sintéticos** y emuladores, comprobar que un pedido del negocio B no se puede cobrar desde A, que un pago de B jamás aparece en el corte de A y que la operación es idempotente ante dos cajeros. No intentar la prueba contra Firestore real ni modificar el flujo transaccional hasta aprobar el diseño de aislamiento.
+
+**Alcance:** solo trazado de referencias; sin modificación de interfaz, reglas, transacciones, importes o datos. Las comprobaciones automatizadas existentes no equivalen a una prueba de cobro multinegocio.
