@@ -39,6 +39,36 @@ assert.deepEqual(getShiftReadiness(tenantA, missingVault, 1, validOpening).loadi
 assert.equal(getShiftReadiness(tenantB, ready, 1, validOpening).ready, false);
 assert.deepEqual(getShiftReadiness(tenantB, ready, 1, validOpening).loading, [...SHIFT_FEED_NAMES]);
 assert.equal(getShiftReadiness('', ready, 0).ready, false);
+
+// Regresión al cambiar de negocio: un feed de otro tenant nunca habilita Caja.
+// Un error antiguo tampoco debe mostrarse como error del negocio actual.
+const mixedTenantFeeds: ShiftFeedStates = {
+  ...ready,
+  orders: { businessId: tenantB, status: 'ready' },
+};
+const mixedReadiness = getShiftReadiness(tenantA, mixedTenantFeeds, 0);
+assert.equal(mixedReadiness.ready, false);
+assert.deepEqual(mixedReadiness.loading, ['orders']);
+assert.deepEqual(mixedReadiness.errors, []);
+const staleErrorFeeds: ShiftFeedStates = {
+  ...ready,
+  expenses: { businessId: tenantB, status: 'error' },
+};
+const staleErrorReadiness = getShiftReadiness(tenantA, staleErrorFeeds, 0);
+assert.equal(staleErrorReadiness.ready, false);
+assert.deepEqual(staleErrorReadiness.loading, ['expenses']);
+assert.deepEqual(staleErrorReadiness.errors, []);
+const ownErrorFeeds: ShiftFeedStates = {
+  ...ready,
+  expenses: { businessId: tenantA, status: 'error' },
+};
+assert.deepEqual(getShiftReadiness(tenantA, ownErrorFeeds, 0).errors, ['expenses']);
+assert.equal(getShiftReadiness(tenantA, ownErrorFeeds, 0).ready, false);
+assert.equal(getShiftReadiness(tenantA, {
+  ...mixedTenantFeeds,
+  orders: { businessId: tenantA, status: 'ready' },
+}, 0).ready, true);
+console.log('PASS: cambiar de negocio no reutiliza lecturas ni errores de otro tenant.');
 console.log('PASS: turnos no se abren ni cierran con lecturas incompletas, fechas inválidas, entre negocios o con turnos duplicados.');
 
 assert.equal(parseShiftCashAmount('0'), 0);
