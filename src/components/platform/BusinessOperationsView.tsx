@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, ClipboardList, Minus, PackagePlus, Plus, ShoppingCart, XCircle } from 'lucide-react';
 import type { BusinessCatalogItem } from '../../lib/businessCatalogService';
 import { subscribeToBusinessCatalog } from '../../lib/businessCatalogService';
@@ -7,6 +7,8 @@ import { createBusinessRestaurantOrder, subscribeToBusinessRestaurantOrders, upd
 import { getCurrentAuthUser } from '../../lib/firebase';
 import { summarizeBusinessOrders } from '../../lib/businessOrderSnapshot';
 import { businessOrderChannelLabel } from '../../lib/businessOrderChannel';
+import { isBusinessSummaryFeedError, isBusinessSummaryFeedReady, type BusinessSummaryFeedStatus } from '../../lib/businessSummaryReadiness';
+import { canSubmitBusinessPosOrder, isSimpleBusinessPosItem, outdatedBusinessPosCartIds, type BusinessPosCartLine } from '../../lib/businessPosReadiness';
 
 const STATUS_LABELS: Record<RestaurantOrderStatus, string> = {
   NUEVO: 'Nueva',
@@ -18,11 +20,6 @@ const STATUS_LABELS: Record<RestaurantOrderStatus, string> = {
 
 const STATUS_FLOW: RestaurantOrderStatus[] = ['NUEVO', 'PREPARANDO', 'LISTO', 'ENTREGADO'];
 
-type CartLine = {
-  item: BusinessCatalogItem;
-  quantity: number;
-};
-
 const money = (value: number) => value.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
 
 export const BusinessOperationsView: React.FC<{
@@ -30,10 +27,9 @@ export const BusinessOperationsView: React.FC<{
   businessName: string;
   onBack: () => void;
 }> = ({ businessId, businessName, onBack }) => {
-  const [catalog, setCatalog] = useState<BusinessCatalogItem[]>([]);
-  const [orders, setOrders] = useState<RestaurantOrder[]>([]);
-  const [ordersLoadState, setOrdersLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [cart, setCart] = useState<CartLine[]>([]);
+  const [catalogFeed, setCatalogFeed] = useState<{ businessId: string; status: BusinessSummaryFeedStatus; items: BusinessCatalogItem[] }>({ businessId, status: 'loading', items: [] });
+  const [ordersFeed, setOrdersFeed] = useState<{ businessId: string; status: BusinessSummaryFeedStatus; orders: RestaurantOrder[] }>({ businessId, status: 'loading', orders: [] });
+  const [cart, setCart] = useState<BusinessPosCartLine[]>([]);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia' | 'tarjeta'>('efectivo');
@@ -42,27 +38,53 @@ export const BusinessOperationsView: React.FC<{
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState<'pos' | 'orders' | 'comandas' | 'unpaid'>('pos');
   const [commandFilter, setCommandFilter] = useState<'TODAS' | RestaurantOrderStatus>('TODAS');
+  const submitInFlight = useRef(false);
 
-  useEffect(() => subscribeToBusinessCatalog(
-    businessId,
-    (data) => setCatalog(data?.items || []),
-    () => setCatalog([])
-  ), [businessId]);
+  // Cada lectura se asocia al negocio consultado; los errores no equivalen a listas vacías.
+  useEffect(() => {
+    let active = true;
+    setCatalogFeed({ businessId, status: 'loading', items: [] });
+    const stop = subscribeToBusinessCatalog(
+      businessId,
+      (data) => { if (active) setCatalogFeed({ businessId, status: 'ready', items: data?.items || [] }); },
+      () => { if (active) setCatalogFeed({ businessId, status: 'error', items: [] }); },
+    );
+    return () => { active = false; stop(); };
+  }, [businessId]);
 
   useEffect(() => {
-    setOrders([]);
-    setOrdersLoadState('loading');
-    return subscribeToBusinessRestaurantOrders(
+    let active = true;
+    setOrdersFeed({ businessId, status: 'loading', orders: [] });
+    const stop = subscribeToBusinessRestaurantOrders(
       businessId,
-      (data) => { setOrders(data); setOrdersLoadState('ready'); },
-      () => { setOrders([]); setOrdersLoadState('error'); }
+      (data) => { if (active) setOrdersFeed({ businessId, status: 'ready', orders: data }); },
+      () => { if (active) setOrdersFeed({ businessId, status: 'error', orders: [] }); },
     );
+    return () => { active = false; stop(); };
   }, [businessId]);
+
+  useEffect(() => {
+    setCart([]);
+    setCustomerName('');
+    setCustomerPhone('');
+    setPaymentMethod('efectivo');
+    setSearch('');
+    setMessage('');
+  }, [businessId]);
+
+  const catalogReady = isBusinessSummaryFeedReady(businessId, catalogFeed);
+  const catalogError = isBusinessSummaryFeedError(businessId, catalogFeed);
+  const ordersReady = isBusinessSummaryFeedReady(businessId, ordersFeed);
+  const ordersLoadState = ordersReady ? 'ready' : isBusinessSummaryFeedError(businessId, ordersFeed) ? 'error' : 'loading';
+  const catalog = catalogReady ? catalogFeed.items : [];
+  const orders = ordersReady ? ordersFeed.orders : [];
+  const outdatedCartIds = outdatedBusinessPosCartIds(cart, catalog);
+  const canSubmit = canSubmitBusinessPosOrder(catalogReady ? 'ready' : catalogError ? 'error' : 'loading', cart, catalog, saving);
 
   const availableCatalog = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase('es-MX');
     return catalog
-      .filter((item) => item.available && item.price !== null)
+      .filter((item) => item.available && typeof item.price === 'number' && Number.isFinite(item.price) && item.price >= 0 && !!item.name.trim())
       .filter((item) => (item.name + ' ' + item.category).toLocaleLowerCase('es-MX').includes(normalizedSearch));
   }, [catalog, search]);
 
@@ -78,6 +100,7 @@ export const BusinessOperationsView: React.FC<{
   }, [orders, commandFilter]);
 
   const addToCart = (item: BusinessCatalogItem) => {
+    if (!catalogReady || !isSimpleBusinessPosItem(item)) return;
     setCart((current) => {
       const existing = current.find((line) => line.item.id === item.id);
       if (existing) return current.map((line) => line.item.id === item.id ? { ...line, quantity: line.quantity + 1 } : line);
@@ -92,9 +115,13 @@ export const BusinessOperationsView: React.FC<{
   };
 
   const submitOrder = async () => {
-    if (saving) return;
+    if (saving || submitInFlight.current) return;
     if (cart.length === 0) {
       setMessage('Agrega al menos un producto.');
+      return;
+    }
+    if (!canSubmit) {
+      setMessage('No se puede registrar: el catálogo no está disponible o cambió. Quita las partidas desactualizadas y vuelve a elegirlas.');
       return;
     }
 
@@ -104,6 +131,7 @@ export const BusinessOperationsView: React.FC<{
       return;
     }
 
+    submitInFlight.current = true;
     setSaving(true);
     setMessage('');
 
@@ -145,12 +173,13 @@ export const BusinessOperationsView: React.FC<{
       console.error('[BusinessOperationsView] no se pudo crear el pedido:', error);
       setMessage(error instanceof Error ? error.message : 'No pudimos registrar el pedido.');
     } finally {
+      submitInFlight.current = false;
       setSaving(false);
     }
   };
 
   const advanceStatus = async (order: RestaurantOrder) => {
-    if (!order.id) return;
+    if (!ordersReady || !order.id) return;
     const index = STATUS_FLOW.indexOf(order.status);
     const nextStatus = STATUS_FLOW[index + 1];
     if (!nextStatus) return;
@@ -173,7 +202,7 @@ export const BusinessOperationsView: React.FC<{
   };
 
   const cancelOrder = async (order: RestaurantOrder) => {
-    if (!order.id || order.status === 'CANCELADO') return;
+    if (!ordersReady || !order.id || order.status === 'CANCELADO') return;
     const authUser = getCurrentAuthUser();
     if (!authUser) return;
 
@@ -225,7 +254,7 @@ export const BusinessOperationsView: React.FC<{
           <button onClick={() => setActiveTab('comandas')} className={activeTab === 'comandas' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Comandas</button>
         </nav>
 
-        {message && <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-900">{message}</div>}
+        {message && <div role="status" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-900">{message}</div>}
 
         {activeTab === 'pos' ? (
           <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_360px]">
@@ -235,16 +264,18 @@ export const BusinessOperationsView: React.FC<{
                 <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Cliente (opcional)" className="sm:w-56 rounded-xl border border-[#DEC8AE] px-4 py-3 text-sm text-[#2B1B13] placeholder:text-[#A86B3D]/70 outline-none focus:border-[#A86B3D]" />
                 <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} inputMode="tel" placeholder="WhatsApp (opcional)" className="sm:w-44 rounded-xl border border-[#DEC8AE] px-4 py-3 text-sm text-[#2B1B13] placeholder:text-[#A86B3D]/70 outline-none focus:border-[#A86B3D]" />
               </div>
+              {!catalogReady && <p role={catalogError ? 'alert' : 'status'} className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{catalogError ? 'No se pudo consultar el catálogo. No es seguro registrar pedidos; revisa tu conexión o permisos.' : 'Consultando el catálogo del negocio…'}</p>}
               <div className="mt-5 grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
                 {availableCatalog.map((item) => (
-                  <button key={item.id} onClick={() => addToCart(item)} className="rounded-2xl border border-[#E8D8C4] bg-[#FFFDF9] p-4 text-left hover:border-[#C9974D]">
+                  <button key={item.id} type="button" disabled={!isSimpleBusinessPosItem(item)} onClick={() => addToCart(item)} className="rounded-2xl border border-[#E8D8C4] bg-[#FFFDF9] p-4 text-left hover:border-[#C9974D] disabled:cursor-not-allowed disabled:opacity-60">
                     <span className="text-[10px] font-bold uppercase text-[#A86B3D]">{item.category}</span>
                     <strong className="mt-1 block text-sm text-[#2B1B13]">{item.name}</strong>
                     <span className="mt-2 block font-black text-[#3A2418]">{money(Number(item.price || 0))}</span>
+                     {!isSimpleBusinessPosItem(item) && <span className="mt-1 block text-xs text-amber-900">Requiere elegir opciones; captura desde el menú público.</span>}
                   </button>
                 ))}
               </div>
-              {availableCatalog.length === 0 && <div className="py-12 text-center text-sm text-[#6B4028]">El catálogo no tiene productos disponibles. Abre Catálogo y agrega productos primero.</div>}
+              {catalogReady && availableCatalog.length === 0 && <div className="py-12 text-center text-sm text-[#6B4028]">El catálogo no tiene productos disponibles. Abre Catálogo y agrega productos primero.</div>}
             </section>
 
             <aside className="rounded-[2rem] border border-[#D9C5AC] bg-[#111827] text-white p-5 sm:p-6 h-fit lg:sticky lg:top-24">
@@ -267,6 +298,7 @@ export const BusinessOperationsView: React.FC<{
                 ))}
               </div>
 
+              {outdatedCartIds.length > 0 && catalogReady && <p role="alert" className="mt-4 rounded-xl border border-amber-400/50 bg-amber-900/30 p-3 text-xs text-amber-100">Hay {outdatedCartIds.length} producto(s) desactualizado(s) o agotado(s). Quítalos del ticket y vuelve a elegirlos.</p>}
               <div className="mt-5 border-t border-white/10 pt-4">
                 <label className="text-[10px] font-black uppercase tracking-wide text-slate-400">Método de pago</label>
                 <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as typeof paymentMethod)} className="mt-2 w-full rounded-xl bg-white/10 border border-white/10 px-3 py-3 text-sm text-white outline-none">
@@ -275,7 +307,7 @@ export const BusinessOperationsView: React.FC<{
                   <option value="transferencia" className="text-black">Transferencia</option>
                 </select>
                 <div className="mt-4 flex items-end justify-between"><span className="text-sm text-slate-400">Total</span><strong className="text-3xl">{money(cartTotal)}</strong></div>
-                <button onClick={submitOrder} disabled={saving || cart.length === 0} className="mt-4 w-full rounded-2xl bg-amber-300 px-4 py-4 text-sm font-black text-[#111827] disabled:opacity-50">{saving ? 'Registrando…' : 'Registrar pedido'}</button>
+                <button onClick={submitOrder} disabled={!canSubmit} className="mt-4 w-full rounded-2xl bg-amber-300 px-4 py-4 text-sm font-black text-[#111827] disabled:opacity-50">{saving ? 'Registrando…' : 'Registrar pedido'}</button>
                 <p className="mt-2 text-[10px] text-slate-500">Registra la comanda y conserva el método de pago. El cobro conciliado se integra en la siguiente capa del POS.</p>
               </div>
             </aside>
@@ -300,7 +332,9 @@ export const BusinessOperationsView: React.FC<{
         ) : activeTab === 'orders' ? (
           <section className="mt-6 rounded-[2rem] border border-[#D9C5AC] bg-white overflow-hidden">
             <div className="px-5 py-4 border-b border-[#E8D8C4]"><h2 className="font-serif text-xl font-black text-[#2B1B13]">Pedidos activos</h2></div>
-            {activeOrders.length === 0 ? (
+            {!ordersReady ? (
+               <div role={ordersLoadState === 'error' ? 'alert' : 'status'} className="p-10 text-center text-sm text-amber-900">No se pudo confirmar la lista de pedidos activos. Espera la lectura o revisa la conexión.</div>
+             ) : activeOrders.length === 0 ? (
               <div className="p-10 text-center text-sm text-[#6B4028]">No hay pedidos activos.</div>
             ) : (
               <div className="divide-y divide-[#F0E5D9]">
@@ -339,7 +373,7 @@ export const BusinessOperationsView: React.FC<{
                 <option value="TODAS">Todos los estados</option><option value="NUEVO">Nuevas</option><option value="PREPARANDO">Preparando</option><option value="LISTO">Listas</option><option value="ENTREGADO">Entregadas</option><option value="CANCELADO">Canceladas</option>
               </select>
             </div>
-            {commandOrders.length === 0 ? <div className="p-10 text-center text-sm text-[#6B4028]">No hay comandas para este filtro.</div> : (
+            {!ordersReady ? <div role={ordersLoadState === 'error' ? 'alert' : 'status'} className="p-10 text-center text-sm text-amber-900">No se pudo confirmar el historial de comandas. Espera la lectura o revisa la conexión.</div> : commandOrders.length === 0 ? <div className="p-10 text-center text-sm text-[#6B4028]">No hay comandas para este filtro.</div> : (
               <div className="divide-y divide-[#F0E5D9]">{commandOrders.map((order) => (
                 <article key={order.id || order.code} className="p-5 flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                   <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><strong className="text-base text-[#2B1B13]">#{order.code}</strong><span className="rounded-full bg-[#FFF7EA] px-2 py-1 text-[10px] font-black text-[#A86B3D]">{STATUS_LABELS[order.status]}</span><span className="text-[10px] text-[#7A5A45]">{businessOrderChannelLabel(order)}</span></div>

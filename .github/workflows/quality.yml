@@ -56,5 +56,7 @@ jobs:
         run: node --import tsx scripts/test-business-public-catalog.mts
       - name: Test business order QR channel labels (no Firebase writes)
         run: node --import tsx scripts/test-business-order-channel.mts
+      - name: Test business POS readiness and order list isolation (synthetic data, no Firebase writes)
+        run: node --import tsx scripts/test-business-pos-readiness.mts
       - name: Verify staged VIP isolation (no deployment)
         run: node scripts/verify-vip-staged.mjs
