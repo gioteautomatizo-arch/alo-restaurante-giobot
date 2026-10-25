@@ -34,25 +34,34 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const [role, setRole] = useState<BusinessRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [resolvedFor, setResolvedFor] = useState<{ businessId: string; userId: string } | null>(null);
   const [view, setView] = useState<'workspace' | 'catalog' | 'employees' | 'memberships' | 'shifts' | 'expenses' | 'vault' | 'receivables' | 'payables' | 'audit' | 'operations' | 'menuImport' | 'modules' | 'branding' | 'reports'>('workspace');
 
   useEffect(() => subscribeToAuth((user) => { setAuthUser(user); setAuthReady(true); }), []);
 
   useEffect(() => {
+    // Nunca reutilizar una cuenta, rol o submódulo cuando cambia el tenant.
+    let cancelled = false;
+    setBusiness(null);
+    setRole(null);
+    setResolvedFor(null);
+    setView('workspace');
+    setError(null);
+    setLoading(true);
     if (!authReady) return;
     if (!authUser) {
-      setBusiness(null);
-      setRole(null);
       setError('Inicia sesión en Acceso para negocios para abrir este panel.');
+      setResolvedFor({ businessId, userId: '' });
       setLoading(false);
       return;
     }
 
-    setLoading(true);
-    setError(null);
     Promise.all([getBusinessForUser(authUser.uid, businessId), getBusinessMembership(authUser.uid, businessId)])
       .then(([tenant, membership]) => {
-        if (!tenant || !membership) {
+        if (cancelled) return;
+        if (!tenant || tenant.restaurantId !== businessId
+          || !membership || membership.restaurantId !== businessId
+          || membership.userId !== authUser.uid || !membership.active) {
           setError('No tienes acceso a este negocio o ya no existe.');
           return;
         }
@@ -60,15 +69,28 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
         setRole(membership.role);
       })
       .catch((err) => {
+        if (cancelled) return;
         console.warn('No se pudo abrir el negocio:', err);
         setError('No pudimos abrir este negocio. Intenta nuevamente.');
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) {
+          setResolvedFor({ businessId, userId: authUser.uid });
+          setLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
   }, [authReady, authUser, businessId]);
+
+  // En el primer render tras cambiar de ruta, el estado antiguo aún puede existir.
+  const accessLoaded = authReady
+    && resolvedFor?.businessId === businessId
+    && resolvedFor.userId === (authUser?.uid ?? '');
+  const hasCurrentAccess = !!accessLoaded && !!role && business?.restaurantId === businessId;
 
   // Paleta del negocio: la leen las pantallas del espacio (ver platformTheme.css).
   useEffect(() => {
-    if (!business) return;
+    if (!hasCurrentAccess || !business) return;
     const b = business.branding;
     const root = document.documentElement;
     const vars: Record<string, string | undefined> = {
@@ -83,34 +105,48 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
       else root.style.removeProperty(key);
     });
     return () => Object.keys(vars).forEach((key) => root.style.removeProperty(key));
-  }, [business]);
+  }, [business, hasCurrentAccess]);
 
   const [isPublished, setIsPublished] = useState(false);
   const [publicationBusy, setPublicationBusy] = useState(false);
   const [publicationMessage, setPublicationMessage] = useState<string | null>(null);
+  const [publicationFor, setPublicationFor] = useState<string | null>(null);
+  const currentAccessKey = authUser ? `${authUser.uid}:${businessId}` : '';
+  const publicationStatusReady = !!hasCurrentAccess && publicationFor === currentAccessKey;
+  const published = publicationStatusReady && isPublished;
 
   // Si el negocio ya está publicado y su copia pública quedó vieja (colores, logo, VIP), el dueño la actualiza al entrar.
   useEffect(() => {
-    if (!business || role !== 'OWNER') return;
+    if (!hasCurrentAccess || !business || role !== 'OWNER') return;
     syncPublicProfileIfNeeded(businessId, business).catch((err) => console.warn('No se pudo sincronizar la página pública:', err));
-  }, [business, role, businessId]);
+  }, [business, role, businessId, hasCurrentAccess]);
 
   useEffect(() => {
     let cancelled = false;
+    setIsPublished(false);
+    setPublicationFor(null);
+    setPublicationMessage(null);
+    if (!hasCurrentAccess) return;
     getBusinessPublicationStatus(businessId)
-      .then((published) => { if (!cancelled) setIsPublished(published); })
-      .catch((err) => console.warn('No se pudo consultar la publicación:', err));
+      .then((status) => {
+        if (cancelled) return;
+        setIsPublished(status);
+        setPublicationFor(currentAccessKey);
+      })
+      .catch((err) => {
+        if (!cancelled) console.warn('No se pudo consultar la publicación:', err);
+      });
     return () => { cancelled = true; };
-  }, [businessId]);
+  }, [businessId, currentAccessKey, hasCurrentAccess]);
 
   const togglePublication = async () => {
-    if (!business) return;
+    if (!hasCurrentAccess || !business || role !== 'OWNER' || !publicationStatusReady || publicationBusy) return;
     setPublicationBusy(true);
     setPublicationMessage(null);
     try {
-      await setBusinessPublication(businessId, business, !isPublished);
-      setIsPublished(!isPublished);
-      setPublicationMessage(!isPublished ? 'Tu página ya está publicada en el directorio.' : 'Tu página se ocultó del directorio público.');
+      await setBusinessPublication(businessId, business, !published);
+      setIsPublished(!published);
+      setPublicationMessage(!published ? 'Tu página ya está publicada en el directorio.' : 'Tu página se ocultó del directorio público.');
     } catch (err) {
       setPublicationMessage(err instanceof Error ? err.message : 'No pudimos actualizar la publicación.');
     } finally {
@@ -130,7 +166,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   // se usa su giro (businessType) y, como último recurso, "other".
   const template = getBusinessTemplateConfig(business?.templateId || business?.businessType || 'other');
 
-  if (loading) {
+  if (loading || !accessLoaded) {
     return (
       <div className="min-h-screen bg-[#F5F1EA] flex items-center justify-center text-[#111111]">
         <div className="text-center">
@@ -142,7 +178,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     );
   }
 
-  if (error || !business) {
+  if (error || !hasCurrentAccess || !business) {
     return (
       <div className="min-h-screen bg-[#F5F1EA] flex items-center justify-center px-4">
         <div className="w-full max-w-md rounded-[2rem] border border-black/10 bg-white p-7 text-center shadow-sm">
@@ -219,7 +255,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
 
     // Un único módulo reutilizable de membresías para cualquier negocio con VIP activo.
     if (view === 'memberships' && hasCap('VIP') && canManageVip) {
-      return <BusinessVipPanel businessId={businessId} business={business} isOwner={role === 'OWNER' || role === 'SUPER_ADMIN'} managerRole={role!} isPublished={isPublished} onBusinessUpdated={setBusiness} />;
+      return <BusinessVipPanel businessId={businessId} business={business} isOwner={role === 'OWNER' || role === 'SUPER_ADMIN'} managerRole={role!} isPublished={published} onBusinessUpdated={setBusiness} />;
     }
 
     if (view === 'reports') {
@@ -249,7 +285,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
 
     return (
       <div className="space-y-5">
-        <BusinessSummaryTab businessId={businessId} business={business} isPublished={isPublished} onGo={(t) => setView(t)} />
+        <BusinessSummaryTab businessId={businessId} business={business} isPublished={published} onGo={(t) => setView(t)} />
         <BusinessModuleToggles businessId={businessId} enabled={enabledCapabilities} isOwner={role === 'OWNER' || role === 'SUPER_ADMIN'} onChanged={(caps) => setBusiness({ ...business, capabilities: caps })} />
         <section className="rounded-2xl border border-[#3A3022] bg-[#111111] p-4">
           <p className="text-[10px] font-black uppercase tracking-wide text-[#E3BC6B]">Enlace para tus clientes</p>
@@ -258,11 +294,11 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
             <div className="mt-4 border-t border-[#3A3022] pt-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <strong className="block text-sm">{isPublished ? 'Visible en el directorio' : 'No aparece en el directorio'}</strong>
-                  <span className="mt-1 block text-[11px] text-[#B7B7B7]">{isPublished ? 'Cualquier visitante puede encontrar tu página pública.' : 'Publícala cuando el menú y los datos estén listos.'}</span>
+                  <strong className="block text-sm">{publicationStatusReady ? (published ? 'Visible en el directorio' : 'No aparece en el directorio') : 'Consultando publicación…'}</strong>
+                  <span className="mt-1 block text-[11px] text-[#B7B7B7]">{publicationStatusReady ? (published ? 'Cualquier visitante puede encontrar tu página pública.' : 'Publícala cuando el menú y los datos estén listos.') : 'Verificando el estado del directorio.'}</span>
                 </div>
-                <button type="button" disabled={publicationBusy} onClick={() => void togglePublication()} className="rounded-xl bg-[#D6A34A] px-4 py-2.5 text-xs font-black text-[#050505] disabled:opacity-50">
-                  {publicationBusy ? 'Guardando…' : isPublished ? 'Ocultar del directorio' : 'Publicar mi negocio'}
+                <button type="button" disabled={publicationBusy || !publicationStatusReady} onClick={() => void togglePublication()} className="rounded-xl bg-[#D6A34A] px-4 py-2.5 text-xs font-black text-[#050505] disabled:opacity-50">
+                  {publicationBusy ? 'Guardando…' : !publicationStatusReady ? 'Consultando…' : published ? 'Ocultar del directorio' : 'Publicar mi negocio'}
                 </button>
               </div>
               {publicationMessage && <p role="status" className="mt-3 text-xs text-[#E3BC6B]">{publicationMessage}</p>}
