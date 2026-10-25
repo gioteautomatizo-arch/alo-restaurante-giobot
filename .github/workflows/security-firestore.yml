@@ -28,6 +28,8 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-launch-security-test --config scripts/firebase.launch-security-emulator.json "node scripts/test-launch-security.mjs"
       - name: Test atomic owner registration and employee access
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-owner-security-test --config scripts/firebase.launch-security-emulator.json "node scripts/test-owner-registration.mjs"
+      - name: Test isolated atomic OWNER rule proposal (no rule deployment)
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-atomic-owner-proposal-test --config scripts/firebase.launch-security-emulator.json "node scripts/test-owner-atomic-proposal.mjs"
       - name: Test invitation API with Auth and Firestore emulators
         run: npx firebase emulators:exec --only auth,firestore --project gioteautomatizo-invites-test --config scripts/firebase.invites-emulator.json "node --import tsx scripts/test-business-invites.mjs"
       - name: Test VIP backend with dummy profiles in Firestore emulator
