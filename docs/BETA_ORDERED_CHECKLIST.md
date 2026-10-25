@@ -80,3 +80,10 @@ Formato del reporte: paso actual → cambio concreto → prueba y evidencia → 
 - `scripts/test-business-portal-isolation-ui.mjs` monta el componente React real en jsdom, simula dos usuarios y respuestas fuera de orden, cierre de sesión, fallo de permisos y reintento; no usa Firebase ni datos reales. Se incorporó a Quality checks.
 - **Estado de esta modificación:** requiere CI del commit y recorrido visual/manual; no equivale a pruebas con dos cuentas reales ni soluciona la reserva de identificadores sin OWNER en reglas staged.
 - **Paso 2 permanece ABIERTO.** Siguiente: revisión de seguridad separada para alta huérfana y recorrido de alta → catálogo → publicación → invitación/cambio de sesión en entorno aislado. Mantener Caja (paso 4) como PENDIENTE.
+
+### Verificación del bloque Portal (25 de octubre de 2026)
+
+- Primer commit [`f4f0dbee`](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/commit/f4f0dbee0674d31b79a1ed7ffd33f32eb75245be): Quality checks falló por un cierre JSX faltante en la advertencia de lectura; corregido inmediatamente en [`ddf27674`](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/commit/ddf276749b3335923c6ee0d54f191c1313cf51e2).
+- [Quality checks #40231575812](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40231575812): **success** sobre `ddf27674`, incluyendo TypeScript, compilación y prueba real del Portal en jsdom con dos UID ficticios, respuestas obsoletas, fallo/reintento y Super Admin aislado.
+- [Staged Firestore security tests #40231575811](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40231575811): **success** sobre `ddf27674`. No cambia reglas ni resuelve el diagnóstico **PENDIENTE** de alta huérfana.
+- **Paso 2 sigue parcial.** La prueba UI está simulada; falta recorrido con cuentas de prueba y verificación visual. No avanzar a paso 3 como cerrado, ni declarar Caja conciliada por el CI verde.
