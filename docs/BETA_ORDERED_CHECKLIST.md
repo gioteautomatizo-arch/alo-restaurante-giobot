@@ -107,3 +107,9 @@ Formato del reporte: paso actual → cambio concreto → prueba y evidencia → 
 - **Bloqueo de seguridad abierto:** la regla staged original todavía admite el alta huérfana. La propuesta experimental **NO** constituye una corrección aplicada, ni permiso para desplegar. Requiere revisión humana y plan de compatibilidad, especialmente por el límite de accesos documentales de Firestore.
 - **Paso 2 NO cerrado:** sigue pendiente el recorrido de alta, configuración, catálogo, publicación, invitación, aceptación, revocación y cambio de cuenta en entorno aislado, más validación visual Android/iPad.
 - **Siguiente paso:** confirmar CI de la propuesta y revisión de seguridad separada; después completar recorrido integral de dos negocios ficticios. Paso 3 (pedidos) y paso 4 (Caja con diagnósticos `PENDIENTE`) permanecen abiertos.
+
+## Paso 2 — control de sesión durante el alta (revisión en curso, 25 de octubre de 2026)
+
+- Punto de partida verificado: HEAD `5134bb50`; [Quality checks #40241324334](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40241324334) **success** y [Staged Firestore security tests #40241324321](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40241324321) **success**. El experimento OWNER atómico solo existe en emulador; el defecto staged sigue **PENDIENTE**.
+- Siguiente revisión del paso 2: proteger el alta en cliente ante cambios de cuenta entre autenticación, lote atómico y siembra de catálogo; añadir pruebas sintéticas de UID y reintentos, sin tocar reglas ni datos reales. Este apartado es un **plan en curso**, no una implementación aprobada.
+- Para cerrar el paso siguen faltando recorrido real en entorno aislado con dos cuentas ficticias y revisión visual Android/iPad. No avanzar al paso 3 ni considerar Caja conciliada.
