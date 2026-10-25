@@ -108,8 +108,17 @@ Formato del reporte: paso actual → cambio concreto → prueba y evidencia → 
 - **Paso 2 NO cerrado:** sigue pendiente el recorrido de alta, configuración, catálogo, publicación, invitación, aceptación, revocación y cambio de cuenta en entorno aislado, más validación visual Android/iPad.
 - **Siguiente paso:** confirmar CI de la propuesta y revisión de seguridad separada; después completar recorrido integral de dos negocios ficticios. Paso 3 (pedidos) y paso 4 (Caja con diagnósticos `PENDIENTE`) permanecen abiertos.
 
-## Paso 2 — control de sesión durante el alta (revisión en curso, 25 de octubre de 2026)
+## Paso 2 — control de sesión durante el alta (pruebas automáticas aprobadas, 25 de octubre de 2026)
 
 - Punto de partida verificado: HEAD `5134bb50`; [Quality checks #40241324334](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40241324334) **success** y [Staged Firestore security tests #40241324321](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40241324321) **success**. El experimento OWNER atómico solo existe en emulador; el defecto staged sigue **PENDIENTE**.
 - Siguiente revisión del paso 2: proteger el alta en cliente ante cambios de cuenta entre autenticación, lote atómico y siembra de catálogo; añadir pruebas sintéticas de UID y reintentos, sin tocar reglas ni datos reales. Este apartado es un **plan en curso**, no una implementación aprobada.
 - Para cerrar el paso siguen faltando recorrido real en entorno aislado con dos cuentas ficticias y revisión visual Android/iPad. No avanzar al paso 3 ni considerar Caja conciliada.
+
+### Resultado del bloque de sesión OWNER (commit `49c6a0b4`)
+
+- `src/lib/businessAuthService.ts`: verifica que el UID de Firebase siga siendo el del OWNER antes de enviar el batch. Si cambia después de confirmar el batch, conserva el resultado del alta y omite la siembra del catálogo para no escribir con la sesión equivocada; informa en consola. No modifica reglas ni registros reales.
+- `scripts/test-business-registration-session.mjs`: Auth y Firestore completamente simulados. Verifica tenant y OWNER en un lote, cambio de UID antes de escribir (sin escrituras), cambio tras el commit (sin catálogo cruzado), correo ya autenticado y reautenticación. Integrado en Quality checks.
+- [Quality checks #40245218648](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40245218648): **success**, incluidas validación TypeScript, compilación de producción y nueva prueba de sesión.
+- [Staged Firestore security tests #40245218642](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40245218642): **success**; emuladores y guard staged aprobados. No se desplegaron reglas.
+- **Límites:** no hay recorrido real de alta con dos cuentas ficticias en entorno aislado ni revisión visual Android/iPad. La regla staged original aún permite reserva huérfana sin OWNER; propuesta aislada NO aplicada. El paso 2 permanece **ABIERTO**. Diagnósticos de Caja con `PENDIENTE` continúan sin conciliar.
+- **Continuación:** probar registro, configuración, catálogo, publicación, invitación, aceptación y revocación entre dos cuentas ficticias en entorno aislado. Revisar propuesta de seguridad OWNER por separado y sin despliegue; después paso 3.
