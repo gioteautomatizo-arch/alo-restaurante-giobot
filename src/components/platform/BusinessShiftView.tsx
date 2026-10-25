@@ -56,6 +56,10 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
   useEffect(() => {
     let alive = true;
     setFeedStates(initialShiftFeedStates(businessId));
+    // No reutilizar importes ni notas ingresados para otro negocio.
+    setFund('');
+    setCounted('');
+    setNotes('');
     setError('');
     setClosing(false);
     const mark = (key: ShiftFeedName, status: 'ready' | 'error') => {
