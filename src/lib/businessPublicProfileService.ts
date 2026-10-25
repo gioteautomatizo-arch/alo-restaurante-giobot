@@ -64,6 +64,10 @@ export function makePublicBusinessProfile(businessId: string, tenant: Restaurant
 }
 
 export async function setBusinessPublication(businessId: string, tenant: RestaurantTenant, published: boolean): Promise<void> {
+  // Defensa adicional: aun si una vista conserva estado viejo, nunca publicarlo bajo otro negocio.
+  if (!businessId.trim() || tenant.restaurantId !== businessId) {
+    throw new Error('La identidad del negocio no coincide. Vuelve a abrir tu espacio de trabajo.');
+  }
   const user = auth.currentUser;
   if (!user) throw new Error('Inicia sesión para publicar tu negocio.');
   const membershipSnap = await getDoc(doc(db, 'businessMemberships', businessId + '_' + user.uid));
@@ -91,6 +95,7 @@ export async function getBusinessPublicationStatus(businessId: string): Promise<
  * Solo escribe si el negocio está publicado y la copia quedó distinta; lo hace el dueño.
  */
 export async function syncPublicProfileIfNeeded(businessId: string, tenant: RestaurantTenant): Promise<boolean> {
+  if (!businessId.trim() || tenant.restaurantId !== businessId) return false;
   const user = auth.currentUser;
   if (!user) return false;
   const snap = await getDoc(doc(db, 'publicBusinessProfiles', businessId));
