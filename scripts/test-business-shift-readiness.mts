@@ -172,3 +172,8 @@ assert.match(shiftViewSource, /const fundAmount = parseShiftCashAmount\(fund\)/)
 assert.match(shiftViewSource, /const countedCash = parseShiftCashAmount\(counted\)/);
 console.log('PASS: guardia visual de cierre por fecha de pago y captura explícita de efectivo (revisión estática).');
 
+// Evitar que importes o notas escritos para un negocio se reutilicen al cambiar a otro.
+// Solo inspecciona el código de la interfaz; no abre ni cierra turnos.
+assert.match(shiftViewSource, /setFeedStates\(initialShiftFeedStates\(businessId\)\);\s*\/\/[^\n]*\n\s*setFund\(''\);\s*setCounted\(''\);\s*setNotes\(''\);/);
+console.log('PASS: el cambio de negocio limpia fondo, efectivo contado y notas (revisión estática).');
+
