@@ -52,6 +52,8 @@ jobs:
         run: node --import tsx scripts/test-business-workspace-isolation.mts
       - name: Test business portal account switch and retry (mocked Auth/Firestore, no Firebase writes)
         run: node scripts/test-business-portal-isolation-ui.mjs
+      - name: Test business account list fail-closed on partial reads (mocked Firestore, no writes)
+        run: node scripts/test-business-account-list.mjs
       - name: Test invite acceptance tenant isolation and retry (mocked Auth/backend, no Firebase writes)
         run: node scripts/test-business-invite-accept-ui.mjs
       - name: Test shift cash reconciliation (synthetic data, no Firebase writes)
