@@ -207,7 +207,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
           <label className="mt-4 block text-xs font-bold text-[#C8C8C8]">Fondo inicial de caja ($)</label>
           <input type="number" min="0" step="0.01" inputMode="decimal" placeholder="Ingresa el fondo real (ej. 0.00)" value={fund} onChange={(e) => setFund(e.target.value)} className={`${input} mt-1 max-w-xs`} />
           <p className="mt-2 text-xs text-[#C8C8C8]">Ingresa el efectivo real antes de abrir, incluso si son $0. No se asigna un fondo automáticamente.</p>
-          <button type="button" disabled={busy} onClick={() => void openShift()} className="mt-4 flex items-center gap-2 rounded-xl bg-[#D6A34A] px-5 py-3 text-sm font-black text-[#050505] disabled:opacity-50">
+          <button type="button" disabled={busy || parseShiftCashAmount(fund) === null} onClick={() => void openShift()} className="mt-4 flex items-center gap-2 rounded-xl bg-[#D6A34A] px-5 py-3 text-sm font-black text-[#050505] disabled:opacity-50">
             <Play className="h-4 w-4" /> {busy ? 'Abriendo…' : 'Abrir turno'}
           </button>
         </section>
@@ -254,7 +254,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
                 )}
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas del corte (opcional)" rows={2} className={input} />
                 <div className="flex gap-2">
-                  <button type="button" disabled={busy || missingPaymentDates > 0} onClick={() => void closeShift()} className="rounded-xl bg-[#D6A34A] px-5 py-3 text-sm font-black text-[#050505] disabled:opacity-50">{busy ? 'Cerrando…' : 'Confirmar cierre'}</button>
+                  <button type="button" disabled={busy || missingPaymentDates > 0 || parseShiftCashAmount(counted) === null} onClick={() => void closeShift()} className="rounded-xl bg-[#D6A34A] px-5 py-3 text-sm font-black text-[#050505] disabled:opacity-50">{busy ? 'Cerrando…' : 'Confirmar cierre'}</button>
                   <button type="button" onClick={() => setClosing(false)} className="rounded-xl border border-[#3A3022] px-4 py-3 text-sm font-bold">Cancelar</button>
                 </div>
               </div>
