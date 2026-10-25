@@ -19,6 +19,7 @@ import { BusinessReportsView } from './BusinessReportsView';
 import { BusinessModulesView } from './BusinessModulesView';
 import { getBusinessTemplateConfig } from '../../data/businessTemplates';
 import { hasBusinessPermission } from '../../lib/restaurantCore';
+import { hasCurrentWorkspaceAccess, isWorkspaceAccessLoaded } from '../../lib/businessWorkspaceAccess';
 import { canAdministerBusinessVip } from '../../lib/businessVipPermissions';
 import type { BusinessRole, RestaurantTenant } from '../../lib/restaurantCore';
 import { getBusinessForUser, getBusinessMembership } from '../../lib/businessAuthService';
@@ -83,10 +84,10 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   }, [authReady, authUser, businessId]);
 
   // En el primer render tras cambiar de ruta, el estado antiguo aún puede existir.
-  const accessLoaded = authReady
-    && resolvedFor?.businessId === businessId
-    && resolvedFor.userId === (authUser?.uid ?? '');
-  const hasCurrentAccess = !!accessLoaded && !!role && business?.restaurantId === businessId;
+  const accessLoaded = isWorkspaceAccessLoaded(businessId, authReady, authUser?.uid ?? null, resolvedFor);
+  const hasCurrentAccess = hasCurrentWorkspaceAccess(
+    businessId, authReady, authUser?.uid ?? null, resolvedFor, business?.restaurantId, role,
+  );
 
   // Paleta del negocio: la leen las pantallas del espacio (ver platformTheme.css).
   useEffect(() => {
