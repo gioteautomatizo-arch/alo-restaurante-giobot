@@ -203,7 +203,7 @@ console.log('PASS: la vista de turno mantiene suscripciones multinegocio y no us
 assert.match(shiftViewSource, /const missingPaymentDates = active && readiness\.ready \? countPaidOrdersMissingPaymentDate\(orders, active\.openedAt\) : 0;/);
 assert.match(shiftViewSource, /if \(missingPaymentDates > 0\) \{\s*setError\(/);
 assert.match(shiftViewSource, /disabled=\{missingPaymentDates > 0\}/);
-assert.match(shiftViewSource, /disabled=\{busy \|\| missingPaymentDates > 0\}/);
+assert.match(shiftViewSource, /disabled=\{busy \|\| missingPaymentDates > 0 \|\| parseShiftCashAmount\(counted\) === null\}/);
 assert.match(shiftViewSource, /const \[fund, setFund\] = useState\(''\)/);
 assert.match(shiftViewSource, /const \[counted, setCounted\] = useState\(''\)/);
 assert.match(shiftViewSource, /const fundAmount = parseShiftCashAmount\(fund\)/);
@@ -224,3 +224,11 @@ assert.match(shiftViewSource, /previewShiftCashDifference\(counted,\s*live\.expe
 assert.match(shiftViewSource, /cashDifferencePreview === 0/);
 assert.doesNotMatch(shiftViewSource, /Number\(counted\) - live\.expectedCash === 0/);
 console.log('PASS: la vista de Caja muestra la diferencia de centavos coherente (guardia estática).');
+
+// UX: la captura debe ser explícita y válida antes de habilitar acciones de Caja.
+// La validación dentro de openShift/closeShift sigue siendo la defensa final.
+assert.match(shiftViewSource, /disabled=\{busy \|\| parseShiftCashAmount\(fund\) === null\}/);
+assert.match(shiftViewSource, /disabled=\{busy \|\| missingPaymentDates > 0 \|\| parseShiftCashAmount\(counted\) === null\}/);
+assert.equal(parseShiftCashAmount('0.00'), 0, 'El fondo o contado en cero es válido');
+assert.equal(parseShiftCashAmount('1.999'), null, 'No habilitar importes con más de dos decimales');
+console.log('PASS: los botones de apertura y cierre solo se habilitan con efectivo válido (guardia estática).');
