@@ -38,6 +38,8 @@ jobs:
         run: npm run build
       - name: Verify platform login branding (static assets, no Firebase writes)
         run: node scripts/test-platform-branding.mjs
+      - name: Test public home navigation and legacy Calientito links (no Firebase writes)
+        run: node --import tsx scripts/test-platform-home-routing.mts
       - name: Test safe order notifications (no Firebase writes)
         run: node --import tsx scripts/test-business-order-alerts.mts
       - name: Test paid sales reports (no Firebase writes)

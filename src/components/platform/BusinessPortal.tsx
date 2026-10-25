@@ -126,7 +126,8 @@ export const BusinessPortal: React.FC = () => {
   };
 
   const openPublicCalientito = () => {
-    window.location.hash = '';
+    // La raíz de Gioteautomatizo ahora es el directorio; Calientito tiene su enlace propio.
+    window.location.hash = '#negocio/alo-restaurante';
   };
 
   const openBusiness = (tenant: RestaurantTenant) => {

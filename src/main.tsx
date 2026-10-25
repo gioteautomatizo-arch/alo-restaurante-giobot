@@ -15,6 +15,7 @@ import { PlatformAdminPanel } from './components/platform/PlatformAdminPanel';
 import './components/platform/platformTheme.css';
 import './index.css';
 import { RESERVED_PATHS } from './lib/siteUrl';
+import { shouldShowPublicDirectory } from './lib/platformHomeRouting';
 
 /** Enlaces limpios: /negocio/<nombre> equivale a #negocio/<nombre> (los enlaces con # siguen funcionando). */
 const LEGACY_ALIASES: Record<string, string> = { calientito: 'alo-restaurante', 'restaurante-calientito': 'alo-restaurante' };
@@ -47,7 +48,7 @@ function RootRouter() {
   });
   const hasTableQr = qrParams.has('table') || qrParams.has('qr') || qrParams.get('staffOrder') === '1';
 
-  if (hash === '#explorar' || hash === '#') {
+  if (shouldShowPublicDirectory(hash, hasTableQr)) {
     return <div className="giote-platform-theme"><BusinessDirectory /></div>;
   }
 
