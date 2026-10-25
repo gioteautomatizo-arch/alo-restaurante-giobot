@@ -1,5 +1,5 @@
 import { createBusinessRestaurantOrder } from '../../lib/ordersService';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Award, Clock, Facebook, Instagram, MapPin, MessageCircle, Minus, Plus, Search, ShoppingBag, Sparkles, Store, Utensils, X } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -34,6 +34,8 @@ import type { VipProfile } from '../../types';
  * y envía el pedido por WhatsApp, así que no genera costo.
  */
 const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessId }) => {
+  const sendInFlight = useRef(false);
+  const [profileAttempt, setProfileAttempt] = useState(0);
   const [business, setBusiness] = useState<RestaurantTenant | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [items, setItems] = useState<BusinessCatalogItem[]>([]);
@@ -81,7 +83,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
     return () => {
       cancelled = true;
     };
-  }, [businessId]);
+  }, [businessId, profileAttempt]);
 
   useEffect(() => {
     let active = true;
@@ -152,6 +154,8 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
           <Store className="mx-auto h-10 w-10 text-[#D6A34A]" />
           <h1 className="mt-4 font-serif text-2xl font-black">{status === 'missing' ? 'Este negocio no existe' : 'No pudimos abrir esta página'}</h1>
           <p className="mt-2 text-sm text-[#B7B7B7]">{status === 'missing' ? 'Revisa que el enlace esté completo.' : 'Revisa tu conexión e inténtalo de nuevo.'}</p>
+          {status === 'error' && <button type="button" onClick={() => setProfileAttempt((attempt) => attempt + 1)} className="mt-5 rounded-xl bg-[#D6A34A] px-5 py-3 text-sm font-bold text-black">Reintentar</button>}
+          <a href="/#explorar" className="mt-4 block text-sm underline">Explorar otros negocios</a>
         </div>
       </div>
     );
@@ -185,11 +189,14 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
 
   // Registra el pedido en Pedidos y Caja del negocio y, si hay WhatsApp, abre el chat con el código.
   const sendOrder = async () => {
-    if (!cartCanSend) return;
+    if (sendInFlight.current || !cartCanSend) return;
+    // Bloqueo síncrono: cubre pulsaciones antes del siguiente render de React.
+    sendInFlight.current = true;
     setSending(true);
     setSendError(null);
     // Abrimos la pestaña antes del await para que el navegador no la bloquee.
-    const popup = whatsappNumber ? window.open('', '_blank') : null;
+    let popup: Window | null = null;
+    try { popup = whatsappNumber ? window.open('', '_blank') : null; } catch { /* El pedido puede registrarse aunque el navegador bloquee ventanas. */ }
     let code: string | undefined;
     try {
       const saved = await createBusinessRestaurantOrder(businessId, {
@@ -211,8 +218,11 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
       setCart([]);
     } catch (err) {
       console.warn('No se pudo registrar el pedido en el negocio:', err);
-      setSendError('No pudimos registrar el pedido automáticamente. Si se abrió WhatsApp, envía el mensaje al negocio para no perder tu pedido.');
+      setSendError(whatsappNumber
+        ? 'No pudimos confirmar el registro. Conservamos tu pedido; antes de reenviarlo, consulta al negocio por WhatsApp para evitar duplicados.'
+        : 'No pudimos confirmar el registro. Conservamos tu pedido; antes de reenviarlo, consulta al negocio para evitar duplicados.');
     } finally {
+      sendInFlight.current = false;
       setSending(false);
     }
     if (whatsappNumber) {
@@ -224,6 +234,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
 
   const add = (item: BusinessCatalogItem, selection: OptionSelection = {}, quantity = 1) =>
     setCart((current) => {
+      if (sendInFlight.current) return current;
       const key = selectionKey(item.id, item, selection);
       const existing = current.find((line) => line.key === key);
       return existing
@@ -233,7 +244,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
 
   const change = (key: string, delta: number) =>
     setCart((current) =>
-      current.map((line) => (line.key === key ? { ...line, quantity: line.quantity + delta } : line)).filter((line) => line.quantity > 0),
+      sendInFlight.current ? current : current.map((line) => (line.key === key ? { ...line, quantity: line.quantity + delta } : line)).filter((line) => line.quantity > 0),
     );
 
   const quantityOf = (id: string) => cart.filter((line) => line.item.id === id).reduce((sum, line) => sum + line.quantity, 0);
@@ -243,7 +254,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
     const quantity = quantityOf(item.id);
     const customizable = (item.optionGroups || []).length > 0;
     return (
-      <article key={item.id} onClick={() => setSelectedItem(item)} className="flex cursor-pointer flex-col overflow-hidden rounded-2xl border transition active:scale-[0.99]" style={{ borderColor: border, backgroundColor: surface }}>
+      <article key={item.id} onClick={() => { if (!sendInFlight.current) setSelectedItem(item); }} className="flex cursor-pointer flex-col overflow-hidden rounded-2xl border transition active:scale-[0.99]" style={{ borderColor: border, backgroundColor: surface }}>
         <div className="relative aspect-[4/3] w-full overflow-hidden" style={{ backgroundColor: bg }}>
           {item.imageUrl ? (
             <img src={item.imageUrl} alt={item.name} loading="lazy" className="h-full w-full object-cover" />
@@ -263,7 +274,8 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
           {item.description && <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed opacity-75">{item.description}</p>}
           <button
             type="button"
-            onClick={(event) => { event.stopPropagation(); if (customizable) setSelectedItem(item); else add(item); }}
+            disabled={sending}
+            onClick={(event) => { event.stopPropagation(); if (sendInFlight.current) return; if (customizable) setSelectedItem(item); else add(item); }}
             className="mt-auto flex w-full items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-black"
             style={{ backgroundColor: primary, color: bg, marginTop: '0.75rem' }}
           >
@@ -443,7 +455,8 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
                 <p className="mt-1 opacity-85">{outdatedCartKeys.length} producto(s) ya no coinciden con sus precios, disponibilidad u opciones actuales. Revisa y vuelve a elegirlos antes de enviar.</p>
                 <button
                   type="button"
-                  onClick={() => setCart((current) => {
+                  disabled={sending} onClick={() => setCart((current) => {
+                    if (sendInFlight.current) return current;
                     const obsolete = new Set(outdatedPublicCartKeys(current, items));
                     return current.filter((line) => !obsolete.has(line.key));
                   })}
@@ -475,9 +488,9 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
                         {selectionSummary(line.item, line.selection || {}) && <span className="block text-[11px] opacity-70">{selectionSummary(line.item, line.selection || {})}</span>}
                       </span>
                       <span className="flex items-center gap-2">
-                        <button type="button" aria-label="Quitar uno" onClick={() => change(line.key, -1)} className="rounded-lg border p-1" style={{ borderColor: border }}><Minus className="h-3.5 w-3.5" /></button>
+                        <button type="button" disabled={sending} aria-label="Quitar uno" onClick={() => change(line.key, -1)} className="rounded-lg border p-1" style={{ borderColor: border }}><Minus className="h-3.5 w-3.5" /></button>
                         <strong className="w-5 text-center">{line.quantity}</strong>
-                        <button type="button" aria-label="Agregar uno" onClick={() => change(line.key, 1)} className="rounded-lg border p-1" style={{ borderColor: border }}><Plus className="h-3.5 w-3.5" /></button>
+                        <button type="button" disabled={sending} aria-label="Agregar uno" onClick={() => change(line.key, 1)} className="rounded-lg border p-1" style={{ borderColor: border }}><Plus className="h-3.5 w-3.5" /></button>
                       </span>
                       <strong className="w-20 text-right">{formatMoney(lineUnitPrice(line) * line.quantity)}</strong>
                     </li>
@@ -488,13 +501,13 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
                   <span>Total</span><span style={{ color: accent }}>{formatMoney(total)}</span>
                 </div>
 
-                <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Tu nombre (opcional)" className="mt-4 w-full rounded-xl border px-3 py-3 text-sm outline-none" style={{ borderColor: border, backgroundColor: bg, color: text }} />
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas: sin cebolla, para llevar, dirección…" rows={2} className="mt-2 w-full rounded-xl border px-3 py-3 text-sm outline-none" style={{ borderColor: border, backgroundColor: bg, color: text }} />
+                <input disabled={sending} value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Tu nombre (opcional)" className="mt-4 w-full rounded-xl border px-3 py-3 text-sm outline-none" style={{ borderColor: border, backgroundColor: bg, color: text }} />
+                <textarea disabled={sending} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas: sin cebolla, para llevar, dirección…" rows={2} className="mt-2 w-full rounded-xl border px-3 py-3 text-sm outline-none" style={{ borderColor: border, backgroundColor: bg, color: text }} />
 
                 <button type="button" disabled={!cartCanSend} onClick={() => void sendOrder()} className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-4 text-sm font-black disabled:opacity-60" style={{ backgroundColor: whatsappNumber ? '#25D366' : primary, color: whatsappNumber ? '#fff' : bg }}>
                   <MessageCircle className="h-4 w-4" /> {sending ? 'Enviando…' : whatsappNumber ? 'Enviar pedido (se registra y abre WhatsApp)' : 'Enviar pedido al negocio'}
                 </button>
-                <button type="button" onClick={() => setCart([])} className="mt-3 w-full text-xs underline opacity-70">Vaciar pedido</button>
+                <button type="button" disabled={sending} onClick={() => { if (!sendInFlight.current) setCart([]); }} className="mt-3 w-full text-xs underline opacity-70">Vaciar pedido</button>
               </>
             )}
           </div>
