@@ -79,7 +79,9 @@ function RootRouter() {
 
   const businessMatch = routeHash.match(/^#business\/([^/]+)$/);
   if (businessMatch) {
-    return <div className="giote-platform-theme platform-business"><BusinessWorkspace businessId={decodeURIComponent(businessMatch[1])} /></div>;
+    const selectedBusinessId = decodeURIComponent(businessMatch[1]);
+    // Remontar todo el panel al cambiar de negocio: evita reutilizar carrito, Caja o suscripciones anteriores.
+    return <div className="giote-platform-theme platform-business"><BusinessWorkspace key={selectedBusinessId} businessId={selectedBusinessId} /></div>;
   }
 
   if (hash === '#business') {
