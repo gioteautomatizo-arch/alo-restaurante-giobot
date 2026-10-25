@@ -34,10 +34,13 @@ export function summarizeBusinessOrders(
   const today = mexicoDayKey(now);
   const valid = orders.filter((o) => o.status !== 'CANCELADO');
   const createdToday = valid.filter((o) => !!today && mexicoDayKey(o.createdAt || '') === today);
+  // Una fecha de pedido no demuestra que el pago se haya recibido ese día.
+  // Usar solo paidAt válido, igual que Caja y Reportes.
   const paidToday = valid.filter((o) =>
     o.billingStatus === 'PAGADO'
     && !!today
-    && mexicoDayKey(o.paidAt || o.createdAt || '') === today
+    && Number.isFinite(Date.parse(o.paidAt || ''))
+    && mexicoDayKey(o.paidAt!) === today
   );
   const pendingToday = createdToday.filter((o) => o.billingStatus !== 'PAGADO');
   // Solo PENDIENTE se considera saldo por revisar. No inferir dinero realmente adeudado.
@@ -55,6 +58,8 @@ export function summarizeBusinessOrders(
     deliveredUnpaidCount: deliveredUnpaid.length,
     deliveredUnpaidAmount: money(deliveredUnpaid.reduce((sum, o) => sum + amount(o), 0)),
     paidCancelledCount: orders.filter((o) => o.status === 'CANCELADO' && o.billingStatus === 'PAGADO').length,
-    paidMissingDateCount: valid.filter((o) => o.billingStatus === 'PAGADO' && !o.paidAt).length,
+    paidMissingDateCount: valid.filter((o) =>
+      o.billingStatus === 'PAGADO' && !Number.isFinite(Date.parse(o.paidAt || ''))
+    ).length,
   };
 }
