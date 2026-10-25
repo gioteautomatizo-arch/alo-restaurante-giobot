@@ -125,6 +125,12 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
     active: true,
   };
 
+  // Auth puede cambiar de cuenta mientras se resuelve el registro.
+  // No intentar crear un tenant para un UID distinto del que sigue conectado.
+  if (auth.currentUser?.uid !== userId) {
+    throw new Error('La sesión cambió durante el alta. Comprueba tu cuenta antes de reintentar.');
+  }
+
   // El tenant y su OWNER se crean en una sola operación: ambos se guardan
   // o ninguno. Las reglas validan el UID del creador mediante getAfter().
   // Un fallo no deja negocios huérfanos sin acceso administrativo.
@@ -132,6 +138,13 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
   batch.set(businessRef(businessId), tenant);
   batch.set(membershipRef(businessId, userId), membership);
   await batch.commit();
+
+  // El lote ya pudo haberse guardado: no informar un falso fallo de alta si
+  // cambió Auth después. Evitar sembrar catálogo usando la sesión de otro UID.
+  if (auth.currentUser?.uid !== userId) {
+    console.warn('Alta guardada; sesión cambiada antes del catálogo. Revisar el negocio con su propietario.');
+    return { tenant, membership };
+  }
 
   // A business starts with a real, editable catalog instead of an empty shell.
   // The template is structural starter data; the owner can replace it immediately.
