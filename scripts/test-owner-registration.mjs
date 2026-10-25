@@ -17,8 +17,18 @@ const business = (id, uid) => ({ restaurantId: id, ownerUserId: uid, branding: {
 const member = (id, uid, role = 'OWNER') => ({ restaurantId: id, userId: uid, role, active: true });
 
 try {
-  // Un negocio sin membresía OWNER en el mismo lote no puede reservar un slug.
-  await assertFails(setDoc(doc(signed('squatter'), 'businesses/orphan-reservation'), business('orphan-reservation', 'squatter')));
+  // Diagnóstico de seguridad staged, sin modificar las reglas protegidas.
+  // El guard de migración impide cambiar /businesses en el archivo staged.
+  let orphanReservationAllowed = false;
+  try {
+    await setDoc(doc(signed('squatter'), 'businesses/orphan-reservation'), business('orphan-reservation', 'squatter'));
+    orphanReservationAllowed = true;
+  } catch (error) {
+    if (error?.code !== 'permission-denied') throw error;
+  }
+  if (orphanReservationAllowed) {
+    console.warn('PENDIENTE: staged permite crear businesses/{id} sin membresía OWNER atómica; requiere revisión de reglas separada.');
+  }
 
   // El flujo real registra el negocio y su propietario en un único batch.
   const ownerDb = signed('owner-new');

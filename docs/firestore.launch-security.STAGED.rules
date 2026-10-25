@@ -82,13 +82,7 @@ service cloud.firestore {
         && request.resource.data.restaurantId == businessId
         && request.resource.data.ownerUserId == request.auth.uid
         && businessId != 'alo-restaurante'
-        && !exists(/databases/$(database)/documents/businesses/$(businessId))
-        // Evita reservar slugs con un negocio sin membresía OWNER atómica.
-        && existsAfter(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
-        && getAfter(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.restaurantId == businessId
-        && getAfter(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.userId == request.auth.uid
-        && getAfter(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role == 'OWNER'
-        && getAfter(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true;
+        && !exists(/databases/$(database)/documents/businesses/$(businessId));
 
       // Identificadores inmutables para propietarios y administradores.
       // get(..., null) permite actualizar negocios históricos sin ownerUserId.

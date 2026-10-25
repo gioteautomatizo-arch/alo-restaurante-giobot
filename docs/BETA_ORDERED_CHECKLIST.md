@@ -58,8 +58,8 @@ Formato del reporte: paso actual → cambio concreto → prueba y evidencia → 
 
 ## Paso 2 — alta y aislamiento en reglas staged (25 de octubre de 2026)
 
-- Revisión del código: la regla staged de creación de `businesses/{id}` permitía reservar un identificador sin crear la membresía OWNER en el mismo lote, aunque el cliente utiliza `writeBatch`. Se agregó la condición `existsAfter/getAfter` para exigir membresía activa, OWNER y UID/negocio coincidentes.
-- Se amplió `scripts/test-owner-registration.mjs` para probar rechazo de alta huérfana y dos tenants con catálogos, publicación visible/oculta, acceso a turnos privados, roles cruzados y revocación. Todo se ejecuta con datos ficticios en el emulador.
-- **Solo staged:** `firestore.rules` no se modifica; no se despliegan reglas ni se accede a datos reales. La seguridad de producción sigue sin comprobarse.
-- **Aprobación pendiente:** confirmar CI de este commit, en especial `Test atomic owner registration and employee access`. Una ejecución verde no demuestra la navegación completa.
+- Revisión del código: la regla staged de creación de `businesses/{id}` permite reservar un identificador sin crear la membresía OWNER en el mismo lote, aunque el cliente utiliza `writeBatch`. **PENDIENTE de revisión de seguridad.** No se corrigió: `verify-launch-rules.mjs` protege expresamente `/businesses/{businessId}` frente a cambios en la propuesta staged.
+- Se amplió `scripts/test-owner-registration.mjs` para diagnosticar el alta huérfana y probar dos tenants con catálogos, publicación visible/oculta, acceso a turnos privados, roles cruzados y revocación. Datos ficticios en emulador.
+- **Reglas intactas:** se revirtió el intento de cambio staged tras fallar el guard de CI; no se modificó `firestore.rules`, no se desplegaron reglas ni se accedió a datos reales. La corrección de la reserva huérfana requiere una propuesta de seguridad separada y aprobación.
+- **Evidencia de regresión:** el commit `f79fbd2` pasó Quality checks, pero falló el guard staged (no las pruebas de emulador). Se respetó el guard y se revirtió el cambio de reglas. Confirmar el nuevo CI antes de considerar aprobada la matriz ampliada.
 - **Paso 2 permanece abierto:** faltan pruebas de alta/configuración/publicación en interfaz, invitación, cambio de sesión y validación visual Android/iPad con dos cuentas en entorno aislado. Próximo: corregir regresiones de CI, luego completar recorrido UI antes del paso 3.
