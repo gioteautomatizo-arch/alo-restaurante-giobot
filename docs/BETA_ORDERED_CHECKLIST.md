@@ -72,3 +72,11 @@ Formato del reporte: paso actual → cambio concreto → prueba y evidencia → 
 - El primer intento `f79fbd2` falló en `Verify staged-only guard` porque modificaba una regla ajena a la propuesta de migración. Se revirtió íntegramente ese cambio de reglas en `5e9a3126`; no debilitar el guard para ocultar el problema.
 - **Estado del paso 2: parcial, NO cerrado.** Cobertura de reglas staged con dos negocios ficticios aprobada; pendiente revisión de seguridad de alta huérfana, recorrido UI de alta/configuración/publicación/invitaciones/cambio de cuenta y pruebas en entorno aislado de extremo a extremo.
 - **Siguiente paso:** mantener paso 2, abordar primero propuesta revisable para cerrar la reserva huérfana sin desplegar reglas; continuar con pruebas de interfaz/cuentas de prueba. No iniciar paso 3 como si el aislamiento ya estuviera certificado.
+
+## Paso 2 — selector de negocios y cambio de cuenta (25 de octubre de 2026)
+
+- En `BusinessPortal.tsx` se detectó un riesgo independiente de las reglas: consultas de negocios y Super Admin sin cancelación al cambiar de UID. Una respuesta tardía de la cuenta A podía reemplazar tarjetas o permisos visibles de la cuenta B.
+- Se añadió cancelación por efecto y una puerta de render por UID tanto para tarjetas como para el botón Super Admin; la puerta protege también el primer render antes de la limpieza del efecto. Las lecturas fallidas ahora muestran error con opción de reintento, en lugar de fingir una cuenta vacía.
+- `scripts/test-business-portal-isolation-ui.mjs` monta el componente React real en jsdom, simula dos usuarios y respuestas fuera de orden, cierre de sesión, fallo de permisos y reintento; no usa Firebase ni datos reales. Se incorporó a Quality checks.
+- **Estado de esta modificación:** requiere CI del commit y recorrido visual/manual; no equivale a pruebas con dos cuentas reales ni soluciona la reserva de identificadores sin OWNER en reglas staged.
+- **Paso 2 permanece ABIERTO.** Siguiente: revisión de seguridad separada para alta huérfana y recorrido de alta → catálogo → publicación → invitación/cambio de sesión en entorno aislado. Mantener Caja (paso 4) como PENDIENTE.

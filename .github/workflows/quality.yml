@@ -50,6 +50,8 @@ jobs:
         run: node --import tsx scripts/test-business-shift-readiness.mts
       - name: Test workspace tenant and account isolation (no Firebase writes)
         run: node --import tsx scripts/test-business-workspace-isolation.mts
+      - name: Test business portal account switch and retry (mocked Auth/Firestore, no Firebase writes)
+        run: node scripts/test-business-portal-isolation-ui.mjs
       - name: Test shift cash reconciliation (synthetic data, no Firebase writes)
         run: node --import tsx scripts/test-shift-sales.mts
       - name: Test public checkout interactions (mocked backend, no Firebase writes)

@@ -59,6 +59,10 @@ export const BusinessPortal: React.FC = () => {
   const [loadingBusinesses, setLoadingBusinesses] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [businessesResolvedFor, setBusinessesResolvedFor] = useState<string | null>(null);
+  const [adminResolvedFor, setAdminResolvedFor] = useState<string | null>(null);
+  const [businessesError, setBusinessesError] = useState<string | null>(null);
+  const [reloadBusinesses, setReloadBusinesses] = useState(0);
 
   useEffect(() => {
     const unsubscribe = subscribeToAuth((user) => {
@@ -69,25 +73,53 @@ export const BusinessPortal: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!authUser) {
-      setMyBusinesses([]);
-      setIsSuperAdmin(false);
-      return;
-    }
-    setLoadingBusinesses(true);
-    getBusinessesForUser(authUser.uid)
-      .then((businesses) => setMyBusinesses(businesses))
-      .catch((err) => {
-        console.warn('No se pudieron cargar tus negocios:', err);
-        setMyBusinesses([]);
-        setError(`No pudimos cargar tus negocios${err?.code ? ` (${err.code})` : ''}. Si dice permission-denied, falta revisar las reglas de Firestore o tu membresía.`);
-      })
-      .finally(() => setLoadingBusinesses(false));
+    // Cada lectura pertenece al UID que la inició. Ignorar respuestas antiguas
+    // cuando se cambia de cuenta o se reintenta la consulta.
+    let cancelled = false;
+    const userId = authUser?.uid;
+    setMyBusinesses([]);
+    setBusinessesResolvedFor(null);
+    setIsSuperAdmin(false);
+    setAdminResolvedFor(null);
+    setBusinessesError(null);
+    setLoadingBusinesses(!!userId);
+    if (!userId) return () => { cancelled = true; };
 
-    isPlatformAdmin(authUser.uid)
-      .then(setIsSuperAdmin)
-      .catch(() => setIsSuperAdmin(false));
-  }, [authUser]);
+    getBusinessesForUser(userId)
+      .then((businesses) => {
+        if (!cancelled) setMyBusinesses(businesses);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.warn('No se pudieron cargar tus negocios:', err);
+        setBusinessesError(`No pudimos cargar tus negocios${err?.code ? ` (${err.code})` : ''}. Revisa tu conexión o permisos e inténtalo nuevamente.`);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setBusinessesResolvedFor(userId);
+        setLoadingBusinesses(false);
+      });
+
+    isPlatformAdmin(userId)
+      .then((admin) => {
+        if (cancelled) return;
+        setIsSuperAdmin(admin);
+        setAdminResolvedFor(userId);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIsSuperAdmin(false);
+        setAdminResolvedFor(userId);
+      });
+
+    return () => { cancelled = true; };
+  }, [authUser?.uid, reloadBusinesses]);
+
+  // La limpieza del efecto ocurre después del render: nunca mostrar datos de
+  // otro UID durante ese intervalo, ni siquiera por un fotograma.
+  const visibleBusinesses = authUser && businessesResolvedFor === authUser.uid ? myBusinesses : [];
+  const showingBusinessLoad = !!authUser && (loadingBusinesses || businessesResolvedFor !== authUser.uid);
+  const showSuperAdmin = !!authUser && adminResolvedFor === authUser.uid && isSuperAdmin;
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -250,7 +282,7 @@ export const BusinessPortal: React.FC = () => {
             <div><p className="text-[10px] uppercase tracking-[0.15em] font-black text-[#A86B3D]">Gioteautomatizo</p><h1 className="font-serif font-black text-lg" style={{ color: '#111111' }}>Mis negocios</h1></div>
           </div>
           <div className="flex items-center gap-2">
-            {isSuperAdmin && (
+            {showSuperAdmin && (
               <button
                 type="button"
                 onClick={() => {
@@ -279,6 +311,12 @@ export const BusinessPortal: React.FC = () => {
         {error && (
           <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-800">{error}</div>
         )}
+        {businessesError && businessesResolvedFor === authUser.uid && (
+          <div role="alert" className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-800">
+            <p>{businessesError}</p>
+            <button type="button" onClick={() => setReloadBusinesses((value) => value + 1)} className="mt-2 rounded-lg border border-rose-300 px-3 py-2 font-bold">Reintentar carga de negocios</button>
+          </div>
+        )
 
         <section className="mt-7 grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
           <article className="rounded-[2rem] border border-[#D9C5AC] bg-white overflow-hidden shadow-sm">
@@ -310,15 +348,15 @@ export const BusinessPortal: React.FC = () => {
           </aside>
         </section>
 
-        {loadingBusinesses && (
+        {showingBusinessLoad && (
           <p className="mt-8 text-sm text-[#6B4028]">Cargando tus negocios…</p>
         )}
 
-        {!loadingBusinesses && myBusinesses.length > 0 && (
+        {!showingBusinessLoad && visibleBusinesses.length > 0 && (
           <section className="mt-8">
             <h3 className="font-serif text-xl font-black text-[#2B1B13] mb-4">Tus otros negocios</h3>
             <div className="grid gap-4 sm:grid-cols-2">
-              {myBusinesses.map((tenant) => (
+              {visibleBusinesses.map((tenant) => (
                 <article key={tenant.restaurantId} className="rounded-[2rem] border border-[#D9C5AC] bg-white p-6 shadow-sm">
                   <div className="flex items-center gap-4">
                     <div className="w-16 h-16 rounded-2xl bg-[#FFF7EA] overflow-hidden flex items-center justify-center shrink-0">
