@@ -5,7 +5,7 @@ import { subscribeToBusinessCatalog } from '../../lib/businessCatalogService';
 import type { BusinessCatalogItem } from '../../lib/businessCatalogService';
 import { subscribeToBusinessRestaurantOrders } from '../../lib/ordersService';
 import type { RestaurantOrder } from '../../types';
-import { mexicoDayKey } from '../../lib/businessReports';
+import { summarizeBusinessOrders } from '../../lib/businessOrderSnapshot';
 
 const money = (v: number) => v.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
 
@@ -23,16 +23,9 @@ export const BusinessSummaryTab: React.FC<{
   useEffect(() => subscribeToBusinessCatalog(businessId, (d) => setItems(d?.items || []), () => setItems([])), [businessId]);
   useEffect(() => subscribeToBusinessRestaurantOrders(businessId, setOrders), [businessId]);
 
-  const stats = useMemo(() => {
-    const today = mexicoDayKey(new Date());
-    const todays = orders.filter((o) => mexicoDayKey(o.createdAt || '') === today && o.status !== 'CANCELADO');
-    const paidToday = orders.filter((o) => o.billingStatus === 'PAGADO' && o.status !== 'CANCELADO' && mexicoDayKey(o.paidAt || o.createdAt || '') === today);
-    return {
-      ordersToday: todays.length,
-      salesToday: paidToday.reduce((s, o) => s + Number(o.total || 0), 0),
-      active: orders.filter((o) => o.status === 'NUEVO' || o.status === 'PREPARANDO' || o.status === 'LISTO').length,
-    };
-  }, [orders]);
+  // Resumen y Pedidos/Caja deben compartir los mismos criterios de cobro.
+  // No atribuir un pago a la fecha del pedido si falta paidAt.
+  const snapshot = useMemo(() => summarizeBusinessOrders(orders), [orders]);
 
   const b = business.branding;
   const withPhoto = items.filter((i) => i.imageUrl).length;
@@ -46,9 +39,9 @@ export const BusinessSummaryTab: React.FC<{
   const doneCount = steps.filter((s) => s.done).length;
 
   const cards = [
-    { icon: ClipboardList, label: 'Pedidos de hoy', value: String(stats.ordersToday) },
-    { icon: DollarSign, label: 'Ventas de hoy', value: money(stats.salesToday) },
-    { icon: ShoppingBag, label: 'Pedidos activos', value: String(stats.active) },
+    { icon: ClipboardList, label: 'Pedidos de hoy', value: String(snapshot.ordersToday) },
+    { icon: DollarSign, label: 'Ventas de hoy', value: money(snapshot.paidTodayTotal) },
+    { icon: ShoppingBag, label: 'Pedidos activos', value: String(snapshot.activeOrders) },
     { icon: Package, label: 'Productos en menú', value: String(items.length) },
   ];
 
@@ -63,6 +56,12 @@ export const BusinessSummaryTab: React.FC<{
           </div>
         ))}
       </div>
+
+      {snapshot.paidMissingDateCount > 0 && (
+        <p role="alert" className="rounded-xl border border-amber-400/40 bg-amber-950/40 px-4 py-3 text-xs text-amber-200">
+          Hay {snapshot.paidMissingDateCount} pago(s) sin fecha de cobro válida. No se incluyen en las ventas de hoy; revísalos en Pedidos y Caja.
+        </p>
+      )}
 
       {doneCount < steps.length && (
         <section className="rounded-2xl border p-5" style={{ background: 'var(--biz-surface, #111111)', borderColor: 'color-mix(in srgb, var(--biz-primary, #D6A34A) 35%, transparent)' }}>
