@@ -68,6 +68,21 @@ assert.equal(getShiftReadiness(tenantA, {
   ...mixedTenantFeeds,
   orders: { businessId: tenantA, status: 'ready' },
 }, 0).ready, true);
+// Cada feed debe permanecer aislado por negocio, incluso si el dato viejo marca error.
+for (const feed of SHIFT_FEED_NAMES) {
+  for (const status of ['ready', 'error'] as const) {
+    const crossTenant = { ...ready, [feed]: { businessId: tenantB, status } } as ShiftFeedStates;
+    const result = getShiftReadiness(tenantA, crossTenant, 0);
+    assert.equal(result.ready, false, `No habilitar Caja con ${feed} de otro negocio (${status})`);
+    assert.deepEqual(result.loading, [feed]);
+    assert.deepEqual(result.errors, []);
+  }
+}
+assert.deepEqual(initialShiftFeedStates(tenantB), Object.fromEntries(
+  SHIFT_FEED_NAMES.map((feed) => [feed, { businessId: tenantB, status: 'loading' }]),
+));
+console.log('PASS: los cuatro feeds bloquean datos y errores cruzados entre negocios.');
+
 console.log('PASS: cambiar de negocio no reutiliza lecturas ni errores de otro tenant.');
 console.log('PASS: turnos no se abren ni cierran con lecturas incompletas, fechas inválidas, entre negocios o con turnos duplicados.');
 
