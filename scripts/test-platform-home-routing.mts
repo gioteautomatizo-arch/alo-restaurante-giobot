@@ -22,3 +22,12 @@ assert.match(portal, /const openPublicCalientito = \(\) => \{[\s\S]*?window\.loc
   'El acceso empresarial debe enlazar a Calientito sin depender de la raíz.');
 
 console.log('PASS: la raíz pública abre el directorio; las rutas de negocios, administración y QR antiguos siguen separadas.');
+
+// Regresión de la portada pública: separar exploración de acceso/registro empresarial.
+// Guardia estática: no navega ni consulta Firebase.
+const directory = readFileSync('src/components/platform/BusinessDirectory.tsx', 'utf8');
+assert.match(directory, /const openBusinessAccess = \(\) => \{ window\.location\.hash = '#business'; \};/);
+assert.match(directory, /const openRegistration = \(\) => \{ window\.location\.hash = '#business-new'; \};/);
+assert.match(directory, /onClick=\{openBusinessAccess\}[^>]*><Store[^>]*\/> Tengo un negocio<\/button>/);
+assert.match(directory, /getDocs\(query\(collection\(db, 'publicBusinessProfiles'\), where\('published', '==', true\)\)\)/);
+console.log('PASS: la portada separa explorar, acceso y registro; solo consulta perfiles publicados (guardia estática).');
