@@ -469,3 +469,41 @@ assert.equal(nonPositiveTableDaily.total - nonPositiveTableShift.total, -10,
 assert.equal(JSON.stringify(nonPositiveTablePayments), nonPositiveTableSnapshot,
   'El diagnóstico no modifica los pagos sintéticos');
 console.warn('PENDIENTE: pagos de mesa cero/negativos difieren entre corte diario y turno (datos sintéticos).');
+
+
+// Diagnóstico de aislamiento: los sumadores de Caja NO filtran por tenant.
+// Los llamadores deben entregar listas previamente acotadas al negocio correcto.
+// Esta prueba con datos sintéticos documenta el riesgo; NO certifica aislamiento
+// en Firestore, ni habilita cobros entre negocios.
+const tenantPayments = [
+  { restaurantId: 'demo-a', status: 'PAGADO', createdAt: '2026-10-23T16:00:00.000Z',
+    paymentMethod: 'EFECTIVO', total: 10 },
+  { restaurantId: 'demo-b', status: 'PAGADO', createdAt: '2026-10-23T16:00:00.000Z',
+    paymentMethod: 'TARJETA', total: 200 },
+];
+const tenantOrders = [
+  { restaurantId: 'demo-a', orderType: 'pickup', status: 'ENTREGADO',
+    billingStatus: 'PAGADO', paymentMethod: 'efectivo', total: 5,
+    paidAt: '2026-10-23T16:30:00.000Z' },
+  { restaurantId: 'demo-b', orderType: 'delivery', status: 'ENTREGADO',
+    billingStatus: 'PAGADO', paymentMethod: 'transferencia', total: 300,
+    paidAt: '2026-10-23T16:30:00.000Z' },
+];
+const tenantInputsSnapshot = JSON.stringify([tenantPayments, tenantOrders]);
+const tenantATotals = computeShiftSalesAll(
+  tenantPayments.filter((p) => p.restaurantId === 'demo-a'),
+  tenantOrders.filter((o) => o.restaurantId === 'demo-a'),
+  shiftStart, shiftEnd,
+);
+assert.deepEqual(tenantATotals,
+  { cash: 15, card: 0, platforms: 0, total: 15, count: 2 },
+  'Con listas acotadas, Caja calcula únicamente las ventas ficticias de A');
+const unscopedTenantTotals = computeShiftSalesAll(tenantPayments, tenantOrders, shiftStart, shiftEnd);
+assert.deepEqual(unscopedTenantTotals,
+  { cash: 15, card: 200, platforms: 300, total: 515, count: 4 },
+  'Riesgo conocido: si el llamador mezcla tenants, el sumador NO los separa');
+assert.equal(unscopedTenantTotals.total - tenantATotals.total, 500,
+  'La diferencia entre A y datos mezclados no debe mostrarse como ventas de A');
+assert.equal(JSON.stringify([tenantPayments, tenantOrders]), tenantInputsSnapshot,
+  'El diagnóstico no debe alterar registros sintéticos');
+console.warn('PENDIENTE: Caja depende del aislamiento de los listeners; los sumadores no filtran tenant.');
