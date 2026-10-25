@@ -78,7 +78,7 @@ export const BusinessDirectory: React.FC = () => {
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <a href="#" onClick={(event) => { event.preventDefault(); window.location.hash = '#explorar'; }} className="flex items-center gap-3">
             <img src="/gioteautomatizo-mark.png" alt="" className="h-10 w-10 rounded-xl" />
-            <span><span className="block text-[10px] font-black uppercase tracking-[.2em] text-[#D6A34A]">Gioteautomatizo</span><strong className="font-serif text-lg sm:text-xl">Negocios cerca de ti</strong><span className="block text-[10px] tracking-wide text-white/60">Tu negocio. Más conectado.</span></span>
+            <span><span className="block text-[10px] font-black uppercase tracking-[.2em] text-[#D6A34A]">Gioteautomatizo</span><strong className="font-serif text-lg sm:text-xl">Explora negocios</strong><span className="block text-[10px] tracking-wide text-white/60">Tu negocio más conectado</span></span>
           </a>
           <button onClick={openBusinessAccess} className="rounded-xl border border-white/15 px-3 py-2 text-xs font-bold hover:border-[#D6A34A] sm:px-4 sm:text-sm">Acceso para negocios</button>
         </div>
@@ -90,7 +90,10 @@ export const BusinessDirectory: React.FC = () => {
             <span className="inline-flex items-center gap-2 rounded-full border border-[#D6A34A]/35 bg-black/20 px-3 py-1.5 text-xs font-bold text-[#E8C17A]"><Sparkles className="h-3.5 w-3.5" /> Descubre, elige y pide</span>
             <h1 className="mt-5 font-serif text-4xl font-black leading-tight sm:text-6xl">Tus negocios favoritos,<br/><span className="text-[#D6A34A]">en un solo lugar.</span></h1>
             <p className="mt-4 max-w-xl text-sm leading-6 text-white/75 sm:text-base">Explora restaurantes, conoce sus menús y prepara tu pedido sin crear una cuenta para comenzar.</p>
-            <button onClick={() => document.getElementById('negocios')?.scrollIntoView({ behavior: 'smooth' })} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#D6A34A] px-5 py-3 font-black text-[#211811] hover:bg-[#E8C17A]">Explorar negocios <ArrowRight className="h-4 w-4" /></button>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button onClick={() => document.getElementById('negocios')?.scrollIntoView({ behavior: 'smooth' })} className="inline-flex items-center gap-2 rounded-xl bg-[#D6A34A] px-5 py-3 font-black text-[#211811] hover:bg-[#E8C17A]">Explorar negocios <ArrowRight className="h-4 w-4" /></button>
+              <button onClick={openBusinessAccess} className="inline-flex items-center gap-2 rounded-xl border border-white/35 bg-white/5 px-5 py-3 font-black text-white hover:border-[#D6A34A]"><Store className="h-4 w-4" /> Tengo un negocio</button>
+            </div>
           </div>
           <div className="pointer-events-none absolute -right-12 -top-12 hidden h-72 w-72 rounded-full border border-[#D6A34A]/15 sm:block"><div className="absolute inset-8 rounded-full border border-[#D6A34A]/20"/><div className="absolute inset-16 rounded-full border border-[#D6A34A]/25"/></div>
         </section>
