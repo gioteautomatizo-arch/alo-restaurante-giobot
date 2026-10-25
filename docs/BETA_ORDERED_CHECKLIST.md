@@ -47,3 +47,11 @@ En `BusinessPublicPage.tsx`:
 Paso 2: comprobar el alta completa y aislamiento de dos negocios ficticios en entorno aislado, antes de sumar funciones. Después paso 3 y paso 4. Las comprobaciones básicas pueden hacerse durante esos bloques, pero no declarar beta lista hasta cerrar las puertas de seguridad del paso 5.
 
 Formato del reporte: paso actual → cambio concreto → prueba y evidencia → pendiente real → siguiente paso. Sin porcentajes inventados ni fechas de entrega sin fundamento.
+
+## Verificación de estado para la siguiente ejecución (25 de octubre de 2026)
+
+- Rama examinada: `feat/gioteautomatizo-multinegocio-core`; HEAD inicial `22a442cb44b2266b3bc184f10b72d10c94611d24`. No hay indicio de commits posteriores en la consulta de la rama.
+- GitHub Actions del HEAD: [Quality checks #40222434371](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40222434371) y [Staged Firestore security tests #40222434383](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40222434383), ambas **success**. Prueban el código y reglas staged en CI; no certifican las reglas desplegadas ni una beta funcional con cuentas reales.
+- **Paso 1:** automatización aprobada; revisión visual Android/iPad pendiente. URL y limpieza Clientes/Membresías no se reabren.
+- **Paso 2 (siguiente bloque de mayor prioridad):** alta y aislamiento de dos negocios ficticios. Comprobar la cobertura de pruebas de propietario, empleado y cuenta ajena con emuladores; reforzar los huecos verificables sin tocar Firebase real ni desplegar reglas. No marcar el paso cerrado sin recorrido completo de interfaz y permisos.
+- **Paso 4:** los diagnósticos que imprimen `PENDIENTE` continúan abiertos aunque CI sea verde.
