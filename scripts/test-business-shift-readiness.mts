@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { countPaidOrdersMissingPaymentDate, getShiftReadiness, initialShiftFeedStates, SHIFT_FEED_NAMES, parseShiftCashAmount, type ShiftFeedStates } from '../src/lib/businessShiftReadiness.ts';
 
 const tenantA = 'giomero';
@@ -61,3 +62,14 @@ assert.equal(countPaidOrdersMissingPaymentDate(paidOrders, shiftOpened), 2);
 assert.equal(countPaidOrdersMissingPaymentDate(paidOrders, 'invalid'), 0);
 assert.equal(countPaidOrdersMissingPaymentDate([], shiftOpened), 0);
 console.log('PASS: se identifican pagos recientes sin fecha verificable antes de cerrar turno.');
+
+// Guardia estática de regresión: no ejecuta cobros ni accede a Firebase.
+// Complementa las pruebas de lógica; NO certifica permisos ni aislamiento en Firestore.
+const shiftViewSource = readFileSync(new URL('../src/components/platform/BusinessShiftView.tsx', import.meta.url), 'utf8');
+assert.match(shiftViewSource, /subscribeToBusinessRestaurantOrders\(businessId,/);
+const scopedFeeds = [...shiftViewSource.matchAll(/subscribeToModule(?:<[^()\n]+>)?\(businessId,\s*'(shifts|expenses|vault)'/g)].map((match) => match[1]).sort();
+assert.deepEqual(scopedFeeds, ['expenses', 'shifts', 'vault']);
+assert.match(shiftViewSource, /getShiftReadiness\(businessId, feedStates,/);
+assert.match(shiftViewSource, /}, \[businessId\]\);/);
+assert.doesNotMatch(shiftViewSource, /\b(?:settleTableAccount|subscribeToRestaurantOrders|getActiveRestaurantId|RESTAURANT_ID)\b/);
+console.log('PASS: la vista de turno mantiene suscripciones multinegocio y no usa cobro legado (revisión estática).');
