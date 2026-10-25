@@ -17,6 +17,9 @@ const business = (id, uid) => ({ restaurantId: id, ownerUserId: uid, branding: {
 const member = (id, uid, role = 'OWNER') => ({ restaurantId: id, userId: uid, role, active: true });
 
 try {
+  // Un negocio sin membresía OWNER en el mismo lote no puede reservar un slug.
+  await assertFails(setDoc(doc(signed('squatter'), 'businesses/orphan-reservation'), business('orphan-reservation', 'squatter')));
+
   // El flujo real registra el negocio y su propietario en un único batch.
   const ownerDb = signed('owner-new');
   const signup = writeBatch(ownerDb);
@@ -73,7 +76,58 @@ try {
   await assertSucceeds(updateDoc(doc(ownerDb, 'businessMemberships/new-business_employee-1'), { role: 'WAITER' }));
   await assertSucceeds(getDocs(query(collection(ownerDb, 'businessMemberships'), where('restaurantId', '==', 'new-business'), where('userId', '==', 'owner-new'))));
 
-  console.log('PASS: registro atómico, propietario inmutable, roles de empleados y aislamiento de negocios.');
+  // Paso 2: dos tenants ficticios con catálogo, publicación y datos privados.
+  const catalogA = doc(ownerDb, 'businesses/new-business/catalog/menu_catalog');
+  const catalogB = doc(otherDb, 'businesses/other-business/catalog/menu_catalog');
+  await assertSucceeds(setDoc(catalogA, { businessId: 'new-business', items: [{ id: 'a', name: 'Producto A', price: 15 }] }));
+  await assertSucceeds(setDoc(catalogB, { businessId: 'other-business', items: [{ id: 'b', name: 'Producto B', price: 20 }] }));
+  await assertFails(getDoc(doc(anonymous(), 'businesses/new-business/catalog/menu_catalog')));
+  await assertFails(getDoc(doc(anonymous(), 'businesses/other-business/catalog/menu_catalog')));
+  await assertFails(getDoc(doc(otherDb, 'businesses/new-business/catalog/menu_catalog')));
+  await assertFails(getDoc(doc(ownerDb, 'businesses/other-business/catalog/menu_catalog')));
+  await assertFails(setDoc(doc(otherDb, 'businesses/new-business/catalog/injected'), { businessId: 'new-business', items: [] }));
+  await assertSucceeds(getDoc(doc(staffDb, 'businesses/new-business/catalog/menu_catalog')));
+
+  const publicA = doc(ownerDb, 'publicBusinessProfiles/new-business');
+  const publicB = doc(otherDb, 'publicBusinessProfiles/other-business');
+  const profile = (id, published) => ({
+    businessId: id, restaurantId: id, published,
+    branding: { restaurantName: id }, updatedAt: '2026-10-25T00:00:00Z',
+  });
+  await assertSucceeds(setDoc(publicA, profile('new-business', true)));
+  await assertSucceeds(setDoc(publicB, profile('other-business', false)));
+  await assertFails(setDoc(doc(otherDb, 'publicBusinessProfiles/new-business'), profile('new-business', false)));
+  await assertFails(setDoc(doc(staffDb, 'publicBusinessProfiles/new-business'), profile('new-business', false)));
+  await assertSucceeds(getDoc(doc(anonymous(), 'businesses/new-business/catalog/menu_catalog')));
+  await assertFails(getDoc(doc(anonymous(), 'businesses/other-business/catalog/menu_catalog')));
+  await assertFails(getDoc(doc(anonymous(), 'publicBusinessProfiles/other-business')));
+  await assertFails(getDoc(doc(ownerDb, 'publicBusinessProfiles/other-business')));
+  await assertSucceeds(getDoc(publicB));
+  const visible = await assertSucceeds(getDocs(query(
+    collection(anonymous(), 'publicBusinessProfiles'), where('published', '==', true),
+  )));
+  assert.deepEqual(visible.docs.map((snap) => snap.id), ['new-business']);
+  await assertFails(getDocs(collection(anonymous(), 'publicBusinessProfiles')));
+
+  const shiftA = doc(ownerDb, 'businesses/new-business/shifts/shift-test');
+  await assertSucceeds(setDoc(shiftA, { businessId: 'new-business', status: 'abierto', initialCashFund: 0 }));
+  await assertFails(getDoc(doc(otherDb, 'businesses/new-business/shifts/shift-test')));
+  await assertFails(getDoc(doc(staffDb, 'businesses/new-business/shifts/shift-test')));
+  await assertFails(setDoc(doc(otherDb, 'businesses/new-business/shifts/intrusion'), {
+    businessId: 'new-business', status: 'abierto', initialCashFund: 0,
+  }));
+
+  // Revocar acceso y ocultar publicación elimina la lectura pública/privada.
+  await assertSucceeds(updateDoc(publicA, { published: false }));
+  await assertFails(getDoc(doc(anonymous(), 'businesses/new-business/catalog/menu_catalog')));
+  await assertFails(getDoc(doc(anonymous(), 'publicBusinessProfiles/new-business')));
+  await assertSucceeds(updateDoc(doc(ownerDb, 'businessMemberships/new-business_employee-1'), { active: false }));
+  await assertFails(getDoc(doc(staffDb, 'businesses/new-business')));
+  await assertFails(getDoc(doc(staffDb, 'businesses/new-business/catalog/menu_catalog')));
+  await assertSucceeds(getDoc(catalogA));
+  await assertSucceeds(getDoc(catalogB));
+
+  console.log('PASS: alta atómica, dos negocios ficticios, publicación, catálogo, turnos privados y revocación en emulador.');
 } finally {
   await env.cleanup();
 }

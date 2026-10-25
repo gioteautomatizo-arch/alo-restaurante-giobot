@@ -55,3 +55,11 @@ Formato del reporte: paso actual → cambio concreto → prueba y evidencia → 
 - **Paso 1:** automatización aprobada; revisión visual Android/iPad pendiente. URL y limpieza Clientes/Membresías no se reabren.
 - **Paso 2 (siguiente bloque de mayor prioridad):** alta y aislamiento de dos negocios ficticios. Comprobar la cobertura de pruebas de propietario, empleado y cuenta ajena con emuladores; reforzar los huecos verificables sin tocar Firebase real ni desplegar reglas. No marcar el paso cerrado sin recorrido completo de interfaz y permisos.
 - **Paso 4:** los diagnósticos que imprimen `PENDIENTE` continúan abiertos aunque CI sea verde.
+
+## Paso 2 — alta y aislamiento en reglas staged (25 de octubre de 2026)
+
+- Revisión del código: la regla staged de creación de `businesses/{id}` permitía reservar un identificador sin crear la membresía OWNER en el mismo lote, aunque el cliente utiliza `writeBatch`. Se agregó la condición `existsAfter/getAfter` para exigir membresía activa, OWNER y UID/negocio coincidentes.
+- Se amplió `scripts/test-owner-registration.mjs` para probar rechazo de alta huérfana y dos tenants con catálogos, publicación visible/oculta, acceso a turnos privados, roles cruzados y revocación. Todo se ejecuta con datos ficticios en el emulador.
+- **Solo staged:** `firestore.rules` no se modifica; no se despliegan reglas ni se accede a datos reales. La seguridad de producción sigue sin comprobarse.
+- **Aprobación pendiente:** confirmar CI de este commit, en especial `Test atomic owner registration and employee access`. Una ejecución verde no demuestra la navegación completa.
+- **Paso 2 permanece abierto:** faltan pruebas de alta/configuración/publicación en interfaz, invitación, cambio de sesión y validación visual Android/iPad con dos cuentas en entorno aislado. Próximo: corregir regresiones de CI, luego completar recorrido UI antes del paso 3.
