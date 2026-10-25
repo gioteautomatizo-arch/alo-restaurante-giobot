@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import type { RestaurantOrder } from '../src/types';
 import { summarizeBusinessOrders } from '../src/lib/businessOrderSnapshot.ts';
+import { isBusinessSummaryFeedError, isBusinessSummaryFeedReady } from '../src/lib/businessSummaryReadiness.ts';
 
 const now = new Date('2026-10-22T16:00:00Z');
 const make = (partial: Partial<RestaurantOrder> = {}): RestaurantOrder => ({
@@ -84,3 +85,28 @@ assert.match(summaryView, /money\(snapshot\.paidTodayTotal\)/);
 assert.match(summaryView, /snapshot\.paidMissingDateCount > 0/, 'Aviso para conciliar pagos sin fecha');
 assert.doesNotMatch(summaryView, /paidAt \|\| o\.createdAt/, 'Resumen no puede usar creación como fecha de cobro');
 console.log('PASS: Resumen comparte las cifras verificadas y alerta anomalías de cobro.');
+
+
+// Aislamiento del Resumen: no mostrar cifras antiguas de A en B ni ceros falsos
+// mientras se cargan los pedidos o cuando Firestore deniega la lectura.
+const tenantAReady = { businessId: 'demo-a', status: 'ready' as const };
+const tenantAError = { businessId: 'demo-a', status: 'error' as const };
+const tenantBLoading = { businessId: 'demo-b', status: 'loading' as const };
+assert.equal(isBusinessSummaryFeedReady('demo-a', tenantAReady), true);
+assert.equal(isBusinessSummaryFeedReady('demo-b', tenantAReady), false);
+assert.equal(isBusinessSummaryFeedError('demo-b', tenantAError), false);
+assert.equal(isBusinessSummaryFeedReady('demo-b', tenantBLoading), false);
+assert.equal(isBusinessSummaryFeedError('demo-a', tenantAError), true);
+assert.equal(isBusinessSummaryFeedReady('demo-a', tenantAError), false);
+assert.equal(isBusinessSummaryFeedReady('', { businessId: '', status: 'ready' }), false);
+const summaryIsolationView = readFileSync('src/components/platform/BusinessSummaryTab.tsx', 'utf8');
+assert.match(summaryIsolationView, /ordersReady \? money\(snapshot\.paidTodayTotal\) : '—'/);
+assert.match(summaryIsolationView, /catalogReady \? String\(items\.length\) : '—'/);
+assert.match(summaryIsolationView, /catalogReady && doneCount < steps\.length/);
+assert.match(summaryIsolationView, /ordersReady && snapshot\.paidMissingDateCount > 0/);
+assert.match(summaryIsolationView, /active = false; stop\(\);/);
+assert.match(summaryIsolationView, /status: 'error', orders: \[\]/);
+assert.match(summaryIsolationView, /status: 'error', items: \[\]/);
+assert.doesNotMatch(summaryIsolationView, /subscribeToBusinessRestaurantOrders\(businessId, setOrders\)/);
+assert.doesNotMatch(summaryIsolationView, /subscribeToBusinessCatalog\(businessId, \(d\) => setItems/);
+console.log('PASS: Resumen no mezcla tenants ni presenta ceros falsos durante carga o error.');
