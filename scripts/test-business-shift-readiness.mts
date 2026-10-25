@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { countHistoricalPaidOrdersMissingPaymentDate, countPaidOrdersMissingPaymentDate, getShiftReadiness, initialShiftFeedStates, SHIFT_FEED_NAMES, parseShiftCashAmount, type ShiftFeedStates } from '../src/lib/businessShiftReadiness.ts';
+import { countHistoricalPaidOrdersMissingPaymentDate, countPaidOrdersMissingPaymentDate, getShiftReadiness, initialShiftFeedStates, SHIFT_FEED_NAMES, parseShiftCashAmount, previewShiftCashDifference, type ShiftFeedStates } from '../src/lib/businessShiftReadiness.ts';
 
 const tenantA = 'giomero';
 const tenantB = 'another-restaurant';
@@ -116,6 +116,15 @@ for (const amount of ['', '  ', '-1', 'NaN', '1.001', '1e3', '1,000', 'Infinity'
 }
 console.log('PASS: el fondo de apertura y efectivo contado se validan antes de registrar el turno.');
 
+// Vista previa únicamente: centavos coherentes y cero sin signo negativo por coma flotante.
+assert.equal(previewShiftCashDifference('0.30', 0.1 + 0.2), 0);
+assert.equal(previewShiftCashDifference('10.00', 10.01), -0.01);
+assert.equal(previewShiftCashDifference('10.02', 10.01), 0.01);
+assert.equal(previewShiftCashDifference('', 10), null);
+assert.equal(previewShiftCashDifference('1.001', 10), null);
+assert.equal(previewShiftCashDifference('1', Number.NaN), null);
+console.log('PASS: la vista previa del corte redondea centavos sin mostrar -$0.00 ni inventar montos.');
+
 const shiftOpened = '2026-10-23T15:00:00.000Z';
 const paidOrders = [
   { status: 'ENTREGADO', billingStatus: 'PAGADO', createdAt: '2026-10-23T15:01:00.000Z' },
@@ -209,3 +218,9 @@ assert.match(shiftViewSource, /countHistoricalPaidOrdersMissingPaymentDate\(orde
 assert.match(shiftViewSource, /historicalMissingPaymentDates > 0/);
 console.log('PASS: la interfaz muestra aviso de pagos históricos sin fecha (revisión estática).');
 
+
+// La pantalla usa el valor redondeado, no la resta en coma flotante directamente.
+assert.match(shiftViewSource, /previewShiftCashDifference\(counted,\s*live\.expectedCash\)/);
+assert.match(shiftViewSource, /cashDifferencePreview === 0/);
+assert.doesNotMatch(shiftViewSource, /Number\(counted\) - live\.expectedCash === 0/);
+console.log('PASS: la vista de Caja muestra la diferencia de centavos coherente (guardia estática).');

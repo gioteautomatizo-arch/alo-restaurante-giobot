@@ -5,7 +5,7 @@ import { subscribeToBusinessRestaurantOrders } from '../../lib/ordersService';
 import { saveModuleDoc, subscribeToModule } from '../../lib/tenantModules';
 import { computeShiftSalesFromOrders } from '../../lib/shiftSales';
 import { getCurrentAuthUser } from '../../lib/firebase';
-import { countHistoricalPaidOrdersMissingPaymentDate, countPaidOrdersMissingPaymentDate, getShiftReadiness, initialShiftFeedStates, parseShiftCashAmount, type ShiftFeedName } from '../../lib/businessShiftReadiness';
+import { countHistoricalPaidOrdersMissingPaymentDate, countPaidOrdersMissingPaymentDate, getShiftReadiness, initialShiftFeedStates, parseShiftCashAmount, previewShiftCashDifference, type ShiftFeedName } from '../../lib/businessShiftReadiness';
 
 const money = (v: number) => v.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
 const when = (iso?: string) => {
@@ -106,6 +106,9 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
     const expectedCash = Math.round((Number(active.initialCashFund || 0) + sales.cash - cashExpenses - cashToVault) * 100) / 100;
     return { sales, cashExpenses, cashToVault, expectedCash };
   }, [active, orders, expenses, vault, readiness.ready]);
+
+  // Vista previa con la misma precisión en centavos que el cierre; no altera el cálculo guardado.
+  const cashDifferencePreview = live ? previewShiftCashDifference(counted, live.expectedCash) : null;
 
   const user = getCurrentAuthUser();
   const userName = user?.displayName || user?.email || 'Usuario';
@@ -246,8 +249,8 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
               <div className="mt-4 space-y-3 rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-4">
                 <label className="block text-xs font-bold text-[#C8C8C8]">Efectivo contado en caja ($)</label>
                 <input type="number" min="0" step="0.01" inputMode="decimal" value={counted} onChange={(e) => setCounted(e.target.value)} className={`${input} max-w-xs`} autoFocus />
-                {parseShiftCashAmount(counted) !== null && (
-                  <p className="text-xs text-[#C8C8C8]">Diferencia: <strong className={Number(counted) - live.expectedCash === 0 ? 'text-emerald-300' : 'text-amber-300'}>{money(Number(counted) - live.expectedCash)}</strong></p>
+                {cashDifferencePreview !== null && (
+                  <p className="text-xs text-[#C8C8C8]">Diferencia: <strong className={cashDifferencePreview === 0 ? 'text-emerald-300' : 'text-amber-300'}>{money(cashDifferencePreview)}</strong></p>
                 )}
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas del corte (opcional)" rows={2} className={input} />
                 <div className="flex gap-2">

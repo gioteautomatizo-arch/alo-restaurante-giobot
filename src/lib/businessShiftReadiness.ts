@@ -91,3 +91,11 @@ export function countHistoricalPaidOrdersMissingPaymentDate(
     return !Number.isFinite(created) || created < start;
   }).length;
 }
+
+/** Diferencia visual de Caja, redondeada a centavos y sin mostrar -$0.00. No escribe datos. */
+export function previewShiftCashDifference(countedInput: string, expectedCash: number): number | null {
+  const countedCash = parseShiftCashAmount(countedInput);
+  if (countedCash === null || !Number.isFinite(expectedCash)) return null;
+  const difference = Math.round((countedCash - expectedCash) * 100) / 100;
+  return difference === 0 ? 0 : difference;
+}
