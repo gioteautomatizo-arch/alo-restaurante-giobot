@@ -72,3 +72,22 @@ export function countPaidOrdersMissingPaymentDate(
     return !Number.isFinite(Date.parse(order.paidAt || ''));
   }).length;
 }
+
+/**
+ * Cuenta pagos sin fecha verificable que podrían corresponder a otro turno.
+ * Incluye pedidos creados antes de la apertura o sin fecha de creación.
+ * Solo informa: nunca asigna un cobro a un turno ni modifica importes.
+ */
+export function countHistoricalPaidOrdersMissingPaymentDate(
+  orders: Array<{ status?: string; billingStatus?: string; createdAt?: string; paidAt?: string }>,
+  shiftStartIso: string,
+): number {
+  const start = Date.parse(shiftStartIso);
+  if (!Number.isFinite(start) || start <= 0) return 0;
+  return orders.filter((order) => {
+    if (order.status === 'CANCELADO' || order.billingStatus !== 'PAGADO') return false;
+    if (Number.isFinite(Date.parse(order.paidAt || ''))) return false;
+    const created = Date.parse(order.createdAt || '');
+    return !Number.isFinite(created) || created < start;
+  }).length;
+}

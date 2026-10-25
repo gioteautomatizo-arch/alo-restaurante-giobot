@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { countPaidOrdersMissingPaymentDate, getShiftReadiness, initialShiftFeedStates, SHIFT_FEED_NAMES, parseShiftCashAmount, type ShiftFeedStates } from '../src/lib/businessShiftReadiness.ts';
+import { countHistoricalPaidOrdersMissingPaymentDate, countPaidOrdersMissingPaymentDate, getShiftReadiness, initialShiftFeedStates, SHIFT_FEED_NAMES, parseShiftCashAmount, type ShiftFeedStates } from '../src/lib/businessShiftReadiness.ts';
 
 const tenantA = 'giomero';
 const tenantB = 'another-restaurant';
@@ -146,6 +146,25 @@ assert.equal(JSON.stringify(dateBoundaryOrders), dateBoundarySnapshot,
   'La revisión de fechas no debe modificar pedidos');
 console.log('PASS: el bloqueo por paidAt respeta el instante de apertura y no altera pedidos sintéticos.');
 
+// Los pagos históricos sin paidAt no se atribuyen a un turno sin evidencia.
+// Se muestran como aviso, separados de los pagos recientes que bloquean el cierre.
+const historicalOrders = [
+  { status: 'ENTREGADO', billingStatus: 'PAGADO', createdAt: '2026-10-23T14:59:59.999Z' },
+  { status: 'ENTREGADO', billingStatus: 'PAGADO' },
+  { status: 'ENTREGADO', billingStatus: 'PAGADO', createdAt: '2026-10-23T14:00:00.000Z', paidAt: 'fecha inválida' },
+  { status: 'ENTREGADO', billingStatus: 'PAGADO', createdAt: shiftOpened },
+  { status: 'ENTREGADO', billingStatus: 'PAGADO', createdAt: '2026-10-23T14:59:59.999Z', paidAt: shiftOpened },
+  { status: 'CANCELADO', billingStatus: 'PAGADO', createdAt: '2026-10-23T14:59:59.999Z' },
+  { status: 'ENTREGADO', billingStatus: 'PENDIENTE', createdAt: '2026-10-23T14:59:59.999Z' },
+];
+const historicalSnapshot = JSON.stringify(historicalOrders);
+assert.equal(countHistoricalPaidOrdersMissingPaymentDate(historicalOrders, shiftOpened), 3);
+assert.equal(countPaidOrdersMissingPaymentDate(historicalOrders, shiftOpened), 1);
+assert.equal(countHistoricalPaidOrdersMissingPaymentDate(historicalOrders, 'fecha inválida'), 0);
+assert.equal(JSON.stringify(historicalOrders), historicalSnapshot, 'No modificar pedidos históricos');
+console.log('PASS: Caja advierte fechas históricas sin atribuirlas al turno ni alterar pedidos sintéticos.');
+
+
 
 // Guardia del origen de datos de Caja: proteger el filtro de pedidos por tenant
 // y la ruta de módulos por negocio. Es estática; no prueba reglas Firestore.
@@ -186,4 +205,7 @@ console.log('PASS: guardia visual de cierre por fecha de pago y captura explíci
 // Solo inspecciona el código de la interfaz; no abre ni cierra turnos.
 assert.match(shiftViewSource, /setFeedStates\(initialShiftFeedStates\(businessId\)\);\s*\/\/[^\n]*\n\s*setFund\(''\);\s*setCounted\(''\);\s*setNotes\(''\);/);
 console.log('PASS: el cambio de negocio limpia fondo, efectivo contado y notas (revisión estática).');
+assert.match(shiftViewSource, /countHistoricalPaidOrdersMissingPaymentDate\(orders,\s*active\.openedAt\)/);
+assert.match(shiftViewSource, /historicalMissingPaymentDates > 0/);
+console.log('PASS: la interfaz muestra aviso de pagos históricos sin fecha (revisión estática).');
 

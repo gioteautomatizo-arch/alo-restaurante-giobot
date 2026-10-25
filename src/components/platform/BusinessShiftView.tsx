@@ -5,7 +5,7 @@ import { subscribeToBusinessRestaurantOrders } from '../../lib/ordersService';
 import { saveModuleDoc, subscribeToModule } from '../../lib/tenantModules';
 import { computeShiftSalesFromOrders } from '../../lib/shiftSales';
 import { getCurrentAuthUser } from '../../lib/firebase';
-import { countPaidOrdersMissingPaymentDate, getShiftReadiness, initialShiftFeedStates, parseShiftCashAmount, type ShiftFeedName } from '../../lib/businessShiftReadiness';
+import { countHistoricalPaidOrdersMissingPaymentDate, countPaidOrdersMissingPaymentDate, getShiftReadiness, initialShiftFeedStates, parseShiftCashAmount, type ShiftFeedName } from '../../lib/businessShiftReadiness';
 
 const money = (v: number) => v.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
 const when = (iso?: string) => {
@@ -91,6 +91,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
   const active = readiness.ready && openShifts.length === 1 ? openShifts[0] : null;
   const history = readiness.ready ? currentShifts.filter((s) => s.status === 'cerrado') : [];
   const missingPaymentDates = active && readiness.ready ? countPaidOrdersMissingPaymentDate(orders, active.openedAt) : 0;
+  const historicalMissingPaymentDates = active && readiness.ready ? countHistoricalPaidOrdersMissingPaymentDate(orders, active.openedAt) : 0;
 
   const live = useMemo(() => {
     if (!active || !readiness.ready) return null;
@@ -230,6 +231,11 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
             {missingPaymentDates > 0 && (
               <div role="alert" className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
                 {missingPaymentDates} pedido(s) pagado(s) creados durante este turno no tienen fecha de cobro válida. El cierre queda bloqueado hasta conciliarlos; no se debe asumir que fueron pagados al crearse.
+              </div>
+            )}
+            {historicalMissingPaymentDates > 0 && (
+              <div role="status" className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
+                {historicalMissingPaymentDates} pedido(s) pagado(s) anteriores al turno o sin fecha de creación tampoco tienen fecha de cobro verificable. No se puede confirmar a qué turno pertenecen; revisa el historial antes de considerar definitivo el corte. No se les asigna una fecha automáticamente.
               </div>
             )}
             {!closing ? (
