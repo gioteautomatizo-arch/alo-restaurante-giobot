@@ -443,3 +443,29 @@ assert.equal(nonPositiveReport.orderCount, 2);
 assert.equal(JSON.stringify(nonPositiveOrders), nonPositiveSnapshot,
   'El diagnóstico no debe modificar pedidos ficticios');
 console.warn('PENDIENTE: pedidos pagados con importes cero/negativos difieren entre turno y corte diario (datos sintéticos).');
+
+// Diagnóstico pendiente: pagos de mesa con importes cero o negativos.
+// El corte por turno conserva el conteo, pero omite los importes; el diario
+// conserva también el importe negativo. No son devoluciones confirmadas.
+// Prueba sintética, sin Firebase ni cambios en cálculos de producción.
+const nonPositiveTablePayments = [
+  { status: 'PAGADO', createdAt: '2026-10-23T17:00:00.000Z',
+    paymentMethod: 'EFECTIVO', total: 0 },
+  { status: 'PAGADO', createdAt: '2026-10-23T17:15:00.000Z',
+    paymentMethod: 'TARJETA', total: -10 },
+];
+const nonPositiveTableSnapshot = JSON.stringify(nonPositiveTablePayments);
+const nonPositiveTableShift = computeShiftSalesFromPayments(
+  nonPositiveTablePayments, shiftStart, shiftEnd,
+);
+const nonPositiveTableDaily = paymentsSalesForDay(nonPositiveTablePayments, '2026-10-23');
+assert.deepEqual(nonPositiveTableShift,
+  { cash: 0, card: 0, platforms: 0, total: 0, count: 2 },
+  'El turno cuenta ambos pagos, pero no suma importes no positivos');
+assert.deepEqual(nonPositiveTableDaily, { total: -10, count: 2 },
+  'El corte diario incluye el importe negativo y ambos pagos');
+assert.equal(nonPositiveTableDaily.total - nonPositiveTableShift.total, -10,
+  'La diferencia requiere revisión contable, no reclasificación automática');
+assert.equal(JSON.stringify(nonPositiveTablePayments), nonPositiveTableSnapshot,
+  'El diagnóstico no modifica los pagos sintéticos');
+console.warn('PENDIENTE: pagos de mesa cero/negativos difieren entre corte diario y turno (datos sintéticos).');
