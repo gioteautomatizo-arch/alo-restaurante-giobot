@@ -44,6 +44,8 @@ jobs:
         run: node --import tsx scripts/test-business-reports.mts
       - name: Test tenant-safe shift readiness (no Firebase writes)
         run: node --import tsx scripts/test-business-shift-readiness.mts
+      - name: Test workspace tenant and account isolation (no Firebase writes)
+        run: node --import tsx scripts/test-business-workspace-isolation.mts
       - name: Test shift cash reconciliation (synthetic data, no Firebase writes)
         run: node --import tsx scripts/test-shift-sales.mts
       - name: Test safe public catalog checkout (no Firebase writes)
