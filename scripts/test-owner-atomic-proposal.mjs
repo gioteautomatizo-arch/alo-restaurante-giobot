@@ -41,8 +41,12 @@ try {
 
   // La reserva huérfana que staged acepta actualmente debe quedar denegada.
   await assertFails(setDoc(doc(alice, 'businesses/orphan'), business('orphan', 'alice')));
-  const missing = await assertSucceeds(getDoc(doc(alice, 'businesses/orphan')));
-  assert.equal(missing.exists(), false);
+  // Verificar ausencia con privilegios exclusivos del emulador: el usuario
+  // aún no tiene membresía y correctamente no puede leer ese documento.
+  await env.withSecurityRulesDisabled(async (context) => {
+    const missing = await getDoc(doc(context.firestore(), 'businesses/orphan'));
+    assert.equal(missing.exists(), false);
+  });
 
   // No debe ser posible crear primero la membresía y después el negocio.
   await assertFails(setDoc(doc(alice, 'businessMemberships/early_alice'), member('early', 'alice')));
