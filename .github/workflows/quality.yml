@@ -42,6 +42,8 @@ jobs:
         run: node --import tsx scripts/test-business-order-alerts.mts
       - name: Test paid sales reports (no Firebase writes)
         run: node --import tsx scripts/test-business-reports.mts
+      - name: Test shared Resumen and Caja payment snapshot (synthetic data, no Firebase writes)
+        run: node --import tsx scripts/test-business-order-snapshot.mts
       - name: Test tenant-safe shift readiness (no Firebase writes)
         run: node --import tsx scripts/test-business-shift-readiness.mts
       - name: Test workspace tenant and account isolation (no Firebase writes)
