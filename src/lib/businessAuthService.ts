@@ -174,21 +174,28 @@ export async function getBusinessesForUser(userId: string): Promise<RestaurantTe
     where('active', '==', true)
   );
   const membershipsSnap = await getDocs(membershipsQuery);
-  const businessIds = membershipsSnap.docs.map(
+  const businessIds = [...new Set(membershipsSnap.docs.map(
     (docSnap) => (docSnap.data() as RestaurantMembership).restaurantId
-  );
+  ))];
 
-  const tenants: RestaurantTenant[] = [];
-  for (const businessId of businessIds) {
+  // Una lectura parcial NO significa que el usuario tenga menos negocios.
+  // Propagar el fallo permite al Portal mostrar Reintentar en vez de una lista
+  // incompleta o el mensaje engañoso de que no hay negocios registrados.
+  return Promise.all(businessIds.map(async (businessId) => {
+    if (typeof businessId !== 'string' || !businessId) {
+      throw new Error('Una membresía contiene un identificador de negocio inválido.');
+    }
     try {
       const snap = await getDoc(businessRef(businessId));
-      if (snap.exists()) tenants.push(snap.data() as RestaurantTenant);
+      if (!snap.exists()) throw new Error('La membresía apunta a un negocio inexistente.');
+      const tenant = snap.data() as RestaurantTenant;
+      if (tenant.restaurantId !== businessId) throw new Error('El identificador del negocio no coincide con su membresía.');
+      return tenant;
     } catch (err) {
-      // Un negocio con problema de permisos no debe ocultar los demás.
-      console.warn('No se pudo leer el negocio', businessId, err);
+      console.warn('No se pudo leer el negocio asociado a una membresía', businessId, err);
+      throw new Error('No pudimos cargar todos tus negocios. Revisa tu conexión o permisos y reintenta.');
     }
-  }
-  return tenants;
+  }));
 }
 
 /**
