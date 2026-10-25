@@ -130,6 +130,23 @@ assert.equal(countPaidOrdersMissingPaymentDate(paidOrders, 'invalid'), 0);
 assert.equal(countPaidOrdersMissingPaymentDate([], shiftOpened), 0);
 console.log('PASS: se identifican pagos recientes sin fecha verificable antes de cerrar turno.');
 
+// Bordes de apertura: no atribuir al turno cobros sin fecha anteriores al inicio.
+// Esta prueba es sintética y no altera registros ni realiza operaciones de Caja.
+const dateBoundaryOrders = [
+  { status: 'ENTREGADO', billingStatus: 'PAGADO', createdAt: shiftOpened },
+  { status: 'ENTREGADO', billingStatus: 'PAGADO', createdAt: '2026-10-23T14:59:59.999Z' },
+  { status: 'ENTREGADO', billingStatus: 'PAGADO', createdAt: shiftOpened, paidAt: shiftOpened },
+  { status: 'CANCELADO', billingStatus: 'PAGADO', createdAt: shiftOpened },
+  { status: 'ENTREGADO', billingStatus: 'PENDIENTE', createdAt: shiftOpened },
+];
+const dateBoundarySnapshot = JSON.stringify(dateBoundaryOrders);
+assert.equal(countPaidOrdersMissingPaymentDate(dateBoundaryOrders, shiftOpened), 1,
+  'Solo el pagado creado exactamente al abrir sin paidAt debe bloquear el cierre');
+assert.equal(JSON.stringify(dateBoundaryOrders), dateBoundarySnapshot,
+  'La revisión de fechas no debe modificar pedidos');
+console.log('PASS: el bloqueo por paidAt respeta el instante de apertura y no altera pedidos sintéticos.');
+
+
 // Guardia estática de regresión: no ejecuta cobros ni accede a Firebase.
 // Complementa las pruebas de lógica; NO certifica permisos ni aislamiento en Firestore.
 const shiftViewSource = readFileSync(new URL('../src/components/platform/BusinessShiftView.tsx', import.meta.url), 'utf8');
