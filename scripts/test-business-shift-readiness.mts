@@ -81,6 +81,28 @@ for (const feed of SHIFT_FEED_NAMES) {
 assert.deepEqual(initialShiftFeedStates(tenantB), Object.fromEntries(
   SHIFT_FEED_NAMES.map((feed) => [feed, { businessId: tenantB, status: 'loading' }]),
 ));
+// Cambio de tenant con todas las consultas viejas: no mostrar errores ajenos.
+for (const status of ['ready', 'error'] as const) {
+  const oldFeeds = Object.fromEntries(
+    SHIFT_FEED_NAMES.map((feed) => [feed, { businessId: tenantB, status }]),
+  ) as ShiftFeedStates;
+  const result = getShiftReadiness(tenantA, oldFeeds, 0);
+  assert.equal(result.ready, false);
+  assert.deepEqual(result.loading, [...SHIFT_FEED_NAMES]);
+  assert.deepEqual(result.errors, []);
+}
+// Durante una actualización parcial, distinguir un error propio de un feed ajeno.
+const partialRefresh: ShiftFeedStates = {
+  ...ready,
+  orders: { businessId: tenantB, status: 'error' },
+  vault: { businessId: tenantA, status: 'error' },
+};
+const partialResult = getShiftReadiness(tenantA, partialRefresh, 0);
+assert.equal(partialResult.ready, false);
+assert.deepEqual(partialResult.loading, ['orders']);
+assert.deepEqual(partialResult.errors, ['vault']);
+console.log('PASS: la transición completa y parcial de tenant conserva errores propios sin mostrar errores ajenos.');
+
 console.log('PASS: los cuatro feeds bloquean datos y errores cruzados entre negocios.');
 
 console.log('PASS: cambiar de negocio no reutiliza lecturas ni errores de otro tenant.');
