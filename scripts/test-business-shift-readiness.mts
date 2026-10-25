@@ -147,6 +147,16 @@ assert.equal(JSON.stringify(dateBoundaryOrders), dateBoundarySnapshot,
 console.log('PASS: el bloqueo por paidAt respeta el instante de apertura y no altera pedidos sintéticos.');
 
 
+// Guardia del origen de datos de Caja: proteger el filtro de pedidos por tenant
+// y la ruta de módulos por negocio. Es estática; no prueba reglas Firestore.
+const ordersServiceSource = readFileSync(new URL('../src/lib/ordersService.ts', import.meta.url), 'utf8');
+const tenantModulesSource = readFileSync(new URL('../src/lib/tenantModules.ts', import.meta.url), 'utf8');
+assert.match(ordersServiceSource, /collection\(db,\s*ORDERS_COLLECTION\),\s*where\('restaurantId',\s*'==',\s*businessId\)/);
+assert.match(tenantModulesSource, /collection\(db,\s*'businesses',\s*businessId,\s*module\)/);
+assert.match(ordersServiceSource, /if \(onError\) onError\(error\);\s*else callback\(\[\]\)/);
+assert.match(tenantModulesSource, /if \(onError\) onError\(error\);\s*else callback\(\[\]\)/);
+console.log('PASS: Caja conserva consultas por negocio y reporta errores de lectura (guardia estática).');
+
 // Guardia estática de regresión: no ejecuta cobros ni accede a Firebase.
 // Complementa las pruebas de lógica; NO certifica permisos ni aislamiento en Firestore.
 const shiftViewSource = readFileSync(new URL('../src/components/platform/BusinessShiftView.tsx', import.meta.url), 'utf8');
