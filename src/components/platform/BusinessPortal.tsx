@@ -316,7 +316,7 @@ export const BusinessPortal: React.FC = () => {
             <p>{businessesError}</p>
             <button type="button" onClick={() => setReloadBusinesses((value) => value + 1)} className="mt-2 rounded-lg border border-rose-300 px-3 py-2 font-bold">Reintentar carga de negocios</button>
           </div>
-        )
+        )}
 
         <section className="mt-7 grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
           <article className="rounded-[2rem] border border-[#D9C5AC] bg-white overflow-hidden shadow-sm">
