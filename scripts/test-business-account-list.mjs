@@ -67,7 +67,7 @@ try {
   await waitFor(() => window.qa.pending.length === 2, 'Retry must read both tenants');
   window.qa.pending[0].resolve(snap('tenant-a'));
   window.qa.pending[1].resolve(snap('tenant-b'));
-  assert.deepEqual((await second).map(item => item.restaurantId), ['tenant-a', 'tenant-b']);
+  assert.equal((await second).map(item => item.restaurantId).join(','), 'tenant-a,tenant-b');
 
   // No presentar una membresía rota como si el negocio no existiera en la cuenta.
   window.qa.pending = [];
