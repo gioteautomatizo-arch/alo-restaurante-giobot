@@ -10,21 +10,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
 import { doc, getDoc, setDoc, writeBatch } from 'firebase/firestore';
+import { buildAtomicOwnerProposalRules } from './owner-atomic-proposal-rules.mjs';
 
 const staged = readFileSync('docs/firestore.launch-security.STAGED.rules', 'utf8');
-const anchor = '        && !exists(/databases/$(database)/documents/businesses/$(businessId));';
-assert.equal(staged.split(anchor).length, 2,
-  'ALTO: el bloque de alta cambió; revisar la propuesta antes de ejecutarla.');
-
-const membershipPath = '/databases/$(database)/documents/businessMemberships/$(businessId + \'_\' + request.auth.uid)';
-const replacement = `        && !exists(/databases/$(database)/documents/businesses/$(businessId))
-        && existsAfter(${membershipPath})
-        && getAfter(${membershipPath}).data.restaurantId == businessId
-        && getAfter(${membershipPath}).data.userId == request.auth.uid
-        && getAfter(${membershipPath}).data.role == 'OWNER'
-        && getAfter(${membershipPath}).data.active == true;`;
-const proposedRules = staged.replace(anchor, replacement);
-assert.notEqual(proposedRules, staged);
+const proposedRules = buildAtomicOwnerProposalRules(staged);
 
 const env = await initializeTestEnvironment({
   projectId: 'gioteautomatizo-atomic-owner-proposal-test',
