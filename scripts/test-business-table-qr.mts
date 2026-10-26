@@ -43,4 +43,13 @@ for (const count of [1, 4, 10]) assert.equal(isValidPublicGuestCount(count), tru
 assert.equal(calientitoTableUrl(2), 'https://gioteautomatizo.ai.studio/restaurante-calientito?table=2');
 setSiteBaseUrl('https://app.example.com');
 assert.equal(businessTableUrl('giomero', 3), 'https://app.example.com/#negocio/giomero?table=3');
-console.log('PASS: QR roundtrip through independent decoder, tenant/table URLs, legacy parameters and guest validation.');
+// Pegar una URL profunda no debe generar QR con la ruta de Calientito como prefijo.
+setSiteBaseUrl('https://app.example.com/restaurante-calientito?table=2');
+assert.equal(businessTableUrl('giomero', 3), 'https://app.example.com/#negocio/giomero?table=3');
+// La vista previa de AI Studio no es accesible como enlace definitivo desde otro celular.
+setSiteBaseUrl('https://ais-dev-old.usercontent.goog/preview');
+globalThis.window.location.origin = 'https://ais-dev-current.usercontent.goog';
+assert.equal(businessTableUrl('giomero', 3), 'https://gioteautomatizo.ai.studio/#negocio/giomero?table=3');
+setSiteBaseUrl('');
+assert.equal(calientitoTableUrl(2), 'https://gioteautomatizo.ai.studio/restaurante-calientito?table=2');
+console.log('PASS: QR roundtrip through independent decoder, tenant/table URLs, portable origins, legacy parameters and guest validation.');
