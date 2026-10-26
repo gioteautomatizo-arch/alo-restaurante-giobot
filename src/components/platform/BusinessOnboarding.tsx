@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -66,6 +66,7 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
   const [logoDataUrl, setLogoDataUrl] = useState<string | undefined>();
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [isFinishing, setIsFinishing] = useState(false);
+  const finishingRef = useRef(false);
   const [finishError, setFinishError] = useState<string | null>(null);
   const [assistantMode, setAssistantMode] = useState<'GIOBOT_BASE' | 'CUSTOM_AVATAR'>('GIOBOT_BASE');
   const [assistantName, setAssistantName] = useState('Giobot');
@@ -110,7 +111,8 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
   };
 
   const finish = async () => {
-    if (isFinishing) return;
+    if (finishingRef.current) return;
+    finishingRef.current = true;
     setFinishError(null);
     setIsFinishing(true);
     try {
@@ -133,6 +135,7 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
     } catch (err: any) {
       setFinishError(err?.message || 'No se pudo guardar tu negocio. Intenta de nuevo.');
     } finally {
+      finishingRef.current = false;
       setIsFinishing(false);
     }
   };
