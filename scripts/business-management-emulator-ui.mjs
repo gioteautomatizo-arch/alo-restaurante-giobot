@@ -28,7 +28,7 @@ const mocks = {
     'export function createCatalogItemId(name) {return name + "-ui-" + Math.random().toString(36).slice(2);}',
     'export function ensureUniqueIds(items) {return items;}',
     'export function subscribeToBusinessCatalog(id, cb, err) {return window.qa.bridge.subscribeCatalog(id, cb, err);}',
-    'export function saveBusinessCatalog(id, items, actor, revision) {window.qa.catalogWrites++;return window.qa.bridge.saveCatalog(id, items, actor, revision);}',
+    'export function saveBusinessCatalog(id, items, actor, revision) {window.qa.catalogWrites++;return window.qa.bridge.saveCatalog(id, items, actor, revision).catch(error => {window.qa.lastSaveError = String(error);throw error;});}',
   ].join('\n'),
   '../../lib/businessAuthService': [
     'export function getBusinessForUser(uid, id) {return window.qa.bridge.getBusiness(uid, id);}',
@@ -143,8 +143,16 @@ export async function addCatalogProductThroughUI({businessId,businessName,user,b
     save.click();
     save.click();
     await waitFor(()=>window.qa.catalogWrites===1,'Un solo guardado por doble pulsación');
-    await waitFor(()=>document.body.textContent.includes('Catálogo guardado correctamente.'),
-      'Confirmación de guardado del catálogo');
+    try {
+      await waitFor(()=>document.body.textContent.includes('Catálogo guardado correctamente.')
+        || document.body.textContent.includes('No pudimos guardar el catálogo')
+        || document.body.textContent.includes('El catálogo cambió en otra sesión'),
+        'Respuesta del guardado de catálogo');
+    } catch (error) {
+      assert.fail('Sin confirmación: ' + document.body.textContent.slice(0,450) + ' / ' + window.qa.lastSaveError);
+    }
+    assert(document.body.textContent.includes('Catálogo guardado correctamente.'),
+      'El catálogo no se guardó: ' + document.body.textContent.slice(0,450) + ' / ' + window.qa.lastSaveError);
     return {businessId,productName,price};
   });
 }
