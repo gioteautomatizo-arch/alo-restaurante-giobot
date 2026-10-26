@@ -73,12 +73,14 @@ try {
   });
   const uidA = a.membership.userId;
   const managementBridge = {
-    updateBranding: (id: string, patch: unknown) => updateDoc(doc(db, 'businesses', id), patch as object),
-    syncPublic: (id: string, tenant: any) => syncPublicProfileIfNeeded(id, tenant),
+    // React/jsdom vive en otro realm: Firestore rechaza arrays/objetos personalizados.
+    // Convertir el payload de prueba a objetos nativos antes de llamar al SDK real.
+    updateBranding: (id: string, patch: unknown) => updateDoc(doc(db, 'businesses', id), JSON.parse(JSON.stringify(patch))),
+    syncPublic: (id: string, tenant: any) => syncPublicProfileIfNeeded(id, JSON.parse(JSON.stringify(tenant))),
     getBusiness: (uid: string, id: string) => getBusinessForUser(uid, id),
     subscribeCatalog: (id: string, callback: any, onError: any) => subscribeToBusinessCatalog(id, callback, onError),
     saveCatalog: (id: string, items: any, actor: string, revision: string | null) =>
-      saveBusinessCatalog(id, items, actor, revision),
+      saveBusinessCatalog(id, JSON.parse(JSON.stringify(items)), actor, revision),
   };
   assert.equal(a.tenant.restaurantId, idA);
   assert.equal((await getDoc(doc(db, 'businessMemberships', idA + '_' + uidA))).data()?.role, 'OWNER');
