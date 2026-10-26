@@ -5,9 +5,19 @@
  */
 const KEY = 'gio_site_base_url';
 
+/** El router público de Gioteautomatizo funciona desde la raíz del dominio. */
 function clean(url: string): string {
-  return url.trim().replace(/[#?].*$/, '').replace(/\/index\.html$/i, '').replace(/\/+$/, '');
+  const value = url.trim();
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return parsed.origin;
+  } catch {
+    // Una dirección incompleta se conservará para que el formulario la valide.
+  }
+  return value.replace(/[#?].*$/, '').replace(/\/index\.html$/i, '').replace(/\/+$/, '');
 }
+
+export const PUBLISHED_SITE_BASE_URL = 'https://gioteautomatizo.ai.studio';
 
 export function getCurrentOrigin(): string {
   return clean(window.location.origin);
@@ -22,7 +32,12 @@ export function getSavedSiteBaseUrl(): string {
 }
 
 export function getSiteBaseUrl(): string {
-  return getSavedSiteBaseUrl() || getCurrentOrigin();
+  const saved = getSavedSiteBaseUrl();
+  // Un QR creado en la vista previa no debe apuntar a un hosting temporal,
+  // aunque se haya guardado esa dirección durante una sesión anterior.
+  if (saved && !looksTemporary(saved)) return saved;
+  const current = getCurrentOrigin();
+  return looksTemporary(current) ? PUBLISHED_SITE_BASE_URL : current;
 }
 
 export function setSiteBaseUrl(url: string): string {
