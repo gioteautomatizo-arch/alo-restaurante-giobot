@@ -228,3 +228,10 @@ npx firebase emulators:exec --only firestore --project demo-gioteautomatizo-owne
 - **Evidencia:** prueba de integración con SDK Firebase Auth/Firestore y API Express sobre emuladores, no una navegación visual. **PENDIENTE CI del commit de esta ampliación**; no afirmar aprobación hasta ver resultado. Sin cambio de reglas staged ni desplegadas.
 - **Bloqueos abiertos:** propuesta OWNER atómico aún sin autorización ni aplicación; revisión visual Android/iPad y recorrido UI completo pendientes. Caja histórica y MIXTO continúan **PENDIENTE** aunque otros scripts salgan con código cero.
 - **Siguiente paso:** comprobar TypeScript/build y test de integración en GitHub Actions; corregir regresiones, registrar evidencia y seguir con validación UI del paso 2. Paso 3 solo después de resolver las puertas de seguridad.
+
+### Verificación CI de la ampliación de colisiones y sesiones (`0842d206`)
+
+- [Quality checks #40275134618](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40275134618): **success**; TypeScript, compilación y regresiones.
+- [Staged Firestore security tests #40275134636](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40275134636): **success**; el paso de integración Auth/Firestore y el resto de pruebas con emuladores terminaron correctamente. Se cargaron las reglas staged versionadas, no las desplegadas.
+- La ampliación verifica con SDK reales en emuladores colisión de handle sin cambio de sesión B, visibilidad anónima del catálogo publicado de A, ocultación del catálogo de B despublicado, prohibición de editar catálogo para KITCHEN, revocación de membresía y recuperación de listados al volver a iniciar sesión con A y B. **No se modificó lógica de producción ni reglas.**
+- **Paso 2 ABIERTO:** falta revisión/aprobación de OWNER atómico y recorrido visual/manual Android/iPad con dos cuentas. **Paso 4 Caja histórica y MIXTO: PENDIENTE**, aunque los diagnósticos de CI finalicen con éxito. Siguiente: pruebas de interfaz con dos cuentas y revisión separada de reglas sin despliegue; después paso 3.
