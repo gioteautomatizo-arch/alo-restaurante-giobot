@@ -76,7 +76,60 @@ try {
   await assertFails(getDoc(doc(alice, 'businesses/tenant-b')));
   await assertFails(getDoc(doc(bob, 'businesses/tenant-a')));
 
-  console.log('PASS (propuesta aislada): alta atómica de dos tenants, reserva huérfana denegada, OWNER/rol/UID/tenant/estado validados.');
+  // Compatibilidad: una reserva huérfana anterior a la propuesta, con dueño
+  // identificado, puede recuperar su OWNER; un tercero no puede reclamarla.
+  // No crea datos reales: la reserva heredada se simula solo como admin emulado.
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await setDoc(doc(admin, 'businesses/legacy-orphan'), business('legacy-orphan', 'alice'));
+    await setDoc(doc(admin, 'businesses/legacy-without-owner'), {
+      restaurantId: 'legacy-without-owner', branding: { restaurantName: 'Legado' },
+    });
+  });
+  await assertFails(setDoc(doc(bob, 'businessMemberships/legacy-orphan_bob'),
+    member('legacy-orphan', 'bob')));
+  await assertSucceeds(setDoc(doc(alice, 'businessMemberships/legacy-orphan_alice'),
+    member('legacy-orphan', 'alice')));
+  assert.equal((await assertSucceeds(getDoc(doc(alice, 'businesses/legacy-orphan')))).exists(), true);
+  // Un negocio histórico sin ownerUserId NO admite autorreclamación de OWNER.
+  // Requiere una migración revisada, nunca asignación automática por el cliente.
+  await assertFails(setDoc(doc(alice, 'businessMemberships/legacy-without-owner_alice'),
+    member('legacy-without-owner', 'alice')));
+
+  // Dos propietarios compiten por el mismo identificador: uno gana, y el
+  // batch perdedor no puede dejar una membresía de OWNER suelta.
+  const raceId = 'simultaneous-handle';
+  const raceAlice = writeBatch(alice);
+  raceAlice.set(doc(alice, 'businesses/' + raceId), business(raceId, 'alice'));
+  raceAlice.set(doc(alice, 'businessMemberships/' + raceId + '_alice'), member(raceId, 'alice'));
+  const raceBob = writeBatch(bob);
+  raceBob.set(doc(bob, 'businesses/' + raceId), business(raceId, 'bob'));
+  raceBob.set(doc(bob, 'businessMemberships/' + raceId + '_bob'), member(raceId, 'bob'));
+  const raceResults = await Promise.allSettled([raceAlice.commit(), raceBob.commit()]);
+  assert.equal(raceResults.filter(result => result.status === 'fulfilled').length, 1,
+    'Solo un propietario puede reservar el mismo handle');
+  assert.equal(raceResults.filter(result => result.status === 'rejected').length, 1,
+    'La segunda alta concurrente debe rechazarse');
+
+  // Un batch con membresía inválida no debe dejar negocio ni OWNER parcial.
+  const rollback = writeBatch(alice);
+  rollback.set(doc(alice, 'businesses/atomic-rollback'), business('atomic-rollback', 'alice'));
+  rollback.set(doc(alice, 'businessMemberships/atomic-rollback_alice'),
+    member('atomic-rollback', 'alice', 'MANAGER'));
+  await assertFails(rollback.commit());
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    const winner = (await getDoc(doc(admin, 'businesses/' + raceId))).data()?.ownerUserId;
+    assert(['alice', 'bob'].includes(winner), 'La reserva concurrente tiene dueño válido');
+    assert.equal((await getDoc(doc(admin, 'businessMemberships/' + raceId + '_' + winner))).exists(), true);
+    assert.equal((await getDoc(doc(admin, 'businessMemberships/' + raceId + '_' +
+      (winner === 'alice' ? 'bob' : 'alice')))).exists(), false);
+    assert.equal((await getDoc(doc(admin, 'businesses/atomic-rollback'))).exists(), false);
+    assert.equal((await getDoc(doc(admin, 'businessMemberships/atomic-rollback_alice'))).exists(), false);
+    assert.equal((await getDoc(doc(admin, 'businessMemberships/legacy-without-owner_alice'))).exists(), false);
+  });
+
+  console.log('PASS (propuesta aislada): alta atómica, colisión concurrente y rollback, recuperación heredada controlada, OWNER/rol/UID/tenant/estado validados.');
   console.log('PENDIENTE: revisión humana del cambio de reglas, compatibilidad y autorización; ninguna regla se modificó ni desplegó.');
 } finally {
   await env.cleanup();
