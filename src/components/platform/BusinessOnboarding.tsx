@@ -85,6 +85,9 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
   }, [step, businessType, businessName, handle, email, password, assistantMode, assistantName]);
 
   const goBack = () => {
+    // La solicitud en curso usa los datos confirmados: no permitir regresar
+    // y editar el formulario mientras el alta o la subida siguen pendientes.
+    if (finishingRef.current) return;
     if (step === 0) onCancel();
     else setStep((current) => Math.max(0, current - 1));
   };
@@ -144,7 +147,7 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
     <div className="min-h-screen bg-[#0B1220] text-white flex flex-col">
       <header className="px-5 pt-5 pb-3">
         <div className="mx-auto max-w-xl flex items-center justify-between gap-3">
-          <button type="button" onClick={goBack} className="w-11 h-11 rounded-full border border-white/10 bg-white/5 flex items-center justify-center active:scale-95" aria-label="Volver">
+          <button type="button" onClick={goBack} disabled={isFinishing} className="w-11 h-11 rounded-full border border-white/10 bg-white/5 flex items-center justify-center active:scale-95 disabled:opacity-40" aria-label="Volver">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex-1 flex items-center gap-1.5 justify-center" aria-label={`Paso ${Math.min(step + 1, TOTAL_STEPS)} de ${TOTAL_STEPS}`}>
