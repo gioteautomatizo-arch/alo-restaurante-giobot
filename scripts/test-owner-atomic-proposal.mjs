@@ -96,6 +96,17 @@ try {
   await assertFails(setDoc(doc(alice, 'businessMemberships/legacy-without-owner_alice'),
     member('legacy-without-owner', 'alice')));
 
+  // Límite semántico de existsAfter: valida el estado DESPUÉS del commit,
+  // no que la membresía se haya creado en ese mismo batch. Una membresía
+  // OWNER previamente sembrada por un administrador del emulador autoriza
+  // crear el negocio sin volver a escribir la membresía.
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'businessMemberships/preseeded-owner_alice'),
+      member('preseeded-owner', 'alice'));
+  });
+  await assertSucceeds(setDoc(doc(alice, 'businesses/preseeded-owner'),
+    business('preseeded-owner', 'alice')));
+
   // Dos propietarios compiten por el mismo identificador: uno gana, y el
   // batch perdedor no puede dejar una membresía de OWNER suelta.
   const raceId = 'simultaneous-handle';
