@@ -58,6 +58,8 @@ jobs:
         run: node scripts/test-business-registration-session.mjs
       - name: Test onboarding duplicate submit and stale navigation (React/jsdom, no Firebase)
         run: node scripts/test-business-onboarding-submit-ui.mjs
+      - name: Test complete six-screen onboarding for two fictitious businesses (React/jsdom, mocked backend)
+        run: node scripts/test-business-onboarding-journey-ui.mjs
       - name: Test invite acceptance tenant isolation and retry (mocked Auth/backend, no Firebase writes)
         run: node scripts/test-business-invite-accept-ui.mjs
       - name: Test catalog and publication session drift (mocked Auth/Firestore, no real writes)
