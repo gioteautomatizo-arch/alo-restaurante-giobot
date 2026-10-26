@@ -24,7 +24,7 @@ connectFirestoreEmulator(db, '127.0.0.1', 8080);
 const { registerBusiness, getBusinessesForUser, getBusinessForUser } = await import('../src/lib/businessAuthService.ts');
 const { setBusinessPublication } = await import('../src/lib/businessPublicProfileService.ts');
 const { registerBusinessInviteApi } = await import('../businessInviteApi.ts');
-const adminApp = initializeAdminApp({ projectId }, 'registration-e2e');
+const adminApp = initializeAdminApp({ projectId });
 const adminAuth = getAdminAuth(adminApp);
 
 const idA = 'beta-e2e-a';
