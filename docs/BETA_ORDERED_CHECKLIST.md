@@ -131,3 +131,11 @@ Formato del reporte: paso actual → cambio concreto → prueba y evidencia → 
 - **Estado de verificación:** cambios incorporados hasta `d699e727`; CI solicitado, **NO declarar aprobado hasta verificar el resultado**. No hubo compilación local por falta de acceso a dependencias del repositorio en este entorno.
 - **Paso 2 sigue ABIERTO:** falta recorrido real aislado de alta/configuración/publicación/invitaciones con dos cuentas, revisión de OWNER atómico (la propuesta solo vive en emulador) y validación visual Android/iPad. Caja con `PENDIENTE` sigue sin conciliar.
 - **Siguiente:** comprobar CI y corregir cualquier regresión; después continuar el paso 2 con pruebas integrales de cuentas ficticias, sin desplegar reglas ni datos reales.
+
+### Verificación del bloque catálogo/publicación (commit `f5596f35`)
+
+- [Quality checks #40250568330](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40250568330): **success**. TypeScript, compilación de producción, test de servicios catálogo/publicación con UID simulado y test React/jsdom del editor, más regresiones existentes.
+- [Staged Firestore security tests #40250568351](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40250568351): **success**. Emuladores y guard staged, sin cambiar reglas ni datos reales.
+- El primer intento [Quality checks #40250386576](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40250386576) **falló por un error del test**: buscaba el nombre del producto en `textContent`, aunque React lo muestra en `input.value`. Se corrigió en `f5596f35` y CI pasó. No se ocultó ni se dio por aprobado el intento fallido.
+- **Evidencia limitada:** tests de servicios con Auth/Firestore simulados y React/jsdom, no un recorrido visual en Android/iPad ni cuentas de prueba reales. El defecto staged de OWNER huérfano sigue **PENDIENTE**; conciliación histórica y pagos mixtos de Caja siguen **PENDIENTE**.
+- **Paso 2 ABIERTO. Siguiente bloque:** alta → catálogo → publicación → invitación/aceptación/revocación con dos cuentas ficticias en entorno aislado, y revisión separada de la propuesta de reglas OWNER sin despliegue. Paso 3 después de cerrar aislamiento.
