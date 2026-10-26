@@ -1,10 +1,17 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { BusinessOnboarding, DemoBusinessProfile } from './BusinessOnboarding';
 import { registerBusiness } from '../../lib/businessAuthService';
 import { getBusinessTemplateConfig } from '../../data/businessTemplates';
 
 export const BusinessOnboardingDemo: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
+  // Ref síncrona: dos callbacks antes del próximo render no pueden duplicar el alta.
+  const savingRef = useRef(false);
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const [error, setError] = useState<string | null>(null);
 
   const handleCancel = () => {
@@ -12,7 +19,8 @@ export const BusinessOnboardingDemo: React.FC = () => {
   };
 
   const handleComplete = async (profile: DemoBusinessProfile) => {
-    if (isSaving) return;
+    if (savingRef.current) return;
+    savingRef.current = true;
     setIsSaving(true);
     setError(null);
 
@@ -29,10 +37,15 @@ export const BusinessOnboardingDemo: React.FC = () => {
         assistantName: profile.assistantName,
         assistantMode: profile.assistantMode,
       });
-      window.location.hash = '#business';
+      // Una respuesta tardía no debe secuestrar otra ruta ni un componente desmontado.
+      if (mountedRef.current && window.location.hash === '#business-new') window.location.hash = '#business';
     } catch (err: any) {
-      setError(err?.message || 'No se pudo crear el negocio. Intenta de nuevo.');
-      setIsSaving(false);
+      if (mountedRef.current && window.location.hash === '#business-new') {
+        setError(err?.message || 'No se pudo crear el negocio. Intenta de nuevo.');
+      }
+    } finally {
+      savingRef.current = false;
+      if (mountedRef.current) setIsSaving(false);
     }
   };
 
