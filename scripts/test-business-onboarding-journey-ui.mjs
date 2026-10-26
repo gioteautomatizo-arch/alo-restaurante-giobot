@@ -133,7 +133,9 @@ try {
   await clickNext('Tu negocio ya tiene identidad.');
   button('Crear mi negocio').click();
   await waitFor(() => window.qa.calls.length === 3, 'B no registró su intento');
-  assert.deepEqual(window.qa.uploads, [{id: 'beta-b', name: 'logo-b.png'}]);
+  assert.equal(window.qa.uploads.length, 1, 'Solo un logo subido');
+  assert.equal(window.qa.uploads[0].id, 'beta-b');
+  assert.equal(window.qa.uploads[0].name, 'logo-b.png');
   assert.equal(window.qa.calls[2].handle, 'beta-b');
   assert.equal(window.qa.calls[2].assistantName, 'Giobot');
   assert.equal(window.qa.calls[2].logoDataUrl, 'https://example.test/logo-b.png');
