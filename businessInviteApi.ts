@@ -35,6 +35,17 @@ function exposedInvite(id: string, data: Record<string, unknown>) {
     createdAt: data.createdAt, expiresAt: data.expiresAt };
 }
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
+
+// Admin SDK bypasses Firestore rules: validate the tenant and the identity
+// encoded in every membership before authorizing an invitation operation.
+function matchesTenant(data: Record<string, unknown> | undefined, businessId: string): boolean {
+  return data?.restaurantId === businessId;
+}
+function activeTenantMember(
+  data: Record<string, unknown> | undefined, businessId: string, uid: string,
+): boolean {
+  return data?.active === true && data.restaurantId === businessId && data.userId === uid;
+}
 const safeId = (v: unknown): v is string =>
   typeof v === 'string' && /^[a-z0-9][a-z0-9-]{1,63}$/.test(v);
 const safeEmail = (v: unknown): v is string =>
@@ -74,25 +85,23 @@ export function registerBusinessInviteApi(app: Express): void {
       const actor = await authenticated(req);
       if (!actor) return fail(res, 401, 'Inicia sesión como responsable del negocio.');
       const { db } = adminServices();
-      const [membership, business] = await Promise.all([
-        db.collection('businessMemberships').doc(businessId + '_' + actor.uid).get(),
-        db.collection('businesses').doc(businessId).get(),
-      ]);
-      const actorRole = membership.data()?.role as ActorRole | undefined;
-      if (!business.exists || !membership.exists || membership.data()?.active !== true ||
-          !actorRole || !['OWNER', 'ADMIN', 'MANAGER'].includes(actorRole)) {
-        return fail(res, 403, 'No tienes permiso para invitar personal de este negocio.');
-      }
-      if (!canInvite(actorRole, role)) {
-        return fail(res, 403, 'No puedes invitar personal con ese rol.');
-      }
+      const memberRef = db.collection('businessMemberships').doc(businessId + '_' + actor.uid);
+      const businessRef = db.collection('businesses').doc(businessId);
       const token = randomBytes(32).toString('base64url');
       const now = Date.now();
       const inviteRef = db.collection('business_invites').doc(hash(token));
       const actorLimit = db.collection('business_invite_limits').doc(hash('actor:' + businessId + ':' + actor.uid));
       const businessLimit = db.collection('business_invite_limits').doc(hash('business:' + businessId));
       const created = await db.runTransaction(async tx => {
-        const [actorSnap, businessSnap] = await Promise.all([tx.get(actorLimit), tx.get(businessLimit)]);
+        const [actorSnap, businessSnap, memberSnap, tenantSnap] = await Promise.all([
+          tx.get(actorLimit), tx.get(businessLimit), tx.get(memberRef), tx.get(businessRef),
+        ]);
+        const actorRole = memberSnap.data()?.role as ActorRole | undefined;
+        // Re-check permissions in the same transaction that issues the token.
+        // A revoked or cross-tenant membership cannot race the initial lookup.
+        if (!tenantSnap.exists || !matchesTenant(tenantSnap.data(), businessId) ||
+            !memberSnap.exists || !activeTenantMember(memberSnap.data(), businessId, actor.uid) ||
+            !canInvite(actorRole, role)) return 'DENIED';
         const currentCount = (snap: typeof actorSnap, interval: number) => {
           const value = snap.data();
           return value && Number(value.resetAt) > now
@@ -101,7 +110,7 @@ export function registerBusinessInviteApi(app: Express): void {
         };
         const perActor = currentCount(actorSnap, 60 * 60 * 1000);
         const perBusiness = currentCount(businessSnap, 24 * 60 * 60 * 1000);
-        if (perActor.count >= INVITES_PER_HOUR || perBusiness.count >= INVITES_PER_BUSINESS_DAY) return false;
+        if (perActor.count >= INVITES_PER_HOUR || perBusiness.count >= INVITES_PER_BUSINESS_DAY) return 'LIMIT';
         tx.set(actorLimit, { count: perActor.count + 1, resetAt: perActor.resetAt, updatedAt: now });
         tx.set(businessLimit, { count: perBusiness.count + 1, resetAt: perBusiness.resetAt, updatedAt: now });
         tx.create(inviteRef, {
@@ -109,9 +118,10 @@ export function registerBusinessInviteApi(app: Express): void {
           role, status: 'PENDING', createdBy: actor.uid, createdAt: now,
           expiresAt: now + EXPIRES_IN_MS,
         });
-        return true;
+        return 'CREATED';
       });
-      if (!created) return fail(res, 429, 'Se alcanzó el límite de invitaciones. Intenta más tarde.');
+      if (created === 'DENIED') return fail(res, 403, 'No tienes permiso para invitar personal de este negocio.');
+      if (created === 'LIMIT') return fail(res, 429, 'Se alcanzó el límite de invitaciones. Intenta más tarde.');
       return res.status(201).json({ token, expiresAt: now + EXPIRES_IN_MS });
     } catch (error) {
       console.error('[business-invites/create]', error);
@@ -128,9 +138,14 @@ export function registerBusinessInviteApi(app: Express): void {
       const actor = await authenticated(req);
       if (!actor) return fail(res, 401, 'Inicia sesión.');
       const { db } = adminServices();
-      const member = await db.collection('businessMemberships').doc(businessId + '_' + actor.uid).get();
+      const [member, business] = await Promise.all([
+        db.collection('businessMemberships').doc(businessId + '_' + actor.uid).get(),
+        db.collection('businesses').doc(businessId).get(),
+      ]);
       const role = member.data()?.role;
-      if (!member.exists || member.data()?.active !== true || !['OWNER','ADMIN','MANAGER'].includes(String(role))) {
+      if (!business.exists || !matchesTenant(business.data(), businessId) ||
+          !member.exists || !activeTenantMember(member.data(), businessId, actor.uid) ||
+          !['OWNER','ADMIN','MANAGER'].includes(String(role))) {
         return fail(res, 403, 'No tienes permiso para ver las invitaciones.');
       }
       const matches = await db.collection('business_invites').where('businessId', '==', businessId).limit(150).get();
@@ -159,11 +174,16 @@ export function registerBusinessInviteApi(app: Express): void {
       if (!actor) return fail(res, 401, 'Inicia sesión.');
       const { db } = adminServices();
       const memberRef = db.collection('businessMemberships').doc(businessId + '_' + actor.uid);
+      const businessRef = db.collection('businesses').doc(businessId);
       const inviteRef = db.collection('business_invites').doc(inviteId);
       const result = await db.runTransaction(async tx => {
-        const [member, inviteSnap] = await Promise.all([tx.get(memberRef), tx.get(inviteRef)]);
+        const [member, inviteSnap, business] = await Promise.all([
+          tx.get(memberRef), tx.get(inviteRef), tx.get(businessRef),
+        ]);
         const role = member.data()?.role;
-        if (!member.exists || member.data()?.active !== true || !['OWNER','ADMIN','MANAGER'].includes(String(role))) {
+        if (!business.exists || !matchesTenant(business.data(), businessId) ||
+            !member.exists || !activeTenantMember(member.data(), businessId, actor.uid) ||
+            !['OWNER','ADMIN','MANAGER'].includes(String(role))) {
           return { status: 403, error: 'No tienes permisos para cancelar esta invitación.' };
         }
         const invite = inviteSnap.data();
@@ -238,9 +258,11 @@ export function registerBusinessInviteApi(app: Express): void {
         const [business, membership, inviter] = await Promise.all([
           tx.get(businessRef), tx.get(memberRef), tx.get(inviterRef),
         ]);
-        if (!business.exists) return { status: 404, error: 'El negocio ya no existe.' };
+        if (!business.exists || !matchesTenant(business.data(), businessId)) {
+          return { status: 404, error: 'El negocio ya no existe.' };
+        }
         const inviterRole = inviter.data()?.role as ActorRole | undefined;
-        if (!inviter.exists || inviter.data()?.active !== true ||
+        if (!inviter.exists || !activeTenantMember(inviter.data(), businessId, invite.createdBy) ||
             !canInvite(inviterRole, invite.role)) {
           return { status: 403, error: 'La persona que invitó ya no tiene permisos suficientes.' };
         }

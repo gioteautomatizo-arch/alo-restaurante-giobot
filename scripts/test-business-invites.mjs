@@ -16,9 +16,8 @@ const owner=await auth.createUser({email:'owner-'+unique+'@example.test',emailVe
 const employee=await auth.createUser({email:'employee-'+unique+'@example.test',emailVerified:true});
 const other=await auth.createUser({email:'other-'+unique+'@example.test',emailVerified:true});
 const businessId='invite-test-a',otherBusiness='invite-test-b';
-for(const id of [businessId,otherBusiness]){
- await db.collection('businesses').doc(id).set({restaurantId:id,ownerUserId:owner.uid,branding:{restaurantName:id}});
-}
+await db.collection('businesses').doc(businessId).set({restaurantId:businessId,ownerUserId:owner.uid,branding:{restaurantName:businessId}});
+await db.collection('businesses').doc(otherBusiness).set({restaurantId:otherBusiness,ownerUserId:other.uid,branding:{restaurantName:otherBusiness}});
 await db.collection('businessMemberships').doc(businessId+'_'+owner.uid).set({restaurantId:businessId,userId:owner.uid,role:'OWNER',active:true});
 await db.collection('businessMemberships').doc(otherBusiness+'_'+other.uid).set({restaurantId:otherBusiness,userId:other.uid,role:'OWNER',active:true});
 const getToken=async user=>{
@@ -44,6 +43,19 @@ try{
  assert.equal(invalid.status,400);
  const denied=await call('/api/business-invites',{businessId,email:employee.email,name:'Invitada',role:'KITCHEN'},otherToken);
  assert.equal(denied.status,403);
+ // Two independent owners: invitation management is never shared across tenants.
+ const otherInvite=await call('/api/business-invites',{businessId:otherBusiness,email:employee.email,name:'Persona B',role:'KITCHEN'},otherToken);
+ assert.equal(otherInvite.status,201,JSON.stringify(otherInvite));
+ const otherList=await call('/api/business-invites?businessId='+otherBusiness,undefined,otherToken,'GET');
+ assert.equal(otherList.status,200);
+ assert.equal(otherList.data.invites.length,1);
+ assert.equal((await call('/api/business-invites?businessId='+otherBusiness,undefined,ownerToken,'GET')).status,403);
+ assert.equal((await call('/api/business-invites',{businessId:otherBusiness,email:employee.email,name:'Cruce',role:'KITCHEN'},ownerToken)).status,403);
+ assert.equal((await call('/api/business-invites/revoke',{businessId:otherBusiness,inviteId:otherList.data.invites[0].id},ownerToken)).status,403);
+ assert.equal((await call('/api/business-invites/revoke',{businessId,inviteId:otherList.data.invites[0].id},ownerToken)).status,404);
+ assert.equal((await call('/api/business-invites/revoke',{businessId:otherBusiness,inviteId:otherList.data.invites[0].id},otherToken)).status,200);
+ assert.equal((await call('/api/business-invites/accept',{token:otherInvite.data.token},employeeToken)).status,410);
+
  const revokedToken=await create();
  const preview=await call('/api/business-invites/preview',{token:revokedToken});
  assert.equal(preview.status,200);
@@ -61,6 +73,32 @@ try{
  assert.equal(replay.status,410);
  const member=await db.collection('businessMemberships').doc(businessId+'_'+employee.uid).get();
  assert.equal(member.data().role,'KITCHEN');
+ // A membership document with a misleading ID but a foreign tenant/user
+ // must not authorize server-side Admin SDK operations or token acceptance.
+ const secondEmployee=await auth.createUser({email:'second-'+unique+'@example.test',emailVerified:true});
+ const secondToken=await getToken(secondEmployee);
+ const pendingToken=await create(secondEmployee.email);
+ const ownerMembership=db.collection('businessMemberships').doc(businessId+'_'+owner.uid);
+ await ownerMembership.update({restaurantId:otherBusiness});
+ assert.equal((await call('/api/business-invites',{businessId,email:employee.email,name:'Cruce',role:'KITCHEN'},ownerToken)).status,403);
+ assert.equal((await call('/api/business-invites?businessId='+businessId,undefined,ownerToken,'GET')).status,403);
+ const pendingList=await db.collection('business_invites').where('businessId','==',businessId).get();
+ const pendingDoc=pendingList.docs.find(x=>x.data().email===secondEmployee.email);
+ assert(pendingDoc,'pending invite for tenant mismatch test');
+ assert.equal((await call('/api/business-invites/revoke',{businessId,inviteId:pendingDoc.id},ownerToken)).status,403);
+ assert.equal((await call('/api/business-invites/accept',{token:pendingToken},secondToken)).status,403);
+ await ownerMembership.update({restaurantId:businessId,userId:other.uid});
+ assert.equal((await call('/api/business-invites?businessId='+businessId,undefined,ownerToken,'GET')).status,403);
+ await ownerMembership.update({userId:owner.uid,active:false});
+ assert.equal((await call('/api/business-invites',{businessId,email:employee.email,name:'Revocado',role:'KITCHEN'},ownerToken)).status,403);
+ assert.equal((await call('/api/business-invites/accept',{token:pendingToken},secondToken)).status,403);
+ await ownerMembership.update({active:true});
+ const recovered=await call('/api/business-invites/accept',{token:pendingToken},secondToken);
+ assert.equal(recovered.status,200,JSON.stringify(recovered));
+ assert.equal((await db.collection('businessMemberships').doc(businessId+'_'+secondEmployee.uid).get()).data().restaurantId,businessId);
+ assert.equal((await db.collection('businessMemberships').doc(otherBusiness+'_'+secondEmployee.uid).get()).exists,false);
+ assert.equal((await call('/api/business-invites?businessId='+otherBusiness,undefined,otherToken,'GET')).status,200);
+
  const expired=await create('late-'+unique+'@example.test');
  const {createHash}=await import('node:crypto');
  const hash=createHash('sha256').update(expired).digest('hex');
@@ -70,5 +108,5 @@ try{
  assert(simultaneous.some(x=>x.status===429),'hourly rate limit');
  const attempted=simultaneous.filter(x=>x.status===201).length;
  assert(attempted<=7,'hourly rate cap');
- console.log('PASS: permissions, revoked/expired/consumed links, wrong email and concurrent rate limiting.');
+ console.log('PASS: two-tenant invite isolation, membership identity, revocation/restore, token lifecycle and concurrent rate limiting.');
 }finally{await new Promise(resolve=>server.close(resolve));}
