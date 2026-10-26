@@ -35,7 +35,7 @@ export interface BusinessCatalogItem {
 }
 
 
-async function assertCatalogManager(businessId: string): Promise<void> {
+async function assertCatalogManager(businessId: string): Promise<string> {
   const user = auth.currentUser;
   if (!user) throw new Error('Debes iniciar sesión para administrar el catálogo.');
 
@@ -48,6 +48,11 @@ async function assertCatalogManager(businessId: string): Promise<void> {
   if (membership.userId !== user.uid || membership.active !== true || !allowed.includes(membership.role as BusinessRole)) {
     throw new Error('No tienes permiso para administrar el catálogo de este negocio.');
   }
+  // La lectura de permisos es asíncrona: Auth pudo cambiar durante getDoc.
+  if (auth.currentUser?.uid !== user.uid) {
+    throw new Error('La sesión cambió al comprobar permisos del catálogo. Vuelve a iniciar sesión.');
+  }
+  return user.uid;
 }
 
 export interface BusinessCatalogDocument {
@@ -111,7 +116,7 @@ export async function saveBusinessCatalog(
   items: BusinessCatalogItem[],
   actorName: string
 ): Promise<BusinessCatalogDocument> {
-  await assertCatalogManager(businessId);
+  const managerUid = await assertCatalogManager(businessId);
   const payload: BusinessCatalogDocument = {
     businessId,
     sourceLabel: 'Catálogo del negocio',
@@ -126,6 +131,10 @@ export async function saveBusinessCatalog(
     updatedAt: new Date().toISOString(),
     updatedBy: actorName,
   };
+  // Última puerta antes de sobrescribir el documento completo del catálogo.
+  if (auth.currentUser?.uid !== managerUid) {
+    throw new Error('La sesión cambió antes de guardar el catálogo. No se envió ningún cambio.');
+  }
   await setDoc(catalogRef(businessId), payload, { merge: false });
   return payload;
 }
