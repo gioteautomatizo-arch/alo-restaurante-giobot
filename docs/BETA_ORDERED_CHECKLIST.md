@@ -203,3 +203,10 @@ npx firebase emulators:exec --only firestore --project demo-gioteautomatizo-owne
 - La primera ejecución de la integración detectó un **fallo de configuración**: Firebase CLI buscaba `scripts/docs/firestore.launch-security.STAGED.rules` y, al no encontrarlo, arrancaba Firestore **permitiendo todas las lecturas/escrituras**. La prueba de aislamiento lo detectó al aceptar indebidamente una lectura cruzada. Esto afecta la validez de pruebas que dependían de las reglas de arranque de ese emulador; no demuestra por sí solo que las reglas reales permitan ese acceso.
 - Se corrigieron las rutas relativas en `scripts/firebase.invites-emulator.json` y `scripts/firebase.security-emulator.json` a `../docs/...`, sin tocar reglas. Se añadió un preflight obligatorio `scripts/verify-emulator-rule-paths.mjs` antes de ejecutar pruebas de seguridad para fallar si las reglas faltan.
 - El primer CI de integración `74586a69` falló también en TypeScript por dos errores de tipado de la nueva prueba; corregidos en `a9fe38a7`. **PENDIENTE verificar CI del arreglo de rutas y la integración real.** No declarar paso 2 cerrado hasta comprobar resultados, reglas y recorrido visual.
+
+
+### Ajuste de rutas de proyecto Firebase CLI (25 de octubre de 2026)
+
+- CI de `7c870f55` detectó que la CLI de Firebase rechaza reglas `../docs/...` cuando el archivo de configuración está dentro de `scripts/` (`outside of project directory`). La ruta existe, pero esa configuración **no puede arrancar** con reglas seguras.
+- Se sustituyeron los dos archivos de configuración de `scripts/` por equivalentes en la raíz: `firebase.invites-emulator.json` y `firebase.security-emulator.json`. Ambos apuntan a `docs/...` dentro de la raíz del proyecto. Se actualizaron todas las invocaciones del workflow y el preflight comprueba además que las reglas no estén fuera de la raíz.
+- **PENDIENTE verificar el nuevo CI** y corregir posibles fallos de la integración de dos cuentas. Las ejecuciones fallidas anteriores no prueban aislamiento ni autorización correcta.

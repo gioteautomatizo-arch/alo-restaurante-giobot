@@ -1,6 +1,6 @@
 {
   "firestore": {
-    "rules": "../docs/firestore.launch-security.STAGED.rules"
+    "rules": "docs/firestore.launch-security.STAGED.rules"
   },
   "emulators": {
     "firestore": {
