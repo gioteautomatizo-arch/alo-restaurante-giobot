@@ -56,6 +56,8 @@ jobs:
         run: node scripts/test-business-account-list.mjs
       - name: Test owner registration session drift (mocked Auth/Firestore, no writes)
         run: node scripts/test-business-registration-session.mjs
+      - name: Test onboarding duplicate submit and stale navigation (React/jsdom, no Firebase)
+        run: node scripts/test-business-onboarding-submit-ui.mjs
       - name: Test invite acceptance tenant isolation and retry (mocked Auth/backend, no Firebase writes)
         run: node scripts/test-business-invite-accept-ui.mjs
       - name: Test catalog and publication session drift (mocked Auth/Firestore, no real writes)
