@@ -80,7 +80,7 @@ try {
   await waitFor(() => window.qa.calls.length === 1, 'Falta el primer intento');
   assert.equal(window.qa.calls[0].handle, 'beta-a');
   assert.equal(window.qa.calls[0].capabilities.includes('POS'), true);
-  assert.equal(visible('Creando tu negocio…'), true);
+  await waitFor(() => visible('Creando tu negocio…'), 'La pantalla debe mostrar el bloqueo de alta');
   window.qa.pending[0].resolve({});
   await waitFor(() => window.location.hash === '#business', 'El alta confirmada debe volver al portal');
 
