@@ -72,6 +72,8 @@ jobs:
         run: node scripts/test-business-employee-roster-integrity.mjs
       - name: Test workspace publication retry and account isolation (React/jsdom, mocked Firebase)
         run: node scripts/test-business-workspace-publication-ui.mjs
+      - name: Test branding saves and uploads on tenant/account changes (React/jsdom, mocked backend)
+        run: node scripts/test-business-branding-session-ui.mjs
       - name: Test shift cash reconciliation (synthetic data, no Firebase writes)
         run: node --import tsx scripts/test-shift-sales.mts
       - name: Test table QR decoding and routing (no Firebase writes)
