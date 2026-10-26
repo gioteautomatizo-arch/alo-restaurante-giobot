@@ -23,7 +23,7 @@ const mocks = {
     'export function getRolePermissions() {return []; }',
     'export function listBusinessEmployees(id) {return window.qa.bridge.listEmployees(id);}',
     'export function createBusinessEmployee() {throw new Error("No crear cuentas desde esta prueba");}',
-    'export function updateBusinessEmployee() {throw new Error("No modificar empleados desde esta prueba");}',
+    'export function updateBusinessEmployee(id,userId,changes) {return window.qa.bridge.updateEmployee(id,userId,changes);}',
     'export function removeBusinessEmployee() {throw new Error("No retirar empleados desde esta prueba");}',
   ].join('\n'),
   '../../lib/firebase': 'export const auth = {get currentUser() {return window.qa.user;}};',
@@ -162,5 +162,19 @@ export async function acceptInviteThroughUI({token, user, bridge, businessId}) {
       'Aceptación real de invitación y redirección');
     assert.equal(window.qa.accepts, 1, 'La UI no duplica aceptaciones');
     return window.location.hash;
+  });
+}
+
+export async function deactivateEmployeeThroughUI({businessId, name, bridge}) {
+  return withView(bridge, null, async (window, document) => {
+    window.qa.mountEmployees(businessId);
+    await waitFor(() => document.body.textContent.includes(name)
+      && !!button(document, 'Activo') && !button(document, 'Activo').disabled,
+      'Empleado aceptado visible y administrable');
+    button(document, 'Activo').click();
+    await waitFor(() => !!button(document, 'Inactivo')
+      && document.body.textContent.includes('Acceso bloqueado'),
+      'Revocación efectiva y recarga de lista');
+    assert(document.body.textContent.includes(name), 'Se conserva empleado inactivo');
   });
 }
