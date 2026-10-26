@@ -73,6 +73,26 @@ try {
   await setBusinessPublication(idB, b.tenant, false);
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idB))).data()?.published, false);
 
+  // Un handle ocupado no debe sobrescribir al propietario anterior ni crear
+  // una membresía cruzada. El segundo dueño conserva su sesión y negocio.
+  await deny(signup(idA, bEmail, 'ghost-kitchen'), 'No reutilizar el identificador del negocio A');
+  assert.equal(auth.currentUser?.uid, uidB, 'El fallo no cambia la cuenta B');
+  assert.deepEqual((await getBusinessesForUser(uidB)).map(x => x.restaurantId), [idB]);
+  assert.equal((await getDoc(doc(db, 'businesses', idB))).data()?.ownerUserId, uidB);
+  assert.equal((await getDoc(doc(db, 'businesses', idB, 'catalog', 'menu_catalog'))).exists(), true);
+  assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
+
+  // La publicación de A solo expone su ficha/menú públicos; B despublicado
+  // y ambas configuraciones privadas siguen protegidos sin autenticación.
+  await signOut(auth);
+  assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
+  assert((await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).exists());
+  await deny(getDoc(doc(db, 'publicBusinessProfiles', idB)), 'B despublicado no es público');
+  await deny(getDoc(doc(db, 'businesses', idB, 'catalog', 'menu_catalog')), 'Catálogo B privado');
+  await deny(getDoc(doc(db, 'businesses', idA)), 'Configuración A nunca es pública');
+  await signInWithEmailAndPassword(auth, bEmail, password);
+  assert.equal(auth.currentUser?.uid, uidB);
+
   // API real de invitaciones contra el mismo proyecto emulado; sin endpoints externos.
   const app = express();
   app.use(express.json());
@@ -112,6 +132,10 @@ try {
   assert.equal((await call('/api/business-invites/accept', { token: invitation.data.token }, staffToken)).status, 410);
   assert.equal((await getDoc(doc(db, 'businessMemberships', idA + '_' + staff.user.uid))).data()?.role, 'KITCHEN');
   assert((await getDoc(doc(db, 'businesses', idA))).exists(), 'Empleado accede a A');
+  assert.deepEqual((await getBusinessesForUser(staff.user.uid)).map(x => x.restaurantId), [idA]);
+  await deny(updateDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'), {
+    sourceLabel: 'Modificación sin permiso',
+  }), 'Empleado KITCHEN no modifica catálogo A');
   await deny(getDoc(doc(db, 'businesses', idB)), 'Empleado A no accede a B');
   await assert.rejects(setBusinessPublication(idA, a.tenant, false), /propietario/, 'Empleado no publica A');
 
@@ -120,8 +144,14 @@ try {
   await signInWithEmailAndPassword(auth, employeeEmail, password);
   await deny(getDoc(doc(db, 'businesses', idA)), 'Empleado revocado pierde acceso privado');
   await deny(getDoc(doc(db, 'businesses', idB)), 'Revocado tampoco accede a B');
+  assert.deepEqual(await getBusinessesForUser(staff.user.uid), [], 'Empleado revocado sin negocios activos');
+  // Recuperación de sesión: ambos propietarios conservan únicamente su tenant.
+  await signInWithEmailAndPassword(auth, aEmail, password);
+  assert.deepEqual((await getBusinessesForUser(uidA)).map(x => x.restaurantId), [idA]);
+  await signInWithEmailAndPassword(auth, bEmail, password);
+  assert.deepEqual((await getBusinessesForUser(uidB)).map(x => x.restaurantId), [idB]);
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
-  console.log('PASS: alta real de dos cuentas y tenants, catálogos, publicación, aislamiento, invitación, aceptación y revocación en emuladores.');
+  console.log('PASS: dos tenants, colisión de handle, visibilidad pública/privada, roles, invitación, revocación y recuperación de sesión en emuladores.');
 } finally {
   if (server) await new Promise(resolve => server.close(resolve));
   await signOut(auth).catch(() => {});
