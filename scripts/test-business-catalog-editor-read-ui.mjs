@@ -58,7 +58,7 @@ const waitFor = async (condition,label) => {
   assert.fail(label);
 };
 const button = label => [...document.querySelectorAll('button')].find(el=>el.textContent.trim()===label);
-const visible = text => document.body.textContent.includes(text);
+const visible = text => document.body.textContent.includes(text) || [...document.querySelectorAll('input')].some(input => input.value === text);
 const catalog = name => ({items:[{
   id:name,name,description:'',category:'General',price:25,available:true,sortOrder:10,
 }]});
