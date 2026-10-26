@@ -2,6 +2,9 @@
 // No usa credenciales, cuentas, reglas desplegadas ni datos de producción.
 import assert from 'node:assert/strict';
 import express from 'express';
+import { readFileSync } from 'node:fs';
+import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
+import { buildAtomicOwnerProposalRules } from './owner-atomic-proposal-rules.mjs';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { connectAuthEmulator, createUserWithEmailAndPassword, getIdToken, reload, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { connectFirestoreEmulator, deleteDoc, doc, getDoc, setDoc, updateDoc, terminate } from 'firebase/firestore';
@@ -13,6 +16,20 @@ process.env.FIREBASE_PROJECT_ID = projectId;
 process.env.ENABLE_BUSINESS_INVITES = 'true';
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080', 'Se requiere emulador Firestore');
 assert.equal(process.env.FIREBASE_AUTH_EMULATOR_HOST, '127.0.0.1:9099', 'Se requiere emulador Auth');
+
+// Segunda ejecución opcional: prueba el flujo REAL del cliente y de invitaciones
+// con la propuesta OWNER atómica, derivada solo en memoria. No altera staged.
+if (process.env.TEST_ATOMIC_OWNER_PROPOSAL === '1') {
+  const staged = readFileSync('docs/firestore.launch-security.STAGED.rules', 'utf8');
+  const isolatedRules = buildAtomicOwnerProposalRules(staged);
+  const testEnvironment = await initializeTestEnvironment({
+    projectId,
+    firestore: { rules: isolatedRules, host: '127.0.0.1', port: 8080 },
+  });
+  await testEnvironment.cleanup();
+  console.log('Propuesta OWNER atómica cargada solo en emulador para integración completa.');
+}
+
 
 const clientApp = initializeApp({
   apiKey: 'emulator-only-key', authDomain: 'localhost', projectId,
@@ -226,7 +243,7 @@ try {
   await signInWithEmailAndPassword(auth, bEmail, password);
   assert.deepEqual((await getBusinessesForUser(uidB)).map(x => x.restaurantId), [idB]);
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
-  console.log('PASS: dos tenants, alta reintentable, siembra transaccional concurrente, catálogo preservado/restaurado, colisión de handle, visibilidad pública/privada, roles, invitación, revocación y recuperación de sesión en emuladores.');
+  console.log('PASS (' + (process.env.TEST_ATOMIC_OWNER_PROPOSAL === '1' ? 'propuesta OWNER aislada' : 'reglas staged') + '): dos tenants, alta reintentable, siembra transaccional concurrente, catálogo preservado/restaurado, colisión de handle, visibilidad pública/privada, roles, invitación, revocación y recuperación de sesión en emuladores.');
 } finally {
   if (server) await new Promise(resolve => server.close(resolve));
   await signOut(auth).catch(() => {});
