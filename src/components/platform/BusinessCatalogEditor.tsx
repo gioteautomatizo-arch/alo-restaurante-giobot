@@ -33,6 +33,9 @@ export const BusinessCatalogEditor: React.FC<{
 }> = ({ businessId, businessName, onBack }) => {
   const [items, setItems] = useState<BusinessCatalogItem[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [loadedBusinessId, setLoadedBusinessId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [reloadToken, setReloadToken] = useState(0);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [businessType, setBusinessType] = useState('restaurant');
@@ -52,18 +55,31 @@ export const BusinessCatalogEditor: React.FC<{
   }, [businessId]);
 
   useEffect(() => {
-    return subscribeToBusinessCatalog(
+    let active = true;
+    setLoaded(false);
+    setLoadedBusinessId(null);
+    setLoadError('');
+    setItems([]);
+    setDirty(false);
+    const unsubscribe = subscribeToBusinessCatalog(
       businessId,
       (catalog) => {
+        if (!active) return;
         setItems(ensureUniqueIds(catalog?.items || []));
+        setLoadedBusinessId(businessId);
+        setLoadError('');
         setLoaded(true);
       },
       (error: any) => {
-        setMessage(`Error al cargar: ${error?.message || error?.code || 'desconocido'}`);
-        setLoaded(true);
+        if (!active) return;
+        // Fallar cerrado: una lectura fallida NO es un catálogo vacío editable.
+        setLoadError(`No pudimos cargar el catálogo: ${error?.message || error?.code || 'error de conexión'}`);
+        setLoadedBusinessId(null);
+        setLoaded(false);
       }
     );
-  }, [businessId]);
+    return () => { active = false; unsubscribe(); };
+  }, [businessId, reloadToken]);
 
   const categories = useMemo(
     () => Array.from(new Set(items.map((item) => item.category).filter(Boolean))),
@@ -143,6 +159,7 @@ export const BusinessCatalogEditor: React.FC<{
   };
 
   const save = async () => {
+    if (!loaded || loadedBusinessId !== businessId || loadError || saving) return;
     const cleaned = items
       .filter((item) => item.name.trim())
       .map((item, index) => ({
@@ -167,11 +184,16 @@ export const BusinessCatalogEditor: React.FC<{
     }
   };
 
-  if (message && !loaded) {
-    return <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 text-center text-sm text-red-400">{message}</div>;
+  if (loadError) {
+    return (
+      <div role="alert" className="min-h-screen bg-[#050505] flex flex-col items-center justify-center gap-4 p-6 text-center text-sm text-red-400">
+        <p>{loadError}</p>
+        <button type="button" onClick={() => setReloadToken((value) => value + 1)} className="rounded-xl border border-[#D6A34A] px-4 py-2 text-[#E3BC6B]">Reintentar catálogo</button>
+      </div>
+    );
   }
 
-  if (!loaded) {
+  if (!loaded || loadedBusinessId !== businessId) {
     return (
       <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-[#C8C8C8] p-4 text-center">
         <div>Cargando catálogo…</div>
@@ -189,7 +211,7 @@ export const BusinessCatalogEditor: React.FC<{
           <button data-biz-back onClick={onBack} className="flex items-center gap-2 rounded-xl border border-[#3A3022] px-3 py-2 text-xs font-bold text-[#F7F7F7]">
             <ArrowLeft className="h-4 w-4" /> Negocio
           </button>
-          <button onClick={save} disabled={saving} className="flex items-center gap-2 rounded-xl bg-[#D6A34A] px-4 py-2.5 text-xs font-black text-[#050505] disabled:opacity-60">
+          <button onClick={save} disabled={saving || loadedBusinessId !== businessId || !!loadError} className="flex items-center gap-2 rounded-xl bg-[#D6A34A] px-4 py-2.5 text-xs font-black text-[#050505] disabled:opacity-60">
             <Save className="h-4 w-4" /> {saving ? 'Guardando…' : dirty ? 'Guardar cambios' : 'Guardar catálogo'}
           </button>
         </div>
