@@ -85,6 +85,29 @@ try {
   ], 'Propietario A');
   assert(updatedA.items.some(item => item.id === 'extra-a'));
   assert((await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data()?.items.some(item => item.id === 'extra-a'));
+  // Dos editores partieron de la misma versión: una escritura gana y la otra
+  // debe fallar explícitamente sin perder el producto original ni el ganador.
+  const baseRevision = updatedA.revision;
+  if (!baseRevision) throw new Error('La escritura debe generar revisión de catálogo');
+  const parallelEdits = await Promise.allSettled([
+    saveBusinessCatalog(idA, [...updatedA.items, { ...seedItem('editor-one')[0], sortOrder: 120 }], 'Editor 1', baseRevision),
+    saveBusinessCatalog(idA, [...updatedA.items, { ...seedItem('editor-two')[0], sortOrder: 130 }], 'Editor 2', baseRevision),
+  ]);
+  assert.equal(parallelEdits.filter(result => result.status === 'fulfilled').length, 1,
+    'Solo un editor puede guardar desde la misma versión');
+  assert.equal(parallelEdits.filter(result => result.status === 'rejected'
+    && /CONFLICTO_CATALOGO/.test(String(result.reason))).length, 1,
+    'El segundo editor recibe conflicto explícito');
+  const afterParallel = (await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data();
+  assert(afterParallel?.items.some((item: { id: string }) => item.id === 'extra-a'),
+    'Una carrera nunca elimina el producto ya confirmado');
+  assert.equal(afterParallel?.items.filter((item: { id: string }) =>
+    item.id === 'editor-one' || item.id === 'editor-two').length, 1);
+  await assert.rejects(
+    saveBusinessCatalog(idA, updatedA.items, 'Editor obsoleto', baseRevision),
+    /CONFLICTO_CATALOGO/,
+    'Una pestaña con versión anterior no puede reemplazar el catálogo actual'
+  );
   const retriedA = await registerBusiness({
     businessName: 'Nombre distinto que no debe reemplazar al existente',
     handle: idA, email: aEmail, password, businessType: 'ghost-kitchen',
