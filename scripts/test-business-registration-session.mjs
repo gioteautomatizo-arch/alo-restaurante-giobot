@@ -43,7 +43,7 @@ const mocks = {
   '../data/businessCatalogTemplates': 'export const getBusinessCatalogTemplate = () => ({items:[{name:"Producto de prueba",price:15}]});',
   './restaurantCore': [
     'export const normalizeRestaurantSlug = value => value.trim().toLowerCase().replace(/\\s+/g,"-");',
-    'export const createRestaurantTenant = input => input;',
+    'export const createRestaurantTenant = input => ({...input, branding:{restaurantName:input.restaurantName}});',
   ].join('\n'),
 };
 const bundle = await build({
