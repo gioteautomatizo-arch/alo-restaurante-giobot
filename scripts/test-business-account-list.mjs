@@ -21,7 +21,7 @@ const mocks = {
     'export function writeBatch() {throw new Error("No Firestore writes in this test");}',
   ].join('\n'),
   './firebase': 'export const auth = {currentUser: {uid:"owner-a"}}; export const db = {}; window.qa.auth = auth;',
-  './businessCatalogService': 'export const saveBusinessCatalog = () => {}; export const createCatalogItemId = () => "";',
+  './businessCatalogService': 'export const seedBusinessCatalogIfMissing = () => {}; export const createCatalogItemId = () => "";',
   '../data/businessCatalogTemplates': 'export const getBusinessCatalogTemplate = () => null;',
   './restaurantCore': 'export const createRestaurantTenant = () => ({}); export const normalizeRestaurantSlug = value => value;',
 };
