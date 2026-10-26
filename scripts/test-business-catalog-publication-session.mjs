@@ -11,6 +11,7 @@ const mocks = {
     'export function getDoc(ref) {return new Promise((resolve, reject) => window.qa.pending.push({ref,resolve,reject}));}',
     'export async function setDoc(ref, data, options) {window.qa.writes.push({ref,data,options});}',
     'export function onSnapshot() {throw new Error("No subscriptions in this test");}',
+    'export function runTransaction() {throw new Error("No se prueba siembra transaccional en este script");}',
   ].join('\n'),
   './firebase': 'export const auth = {currentUser:null}; export const db = {}; window.qa.auth = auth;',
   './catalogOptions': 'export const cleanOptionGroups = groups => groups || [];',
