@@ -157,38 +157,72 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
   const batch = writeBatch(db);
   batch.set(businessRef(businessId), tenant);
   batch.set(membershipRef(businessId, userId), membership);
-  await batch.commit();
+  let confirmedTenant = tenant;
+  let confirmedMembership = membership;
+  try {
+    await batch.commit();
+  } catch (commitError) {
+    // El servidor puede haber confirmado el lote aunque la respuesta se haya
+    // perdido. Recuperar SOLO una alta propia con OWNER válido; una colisión de
+    // handle ajeno debe conservar el error original y nunca tomar ese negocio.
+    try {
+      assertCurrentBusinessSession(userId);
+      const existingMembershipSnap = await getDoc(membershipRef(businessId, userId));
+      assertCurrentBusinessSession(userId);
+      if (!existingMembershipSnap.exists()) throw commitError;
+      const existingMembership = existingMembershipSnap.data() as RestaurantMembership;
+      if (!hasValidMembership(existingMembership, businessId, userId) || existingMembership.role !== 'OWNER') {
+        throw commitError;
+      }
+      const existingTenantSnap = await getDoc(businessRef(businessId));
+      assertCurrentBusinessSession(userId);
+      if (!existingTenantSnap.exists()) throw commitError;
+      const existingTenant = existingTenantSnap.data() as RestaurantTenant;
+      if (existingTenant.restaurantId !== businessId || existingTenant.ownerUserId !== userId) {
+        throw commitError;
+      }
+      confirmedTenant = existingTenant;
+      confirmedMembership = existingMembership;
+    } catch {
+      throw commitError;
+    }
+  }
 
   // El lote ya pudo haberse guardado: no informar un falso fallo de alta si
   // cambió Auth después. Evitar sembrar catálogo usando la sesión de otro UID.
   if (auth.currentUser?.uid !== userId) {
     console.warn('Alta guardada; sesión cambiada antes del catálogo. Revisar el negocio con su propietario.');
-    return { tenant, membership };
+    return { tenant: confirmedTenant, membership: confirmedMembership };
   }
 
-  // A business starts with a real, editable catalog instead of an empty shell.
-  // The template is structural starter data; the owner can replace it immediately.
-  // Se siembra UNA sola vez: primero la plantilla elegida (templateId) y, si no hay,
-  // la del giro (businessType). Si falla, el negocio ya existe y el dueño puede
-  // cargar su catálogo después, por eso solo se avisa en consola.
-  const catalogTemplate = getBusinessCatalogTemplate(input.templateId || input.businessType || 'restaurant');
-  if (catalogTemplate?.items.length) {
-    try {
-      await saveBusinessCatalog(
-        businessId,
-        catalogTemplate.items.map((item, index) => ({
-          ...item,
-          id: `${createCatalogItemId(item.name)}-${index + 1}`,
-          available: true,
-        })),
-        input.businessName.trim()
+  // Sembrar solo si falta el catálogo. Un reintento de alta confirmada no debe
+  // sobrescribir precios ni productos que el propietario ya editó.
+  try {
+    const catalogSnap = await getDoc(doc(db, BUSINESSES_COLLECTION, businessId, 'catalog', 'menu_catalog'));
+    assertCurrentBusinessSession(userId);
+    if (!catalogSnap.exists()) {
+      const catalogTemplate = getBusinessCatalogTemplate(
+        confirmedTenant.templateId || confirmedTenant.businessType || 'restaurant'
       );
-    } catch (error) {
-      console.warn('El negocio fue creado, pero no se pudo sembrar el catálogo de la plantilla:', error);
+      if (catalogTemplate?.items.length) {
+        await saveBusinessCatalog(
+          businessId,
+          catalogTemplate.items.map((item, index) => ({
+            ...item,
+            id: `${createCatalogItemId(item.name)}-${index + 1}`,
+            available: true,
+          })),
+          confirmedTenant.branding.restaurantName
+        );
+      }
     }
+  } catch (error) {
+    // Tenant y OWNER ya están confirmados: el dueño puede reparar el catálogo
+    // desde su editor o reintentar el alta sin duplicar el negocio.
+    console.warn('El negocio fue creado, pero no se pudo comprobar o sembrar el catálogo:', error);
   }
 
-  return { tenant, membership };
+  return { tenant: confirmedTenant, membership: confirmedMembership };
 }
 
 export async function loginBusinessOwner(email: string, password: string): Promise<FirebaseUser> {
