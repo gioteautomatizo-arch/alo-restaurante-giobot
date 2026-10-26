@@ -48,7 +48,7 @@ setSiteBaseUrl('https://app.example.com/restaurante-calientito?table=2');
 assert.equal(businessTableUrl('giomero', 3), 'https://app.example.com/#negocio/giomero?table=3');
 // La vista previa de AI Studio no es accesible como enlace definitivo desde otro celular.
 setSiteBaseUrl('https://ais-dev-old.usercontent.goog/preview');
-globalThis.window.location.origin = 'https://ais-dev-current.usercontent.goog';
+Object.assign(globalThis, { window: { location: { origin: 'https://ais-dev-current.usercontent.goog' } } });
 assert.equal(businessTableUrl('giomero', 3), 'https://gioteautomatizo.ai.studio/#negocio/giomero?table=3');
 setSiteBaseUrl('');
 assert.equal(calientitoTableUrl(2), 'https://gioteautomatizo.ai.studio/restaurante-calientito?table=2');
