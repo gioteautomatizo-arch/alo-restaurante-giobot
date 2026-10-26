@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ImagePlus, Loader2, Plus, Save, Trash2, Utensils, ClipboardPaste, ChevronDown, ListPlus, X } from 'lucide-react';
 import { uploadMenuImage } from '../../lib/menuImagesService';
 import { BusinessMenuPasteImport } from './BusinessMenuPasteImport';
@@ -42,6 +42,12 @@ export const BusinessCatalogEditor: React.FC<{
   const [showPaste, setShowPaste] = useState(false);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [remoteConflict, setRemoteConflict] = useState(false);
+  const loadedRevisionRef = useRef<string | null>(null);
+  const dirtyRef = useRef(false);
+  const savingRef = useRef(false);
+  const activeBusinessRef = useRef(businessId);
+  activeBusinessRef.current = businessId;
   const [openOptions, setOpenOptions] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -61,10 +67,24 @@ export const BusinessCatalogEditor: React.FC<{
     setLoadError('');
     setItems([]);
     setDirty(false);
+    setRemoteConflict(false);
+    dirtyRef.current = false;
+    savingRef.current = false;
+    loadedRevisionRef.current = null;
     const unsubscribe = subscribeToBusinessCatalog(
       businessId,
       (catalog) => {
         if (!active) return;
+        const incomingRevision = catalog?.revision || catalog?.updatedAt || null;
+        // Nunca borrar un borrador local al recibir un snapshot de otra pestaña.
+        // Si cambió la versión, bloquear Guardar hasta que el usuario decida recargar.
+        if (savingRef.current) return;
+        if (dirtyRef.current) {
+          if (incomingRevision !== loadedRevisionRef.current) setRemoteConflict(true);
+          return;
+        }
+        loadedRevisionRef.current = incomingRevision;
+        setRemoteConflict(false);
         setItems(ensureUniqueIds(catalog?.items || []));
         setLoadedBusinessId(businessId);
         setLoadError('');
@@ -87,23 +107,29 @@ export const BusinessCatalogEditor: React.FC<{
   );
 
   const updateItem = (id: string, patch: Partial<BusinessCatalogItem>) => {
+    if (savingRef.current) return;
+    dirtyRef.current = true;
     setItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
     setMessage('');
     setDirty(true);
   };
 
   const addItem = () => {
+    if (savingRef.current) return;
+    dirtyRef.current = true;
     setItems((current) => [...current, emptyItem(current.length ? Math.max(...current.map((i) => i.sortOrder)) + 10 : 10)]);
     setDirty(true);
   };
 
   const removeItem = (id: string) => {
+    if (savingRef.current) return;
+    dirtyRef.current = true;
     setItems((current) => current.filter((item) => item.id !== id));
     setDirty(true);
   };
 
   const uploadPhoto = async (id: string, file?: File | null) => {
-    if (!file) return;
+    if (!file || savingRef.current) return;
     setUploadingId(id);
     setMessage('');
     try {
@@ -131,6 +157,8 @@ export const BusinessCatalogEditor: React.FC<{
     setGroups(item, (item.optionGroups || []).map((g) => (g.id === groupId ? { ...g, choices: g.choices.map((c, i) => (i === index ? { ...c, ...patch } : c)) } : g)));
 
   const applyPasted = (parsed: ParsedMenuItem[], mode: 'add' | 'replace') => {
+    if (savingRef.current) return;
+    dirtyRef.current = true;
     const base = mode === 'replace' ? [] : items;
     let order = base.length ? Math.max(...base.map((i) => i.sortOrder)) : 0;
     const added: BusinessCatalogItem[] = parsed.map((p) => {
@@ -147,6 +175,7 @@ export const BusinessCatalogEditor: React.FC<{
   };
 
   const loadTemplate = () => {
+    if (savingRef.current) return;
     const template = getBusinessCatalogTemplate(businessType);
     if (!template) return;
     const nextItems = template.items.map((item) => ({
@@ -154,12 +183,16 @@ export const BusinessCatalogEditor: React.FC<{
       id: createCatalogItemId(item.name),
       available: true,
     }));
+    dirtyRef.current = true;
+    setDirty(true);
     setItems(ensureUniqueIds(nextItems));
     setMessage('Plantilla cargada. Guarda para publicarla en este negocio.');
   };
 
   const save = async () => {
-    if (!loaded || loadedBusinessId !== businessId || loadError || saving) return;
+    if (!loaded || loadedBusinessId !== businessId || loadError || savingRef.current || remoteConflict) return;
+    savingRef.current = true;
+    const expectedRevision = loadedRevisionRef.current;
     const cleaned = items
       .filter((item) => item.name.trim())
       .map((item, index) => ({
@@ -173,14 +206,27 @@ export const BusinessCatalogEditor: React.FC<{
     setSaving(true);
     setMessage('');
     try {
-      await saveBusinessCatalog(businessId, cleaned, businessName);
+      const saved = await saveBusinessCatalog(businessId, cleaned, businessName, expectedRevision);
+      if (activeBusinessRef.current !== businessId) return;
+      loadedRevisionRef.current = saved?.revision || saved?.updatedAt || expectedRevision;
+      dirtyRef.current = false;
       setMessage('Catálogo guardado correctamente.');
       setDirty(false);
+      setRemoteConflict(false);
     } catch (error) {
+      if (activeBusinessRef.current !== businessId) return;
       console.error(error);
-      setMessage('No pudimos guardar el catálogo. Revisa tu conexión y permisos.');
+      if (error instanceof Error && error.message.includes('CONFLICTO_CATALOGO')) {
+        setRemoteConflict(true);
+        setMessage('El catálogo cambió en otra sesión. Conservamos tu borrador; recarga para revisar los cambios.');
+      } else {
+        setMessage('No pudimos guardar el catálogo. Revisa tu conexión y permisos.');
+      }
     } finally {
-      setSaving(false);
+      if (activeBusinessRef.current === businessId) {
+        savingRef.current = false;
+        setSaving(false);
+      }
     }
   };
 
@@ -211,7 +257,7 @@ export const BusinessCatalogEditor: React.FC<{
           <button data-biz-back onClick={onBack} className="flex items-center gap-2 rounded-xl border border-[#3A3022] px-3 py-2 text-xs font-bold text-[#F7F7F7]">
             <ArrowLeft className="h-4 w-4" /> Negocio
           </button>
-          <button onClick={save} disabled={saving || loadedBusinessId !== businessId || !!loadError} className="flex items-center gap-2 rounded-xl bg-[#D6A34A] px-4 py-2.5 text-xs font-black text-[#050505] disabled:opacity-60">
+          <button onClick={save} disabled={saving || remoteConflict || loadedBusinessId !== businessId || !!loadError} className="flex items-center gap-2 rounded-xl bg-[#D6A34A] px-4 py-2.5 text-xs font-black text-[#050505] disabled:opacity-60">
             <Save className="h-4 w-4" /> {saving ? 'Guardando…' : dirty ? 'Guardar cambios' : 'Guardar catálogo'}
           </button>
         </div>
@@ -232,6 +278,20 @@ export const BusinessCatalogEditor: React.FC<{
           )}
         </div>
 
+        {remoteConflict && (
+          <div role="alert" className="mt-4 rounded-xl border border-amber-500 bg-[#111111] p-4 text-sm text-amber-200">
+            <p>El catálogo cambió en otra pestaña o sesión. Tu borrador se conserva, pero no se puede guardar encima de esos cambios.</p>
+            <button type="button" disabled={saving} onClick={() => {
+              dirtyRef.current = false;
+              loadedRevisionRef.current = null;
+              setDirty(false);
+              setRemoteConflict(false);
+              setReloadToken((value) => value + 1);
+            }} className="mt-3 rounded-lg border border-amber-400 px-3 py-2 font-bold">
+              Descartar mi borrador y recargar catálogo
+            </button>
+          </div>
+        )}
         {message && <div className="mt-4 rounded-xl border border-[#D6A34A]/40 bg-[#111111] px-4 py-3 text-xs font-bold text-[#E3BC6B]">{message}</div>}
 
         {items.length === 0 ? (
