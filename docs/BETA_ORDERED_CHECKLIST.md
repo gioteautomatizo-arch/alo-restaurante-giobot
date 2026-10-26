@@ -245,3 +245,12 @@ npx firebase emulators:exec --only firestore --project demo-gioteautomatizo-owne
 - **CI del bloque:** PENDIENTE de confirmar sobre el commit final. No declarar compilación o prueba aprobada antes de consultar GitHub Actions.
 - **Paso 2 ABIERTO:** continúa la revisión/aprobación de la propuesta OWNER atómico y el recorrido completo visual/manual con dos negocios ficticios en Android/iPad. **Paso 4 Caja histórica y pagos MIXTO: PENDIENTE**, aunque los diagnósticos terminen con código cero.
 - **Siguiente bloque:** confirmar CI y corregir cualquier regresión; continuar el paso 2 con recorrido de interfaz de alta → configuración → catálogo → publicación → invitación/aceptación/revocación en entorno aislado. No publicar ni desplegar reglas.
+
+
+### CI confirmado del bloqueo de doble alta (`4887e190`)
+
+- [Quality checks #40280855162](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40280855162): **success**. TypeScript, compilación de producción, nueva prueba React/jsdom de alta y regresiones existentes.
+- [Staged Firestore security tests #40280855240](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40280855240): **success**. Guard de reglas y pruebas con emuladores. **No** demuestra que el problema de OWNER huérfano esté resuelto.
+- Primer intento [Quality checks #40280601731](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40280601731): **failure** por expectativa prematura del texto de carga en el nuevo test, antes de que React completara el render. Se corrigió esperando explícitamente ese render en `4887e190`; el CI posterior pasó.
+- **Límites:** se prueba el componente padre con formulario y servicio simulados; no hay validación visual Android/iPad ni recorrido real de interfaz de dos cuentas. El bloqueo de OWNER atómico permanece pendiente de revisión; Caja histórica/MIXTO sigue **PENDIENTE**.
+- **Siguiente:** terminar validación UI del paso 2 con dos cuentas ficticias y revisar por separado la propuesta OWNER atómico; después paso 3.
