@@ -109,14 +109,14 @@ export async function saveBrandingThroughUI({tenant,user,bridge,name}) {
     await waitFor(()=>!!button(document,'Guardar cambios'),'Formulario de identidad');
     const input=[...document.querySelectorAll('label')].find(el=>el.textContent.includes('Nombre del negocio'))?.querySelector('input');
     setInput(window,input,name);
-    await waitFor(()=>input.value===name,'Nombre editado en React');
+    await waitFor(()=>document.querySelector('h1')?.textContent===name,'Nombre editado y renderizado en React');
     const save=button(document,'Guardar cambios');
     save.click();
     save.click();
     await waitFor(()=>window.qa.saved.length===1,'Guardar identidad mediante Firestore emulado');
     assert.equal(window.qa.saved[0].restaurantId,tenant.restaurantId);
     assert.equal(window.qa.saved[0].branding.restaurantName,name);
-    assert.equal(button(document,'Guardar cambios')?.disabled,false,'Formulario vuelve a estar disponible');
+    await waitFor(()=>button(document,'Guardar cambios')?.disabled===false,'Formulario vuelve a estar disponible');
     return window.qa.saved[0];
   });
 }
@@ -137,6 +137,7 @@ export async function addCatalogProductThroughUI({businessId,businessName,user,b
     const priceInput=row?.querySelector('input[placeholder="$ Precio"]');
     setInput(window,priceInput,String(price));
     await waitFor(()=>priceInput.value===String(price),'Precio actualizado');
+    await new Promise(resolve=>setTimeout(resolve,20));
     const save=button(document,'Guardar cambios');
     assert(save && !save.disabled,'Guardar catálogo disponible');
     save.click();
