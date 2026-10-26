@@ -365,3 +365,10 @@ npx firebase emulators:exec --only firestore --project demo-gioteautomatizo-owne
 - **Límite:** se probó la carrera de siembra en emulador, no una interrupción real de red ni dos navegadores físicos. La propuesta OWNER atómico continúa **SIN aplicar**, la regla staged original admite reserva huérfana y falta validación visual/manual Android/iPad con dos cuentas. **Paso 2 ABIERTO**.
 - **Caja histórica y pagos MIXTO: PENDIENTE.** Los diagnósticos que imprimen `PENDIENTE` no son conciliación resuelta.
 - **Siguiente bloque:** recorrido integral de UI alta → configuración → catálogo → publicación → invitación → aceptación → revocación con Auth/Firestore emulados, más revisión separada de OWNER atómico; luego paso 3 pedido/recuperación. No desplegar reglas ni tocar producción.
+
+## Paso 2 — proteger borradores de catálogo frente a edición simultánea (26 de octubre de 2026; plan)
+
+- **Base verificada:** HEAD `29fa8b61`; Quality checks #40324559839 y Staged Firestore security tests #40324559735 en **success**. Ninguna ejecución pendiente observada.
+- **Hallazgo:** `BusinessCatalogEditor` reemplaza el formulario en cada snapshot, incluso con cambios locales sin guardar. `saveBusinessCatalog` usa `setDoc` completo sin comprobación de versión: dos editores pueden perder productos o precios silenciosamente.
+- **Bloque elegido dentro del paso 2:** proteger el borrador local de snapshots remotos, detectar conflictos y ofrecer recarga explícita; añadir versión única al catálogo y escritura condicional transaccional para el editor. Mantener compatibilidad de llamadas existentes; probar concurrencia con emulador y UI React/jsdom, y ejecutar CI. Sin reglas ni datos reales.
+- **Estado de esta anotación:** PLAN, **NO implementado ni verificado aún**. OWNER atómico staged, recorrido integral visual Android/iPad y Caja histórica/MIXTO continúan **PENDIENTE**. Después corresponde cerrar el paso 2 y pasar al paso 3.
