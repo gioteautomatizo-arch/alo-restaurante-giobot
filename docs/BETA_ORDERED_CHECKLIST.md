@@ -254,3 +254,13 @@ npx firebase emulators:exec --only firestore --project demo-gioteautomatizo-owne
 - Primer intento [Quality checks #40280601731](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40280601731): **failure** por expectativa prematura del texto de carga en el nuevo test, antes de que React completara el render. Se corrigió esperando explícitamente ese render en `4887e190`; el CI posterior pasó.
 - **Límites:** se prueba el componente padre con formulario y servicio simulados; no hay validación visual Android/iPad ni recorrido real de interfaz de dos cuentas. El bloqueo de OWNER atómico permanece pendiente de revisión; Caja histórica/MIXTO sigue **PENDIENTE**.
 - **Siguiente:** terminar validación UI del paso 2 con dos cuentas ficticias y revisar por separado la propuesta OWNER atómico; después paso 3.
+
+
+## Paso 2 — integridad de membresías y sesión en lecturas privadas (26 de octubre de 2026)
+
+- **Base verificada antes del bloque:** HEAD `75f33782`; [Quality checks #40281080607](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40281080607) y [Staged Firestore security tests #40281080620](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40281080620), ambas **success**. No se reabrieron URL, envío público ni limpieza Clientes/Membresías.
+- **Riesgo detectado en código:** `getBusinessForUser` validaba UID y estado, pero no el `restaurantId` interno de la membresía ni el del documento del negocio. `getBusinessMembership` tampoco validaba tenant o rol; la lista no verificaba la clave física de cada membresía y podía resolver respuestas tras cambiar Auth.
+- **Bloque reversible propuesto en la rama:** validar UID, tenant, clave y rol reconocido; comprobar la sesión antes y después de lecturas asíncronas; no devolver datos de otro negocio ni listas obsoletas. Se amplió `scripts/test-business-account-list.mjs` con casos de corrupción de membresía, cambio de UID, lectura individual y rol inactivo/desconocido.
+- **CI del bloque: PENDIENTE de comprobar tras commit.** La prueba usa Firestore/Auth simulados; no certifica permisos desplegados, ni sustituye la integración de emuladores ni validación visual Android/iPad.
+- **Paso 2 ABIERTO:** OWNER atómico staged pendiente de revisión/autorización; falta recorrido visual completo con dos cuentas ficticias. **Caja histórica/MIXTO sigue PENDIENTE** aunque otros tests concluyan con éxito.
+- **Siguiente:** comprobar CI, corregir regresiones; seguir con recorrido visual/manual del paso 2 en entorno aislado y revisión OWNER sin despliegue. Luego paso 3.

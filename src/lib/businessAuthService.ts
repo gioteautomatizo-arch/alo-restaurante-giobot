@@ -28,6 +28,26 @@ import {
 const BUSINESSES_COLLECTION = 'businesses';
 const MEMBERSHIPS_COLLECTION = 'businessMemberships';
 
+// Las membresías son documentos externos: validar también su contenido y su
+// clave, no solo la ruta que se consultó o el tipo TypeScript.
+const BUSINESS_ROLES = new Set<BusinessRole>([
+  'SUPER_ADMIN', 'OWNER', 'ADMIN', 'MANAGER', 'CASHIER',
+  'WAITER', 'KITCHEN', 'EMPLOYEE', 'CLIENT',
+]);
+
+function hasValidMembership(data: RestaurantMembership, businessId: string, userId: string): boolean {
+  return data.restaurantId === businessId
+    && data.userId === userId
+    && data.active === true
+    && BUSINESS_ROLES.has(data.role);
+}
+
+function assertCurrentBusinessSession(userId: string): void {
+  if (!userId || auth.currentUser?.uid !== userId) {
+    throw new Error('La sesión cambió durante la consulta. Vuelve a entrar y reintenta.');
+  }
+}
+
 export interface RegisterBusinessInput {
   businessName: string;
   businessType?: string;
@@ -181,25 +201,35 @@ export async function logoutBusinessOwner(): Promise<void> {
 }
 
 export async function getBusinessesForUser(userId: string): Promise<RestaurantTenant[]> {
+  assertCurrentBusinessSession(userId);
   const membershipsQuery = query(
     collection(db, MEMBERSHIPS_COLLECTION),
     where('userId', '==', userId),
     where('active', '==', true)
   );
   const membershipsSnap = await getDocs(membershipsQuery);
-  const businessIds = [...new Set(membershipsSnap.docs.map(
-    (docSnap) => (docSnap.data() as RestaurantMembership).restaurantId
-  ))];
+  assertCurrentBusinessSession(userId);
+  const businessIds = [...new Set(membershipsSnap.docs.map((docSnap) => {
+    const membership = docSnap.data() as RestaurantMembership;
+    const businessId = membership.restaurantId;
+    if (typeof businessId !== 'string' || !businessId
+      || docSnap.id !== `${businessId}_${userId}`
+      || !hasValidMembership(membership, businessId, userId)) {
+      throw new Error('Una membresía de la cuenta tiene datos inconsistentes.');
+    }
+    return businessId;
+  }))];
 
   // Una lectura parcial NO significa que el usuario tenga menos negocios.
   // Propagar el fallo permite al Portal mostrar Reintentar en vez de una lista
   // incompleta o el mensaje engañoso de que no hay negocios registrados.
-  return Promise.all(businessIds.map(async (businessId) => {
+  const businesses = await Promise.all(businessIds.map(async (businessId) => {
     if (typeof businessId !== 'string' || !businessId) {
       throw new Error('Una membresía contiene un identificador de negocio inválido.');
     }
     try {
       const snap = await getDoc(businessRef(businessId));
+      assertCurrentBusinessSession(userId);
       if (!snap.exists()) throw new Error('La membresía apunta a un negocio inexistente.');
       const tenant = snap.data() as RestaurantTenant;
       if (tenant.restaurantId !== businessId) throw new Error('El identificador del negocio no coincide con su membresía.');
@@ -209,6 +239,8 @@ export async function getBusinessesForUser(userId: string): Promise<RestaurantTe
       throw new Error('No pudimos cargar todos tus negocios. Revisa tu conexión o permisos y reintenta.');
     }
   }));
+  assertCurrentBusinessSession(userId);
+  return businesses;
 }
 
 /**
@@ -219,14 +251,19 @@ export async function getBusinessForUser(
   userId: string,
   businessId: string
 ): Promise<RestaurantTenant | null> {
+  assertCurrentBusinessSession(userId);
   const membershipSnap = await getDoc(membershipRef(businessId, userId));
+  assertCurrentBusinessSession(userId);
   if (!membershipSnap.exists()) return null;
 
   const membership = membershipSnap.data() as RestaurantMembership;
-  if (membership.userId !== userId || !membership.active) return null;
+  if (!hasValidMembership(membership, businessId, userId)) return null;
 
   const businessSnap = await getDoc(businessRef(businessId));
-  return businessSnap.exists() ? (businessSnap.data() as RestaurantTenant) : null;
+  assertCurrentBusinessSession(userId);
+  if (!businessSnap.exists()) return null;
+  const tenant = businessSnap.data() as RestaurantTenant;
+  return tenant.restaurantId === businessId ? tenant : null;
 }
 
 
@@ -235,11 +272,12 @@ export async function getBusinessMembership(
   userId: string,
   businessId: string
 ): Promise<RestaurantMembership | null> {
+  assertCurrentBusinessSession(userId);
   const snap = await getDoc(membershipRef(businessId, userId));
+  assertCurrentBusinessSession(userId);
   if (!snap.exists()) return null;
   const membership = snap.data() as RestaurantMembership;
-  if (membership.userId !== userId || !membership.active) return null;
-  return membership;
+  return hasValidMembership(membership, businessId, userId) ? membership : null;
 }
 
 export const PLATFORM_ADMINS_COLLECTION = 'platformAdmins';
