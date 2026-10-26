@@ -47,8 +47,8 @@ const waitFor = async (condition, label) => {
   }
   assert.fail(label);
 };
-const membership = (uid,role='OWNER') => ({
-  exists: () => true, data: () => ({userId:uid,role,active:true}),
+const membership = (uid,role='OWNER',restaurantId='tenant-a',active=true) => ({
+  exists: () => true, data: () => ({restaurantId,userId:uid,role,active}),
 });
 const item = {id:'product-a',name:'Producto A',description:'',category:'General',price:25,available:true,sortOrder:10};
 const tenant = id => ({restaurantId:id,branding:{restaurantName:id,publicSlug:id}});
@@ -71,6 +71,21 @@ try {
   await assert.rejects(wrongRole,/No tienes permiso/);
   assert.equal(window.qa.writes.length,0);
 
+  // Una membresía almacenada bajo la ruta de A no autoriza editar B.
+  reset();
+  const wrongTenantCatalog = window.qa.saveCatalog('tenant-a',[item],'Prueba');
+  await waitFor(() => window.qa.pending.length === 1,'Falta membresía cruzada del catálogo');
+  window.qa.pending[0].resolve(membership('owner-a','OWNER','tenant-b'));
+  await assert.rejects(wrongTenantCatalog,/No tienes permiso/);
+  assert.equal(window.qa.writes.length,0,'Membresía discordante no guarda catálogo');
+
+  reset();
+  const inactiveCatalog = window.qa.saveCatalog('tenant-a',[item],'Prueba');
+  await waitFor(() => window.qa.pending.length === 1,'Falta membresía inactiva');
+  window.qa.pending[0].resolve(membership('owner-a','OWNER','tenant-a',false));
+  await assert.rejects(inactiveCatalog,/No tienes permiso/);
+  assert.equal(window.qa.writes.length,0);
+
   reset();
   const switched = window.qa.saveCatalog('tenant-a',[item],'Prueba');
   await waitFor(() => window.qa.pending.length === 1,'Falta consulta antes de cambio UID');
@@ -83,7 +98,7 @@ try {
   const second = window.qa.saveCatalog('tenant-b',[{...item,id:'product-b'}],'Prueba B');
   await waitFor(() => window.qa.pending.length === 1,'Falta consulta catálogo B');
   assert.equal(window.qa.pending[0].ref.path,'businessMemberships/tenant-b_owner-b');
-  window.qa.pending[0].resolve(membership('owner-b'));
+  window.qa.pending[0].resolve(membership('owner-b','OWNER','tenant-b'));
   await second;
   assert.equal(window.qa.writes[0].ref.path,'businesses/tenant-b/catalog/menu_catalog');
 
@@ -95,6 +110,27 @@ try {
   assert.equal(window.qa.writes.length,1);
   assert.equal(window.qa.writes[0].ref.path,'publicBusinessProfiles/tenant-a');
   assert.equal(window.qa.writes[0].data.published,true);
+
+  reset();
+  const wrongTenantPublication = window.qa.publish('tenant-a',tenant('tenant-a'),true);
+  await waitFor(() => window.qa.pending.length === 1,'Falta membresía cruzada de publicación');
+  window.qa.pending[0].resolve(membership('owner-a','OWNER','tenant-b'));
+  await assert.rejects(wrongTenantPublication,/Solo el propietario/);
+  assert.equal(window.qa.writes.length,0,'Membresía cruzada no publica');
+
+  reset();
+  const inactivePublication = window.qa.publish('tenant-a',tenant('tenant-a'),false);
+  await waitFor(() => window.qa.pending.length === 1,'Falta membresía inactiva de publicación');
+  window.qa.pending[0].resolve(membership('owner-a','OWNER','tenant-a',false));
+  await assert.rejects(inactivePublication,/Solo el propietario/);
+  assert.equal(window.qa.writes.length,0);
+
+  reset();
+  const wrongRolePublication = window.qa.publish('tenant-a',tenant('tenant-a'),true);
+  await waitFor(() => window.qa.pending.length === 1,'Falta rol de publicación');
+  window.qa.pending[0].resolve(membership('owner-a','MANAGER'));
+  await assert.rejects(wrongRolePublication,/Solo el propietario/);
+  assert.equal(window.qa.writes.length,0);
 
   reset();
   const stalePublication = window.qa.publish('tenant-a',tenant('tenant-a'),true);
@@ -112,11 +148,11 @@ try {
   reset('owner-b');
   const hideB = window.qa.publish('tenant-b',tenant('tenant-b'),false);
   await waitFor(() => window.qa.pending.length === 1,'Falta consulta para despublicar B');
-  window.qa.pending[0].resolve(membership('owner-b'));
+  window.qa.pending[0].resolve(membership('owner-b','OWNER','tenant-b'));
   await hideB;
   assert.equal(window.qa.writes[0].ref.path,'publicBusinessProfiles/tenant-b');
   assert.equal(window.qa.writes[0].data.published,false);
-  console.log('PASS: catálogo y publicación por tenant, rol, cambio de UID y despublicación (Auth/Firestore simulados; sin escrituras reales).');
+  console.log('PASS: catálogo y publicación validan UID, tenant interno, rol, estado, sesión y despublicación (Firestore simulado).');
 } finally {
   window.close();
 }

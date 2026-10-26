@@ -23,6 +23,7 @@ connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
 connectFirestoreEmulator(db, '127.0.0.1', 8080);
 const { registerBusiness, getBusinessesForUser, getBusinessForUser } = await import('../src/lib/businessAuthService.ts');
 const { setBusinessPublication } = await import('../src/lib/businessPublicProfileService.ts');
+const { saveBusinessCatalog } = await import('../src/lib/businessCatalogService.ts');
 const { registerBusinessInviteApi } = await import('../businessInviteApi.ts');
 const adminApp = initializeAdminApp({ projectId });
 const adminAuth = getAdminAuth(adminApp);
@@ -49,6 +50,13 @@ try {
   const catalogA = await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'));
   assert(catalogA.exists() && catalogA.data().items.length > 0, 'Catálogo A sembrado');
   assert.deepEqual((await getBusinessesForUser(uidA)).map(x => x.restaurantId), [idA]);
+  // Edición efectiva de catálogo con el SDK real conectado al emulador.
+  const updatedA = await saveBusinessCatalog(idA, [
+    ...catalogA.data()!.items,
+    { id: 'extra-a', name: 'Solo A', description: '', category: 'Prueba', price: 42, available: true, sortOrder: 99 },
+  ], 'Propietario A');
+  assert(updatedA.items.some(item => item.id === 'extra-a'));
+  assert((await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data()?.items.some(item => item.id === 'extra-a'));
   await setBusinessPublication(idA, a.tenant, true);
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
 
@@ -57,8 +65,16 @@ try {
   const uidB = b.membership.userId;
   assert.notEqual(uidA, uidB);
   assert.equal((await getDoc(doc(db, 'businessMemberships', idB + '_' + uidB))).data()?.role, 'OWNER');
-  assert((await getDoc(doc(db, 'businesses', idB, 'catalog', 'menu_catalog'))).exists(), 'Catálogo B sembrado');
+  const catalogB = await getDoc(doc(db, 'businesses', idB, 'catalog', 'menu_catalog'));
+  assert(catalogB.exists(), 'Catálogo B sembrado');
+  await saveBusinessCatalog(idB, [
+    ...catalogB.data()!.items,
+    { id: 'extra-b', name: 'Solo B', description: '', category: 'Prueba', price: 25, available: true, sortOrder: 99 },
+  ], 'Propietario B');
+  assert(!(await getDoc(doc(db, 'businesses', idB, 'catalog', 'menu_catalog'))).data()?.items.some(item => item.id === 'extra-a'));
+  assert(!(await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data()?.items.some(item => item.id === 'extra-b'));
   assert.deepEqual((await getBusinessesForUser(uidB)).map(x => x.restaurantId), [idB]);
+  await assert.rejects(saveBusinessCatalog(idA, updatedA.items, 'B no puede editar A'), /acceso|permission-denied/i);
   await deny(getDoc(doc(db, 'businesses', idA)), 'B no lee configuración privada de A');
   await deny(getDoc(doc(db, 'businessMemberships', idA + '_' + uidA)), 'B no lee OWNER de A');
   await deny(setDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'), {

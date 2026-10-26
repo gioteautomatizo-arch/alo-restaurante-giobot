@@ -43,9 +43,9 @@ async function assertCatalogManager(businessId: string): Promise<string> {
   const membershipSnap = await getDoc(doc(db, 'businessMemberships', membershipId));
   if (!membershipSnap.exists()) throw new Error('No tienes acceso a este negocio.');
 
-  const membership = membershipSnap.data() as { userId?: string; role?: BusinessRole; active?: boolean };
+  const membership = membershipSnap.data() as { restaurantId?: string; userId?: string; role?: BusinessRole; active?: boolean };
   const allowed: BusinessRole[] = ['SUPER_ADMIN', 'OWNER', 'ADMIN', 'MANAGER'];
-  if (membership.userId !== user.uid || membership.active !== true || !allowed.includes(membership.role as BusinessRole)) {
+  if (membership.restaurantId !== businessId || membership.userId !== user.uid || membership.active !== true || !allowed.includes(membership.role as BusinessRole)) {
     throw new Error('No tienes permiso para administrar el catálogo de este negocio.');
   }
   // La lectura de permisos es asíncrona: Auth pudo cambiar durante getDoc.

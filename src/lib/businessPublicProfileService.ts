@@ -73,7 +73,7 @@ export async function setBusinessPublication(businessId: string, tenant: Restaur
   const membershipSnap = await getDoc(doc(db, 'businessMemberships', businessId + '_' + user.uid));
   const membership = membershipSnap.exists() ? membershipSnap.data() : null;
   if (!await isPlatformAdmin(user.uid) &&
-      (!membership || membership.userId !== user.uid || membership.active !== true || membership.role !== 'OWNER')) {
+      (!membership || membership.restaurantId !== businessId || membership.userId !== user.uid || membership.active !== true || membership.role !== 'OWNER')) {
     throw new Error('Solo el propietario del negocio puede publicar su página.');
   }
   // No publicar con la sesión de otra cuenta tras las lecturas asíncronas.
