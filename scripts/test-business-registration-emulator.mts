@@ -5,6 +5,7 @@ import express from 'express';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import { buildAtomicOwnerProposalRules } from './owner-atomic-proposal-rules.mjs';
+import { registerThroughOnboardingUI } from './business-onboarding-emulator-ui.mjs';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { connectAuthEmulator, createUserWithEmailAndPassword, getIdToken, reload, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { connectFirestoreEmulator, deleteDoc, doc, getDoc, setDoc, updateDoc, terminate } from 'firebase/firestore';
@@ -59,8 +60,12 @@ const deny = async (promise, label) => {
 };
 let server;
 try {
-  // Paso 2: el flujo de alta del cliente crea Auth, tenant, OWNER y catálogo.
-  const a = await signup(idA, aEmail, 'restaurant');
+  // Paso 2: las seis pantallas React reales llaman al servicio de alta con Auth/Firestore emulados.
+  // Después se comprueban tenant, OWNER, catálogo y el resto del recorrido real.
+  const a = await registerThroughOnboardingUI({
+    name: 'Prueba ' + idA, handle: idA, email: aEmail,
+    businessType: 'restaurant', onRegister: registerBusiness,
+  });
   const uidA = a.membership.userId;
   assert.equal(a.tenant.restaurantId, idA);
   assert.equal((await getDoc(doc(db, 'businessMemberships', idA + '_' + uidA))).data()?.role, 'OWNER');
@@ -137,7 +142,10 @@ try {
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
 
   await signOut(auth);
-  const b = await signup(idB, bEmail, 'ghost-kitchen');
+  const b = await registerThroughOnboardingUI({
+    name: 'Prueba ' + idB, handle: idB, email: bEmail,
+    businessType: 'ghost-kitchen', onRegister: registerBusiness,
+  });
   const uidB = b.membership.userId;
   assert.notEqual(uidA, uidB);
   assert.equal((await getDoc(doc(db, 'businessMemberships', idB + '_' + uidB))).data()?.role, 'OWNER');
@@ -243,7 +251,7 @@ try {
   await signInWithEmailAndPassword(auth, bEmail, password);
   assert.deepEqual((await getBusinessesForUser(uidB)).map(x => x.restaurantId), [idB]);
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
-  console.log('PASS (' + (process.env.TEST_ATOMIC_OWNER_PROPOSAL === '1' ? 'propuesta OWNER aislada' : 'reglas staged') + '): dos tenants, alta reintentable, siembra transaccional concurrente, catálogo preservado/restaurado, colisión de handle, visibilidad pública/privada, roles, invitación, revocación y recuperación de sesión en emuladores.');
+  console.log('PASS (' + (process.env.TEST_ATOMIC_OWNER_PROPOSAL === '1' ? 'propuesta OWNER aislada' : 'reglas staged') + '): onboarding React de dos dueños conectado a Auth/Firestore emulados, alta reintentable, siembra transaccional concurrente, catálogo preservado/restaurado, colisión de handle, visibilidad pública/privada, roles, invitación, revocación y recuperación de sesión en emuladores.');
 } finally {
   if (server) await new Promise(resolve => server.close(resolve));
   await signOut(auth).catch(() => {});
