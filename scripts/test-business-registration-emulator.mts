@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { connectAuthEmulator, createUserWithEmailAndPassword, getIdToken, reload, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { connectFirestoreEmulator, doc, getDoc, setDoc, updateDoc, terminate } from 'firebase/firestore';
+import { connectFirestoreEmulator, deleteDoc, doc, getDoc, setDoc, updateDoc, terminate } from 'firebase/firestore';
 import { initializeApp as initializeAdminApp, deleteApp as deleteAdminApp } from 'firebase-admin/app';
 import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 
@@ -50,6 +50,16 @@ try {
   const catalogA = await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'));
   assert(catalogA.exists() && catalogA.data().items.length > 0, 'Catálogo A sembrado');
   assert.deepEqual((await getBusinessesForUser(uidA)).map(x => x.restaurantId), [idA]);
+
+  // Recuperación: una alta ya confirmada puede reintentarse sin reclamar un
+  // identificador ajeno. Si faltó sembrar catálogo, el reintento lo restaura.
+  await deleteDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'));
+  assert.equal((await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).exists(), false);
+  const restoredA = await signup(idA, aEmail, 'restaurant');
+  assert.equal(restoredA.tenant.ownerUserId, uidA);
+  assert.equal(restoredA.membership.role, 'OWNER');
+  assert((await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data()?.items.length > 0,
+    'Reintento del dueño recupera catálogo ausente');
   // Edición efectiva de catálogo con el SDK real conectado al emulador.
   const updatedA = await saveBusinessCatalog(idA, [
     ...catalogA.data()!.items,
@@ -57,6 +67,14 @@ try {
   ], 'Propietario A');
   assert(updatedA.items.some(item => item.id === 'extra-a'));
   assert((await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data()?.items.some(item => item.id === 'extra-a'));
+  const retriedA = await registerBusiness({
+    businessName: 'Nombre distinto que no debe reemplazar al existente',
+    handle: idA, email: aEmail, password, businessType: 'ghost-kitchen',
+  });
+  assert.equal(retriedA.tenant.branding.restaurantName, a.tenant.branding.restaurantName,
+    'El reintento no sobrescribe la ficha original');
+  assert((await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data()?.items.some(item => item.id === 'extra-a'),
+    'El reintento no reemplaza el catálogo editado');
   await setBusinessPublication(idA, a.tenant, true);
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
 
@@ -167,7 +185,7 @@ try {
   await signInWithEmailAndPassword(auth, bEmail, password);
   assert.deepEqual((await getBusinessesForUser(uidB)).map(x => x.restaurantId), [idB]);
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
-  console.log('PASS: dos tenants, colisión de handle, visibilidad pública/privada, roles, invitación, revocación y recuperación de sesión en emuladores.');
+  console.log('PASS: dos tenants, alta reintentable, catálogo preservado/restaurado, colisión de handle, visibilidad pública/privada, roles, invitación, revocación y recuperación de sesión en emuladores.');
 } finally {
   if (server) await new Promise(resolve => server.close(resolve));
   await signOut(auth).catch(() => {});
