@@ -61,6 +61,8 @@ export interface BusinessCatalogDocument {
   items: BusinessCatalogItem[];
   updatedAt: string;
   updatedBy: string;
+  /** Identificador único de cada escritura para detectar ediciones concurrentes. */
+  revision?: string;
 }
 
 function catalogRef(businessId: string) {
@@ -129,6 +131,7 @@ function buildCatalogPayload(
       .sort((a, b) => a.sortOrder - b.sortOrder),
     updatedAt: new Date().toISOString(),
     updatedBy: actorName,
+    revision: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
   };
 }
 
@@ -160,18 +163,44 @@ export async function seedBusinessCatalogIfMissing(
   });
 }
 
+/**
+ * expectedRevision indefinido conserva el guardado histórico de otros módulos.
+ * El editor siempre envía su versión (null si el catálogo aún no existe):
+ * una transacción impide sobrescribir una edición realizada por otra pestaña.
+ */
 export async function saveBusinessCatalog(
   businessId: string,
   items: BusinessCatalogItem[],
-  actorName: string
+  actorName: string,
+  expectedRevision?: string | null
 ): Promise<BusinessCatalogDocument> {
   const managerUid = await assertCatalogManager(businessId);
   const payload = buildCatalogPayload(businessId, items, actorName);
-  // Última puerta antes de sobrescribir el documento completo del catálogo.
   if (auth.currentUser?.uid !== managerUid) {
     throw new Error('La sesión cambió antes de guardar el catálogo. No se envió ningún cambio.');
   }
-  await setDoc(catalogRef(businessId), payload, { merge: false });
+  const ref = catalogRef(businessId);
+  if (expectedRevision !== undefined) {
+    return runTransaction(db, async (transaction) => {
+      if (auth.currentUser?.uid !== managerUid) {
+        throw new Error('La sesión cambió antes de guardar el catálogo.');
+      }
+      const current = await transaction.get(ref);
+      const currentRevision = current.exists()
+        ? (current.data().revision || current.data().updatedAt || null)
+        : null;
+      if (currentRevision !== expectedRevision) {
+        throw new Error('CONFLICTO_CATALOGO: Otra persona modificó el catálogo. Recarga antes de sobrescribir.');
+      }
+      if (auth.currentUser?.uid !== managerUid) {
+        throw new Error('La sesión cambió durante el guardado del catálogo.');
+      }
+      transaction.set(ref, payload);
+      return payload;
+    });
+  }
+  // Compatibilidad: importadores y rutas históricas no pasan versión.
+  await setDoc(ref, payload, { merge: false });
   return payload;
 }
 
