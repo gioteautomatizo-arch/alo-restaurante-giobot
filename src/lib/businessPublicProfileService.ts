@@ -76,6 +76,10 @@ export async function setBusinessPublication(businessId: string, tenant: Restaur
       (!membership || membership.userId !== user.uid || membership.active !== true || membership.role !== 'OWNER')) {
     throw new Error('Solo el propietario del negocio puede publicar su página.');
   }
+  // No publicar con la sesión de otra cuenta tras las lecturas asíncronas.
+  if (auth.currentUser?.uid !== user.uid) {
+    throw new Error('La sesión cambió antes de publicar el negocio. Vuelve a iniciar sesión.');
+  }
   const ref = doc(db, 'publicBusinessProfiles', businessId);
   if (published) {
     await setDoc(ref, makePublicBusinessProfile(businessId, tenant));
