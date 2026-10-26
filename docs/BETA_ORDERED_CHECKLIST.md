@@ -321,3 +321,11 @@ npx firebase emulators:exec --only firestore --project demo-gioteautomatizo-owne
 - **Paso 2 sigue ABIERTO:** falta revisar/aprobar OWNER atómico (la regla staged original admite alta huérfana), recorrido completo integrado con dos cuentas ficticias y backend emulado, y verificación visual Android/iPad. El test de seis pantallas solo cubre el formulario; no prueba catálogo, publicación ni invitaciones en la misma sesión visual.
 - **Paso 4 Caja/MIXTO sigue PENDIENTE:** los diagnósticos contables con `PENDIENTE` no constituyen conciliación resuelta.
 - **Siguiente bloque:** revisión de compatibilidad/seguridad de OWNER atómico sin modificar reglas y/o integración del recorrido UI con Auth/Firestore emulados, siempre sin despliegue; luego paso 3 de pedidos y recuperación.
+
+
+## Paso 2 — recuperación segura de alta confirmada y catálogo (26 de octubre de 2026; plan)
+
+- **Base revisada antes del bloque:** HEAD `74b627f1`; [Quality checks #40309403408](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40309403408) y [Staged Firestore security tests #40309403559](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40309403559) **success**. Ningún CI en curso observado. No repetir URL, Clientes/Membresías ni envío público.
+- **Hallazgo de código:** `registerBusiness` crea Auth + tenant/OWNER en lote, luego siembra catálogo aparte. Si el lote se guardó pero el cliente recibió un error de red, o falló la siembra, reintentar el mismo identificador falla por colisión aunque el negocio sea suyo. La recuperación no debe reclamar identificadores ajenos ni sobrescribir un catálogo ya editado.
+- **Bloque elegido:** comprobar por lectura autorizada que el tenant existente pertenece al mismo UID y tiene membresía OWNER activa antes de recuperar una alta ambigua; devolver el tenant persistido y sembrar plantilla solo cuando el catálogo aún no exista. Probar reintento legítimo, colisión de otro propietario, recuperación de catálogo ausente y preservación del catálogo editado con emuladores; reforzar regresión de sesión simulada si procede.
+- **Estado de esta anotación:** plan, **NO implementado ni probado aún**. No modificar reglas, main, datos reales ni desplegar. Paso 2 permanece **ABIERTO** por revisión OWNER atómico y validación visual Android/iPad. Caja histórica/MIXTO permanece **PENDIENTE**.
