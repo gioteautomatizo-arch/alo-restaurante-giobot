@@ -1,5 +1,5 @@
 import { syncPublicProfileIfNeeded } from '../../lib/businessPublicProfileService';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ImagePlus, Save, Store, Upload } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
@@ -43,6 +43,15 @@ export const BusinessBrandingSettings: React.FC<{
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  // Cada operación pertenece a un negocio y a la cuenta que la inició.
+  // Un resultado tardío no debe modificar la pantalla abierta después.
+  const mountedRef = useRef(true);
+  const contextRef = useRef(business.restaurantId);
+  contextRef.current = business.restaurantId;
+  const busyRef = useRef(false);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+  const isCurrent = (businessId: string, uid: string) =>
+    mountedRef.current && contextRef.current === businessId && auth.currentUser?.uid === uid;
 
   const applyPalette = (palette: Palette) => {
     setPrimary(palette.primary);
@@ -53,31 +62,44 @@ export const BusinessBrandingSettings: React.FC<{
   };
 
   const upload = async (file: File | undefined, kind: 'logo' | 'cover') => {
-    if (!file) return;
+    if (!file || busyRef.current) return;
+    const businessId = business.restaurantId;
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      setError('Tu sesión expiró. Inicia sesión nuevamente.');
+      return;
+    }
     if (!file.type.startsWith('image/')) {
       setError('Selecciona un archivo de imagen.');
       return;
     }
+    busyRef.current = true;
     setBusy(true);
     setError('');
     setMessage('');
     try {
       const url = kind === 'logo'
-        ? await uploadBusinessLogo(business.restaurantId, file)
-        : await uploadBusinessMenuImage(business.restaurantId, file);
+        ? await uploadBusinessLogo(businessId, file)
+        : await uploadBusinessMenuImage(businessId, file);
+      if (!isCurrent(businessId, uid)) return;
       if (kind === 'logo') setLogoUrl(url);
       else setCoverUrl(url);
       setMessage(kind === 'logo' ? 'Logo cargado. Guarda los cambios para aplicarlo.' : 'Portada cargada. Guarda los cambios para aplicarla.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo subir la imagen.');
+      if (isCurrent(businessId, uid)) setError(err instanceof Error ? err.message : 'No se pudo subir la imagen.');
     } finally {
-      setBusy(false);
+      if (isCurrent(businessId, uid)) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   };
 
   const save = async () => {
-    const user = auth.currentUser;
-    if (!user) {
+    if (busyRef.current) return; // Evita dos guardados antes del render de React.
+    const businessId = business.restaurantId;
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
       setError('Tu sesión expiró. Inicia sesión nuevamente.');
       return;
     }
@@ -85,6 +107,7 @@ export const BusinessBrandingSettings: React.FC<{
       setError('El nombre del negocio debe tener al menos 2 caracteres.');
       return;
     }
+    busyRef.current = true;
     setBusy(true);
     setError('');
     setMessage('');
@@ -110,27 +133,40 @@ export const BusinessBrandingSettings: React.FC<{
       },
     };
     try {
-      await updateDoc(doc(db, 'businesses', business.restaurantId), { branding: updated.branding });
+      if (!isCurrent(businessId, uid)) {
+        throw new Error('La sesión o el negocio cambió antes de guardar.');
+      }
+      await updateDoc(doc(db, 'businesses', businessId), { branding: updated.branding });
+      if (!isCurrent(businessId, uid)) return;
       onSaved(updated);
       let publicSynced = false;
       try {
-        publicSynced = await syncPublicProfileIfNeeded(business.restaurantId, updated);
+        // No sincronizar la página pública si cambió la cuenta después de guardar.
+        if (!isCurrent(businessId, uid)) return;
+        publicSynced = await syncPublicProfileIfNeeded(businessId, updated);
       } catch (syncError) {
         console.warn('[BusinessBrandingSettings] no se pudo actualizar la página pública:', syncError);
       }
-      setMessage(publicSynced ? 'Identidad guardada y tu página pública ya se actualizó.' : 'Identidad guardada para este negocio.');
+      if (isCurrent(businessId, uid)) {
+        setMessage(publicSynced ? 'Identidad guardada y tu página pública ya se actualizó.' : 'Identidad guardada para este negocio.');
+      }
     } catch (err) {
-      console.error('[BusinessBrandingSettings] save failed:', err);
-      setError('No se pudo guardar. Verifica que tu usuario tenga rol de propietario o administrador y vuelve a intentarlo.');
+      if (isCurrent(businessId, uid)) {
+        console.error('[BusinessBrandingSettings] save failed:', err);
+        setError('No se pudo guardar. Verifica que tu usuario tenga rol de propietario o administrador y vuelve a intentarlo.');
+      }
     } finally {
-      setBusy(false);
+      if (isCurrent(businessId, uid)) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   };
 
   return (
     <div className="min-h-screen px-4 py-5 sm:px-6" style={{ backgroundColor: background, color: textColor }}>
       <header className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-        <button data-biz-back onClick={onBack} className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: accent }}>
+        <button type="button" data-biz-back onClick={onBack} disabled={busy} className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: accent }}>
           <ArrowLeft className="h-4 w-4" /> Volver al negocio
         </button>
         <button onClick={save} disabled={busy} className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-60" style={{ backgroundColor: primary, color: background }}>
