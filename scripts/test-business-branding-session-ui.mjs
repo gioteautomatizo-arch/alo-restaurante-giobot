@@ -111,7 +111,7 @@ try {
   // Sin sesión no se debe iniciar ningún guardado.
   window.qa.user=null;
   window.qa.render('tenant-c');
-  await waitFor(()=>!!button('Guardar cambios'),'Formulario sin sesión');
+  await waitFor(()=>!!button('Guardar cambios') && document.body.textContent.includes('Negocio tenant-c'),'Formulario C sin sesión');
   const count=window.qa.writes.length;
   button('Guardar cambios').click();
   await waitFor(()=>!!document.querySelector('[role="alert"]'),'Error de sesión');
