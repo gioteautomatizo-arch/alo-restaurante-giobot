@@ -1,5 +1,5 @@
 import { BusinessActivityBell } from './BusinessActivityBell';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { BusinessQrPanel } from './BusinessQrPanel';
 import { ArrowLeft, BarChart3, BookOpen, Bot, Clock, Heart, HandCoins, Landmark, PiggyBank, Receipt, ScrollText, ExternalLink, LayoutDashboard, Settings, ShoppingBag, Store, Users } from 'lucide-react';
 import { BusinessSummaryTab } from './BusinessSummaryTab';
@@ -111,8 +111,15 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const [isPublished, setIsPublished] = useState(false);
   const [publicationBusy, setPublicationBusy] = useState(false);
   const [publicationMessage, setPublicationMessage] = useState<string | null>(null);
+  const [publicationError, setPublicationError] = useState<string | null>(null);
+  const [publicationRetry, setPublicationRetry] = useState(0);
   const [publicationFor, setPublicationFor] = useState<string | null>(null);
   const currentAccessKey = authUser ? `${authUser.uid}:${businessId}` : '';
+  // Se actualiza en render: una respuesta vieja no puede alterar el siguiente tenant
+  // incluso antes de que React ejecute el cleanup de su efecto.
+  const publicationContextRef = useRef(currentAccessKey);
+  publicationContextRef.current = currentAccessKey;
+  const publicationBusyRef = useRef(false);
   const publicationStatusReady = !!hasCurrentAccess && publicationFor === currentAccessKey;
   const published = publicationStatusReady && isPublished;
 
@@ -124,34 +131,48 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
 
   useEffect(() => {
     let cancelled = false;
+    // Un tenant/UID nuevo nunca hereda la operación ni el estado del anterior.
+    publicationBusyRef.current = false;
+    setPublicationBusy(false);
     setIsPublished(false);
     setPublicationFor(null);
     setPublicationMessage(null);
+    setPublicationError(null);
     if (!hasCurrentAccess) return;
     getBusinessPublicationStatus(businessId)
       .then((status) => {
-        if (cancelled) return;
+        if (cancelled || publicationContextRef.current !== currentAccessKey) return;
         setIsPublished(status);
         setPublicationFor(currentAccessKey);
       })
       .catch((err) => {
-        if (!cancelled) console.warn('No se pudo consultar la publicación:', err);
+        if (cancelled || publicationContextRef.current !== currentAccessKey) return;
+        console.warn('No se pudo consultar la publicación:', err);
+        setPublicationError('No pudimos consultar el estado del directorio. Reintenta antes de publicar u ocultar.');
       });
     return () => { cancelled = true; };
-  }, [businessId, currentAccessKey, hasCurrentAccess]);
+  }, [businessId, currentAccessKey, hasCurrentAccess, publicationRetry]);
 
   const togglePublication = async () => {
-    if (!hasCurrentAccess || !business || role !== 'OWNER' || !publicationStatusReady || publicationBusy) return;
+    if (!hasCurrentAccess || !business || role !== 'OWNER' || !publicationStatusReady || publicationBusyRef.current) return;
+    publicationBusyRef.current = true; // Evita doble envío antes del siguiente render.
+    const requestKey = currentAccessKey;
+    const nextPublished = !published;
     setPublicationBusy(true);
     setPublicationMessage(null);
     try {
-      await setBusinessPublication(businessId, business, !published);
-      setIsPublished(!published);
-      setPublicationMessage(!published ? 'Tu página ya está publicada en el directorio.' : 'Tu página se ocultó del directorio público.');
+      await setBusinessPublication(businessId, business, nextPublished);
+      if (publicationContextRef.current !== requestKey) return;
+      setIsPublished(nextPublished);
+      setPublicationMessage(nextPublished ? 'Tu página ya está publicada en el directorio.' : 'Tu página se ocultó del directorio público.');
     } catch (err) {
+      if (publicationContextRef.current !== requestKey) return;
       setPublicationMessage(err instanceof Error ? err.message : 'No pudimos actualizar la publicación.');
     } finally {
-      setPublicationBusy(false);
+      if (publicationContextRef.current === requestKey) {
+        publicationBusyRef.current = false;
+        setPublicationBusy(false);
+      }
     }
   };
 
@@ -295,12 +316,18 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
             <div className="mt-4 border-t border-[#3A3022] pt-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <strong className="block text-sm">{publicationStatusReady ? (published ? 'Visible en el directorio' : 'No aparece en el directorio') : 'Consultando publicación…'}</strong>
-                  <span className="mt-1 block text-[11px] text-[#B7B7B7]">{publicationStatusReady ? (published ? 'Cualquier visitante puede encontrar tu página pública.' : 'Publícala cuando el menú y los datos estén listos.') : 'Verificando el estado del directorio.'}</span>
+                  <strong className="block text-sm">{publicationError ? 'No se pudo consultar la publicación' : publicationStatusReady ? (published ? 'Visible en el directorio' : 'No aparece en el directorio') : 'Consultando publicación…'}</strong>
+                  <span className="mt-1 block text-[11px] text-[#B7B7B7]">{publicationStatusReady ? (published ? 'Cualquier visitante puede encontrar tu página pública.' : 'Publícala cuando el menú y los datos estén listos.') : publicationError || 'Verificando el estado del directorio.'}</span>
                 </div>
-                <button type="button" disabled={publicationBusy || !publicationStatusReady} onClick={() => void togglePublication()} className="rounded-xl bg-[#D6A34A] px-4 py-2.5 text-xs font-black text-[#050505] disabled:opacity-50">
-                  {publicationBusy ? 'Guardando…' : !publicationStatusReady ? 'Consultando…' : published ? 'Ocultar del directorio' : 'Publicar mi negocio'}
-                </button>
+                {publicationError ? (
+                  <button type="button" onClick={() => setPublicationRetry((count) => count + 1)} className="rounded-xl bg-[#D6A34A] px-4 py-2.5 text-xs font-black text-[#050505]">
+                    Reintentar publicación
+                  </button>
+                ) : (
+                  <button type="button" disabled={publicationBusy || !publicationStatusReady} onClick={() => void togglePublication()} className="rounded-xl bg-[#D6A34A] px-4 py-2.5 text-xs font-black text-[#050505] disabled:opacity-50">
+                    {publicationBusy ? 'Guardando…' : !publicationStatusReady ? 'Consultando…' : published ? 'Ocultar del directorio' : 'Publicar mi negocio'}
+                  </button>
+                )}
               </div>
               {publicationMessage && <p role="status" className="mt-3 text-xs text-[#E3BC6B]">{publicationMessage}</p>}
             </div>
