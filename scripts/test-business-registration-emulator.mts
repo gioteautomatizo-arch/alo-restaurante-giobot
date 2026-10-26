@@ -7,6 +7,7 @@ import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import { buildAtomicOwnerProposalRules } from './owner-atomic-proposal-rules.mjs';
 import { registerThroughOnboardingUI } from './business-onboarding-emulator-ui.mjs';
 import { saveBrandingThroughUI, addCatalogProductThroughUI } from './business-management-emulator-ui.mjs';
+import { publishBusinessThroughUI, publishAndHideBusinessThroughUI, assertForeignWorkspaceDeniedThroughUI, assertStaffCannotPublishThroughUI } from './business-publication-emulator-ui.mjs';
 import {
   acceptInviteThroughUI, createInviteThroughEmployeesUI, deactivateEmployeeThroughUI, inspectEmployeesUI,
 } from './business-invites-emulator-ui.mjs';
@@ -43,8 +44,8 @@ const clientApp = initializeApp({
 const { auth, db } = await import('../src/lib/firebase.ts');
 connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
 connectFirestoreEmulator(db, '127.0.0.1', 8080);
-const { registerBusiness, getBusinessesForUser, getBusinessForUser } = await import('../src/lib/businessAuthService.ts');
-const { setBusinessPublication, syncPublicProfileIfNeeded } = await import('../src/lib/businessPublicProfileService.ts');
+const { registerBusiness, getBusinessesForUser, getBusinessForUser, getBusinessMembership } = await import('../src/lib/businessAuthService.ts');
+const { setBusinessPublication, syncPublicProfileIfNeeded, getBusinessPublicationStatus } = await import('../src/lib/businessPublicProfileService.ts');
 const { saveBusinessCatalog, seedBusinessCatalogIfMissing, subscribeToBusinessCatalog } = await import('../src/lib/businessCatalogService.ts');
 const { listBusinessEmployees, updateBusinessEmployee } = await import('../src/lib/businessEmployeeService.ts');
 const { registerBusinessInviteApi } = await import('../businessInviteApi.ts');
@@ -81,6 +82,14 @@ try {
     subscribeCatalog: (id: string, callback: any, onError: any) => subscribeToBusinessCatalog(id, callback, onError),
     saveCatalog: (id: string, items: any, actor: string, revision: string | null) =>
       saveBusinessCatalog(id, JSON.parse(JSON.stringify(items)), actor, revision),
+  };
+  const publicationBridge = {
+    getBusiness: (uid: string, id: string) => getBusinessForUser(uid, id),
+    getMembership: (uid: string, id: string) => getBusinessMembership(uid, id),
+    getStatus: (id: string) => getBusinessPublicationStatus(id),
+    setPublication: (id: string, tenant: any, published: boolean) =>
+      setBusinessPublication(id, JSON.parse(JSON.stringify(tenant)), published),
+    syncPublic: (id: string, tenant: any) => syncPublicProfileIfNeeded(id, JSON.parse(JSON.stringify(tenant))),
   };
   assert.equal(a.tenant.restaurantId, idA);
   assert.equal((await getDoc(doc(db, 'businessMemberships', idA + '_' + uidA))).data()?.role, 'OWNER');
@@ -158,7 +167,7 @@ try {
     user: auth.currentUser!, bridge: managementBridge, productName: 'Producto UI A', price: 43,
   });
   assert((await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data()?.items.some((item: {name:string}) => item.name === 'Producto UI A'));
-  await setBusinessPublication(idA, a.tenant, true);
+  await publishBusinessThroughUI({businessId:idA,user:auth.currentUser!,bridge:publicationBridge});
   await saveBrandingThroughUI({
     tenant: (await getBusinessForUser(uidA, idA))!, user: auth.currentUser!,
     bridge: managementBridge, name: 'Negocio A configurado en UI',
@@ -200,8 +209,8 @@ try {
   }), 'B no despublica A');
   await deny(setBusinessPublication(idA, a.tenant, false), 'B no publica A');
   await deny(getBusinessForUser(uidB, idA), 'B no puede resolver el tenant privado A');
-  await setBusinessPublication(idB, b.tenant, true);
-  await setBusinessPublication(idB, b.tenant, false);
+  await assertForeignWorkspaceDeniedThroughUI({businessId:idA,user:auth.currentUser!,bridge:publicationBridge});
+  await publishAndHideBusinessThroughUI({businessId:idB,user:auth.currentUser!,bridge:publicationBridge});
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idB))).data()?.published, false);
   await saveBrandingThroughUI({
     tenant: (await getBusinessForUser(uidB, idB))!, user: auth.currentUser!,
@@ -310,6 +319,7 @@ try {
   assert.equal(acceptedHash, '#business/' + idA);
   assert.equal((await call('/api/business-invites/accept', { token: inviteToken }, staffToken)).status, 410);
   assert.equal((await getDoc(doc(db, 'businessMemberships', idA + '_' + staff.user.uid))).data()?.role, 'KITCHEN');
+  await assertStaffCannotPublishThroughUI({businessId:idA,user:auth.currentUser!,bridge:publicationBridge});
   assert((await getDoc(doc(db, 'businesses', idA))).exists(), 'Empleado accede a A');
   assert.deepEqual((await getBusinessesForUser(staff.user.uid)).map(x => x.restaurantId), [idA]);
   await deny(updateDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'), {
@@ -337,7 +347,7 @@ try {
   await signInWithEmailAndPassword(auth, bEmail, password);
   assert.deepEqual((await getBusinessesForUser(uidB)).map(x => x.restaurantId), [idB]);
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
-  console.log('PASS (' + (process.env.TEST_ATOMIC_OWNER_PROPOSAL === '1' ? 'propuesta OWNER aislada' : 'reglas staged') + '): onboarding, identidad, catálogo y empleados/invitaciones en React conectados a Auth/Firestore/API emulados; publicación, aislamiento, revocación y recuperación de sesión.');
+  console.log('PASS (' + (process.env.TEST_ATOMIC_OWNER_PROPOSAL === '1' ? 'propuesta OWNER aislada' : 'reglas staged') + '): onboarding, identidad, catálogo, publicación y empleados/invitaciones en React conectados a Auth/Firestore/API emulados; aislamiento, revocación y recuperación de sesión.');
 } finally {
   if (server) await new Promise(resolve => server.close(resolve));
   await signOut(auth).catch(() => {});
