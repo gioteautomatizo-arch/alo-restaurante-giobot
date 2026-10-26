@@ -285,7 +285,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     }
 
     if (view === 'branding') {
-      return <BusinessBrandingSettings business={business} onBack={() => goHome()} onSaved={(updated) => setBusiness(updated)} />;
+      return <BusinessBrandingSettings key={`${businessId}:${authUser?.uid ?? ""}`} business={business} onBack={() => goHome()} onSaved={(updated) => setBusiness(updated)} />;
     }
 
     if (view === 'menuImport') {
