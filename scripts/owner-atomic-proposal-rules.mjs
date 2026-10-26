@@ -45,3 +45,50 @@ export function buildAtomicOwnerAndNoClientDeleteProposalRules(staged) {
       // asociados no se eliminan en cascada al borrar el documento raíz.
       allow delete: if false;`);
 }
+
+
+/**
+ * Experimento adicional (NO desplegable): una reserva permanente del ID se
+ * crea junto con businesses/{id} y su OWNER, y nunca se elimina por SDK
+ * cliente. Aunque un administrador borre businesses/{id}, la reserva impide
+ * reabrir ese ID, incluso por el propietario anterior.
+ *
+ * Requiere cambiar el batch de registerBusiness y hacer backfill auditado de
+ * IDs históricos ANTES de aplicar reglas equivalentes. Las reglas NO pueden
+ * restringir operaciones privilegiadas del Admin SDK.
+ */
+export function buildAtomicOwnerAndPermanentHandleProposalRules(staged) {
+  const noDelete = buildAtomicOwnerAndNoClientDeleteProposalRules(staged);
+  const createAnchor = `        && !exists(/databases/$(database)/documents/businesses/$(businessId))
+        && existsAfter(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))`;
+  assert.equal(noDelete.split(createAnchor).length, 2,
+    'ALTO: cambió la creación OWNER; revisar el contrato de reserva.');
+  const createWithReservation = `        && !exists(/databases/$(database)/documents/businesses/$(businessId))
+        // El ID nunca puede reabrirse si alguna vez fue reservado.
+        && !exists(/databases/$(database)/documents/businessHandleReservations/$(businessId))
+        && existsAfter(/databases/$(database)/documents/businessHandleReservations/$(businessId))
+        && getAfter(/databases/$(database)/documents/businessHandleReservations/$(businessId)).data.businessId == businessId
+        && getAfter(/databases/$(database)/documents/businessHandleReservations/$(businessId)).data.ownerUserId == request.auth.uid
+        && existsAfter(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))`;
+  const businessAnchor = '    match /businesses/{businessId} {';
+  assert.equal(noDelete.split(businessAnchor).length, 2,
+    'ALTO: cambió el bloque businesses; revisar la reserva permanente.');
+  const reservationRules = `    // Solo propuesta para emulador. Nunca borrar reservas al cerrar un negocio.
+    match /businessHandleReservations/{businessId} {
+      allow read: if false;
+      allow create: if isSignedIn()
+        && businessId != 'alo-restaurante'
+        && request.resource.data.keys().hasOnly(['businessId', 'ownerUserId'])
+        && request.resource.data.businessId == businessId
+        && request.resource.data.ownerUserId == request.auth.uid
+        && !exists(/databases/$(database)/documents/businesses/$(businessId))
+        && existsAfter(/databases/$(database)/documents/businesses/$(businessId))
+        && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.restaurantId == businessId
+        && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUserId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+`;
+  return noDelete.replace(createAnchor, createWithReservation)
+    .replace(businessAnchor, reservationRules + businessAnchor);
+}
