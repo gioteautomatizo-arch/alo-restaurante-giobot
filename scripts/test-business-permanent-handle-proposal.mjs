@@ -86,6 +86,42 @@ try {
       false);
   });
 
+  // Colisión concurrente: solo uno consigue reservar un ID; el batch
+  // perdedor no debe dejar una membresía parcial ni una segunda reserva.
+  const collision = await Promise.allSettled([
+    register(alice, 'reserved-race', 'reserve-alice'),
+    register(bob, 'reserved-race', 'reserve-bob'),
+  ]);
+  assert.equal(collision.filter(x => x.status === 'fulfilled').length, 1);
+  assert.equal(collision.filter(x => x.status === 'rejected').length, 1);
+  await env.withSecurityRulesDisabled(async context => {
+    const admin = context.firestore();
+    const owner = (await getDoc(doc(admin, reservationPath('reserved-race')))).data()?.ownerUserId;
+    assert(['reserve-alice', 'reserve-bob'].includes(owner));
+    assert.equal((await getDoc(doc(admin, businessPath('reserved-race')))).data()?.ownerUserId, owner);
+    assert.equal((await getDoc(doc(admin, memberPath('reserved-race', owner)))).exists(), true);
+    const loser = owner === 'reserve-alice' ? 'reserve-bob' : 'reserve-alice';
+    assert.equal((await getDoc(doc(admin, memberPath('reserved-race', loser)))).exists(), false);
+  });
+
+  // Simulación de backfill privilegiado y AUDITADO para un ID histórico:
+  // si la reserva existe antes del borrado, no puede reutilizarse.
+  await env.withSecurityRulesDisabled(async context => {
+    const admin = context.firestore();
+    await setDoc(doc(admin, businessPath('legacy-backfilled')),
+      business('legacy-backfilled', 'reserve-alice'));
+    await setDoc(doc(admin, memberPath('legacy-backfilled', 'reserve-alice')),
+      member('legacy-backfilled', 'reserve-alice'));
+    await setDoc(doc(admin, reservationPath('legacy-backfilled')),
+      reservation('legacy-backfilled', 'reserve-alice'));
+    await setDoc(doc(admin, 'businesses/legacy-backfilled/catalog/menu_catalog'), {
+      businessId: 'legacy-backfilled', items: [{ id: 'old-backfilled', price: 30 }],
+    });
+    await deleteDoc(doc(admin, businessPath('legacy-backfilled')));
+  });
+  await assertFails(register(bob, 'legacy-backfilled', 'reserve-bob'));
+  await assertFails(getDoc(doc(bob, 'businesses/legacy-backfilled/catalog/menu_catalog')));
+
   // Un negocio LEGADO sin reserva aún puede ser borrado por Admin SDK.
   // Si no se hizo backfill, otro propietario puede registrar el ID y ver
   // datos antiguos. La propuesta exige inventario/migración previa.
