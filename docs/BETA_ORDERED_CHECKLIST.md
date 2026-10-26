@@ -347,3 +347,11 @@ npx firebase emulators:exec --only firestore --project demo-gioteautomatizo-owne
 - **Hallazgo de código:** `registerBusiness` comprueba que el catálogo no exista y luego llama a `saveBusinessCatalog`, que lo sobrescribe por completo. Entre esa lectura y la escritura, otro alta/reintento o una edición pueden guardar un catálogo distinto. El control de doble clic de una pestaña no protege dos pestañas ni la carrera con un editor.
 - **Bloque seleccionado:** hacer atómica la siembra *solo si falta catálogo* mediante transacción de Firestore; mantener `saveBusinessCatalog` para ediciones explícitas, validar permisos y sesión, y probar recuperación y carreras con dos negocios ficticios en emuladores. No cambiar reglas, despliegues ni datos reales.
 - **Estado de esta anotación:** PLAN, **NO implementado ni probado**. Paso 2 sigue ABIERTO por propuesta OWNER atómico pendiente y recorrido visual/integral; Caja histórica/MIXTO sigue **PENDIENTE** aunque sus diagnósticos salgan verdes.
+
+### Implementación pendiente de CI: siembra transaccional del catálogo (26 de octubre de 2026)
+
+- `businessCatalogService.seedBusinessCatalogIfMissing` usa `runTransaction` para leer y crear en una sola operación; valida permisos de catálogo y sesión antes y después de la lectura. `saveBusinessCatalog` conserva la semántica de edición explícita; ambas rutas comparten la normalización de productos.
+- `registerBusiness` usa la siembra transaccional después del lote tenant/OWNER. El alta no debe sobrescribir catálogos existentes aunque coincidan reintentos y pestañas.
+- `test-business-registration-emulator.mts` añade dos siembras concurrentes, una tardía y la verificación de que solo un intento crea el catálogo. Se mantiene el test de sesión con el mock actualizado y los recorridos de dos tenants, roles, invitaciones y revocación.
+- **Verificación de este commit: PENDIENTE CI.** No afirmar éxito hasta comprobar Quality checks y Staged Firestore security tests sobre el SHA final. Sin reglas desplegadas ni datos reales.
+- **Paso 2 sigue ABIERTO:** OWNER atómico staged requiere revisión y autorización; recorrido integrado de interfaz/Android/iPad pendiente. **Paso 4 Caja/MIXTO: PENDIENTE**.

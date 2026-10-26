@@ -1,4 +1,4 @@
-import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, runTransaction, setDoc } from 'firebase/firestore';
 import { auth } from './firebase';
 import { db } from './firebase';
 import { BusinessRole } from './restaurantCore';
@@ -111,13 +111,12 @@ export function subscribeToBusinessCatalog(
   );
 }
 
-export async function saveBusinessCatalog(
+function buildCatalogPayload(
   businessId: string,
   items: BusinessCatalogItem[],
   actorName: string
-): Promise<BusinessCatalogDocument> {
-  const managerUid = await assertCatalogManager(businessId);
-  const payload: BusinessCatalogDocument = {
+): BusinessCatalogDocument {
+  return {
     businessId,
     sourceLabel: 'Catálogo del negocio',
     items: ensureUniqueIds(items)
@@ -131,6 +130,43 @@ export async function saveBusinessCatalog(
     updatedAt: new Date().toISOString(),
     updatedBy: actorName,
   };
+}
+
+/**
+ * Siembra la plantilla únicamente si no existe un catálogo. La lectura y la
+ * creación ocurren en una transacción: dos pestañas/reintentos concurrentes
+ * no pueden sobrescribir una edición ni volver a sembrar sobre el ganador.
+ * Devuelve true solo si este intento creó el documento.
+ */
+export async function seedBusinessCatalogIfMissing(
+  businessId: string,
+  items: BusinessCatalogItem[],
+  actorName: string
+): Promise<boolean> {
+  const managerUid = await assertCatalogManager(businessId);
+  const payload = buildCatalogPayload(businessId, items, actorName);
+  return runTransaction(db, async (transaction) => {
+    if (auth.currentUser?.uid !== managerUid) {
+      throw new Error('La sesión cambió antes de sembrar el catálogo.');
+    }
+    const ref = catalogRef(businessId);
+    const existing = await transaction.get(ref);
+    if (auth.currentUser?.uid !== managerUid) {
+      throw new Error('La sesión cambió durante la siembra del catálogo.');
+    }
+    if (existing.exists()) return false;
+    transaction.set(ref, payload);
+    return true;
+  });
+}
+
+export async function saveBusinessCatalog(
+  businessId: string,
+  items: BusinessCatalogItem[],
+  actorName: string
+): Promise<BusinessCatalogDocument> {
+  const managerUid = await assertCatalogManager(businessId);
+  const payload = buildCatalogPayload(businessId, items, actorName);
   // Última puerta antes de sobrescribir el documento completo del catálogo.
   if (auth.currentUser?.uid !== managerUid) {
     throw new Error('La sesión cambió antes de guardar el catálogo. No se envió ningún cambio.');

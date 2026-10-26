@@ -23,7 +23,7 @@ connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
 connectFirestoreEmulator(db, '127.0.0.1', 8080);
 const { registerBusiness, getBusinessesForUser, getBusinessForUser } = await import('../src/lib/businessAuthService.ts');
 const { setBusinessPublication } = await import('../src/lib/businessPublicProfileService.ts');
-const { saveBusinessCatalog } = await import('../src/lib/businessCatalogService.ts');
+const { saveBusinessCatalog, seedBusinessCatalogIfMissing } = await import('../src/lib/businessCatalogService.ts');
 const { registerBusinessInviteApi } = await import('../businessInviteApi.ts');
 const adminApp = initializeAdminApp({ projectId });
 const adminAuth = getAdminAuth(adminApp);
@@ -60,6 +60,24 @@ try {
   assert.equal(restoredA.membership.role, 'OWNER');
   assert((await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data()?.items.length > 0,
     'Reintento del dueño recupera catálogo ausente');
+  // Dos siembras simultáneas sobre un catálogo ausente: solo una puede
+  // crearlo. Una siembra tardía tampoco debe reemplazar el catálogo editado.
+  await deleteDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'));
+  const seedItem = (id: string) => [{
+    id, name: id, description: '', category: 'Prueba', price: 31,
+    available: true, sortOrder: 1,
+  }];
+  const seeds = await Promise.all([
+    seedBusinessCatalogIfMissing(idA, seedItem('seed-first'), 'Siembra 1'),
+    seedBusinessCatalogIfMissing(idA, seedItem('seed-second'), 'Siembra 2'),
+  ]);
+  assert.equal(seeds.filter(Boolean).length, 1, 'Solo una siembra gana la carrera');
+  const winner = (await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data();
+  assert(winner, 'El catálogo debe existir después de la carrera');
+  assert.equal(winner.items.length, 1, 'La segunda siembra no fusiona ni pisa productos');
+  assert(['seed-first', 'seed-second'].includes(winner.items[0].id));
+  assert.equal(await seedBusinessCatalogIfMissing(idA, seedItem('seed-late'), 'Siembra tardía'), false);
+  assert.equal((await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data()?.items[0].id, winner.items[0].id);
   // Edición efectiva de catálogo con el SDK real conectado al emulador.
   const updatedA = await saveBusinessCatalog(idA, [
     ...catalogA.data()!.items,
@@ -185,7 +203,7 @@ try {
   await signInWithEmailAndPassword(auth, bEmail, password);
   assert.deepEqual((await getBusinessesForUser(uidB)).map(x => x.restaurantId), [idB]);
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
-  console.log('PASS: dos tenants, alta reintentable, catálogo preservado/restaurado, colisión de handle, visibilidad pública/privada, roles, invitación, revocación y recuperación de sesión en emuladores.');
+  console.log('PASS: dos tenants, alta reintentable, siembra transaccional concurrente, catálogo preservado/restaurado, colisión de handle, visibilidad pública/privada, roles, invitación, revocación y recuperación de sesión en emuladores.');
 } finally {
   if (server) await new Promise(resolve => server.close(resolve));
   await signOut(auth).catch(() => {});

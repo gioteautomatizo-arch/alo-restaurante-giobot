@@ -14,7 +14,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { saveBusinessCatalog, createCatalogItemId } from './businessCatalogService';
+import { seedBusinessCatalogIfMissing, createCatalogItemId } from './businessCatalogService';
 import { getBusinessCatalogTemplate } from '../data/businessCatalogTemplates';
 import {
   createRestaurantTenant,
@@ -195,26 +195,22 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
     return { tenant: confirmedTenant, membership: confirmedMembership };
   }
 
-  // Sembrar solo si falta el catálogo. Un reintento de alta confirmada no debe
-  // sobrescribir precios ni productos que el propietario ya editó.
+  // La siembra transaccional solo crea un catálogo ausente; ni un segundo
+  // reintento/pestaña ni una lectura antigua pueden sobrescribir ediciones.
   try {
-    const catalogSnap = await getDoc(doc(db, BUSINESSES_COLLECTION, businessId, 'catalog', 'menu_catalog'));
-    assertCurrentBusinessSession(userId);
-    if (!catalogSnap.exists()) {
-      const catalogTemplate = getBusinessCatalogTemplate(
-        confirmedTenant.templateId || confirmedTenant.businessType || 'restaurant'
+    const catalogTemplate = getBusinessCatalogTemplate(
+      confirmedTenant.templateId || confirmedTenant.businessType || 'restaurant'
+    );
+    if (catalogTemplate?.items.length) {
+      await seedBusinessCatalogIfMissing(
+        businessId,
+        catalogTemplate.items.map((item, index) => ({
+          ...item,
+          id: `${createCatalogItemId(item.name)}-${index + 1}`,
+          available: true,
+        })),
+        confirmedTenant.branding.restaurantName
       );
-      if (catalogTemplate?.items.length) {
-        await saveBusinessCatalog(
-          businessId,
-          catalogTemplate.items.map((item, index) => ({
-            ...item,
-            id: `${createCatalogItemId(item.name)}-${index + 1}`,
-            available: true,
-          })),
-          confirmedTenant.branding.restaurantName
-        );
-      }
     }
   } catch (error) {
     // Tenant y OWNER ya están confirmados: el dueño puede reparar el catálogo

@@ -37,7 +37,7 @@ const mocks = {
   ].join('\n'),
   './firebase': 'export const auth = {currentUser:null}; export const db = {}; window.qa.auth = auth;',
   './businessCatalogService': [
-    'export async function saveBusinessCatalog(id, items) {window.qa.catalogs.push({id,items});}',
+    'export async function seedBusinessCatalogIfMissing(id, items) {window.qa.catalogs.push({id,items}); return true;}',
     'export const createCatalogItemId = () => "item";',
   ].join('\n'),
   '../data/businessCatalogTemplates': 'export const getBusinessCatalogTemplate = () => ({items:[{name:"Producto de prueba",price:15}]});',
