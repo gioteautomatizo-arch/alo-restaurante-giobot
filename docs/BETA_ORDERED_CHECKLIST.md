@@ -169,3 +169,12 @@ npx firebase emulators:exec --only firestore --project demo-gioteautomatizo-owne
 - Pendiente para diagnosticar el celular: obtener el enlace exacto de «Copiar enlace» del QR afectado; verificar dominio publicado frente a dirección temporal y la versión desplegada. No afirmar que cambiar la URL arregló ese caso sin probarlo.
 - **No es todavía una sesión de mesa como Calientito:** selección local al abrir el enlace, sin ocupar mesa, compartir comensales entre dispositivos, asignar mesero, llevar cuenta común o liberar mesa. Ese flujo necesita datos y permisos separados por negocio, pruebas de concurrencia y revisión antes de despliegue. No reutilizar `table-N` del sistema heredado.
 - Cambios en rama, no publicados. Tras publicar la versión probada, descargar QR nuevos si se quiere el formato portable; los antiguos siguen soportados si su dominio y ruta sirven la app.
+
+
+## Paso 2 — aislamiento de Empleados e Invitaciones (25 de octubre de 2026)
+
+- Bloque de código: BusinessEmployeesView se remonta por negocio y rol para descartar empleados, invitaciones, enlaces y formularios del tenant anterior. Las lecturas de ambos listados se identifican por petición y se invalidan al desmontar; un error bloquea ediciones y permite reintentar sin mostrar falsamente una lista vacía. Se incorpora un bloqueo síncrono de mutaciones y se comprueba el rol del empleado objetivo antes de editar.
+- Prueba añadida a Quality checks: scripts/test-business-employees-isolation-ui.mjs monta React en jsdom con dos negocios ficticios y servicios simulados. Cubre respuestas tardías, errores independientes, reintentos, bloqueo de escritura, doble envío y desaparición del enlace de invitación al cambiar de negocio.
+- Verificación del nuevo commit: PENDIENTE de GitHub Actions; no se declara aprobado sin TypeScript, compilación y pruebas.
+- Límites: no prueba Firebase Auth real ni reglas desplegadas. Una operación ya enviada al servidor no puede revertirse desde React. La reserva huérfana de negocio sin OWNER en reglas staged sigue PENDIENTE. La conciliación de Caja y pagos mixtos sigue PENDIENTE.
+- Paso 2 ABIERTO: falta recorrido integral de alta, catálogo, publicación, invitación, aceptación y revocación con dos cuentas ficticias en entorno aislado, y validación visual Android/iPad. Siguiente: verificar CI, corregir regresiones y continuar pruebas de permisos; no cerrar paso 2 ni avanzar a paso 3 como completado.
