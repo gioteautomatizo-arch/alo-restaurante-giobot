@@ -37,7 +37,7 @@ const signup = (handle, email, type) => registerBusiness({
   businessName: 'Prueba ' + handle, handle, email, password, businessType: type,
 });
 const deny = async (promise, label) => {
-  await assert.rejects(promise, error => error?.code === 'permission-denied', label);
+  await assert.rejects(promise, error => (error as { code?: string })?.code === 'permission-denied', label);
 };
 let server;
 try {
@@ -80,7 +80,7 @@ try {
   server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   const origin = 'http://127.0.0.1:' + server.address().port;
-  const call = async (path, body, token, method = 'POST') => {
+  const call = async (path: string, body: unknown, token?: string, method = 'POST') => {
     const response = await fetch(origin + path, {
       method,
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
