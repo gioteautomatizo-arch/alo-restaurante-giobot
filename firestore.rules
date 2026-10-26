@@ -457,12 +457,10 @@ service cloud.firestore {
         && (
           // Compatibilidad con los pedidos históricos de Calientito.
           request.resource.data.restaurantId == 'alo-restaurante'
-          // Caja/POS autenticado: solo personal autorizado del negocio.
-          || isAuthorizedRestaurant(request.resource.data)
-          // Pedido web anónimo: solo para un negocio publicado y con campos públicos permitidos.
+          // Pedido web de cliente, con o sin sesión Google iniciada. Un comprador
+          // puede haber abierto otro negocio antes; eso no le concede acceso a Caja.
           || (
-            request.auth == null
-            && request.resource.data.orderSource == 'CLIENTE_QR'
+            request.resource.data.orderSource == 'CLIENTE_QR'
             && isPublishedBusiness(request.resource.data.restaurantId)
             && request.resource.data.customerName is string
             && request.resource.data.paymentMethod in ['efectivo', 'transferencia', 'tarjeta']
@@ -481,6 +479,8 @@ service cloud.firestore {
               'deliveryFee', 'total', 'status', 'billingStatus', 'createdAt', 'updatedAt'
             ])
           )
+          // Caja/POS autenticado: solo personal autorizado del negocio.
+          || isAuthorizedRestaurant(request.resource.data)
         )
       );
 
