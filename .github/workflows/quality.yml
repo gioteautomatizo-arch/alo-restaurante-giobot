@@ -66,6 +66,8 @@ jobs:
         run: node scripts/test-business-catalog-editor-read-ui.mjs
       - name: Test employee roster and invitations tenant isolation (React/jsdom, mocked services)
         run: node scripts/test-business-employees-isolation-ui.mjs
+      - name: Test workspace publication retry and account isolation (React/jsdom, mocked Firebase)
+        run: node scripts/test-business-workspace-publication-ui.mjs
       - name: Test shift cash reconciliation (synthetic data, no Firebase writes)
         run: node --import tsx scripts/test-shift-sales.mts
       - name: Test table QR decoding and routing (no Firebase writes)
