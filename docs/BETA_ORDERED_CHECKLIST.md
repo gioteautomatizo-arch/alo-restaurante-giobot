@@ -196,3 +196,10 @@ npx firebase emulators:exec --only firestore --project demo-gioteautomatizo-owne
 - **Evidencia inicial:** prueba y ejecución de CI añadidas; **PENDIENTE confirmar resultados de GitHub Actions del commit de este bloque**. No atribuir aprobación hasta obtener conclusión success. El recorrido usa SDK y emuladores reales, pero no navegador ni Android/iPad.
 - **Bloqueo sin resolver:** staged aún admite reservar un negocio sin OWNER en el mismo lote. La propuesta OWNER atómico continúa aislada, sin despliegue ni autorización. Paso 2 **ABIERTO** hasta revisión de reglas y validación visual/manual. Caja histórica/MIXTO continúa **PENDIENTE**.
 - **Siguiente:** comprobar y corregir CI de la integración, registrar resultados; luego validar UI con dos cuentas aisladas. Después paso 3 (pedido completo) y paso 4 (Caja).
+
+
+### Corrección de aislamiento de emuladores (25 de octubre de 2026)
+
+- La primera ejecución de la integración detectó un **fallo de configuración**: Firebase CLI buscaba `scripts/docs/firestore.launch-security.STAGED.rules` y, al no encontrarlo, arrancaba Firestore **permitiendo todas las lecturas/escrituras**. La prueba de aislamiento lo detectó al aceptar indebidamente una lectura cruzada. Esto afecta la validez de pruebas que dependían de las reglas de arranque de ese emulador; no demuestra por sí solo que las reglas reales permitan ese acceso.
+- Se corrigieron las rutas relativas en `scripts/firebase.invites-emulator.json` y `scripts/firebase.security-emulator.json` a `../docs/...`, sin tocar reglas. Se añadió un preflight obligatorio `scripts/verify-emulator-rule-paths.mjs` antes de ejecutar pruebas de seguridad para fallar si las reglas faltan.
+- El primer CI de integración `74586a69` falló también en TypeScript por dos errores de tipado de la nueva prueba; corregidos en `a9fe38a7`. **PENDIENTE verificar CI del arreglo de rutas y la integración real.** No declarar paso 2 cerrado hasta comprobar resultados, reglas y recorrido visual.

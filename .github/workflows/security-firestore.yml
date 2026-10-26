@@ -22,6 +22,8 @@ jobs:
       - run: npm install --no-package-lock --no-audit --no-fund
       - name: Verify staged-only guard
         run: node scripts/verify-vip-staged.mjs && node scripts/verify-launch-rules.mjs
+      - name: Verify emulator rules resolve (fail closed)
+        run: node scripts/verify-emulator-rule-paths.mjs
       - name: Test tenant isolation with Firestore Emulator
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-security-test --config scripts/firebase.security-emulator.json "node scripts/test-firestore-vip.mjs"
       - name: Test staged order and catalog permissions

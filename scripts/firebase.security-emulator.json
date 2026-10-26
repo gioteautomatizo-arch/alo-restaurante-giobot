@@ -1,6 +1,6 @@
 {
   "firestore": {
-    "rules": "docs/firestore.vip-secure.STAGED.rules"
+    "rules": "../docs/firestore.vip-secure.STAGED.rules"
   },
   "emulators": {
     "firestore": {
