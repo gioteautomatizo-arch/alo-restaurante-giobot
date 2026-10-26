@@ -98,7 +98,7 @@ try {
 
   // Índice vacío válido, sin lecturas de membresías.
   ({promise} = await begin('tenant-a', []));
-  assert.deepEqual(await promise, []));
+  assert.equal((await promise).length, 0);
   assert.equal(window.qa.pending.length, 1);
 
   // Documento mal identificado: nunca devolver una membresía del tenant B en A.
