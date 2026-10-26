@@ -67,7 +67,7 @@ try {
   await deny(setDoc(doc(db, 'publicBusinessProfiles', idA), {
     businessId: idA, restaurantId: idA, published: false, branding: { restaurantName: 'Cruce' }, updatedAt: '',
   }), 'B no despublica A');
-  await assert.rejects(setBusinessPublication(idA, a.tenant, false), /propietario/, 'B no publica A');
+  await deny(setBusinessPublication(idA, a.tenant, false), 'B no publica A');
   assert.equal(await getBusinessForUser(uidB, idA), null);
   await setBusinessPublication(idB, b.tenant, true);
   await setBusinessPublication(idB, b.tenant, false);
