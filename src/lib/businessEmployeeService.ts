@@ -20,7 +20,7 @@ import {
   where,
   writeBatch,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { auth, db } from './firebase';
 import firebaseConfig from '../../firebase-applet-config.json';
 import {
   BusinessRole,
@@ -147,29 +147,57 @@ async function findExistingEmployeeAuth(
 }
 
 export async function listBusinessEmployees(businessId: string): Promise<BusinessEmployee[]> {
-  // Firestore cannot safely authorize a collection query over businessMemberships
-  // because the rule must inspect each result document. The business keeps a small
-  // roster of employee UIDs, and each membership is then read by its deterministic ID.
+  const requesterId = auth.currentUser?.uid;
+  if (!requesterId) throw new Error('Inicia sesión para consultar el equipo.');
+  const assertSession = () => {
+    if (auth.currentUser?.uid !== requesterId) {
+      throw new Error('La sesión cambió durante la consulta del equipo. Vuelve a entrar y reintenta.');
+    }
+  };
+
+  // Firestore cannot safely authorize a collection query over businessMemberships:
+  // read the deterministic membership IDs from the tenant's roster instead.
   const businessSnap = await getDoc(doc(db, 'businesses', businessId));
-  if (!businessSnap.exists()) {
-    throw new Error('El negocio no existe.');
+  assertSession();
+  if (!businessSnap.exists() || businessSnap.data().restaurantId !== businessId) {
+    throw new Error('El negocio no existe o su identificador es inconsistente.');
   }
 
-  const employeeUserIds = Array.isArray(businessSnap.data().employeeUserIds)
-    ? (businessSnap.data().employeeUserIds as string[])
-    : [];
-
+  const rawIds: unknown = businessSnap.data().employeeUserIds;
+  if (rawIds !== undefined && !Array.isArray(rawIds)) {
+    throw new Error('El índice de empleados del negocio es inconsistente.');
+  }
+  const employeeUserIds = [...new Set((rawIds || []) as unknown[])];
+  if (employeeUserIds.some((id) => typeof id !== 'string' || !id.trim() || id.includes('/'))) {
+    throw new Error('El índice de empleados del negocio contiene identificadores inválidos.');
+  }
   if (employeeUserIds.length === 0) return [];
 
   const memberships = await Promise.all(
-    employeeUserIds.map((userId) => getDoc(membershipRef(businessId, userId))),
+    (employeeUserIds as string[]).map((userId) => getDoc(membershipRef(businessId, userId))),
   );
+  assertSession();
 
-  return memberships
-    .filter((item) => item.exists())
-    .map((item) => ({ id: item.id, ...(item.data() as Omit<BusinessEmployee, 'id'>) }))
-    .filter((item) => item.role !== 'OWNER' && item.role !== 'SUPER_ADMIN')
-    .sort((a, b) => a.name.localeCompare(b.name, 'es-MX'));
+  // A broken membership is not an empty employee. Do not silently return a
+  // partial roster or expose a document whose internal tenant/UID disagrees
+  // with the deterministic ID that was read.
+  const employees = memberships.map((item, index) => {
+    const userId = employeeUserIds[index] as string;
+    const expectedId = `${businessId}_${userId}`;
+    if (!item.exists() || item.id !== expectedId) {
+      throw new Error('El equipo contiene una membresía ausente o inconsistente.');
+    }
+    const data = item.data() as Partial<BusinessEmployee>;
+    if (data.restaurantId !== businessId || data.userId !== userId
+      || !MANAGEABLE_EMPLOYEE_ROLES.includes(data.role as BusinessRole)
+      || typeof data.active !== 'boolean'
+      || typeof data.name !== 'string' || typeof data.email !== 'string') {
+      throw new Error('El equipo contiene una membresía con datos inconsistentes.');
+    }
+    return { ...data, id: item.id } as BusinessEmployee;
+  });
+  assertSession();
+  return employees.sort((a, b) => a.name.localeCompare(b.name, 'es-MX'));
 }
 
 export async function createBusinessEmployee(input: {
