@@ -25,31 +25,31 @@ jobs:
       - name: Test tenant isolation with Firestore Emulator
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-security-test --config scripts/firebase.security-emulator.json "node scripts/test-firestore-vip.mjs"
       - name: Test staged order and catalog permissions
-        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-launch-security-test --config scripts/firebase.launch-security-emulator.json "node scripts/test-launch-security.mjs"
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-launch-security-test --config firebase.launch-security-emulator.json "node scripts/test-launch-security.mjs"
       - name: Test atomic owner registration and employee access
-        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-owner-security-test --config scripts/firebase.launch-security-emulator.json "node scripts/test-owner-registration.mjs"
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-owner-security-test --config firebase.launch-security-emulator.json "node scripts/test-owner-registration.mjs"
       - name: Test isolated atomic OWNER rule proposal (no rule deployment)
-        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-atomic-owner-proposal-test --config scripts/firebase.launch-security-emulator.json "node scripts/test-owner-atomic-proposal.mjs"
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-atomic-owner-proposal-test --config firebase.launch-security-emulator.json "node scripts/test-owner-atomic-proposal.mjs"
       - name: Test invitation API with Auth and Firestore emulators
         run: npx firebase emulators:exec --only auth,firestore --project gioteautomatizo-invites-test --config scripts/firebase.invites-emulator.json "node --import tsx scripts/test-business-invites.mjs"
       - name: Test VIP backend with dummy profiles in Firestore emulator
-        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-vip-api-test --config scripts/firebase.launch-security-emulator.json "node --import tsx scripts/test-vip-recovery-api.mjs"
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-vip-api-test --config firebase.launch-security-emulator.json "node --import tsx scripts/test-vip-recovery-api.mjs"
       - name: Test legacy Calientito VIP admin compatibility in staged rules
-        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-vip-admin-compat-test --config scripts/firebase.launch-security-emulator.json "node scripts/test-vip-admin-compat.mjs"
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-vip-admin-compat-test --config firebase.launch-security-emulator.json "node scripts/test-vip-admin-compat.mjs"
       - name: Verify offline VIP migration preflight blockers
         run: node scripts/test-vip-migration-preflight.mjs
       - name: Test quick-sale receipts with repository Firestore rules
-        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-receipt-security-test --config scripts/firebase.launch-security-emulator.json "env SALE_RECEIPTS_RULES_FILE=firestore.rules node scripts/test-quick-sale-receipt-rules.mjs"
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-receipt-security-test --config firebase.launch-security-emulator.json "env SALE_RECEIPTS_RULES_FILE=firestore.rules node scripts/test-quick-sale-receipt-rules.mjs"
       - name: Test quick-sale receipts with staged Firestore rules
-        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-receipt-security-test --config scripts/firebase.launch-security-emulator.json "env SALE_RECEIPTS_RULES_FILE=docs/firestore.launch-security.STAGED.rules node scripts/test-quick-sale-receipt-rules.mjs"
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-receipt-security-test --config firebase.launch-security-emulator.json "env SALE_RECEIPTS_RULES_FILE=docs/firestore.launch-security.STAGED.rules node scripts/test-quick-sale-receipt-rules.mjs"
       - name: Test paid and pending business order totals
         run: node --import tsx scripts/test-business-order-snapshot.mts
       - name: Check quick-sale idempotency blockers in current repository rules
-        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-idempotency-safety-test --config scripts/firebase.launch-security-emulator.json "env IDEMPOTENCY_RULE_FILE=firestore.rules node scripts/test-quick-sale-idempotency-staged.mjs"
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-idempotency-safety-test --config firebase.launch-security-emulator.json "env IDEMPOTENCY_RULE_FILE=firestore.rules node scripts/test-quick-sale-idempotency-staged.mjs"
       - name: Check quick-sale idempotency blockers in staged rules
-        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-idempotency-safety-test --config scripts/firebase.launch-security-emulator.json "env IDEMPOTENCY_RULE_FILE=docs/firestore.launch-security.STAGED.rules node scripts/test-quick-sale-idempotency-staged.mjs"
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-idempotency-safety-test --config firebase.launch-security-emulator.json "env IDEMPOTENCY_RULE_FILE=docs/firestore.launch-security.STAGED.rules node scripts/test-quick-sale-idempotency-staged.mjs"
       - name: Test two concurrent cashiers only charge one order
-        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-charge-race-test --config scripts/firebase.launch-security-emulator.json "node scripts/test-offtable-charge-race.mjs"
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-charge-race-test --config firebase.launch-security-emulator.json "node scripts/test-offtable-charge-race.mjs"
       - name: Test quick-sale recovery journal and business isolation
         run: node --import tsx scripts/test-quick-sale-recovery-journal.mts
       - name: Verify recovered tickets match order folio, tenant and money

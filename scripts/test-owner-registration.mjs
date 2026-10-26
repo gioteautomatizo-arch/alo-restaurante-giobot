@@ -137,7 +137,31 @@ try {
   await assertSucceeds(getDoc(catalogA));
   await assertSucceeds(getDoc(catalogB));
 
-  console.log('PASS: alta atómica, dos negocios ficticios, publicación, catálogo, turnos privados y revocación en emulador.');
+  // Un nombre ya ocupado no debe sobrescribir al dueño ni dejar membresías parciales.
+  const collision = writeBatch(otherDb);
+  collision.set(doc(otherDb, 'businesses/new-business'), business('new-business', 'owner-other'));
+  collision.set(doc(otherDb, 'businessMemberships/new-business_owner-other'), member('new-business', 'owner-other'));
+  await assertFails(collision.commit());
+  await env.withSecurityRulesDisabled(async context => {
+    const admin = context.firestore();
+    assert.equal((await getDoc(doc(admin, 'businesses/new-business'))).data().ownerUserId, 'owner-new');
+    assert.equal((await getDoc(doc(admin, 'businessMemberships/new-business_owner-other'))).exists(), false);
+  });
+
+  // Si la membresía es inválida, el batch no deja el negocio a medio crear.
+  const invalidSignup = writeBatch(otherDb);
+  invalidSignup.set(doc(otherDb, 'businesses/incomplete-business'), business('incomplete-business', 'owner-other'));
+  invalidSignup.set(doc(otherDb, 'businessMemberships/incomplete-business_owner-other'), member('incomplete-business', 'owner-other', 'SUPER_ADMIN'));
+  await assertFails(invalidSignup.commit());
+  await env.withSecurityRulesDisabled(async context => {
+    const admin = context.firestore();
+    assert.equal((await getDoc(doc(admin, 'businesses/incomplete-business'))).exists(), false);
+    assert.equal((await getDoc(doc(admin, 'businessMemberships/incomplete-business_owner-other'))).exists(), false);
+  });
+
+  await assertFails(updateDoc(doc(staffDb, 'businessMemberships/new-business_employee-1'), { active: true }));
+
+  console.log('PASS: colisiones y rollback sin escrituras parciales; alta atómica, dos negocios ficticios, publicación, catálogo, turnos privados y revocación en emulador.');
 } finally {
   await env.cleanup();
 }

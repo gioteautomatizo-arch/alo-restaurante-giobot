@@ -139,3 +139,18 @@ Formato del reporte: paso actual → cambio concreto → prueba y evidencia → 
 - El primer intento [Quality checks #40250386576](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40250386576) **falló por un error del test**: buscaba el nombre del producto en `textContent`, aunque React lo muestra en `input.value`. Se corrigió en `f5596f35` y CI pasó. No se ocultó ni se dio por aprobado el intento fallido.
 - **Evidencia limitada:** tests de servicios con Auth/Firestore simulados y React/jsdom, no un recorrido visual en Android/iPad ni cuentas de prueba reales. El defecto staged de OWNER huérfano sigue **PENDIENTE**; conciliación histórica y pagos mixtos de Caja siguen **PENDIENTE**.
 - **Paso 2 ABIERTO. Siguiente bloque:** alta → catálogo → publicación → invitación/aceptación/revocación con dos cuentas ficticias en entorno aislado, y revisión separada de la propuesta de reglas OWNER sin despliegue. Paso 3 después de cerrar aislamiento.
+
+## Paso 2 — integración y comprobación local de permisos (25 de octubre de 2026)
+
+- Base integrada: `c1afa15b`. Se conservaron las correcciones automáticas de portal, registro y catálogo; no se reaplicó la implementación local duplicada del portal.
+- Nuevas comprobaciones en `test-owner-registration.mjs`: intentar reutilizar un ID ocupado no cambia al propietario ni deja una membresía parcial; un batch con OWNER inválido no deja negocio ni membresía; un empleado revocado no puede reactivarse a sí mismo.
+- `firebase.launch-security-emulator.json` se movió desde `scripts/` a la raíz y CI usa la nueva ruta. Corrige la resolución de `docs/firestore.launch-security.STAGED.rules`: antes el arranque buscaba `scripts/docs/` y usaba reglas permisivas hasta que cada prueba cargaba explícitamente sus reglas. Ahora el emulador encuentra el archivo al iniciar. Sin modificar `firebase.json` ni reglas.
+- Verificación local aprobada: TypeScript, build de producción, pruebas de servicio de registro/sesión, portal React/jsdom, servicio de catálogo/publicación y lectura del editor React/jsdom. Advertencia de tamaño del bundle persiste.
+- Firestore Emulator local: `test-owner-registration.mjs`, `test-launch-security.mjs` y `test-owner-atomic-proposal.mjs` aprobados con identidades sintéticas. Configuración de arranque corregida sin aviso de reglas ausentes. La tercera prueba deriva reglas solo en memoria: no se aplicó su propuesta al archivo staged.
+- Límites: no certifica las reglas desplegadas, Firebase Auth real, recorrido visual Android/iPad ni aprobación de beta. Paso 2 sigue abierto; siguiente bloque: recorrido integral de alta/configuración/catálogo/publicación/invitaciones con Auth de pruebas y revisión de OWNER atómico. No repetir las correcciones ya incorporadas.
+
+Reproducción local:
+
+```sh
+npx firebase emulators:exec --only firestore --project demo-gioteautomatizo-owner-test --config firebase.launch-security-emulator.json "node scripts/test-owner-registration.mjs && node scripts/test-launch-security.mjs && node scripts/test-owner-atomic-proposal.mjs"
+```
