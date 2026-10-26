@@ -79,26 +79,26 @@ async function begin(tenant, ids) {
   if (Array.isArray(ids) && ids.length) {
     await waitFor(() => window.qa.pending.length === 1 + new Set(ids).size, 'Faltan membresías');
   }
-  return promise;
+  return {promise};
 }
 try {
   window.eval(bundle.outputFiles[0].text);
 
   // Dos miembros del tenant A; los índices duplicados no duplican personas.
-  let promise = await begin('tenant-a', ['user-z', 'user-a', 'user-a']);
+  let {promise} = await begin('tenant-a', ['user-z', 'user-a', 'user-a']);
   assert.equal(window.qa.pending.length, 3);
   window.qa.pending[1].resolve(memberSnap('tenant-a', 'user-z'));
   window.qa.pending[2].resolve(memberSnap('tenant-a', 'user-a', {active: false}));
-  assert.deepEqual((await promise).map(x => x.userId), ['user-a', 'user-z']);
+  assert.equal((await promise).map(x => x.userId).join(','), 'user-a,user-z');
 
   // El tenant B se lee independientemente, sin reutilizar la lista de A.
-  promise = await begin('tenant-b', ['user-b']);
+  ({promise} = await begin('tenant-b', ['user-b']));
   window.qa.pending[1].resolve(memberSnap('tenant-b', 'user-b'));
-  assert.deepEqual((await promise).map(x => x.restaurantId), ['tenant-b']);
+  assert.equal((await promise).map(x => x.restaurantId).join(','), 'tenant-b');
 
   // Índice vacío válido, sin lecturas de membresías.
-  promise = await begin('tenant-a', []);
-  assert.deepEqual(await promise, []);
+  ({promise} = await begin('tenant-a', []));
+  assert.deepEqual(await promise, []));
   assert.equal(window.qa.pending.length, 1);
 
   // Documento mal identificado: nunca devolver una membresía del tenant B en A.
@@ -110,14 +110,14 @@ try {
     memberSnap('tenant-a', 'user-a', {}, 'tenant-b_user-a'),
     {id: 'tenant-a_user-a', exists: () => false},
   ]) {
-    promise = await begin('tenant-a', ['user-a']);
+    ({promise} = await begin('tenant-a', ['user-a']));
     const rejected = assert.rejects(promise, /membresía.*inconsistente|membresía ausente/);
     window.qa.pending[1].resolve(bad);
     await rejected;
   }
 
   // Un miembro ausente no se transforma en una lista parcial aparentemente correcta.
-  promise = await begin('tenant-a', ['user-a', 'user-b']);
+  ({promise} = await begin('tenant-a', ['user-a', 'user-b']));
   const partialRejected = assert.rejects(promise, /membresía ausente/);
   window.qa.pending[1].resolve(memberSnap('tenant-a', 'user-a'));
   window.qa.pending[2].resolve({id: 'tenant-a_user-b', exists: () => false});
@@ -142,7 +142,7 @@ try {
   assert.equal(window.qa.pending.length, 1);
 
   // Cambio de cuenta durante la lectura no devuelve datos del UID anterior.
-  promise = await begin('tenant-a', ['user-a']);
+  ({promise} = await begin('tenant-a', ['user-a']));
   const switched = assert.rejects(promise, /sesión cambió/);
   window.qa.auth.currentUser = {uid: 'owner-b'};
   window.qa.pending[1].resolve(memberSnap('tenant-a', 'user-a'));
