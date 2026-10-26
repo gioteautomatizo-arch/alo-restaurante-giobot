@@ -187,3 +187,12 @@ npx firebase emulators:exec --only firestore --project demo-gioteautomatizo-owne
 - **Verificación confirmada en commit `8209cd89`:** [Quality checks #40264713946](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40264713946) **success** (TypeScript, compilación y regresiones) y [Staged Firestore security tests #40264713895](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40264713895) **success**, incluida la integración real de API Express con emuladores Auth/Firestore y los nuevos casos de dos negocios. Esto no valida UI visual ni reglas desplegadas.
 - **Paso 2 ABIERTO:** sigue sin aplicarse la propuesta OWNER atómico a reglas staged; alta/configuración/publicación/invitaciones con dos cuentas en navegador aislado y Android/iPad pendientes. Caja y pagos mixtos siguen **PENDIENTE**.
 - **Siguiente:** verificar CI; después recorrido integral del paso 2 con cuentas de prueba y revisión separada de reglas OWNER. No repetir URL ni limpieza de navegación.
+
+
+## Paso 2 — integración real de alta y permisos en emuladores (25 de octubre de 2026)
+
+- **Objetivo:** añadir un recorrido de integración con SDK de Firebase Auth/Firestore cliente y API Express de invitaciones, todo contra emuladores y dos cuentas/negocios ficticios. Cubre alta → OWNER → catálogo inicial → publicación/despublicación → denegación de lecturas/escrituras cruzadas → invitación → aceptación → revocación.
+- **Archivos:** `scripts/test-business-registration-emulator.mts` y workflow `security-firestore.yml`. No se cambian reglas, backend de producción, secretos ni datos reales.
+- **Evidencia inicial:** prueba y ejecución de CI añadidas; **PENDIENTE confirmar resultados de GitHub Actions del commit de este bloque**. No atribuir aprobación hasta obtener conclusión success. El recorrido usa SDK y emuladores reales, pero no navegador ni Android/iPad.
+- **Bloqueo sin resolver:** staged aún admite reservar un negocio sin OWNER en el mismo lote. La propuesta OWNER atómico continúa aislada, sin despliegue ni autorización. Paso 2 **ABIERTO** hasta revisión de reglas y validación visual/manual. Caja histórica/MIXTO continúa **PENDIENTE**.
+- **Siguiente:** comprobar y corregir CI de la integración, registrar resultados; luego validar UI con dos cuentas aisladas. Después paso 3 (pedido completo) y paso 4 (Caja).
