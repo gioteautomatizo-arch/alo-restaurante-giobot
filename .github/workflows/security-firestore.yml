@@ -32,6 +32,8 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-owner-security-test --config firebase.launch-security-emulator.json "node scripts/test-owner-registration.mjs"
       - name: Test isolated atomic OWNER rule proposal (no rule deployment)
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-atomic-owner-proposal-test --config firebase.launch-security-emulator.json "node scripts/test-owner-atomic-proposal.mjs"
+      - name: Diagnose business handle reuse and test isolated no-client-delete proposal
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-handle-reuse-proposal-test --config firebase.launch-security-emulator.json "node scripts/test-business-handle-reuse-proposal.mjs"
       - name: Test real two-business registration and invitation flow in emulators
         run: npx firebase emulators:exec --only auth,firestore --project gioteautomatizo-registration-e2e-test --config firebase.invites-emulator.json "node --import tsx scripts/test-business-registration-emulator.mts"
       - name: Test full two-business flow with isolated atomic OWNER proposal (no rule deployment)
