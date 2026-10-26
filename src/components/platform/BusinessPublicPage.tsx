@@ -17,12 +17,15 @@ import {
   outdatedPublicCartKeys,
   parsePublicTableNumber,
   publicOrderOrigin,
+  readPublicTableParam,
+  isValidPublicGuestCount,
   safeExternalUrl,
 } from '../../lib/businessPublicPage';
 import type { PublicCartLine } from '../../lib/businessPublicPage';
 import { lineUnitPrice } from '../../lib/businessPublicPage';
 import { hasPriceFrom, selectionKey, selectionSummary } from '../../lib/catalogOptions';
 import type { OptionSelection } from '../../lib/catalogOptions';
+import { BusinessTableWelcome } from './BusinessTableWelcome';
 import { BusinessProductModal } from './BusinessProductModal';
 import { VipCardModal } from '../VipCardModal';
 import { getVipProfile, VIP_DATA_EVENT } from '../../lib/vipStorage';
@@ -33,7 +36,10 @@ import type { VipProfile } from '../../types';
  * No muestra nada administrativo. Usa la identidad del negocio (logo, portada, colores)
  * y envía el pedido por WhatsApp, así que no genera costo.
  */
-const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessId }) => {
+const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: string | null }> = ({ businessId, tableParam }) => {
+  const tableNumber = parsePublicTableNumber(tableParam);
+  const [guestCount, setGuestCount] = useState<number | null>(null);
+  const [tableConfirmed, setTableConfirmed] = useState(false);
   const sendInFlight = useRef(false);
   const [profileAttempt, setProfileAttempt] = useState(0);
   const [business, setBusiness] = useState<RestaurantTenant | null>(null);
@@ -161,16 +167,14 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
     );
   }
 
+  if (tableParam !== null && tableNumber === undefined) {
+    return <main className="flex min-h-screen items-center justify-center bg-[#111111] px-6 text-center text-white"><div role="alert"><h1 className="text-2xl font-bold">El QR no tiene una mesa válida</h1><p className="mt-3">Pide al personal el QR correcto de tu mesa.</p><a href="/#explorar" className="mt-5 block underline">Explorar negocios</a></div></main>;
+  }
+  if (tableNumber && !tableConfirmed) {
+    return <BusinessTableWelcome businessName={business.branding.restaurantName} tableNumber={tableNumber} guestCount={guestCount} onGuestCount={setGuestCount} onContinue={() => { if (isValidPublicGuestCount(guestCount)) setTableConfirmed(true); }} />;
+  }
+
   const b = business.branding;
-  const fragmentQuery = window.location.hash.includes('?')
-    ? window.location.hash.slice(window.location.hash.indexOf('?') + 1)
-    : '';
-  const publicParams = new URLSearchParams(window.location.search);
-  new URLSearchParams(fragmentQuery).forEach((value, key) => {
-    if (!publicParams.has(key)) publicParams.set(key, value);
-  });
-  const tableParam = publicParams.get('table');
-  const tableNumber = parsePublicTableNumber(tableParam);
   const bg = b.backgroundColor || '#111111';
   const surface = b.surfaceColor || '#1A1A1A';
   const text = b.textColor || '#F7F7F7';
@@ -185,11 +189,11 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
 
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
   const total = cartTotal(cart);
-  const orderUrl = buildWhatsappOrderUrl({ whatsapp: b.whatsapp || '', businessName: b.restaurantName, lines: cart, customerName, notes, tableNumber });
+  const orderNotes = [tableNumber && isValidPublicGuestCount(guestCount) ? `${guestCount} ${guestCount === 1 ? 'persona' : 'personas'}` : '', notes.trim()].filter(Boolean).join(' · ');
 
   // Registra el pedido en Pedidos y Caja del negocio y, si hay WhatsApp, abre el chat con el código.
   const sendOrder = async () => {
-    if (sendInFlight.current || !cartCanSend) return;
+    if (sendInFlight.current || !cartCanSend || (tableNumber && (!tableConfirmed || !isValidPublicGuestCount(guestCount)))) return;
     // Bloqueo síncrono: cubre pulsaciones antes del siguiente render de React.
     sendInFlight.current = true;
     setSending(true);
@@ -211,7 +215,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
         discountAmount: 0,
         deliveryFee: 0,
         total,
-        notes: [tableNumber ? `Mesa ${tableNumber}` : '', notes.trim()].filter(Boolean).join(' · ') || undefined,
+        notes: [tableNumber ? `Mesa ${tableNumber}` : '', orderNotes].filter(Boolean).join(' · ') || undefined,
       });
       code = saved.code;
       setSentCode(saved.code);
@@ -226,7 +230,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
       setSending(false);
     }
     if (whatsappNumber) {
-      const url = buildWhatsappOrderUrl({ whatsapp: b.whatsapp || '', businessName: b.restaurantName, lines: cart, customerName, notes, tableNumber, orderCode: code });
+      const url = buildWhatsappOrderUrl({ whatsapp: b.whatsapp || '', businessName: b.restaurantName, lines: cart, customerName, notes: orderNotes, tableNumber, orderCode: code });
       if (popup) popup.location.href = url;
       else window.open(url, '_blank');
     }
@@ -290,6 +294,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
 
   return (
     <div className="min-h-screen pb-28" style={{ backgroundColor: bg, color: text }}>
+      {tableNumber && <section aria-label="Tu mesa" className="sticky top-0 z-30 flex items-center justify-between gap-3 bg-[#D6A34A] px-4 py-3 text-sm font-bold text-black"><span>Mesa {tableNumber} · {guestCount} {guestCount === 1 ? 'persona' : 'personas'}</span><button type="button" disabled={sending} onClick={() => { if (!sendInFlight.current) setTableConfirmed(false); }} className="rounded-lg border border-black/30 px-3 py-2 text-xs disabled:opacity-40">Cambiar personas</button></section>}
       <header className="border-b px-4 py-3" style={{ borderColor: border, backgroundColor: surface }}>
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -519,6 +524,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string }> = ({ businessI
 
 // React remonta toda la vista (incluyendo carrito, cliente y suscripciones)
 // cuando cambia el negocio, evitando que un carrito ajeno se envíe al tenant nuevo.
-export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessId }) => (
-  <BusinessPublicPageContent key={businessId} businessId={businessId} />
-);
+export const BusinessPublicPage: React.FC<{ businessId: string }> = ({ businessId }) => {
+  const tableParam = readPublicTableParam(window.location.search, window.location.hash);
+  return <BusinessPublicPageContent key={`${businessId}:${tableParam ?? 'menu'}`} businessId={businessId} tableParam={tableParam} />;
+};

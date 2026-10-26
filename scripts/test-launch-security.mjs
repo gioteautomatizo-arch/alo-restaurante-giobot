@@ -36,6 +36,8 @@ await assertSucceeds(updateDoc(doc(db('manager'),'businesses/business-a/catalog/
 await assertFails(updateDoc(doc(db('manager'),'businesses/business-b/catalog/draft'),{name:'Negocio ajeno'}));
 await assertFails(getDoc(doc(guest(),'businesses/business-b/catalog/draft')));
 await assertSucceeds(setDoc(doc(guest(),'restaurant_orders/public'),order('business-a')));
+// QR de mesa multinegocio conserva mesa/personas en el pedido sin crear sesión heredada.
+await assertSucceeds(setDoc(doc(guest(),'restaurant_orders/table-qr'),{...order('business-a'),orderOrigin:'MESA_QR',tableNumber:3,notes:'Mesa 3 · 4 personas'}));
 await assertFails(setDoc(doc(guest(),'restaurant_orders/unpublished'),order('business-b')));
 await assertFails(setDoc(doc(guest(),'restaurant_orders/fakepaid'),{...order('business-a'),billingStatus:'PAGADO'}));
 await assertFails(setDoc(doc(db('employee'),'restaurant_orders/staff'),{...order('business-a'),orderSource:'CAJA'}));

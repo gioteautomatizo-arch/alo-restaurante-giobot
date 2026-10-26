@@ -9,6 +9,18 @@ import { missingRequired, selectionSummary, unitPriceFor } from './catalogOption
  */
 
 
+/** Acepta QR antiguos con query y enlaces portables con query dentro del fragmento. */
+export function readPublicTableParam(search: string, hash: string): string | null {
+  const params = new URLSearchParams(search);
+  if (params.has('table')) return params.get('table');
+  const queryStart = hash.indexOf('?');
+  return queryStart < 0 ? null : new URLSearchParams(hash.slice(queryStart + 1)).get('table');
+}
+
+export function isValidPublicGuestCount(value: number | null): value is number {
+  return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 10;
+}
+
 /** Interpreta la mesa enviada por el QR sin confiar en texto arbitrario. */
 export function parsePublicTableNumber(raw: string | null): number | undefined {
   if (!raw || !/^\d{1,3}$/.test(raw)) return undefined;

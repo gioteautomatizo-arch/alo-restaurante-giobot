@@ -62,7 +62,9 @@ export function calientitoTableUrl(tableNumber: number): string {
 
 /** QR de una mesa de cualquier negocio de la plataforma. */
 export function businessTableUrl(businessId: string, tableNumber: number): string {
-  return `${businessPageUrl(businessId)}?table=${tableNumber}`;
+  if (!Number.isInteger(tableNumber) || tableNumber < 1 || tableNumber > 999) throw new Error('Número de mesa no válido.');
+  // El fragmento llega al router sin exigir al hosting una ruta /negocio nueva.
+  return `${getSiteBaseUrl()}/#negocio/${encodeURIComponent(businessId)}?table=${tableNumber}`;
 }
 
 /** Las direcciones temporales de AI Studio (ais-dev) dejan de funcionar al cambiar o reiniciar la app. */

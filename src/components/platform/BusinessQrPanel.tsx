@@ -17,9 +17,10 @@ export const BusinessQrPanel: React.FC<BusinessQrPanelProps> = ({ businessId, bu
   const [count, setCount] = useState(0);
 
   useEffect(() => {
+    setCount(0);
     try {
       const saved = Number(localStorage.getItem(storageKey) || 0);
-      if (saved > 0) setCount(Math.min(60, saved));
+      if (Number.isFinite(saved) && saved > 0) setCount(Math.min(60, Math.floor(saved)));
     } catch {
       // sin almacenamiento
     }
@@ -43,7 +44,7 @@ export const BusinessQrPanel: React.FC<BusinessQrPanelProps> = ({ businessId, bu
 
       <div className="rounded-2xl border border-[#3A3022] bg-[#111111] p-4 text-[#F5F5F5]">
         <p className="text-[10px] font-black uppercase tracking-wide text-[#E3BC6B]">QR por mesa</p>
-        <p className="mt-1 text-[11px] text-[#B7B7B7]">¿Tu negocio tiene mesas? Escribe cuántas y genera un QR para cada una. El pedido llega con el número de mesa.</p>
+        <p className="mt-1 text-[11px] text-[#B7B7B7]">¿Tu negocio tiene mesas? Escribe cuántas y genera un QR para cada una. Al escanear se elige el número de personas y se abre el menú de esa mesa. Ambos datos llegan con el pedido.</p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <label className="text-xs font-bold">Número de mesas
             <input

@@ -154,3 +154,18 @@ Reproducción local:
 ```sh
 npx firebase emulators:exec --only firestore --project demo-gioteautomatizo-owner-test --config firebase.launch-security-emulator.json "node scripts/test-owner-registration.mjs && node scripts/test-launch-security.mjs && node scripts/test-owner-atomic-proposal.mjs"
 ```
+
+## Prioridad de Gio — QR de mesas de Giomero (25 de octubre de 2026)
+
+**Reporte:** en celular el QR no abre; en Xbox abre catálogo sin pedir personas.
+
+- Confirmado en código: el QR multinegocio solo enviaba `tableNumber`; la página pública no tenía entrada de mesa. El sistema operativo de Calientito usa identificadores heredados `table-N` y una lista fija de mesas; no se conectó Giomero a esas sesiones.
+- Primera parte implementada para todos los negocios de la página pública: mesa → elección explícita de 1–10 personas → menú. El carrito y la selección se reinician al cambiar de negocio o mesa. Un número de mesa inválido muestra un error en lugar de continuar como pedido genérico.
+- Mesa/personas llegan con el pedido (`orderOrigin=MESA_QR`, `tableNumber` y notas) y con el mensaje de WhatsApp. No se añadieron campos que requieran modificar reglas. Se conserva la clasificación de cobro existente hasta integrar sesiones operativas por tenant.
+- Nuevos QR de mesa usan `/#negocio/{id}?table=N`, que carga la raíz de la app y resuelve el negocio en el cliente, sin exigir rutas anidadas al hosting. Se siguen leyendo enlaces anteriores `/giomero?table=N` y los QR de Calientito conservan su flujo.
+- La cantidad de mesas del generador se reinicia al cambiar de negocio y descarta valores locales no finitos.
+- Verificación: TypeScript y build aprobados; jsdom con componente real comprueba selección obligatoria, envío de mesa/personas, cambio de mesa/negocio e identificador inválido. `test-business-table-qr.mts` decodifica QR con un lector independiente (jsQR) y compara URL exacta para tres negocios y cinco mesas. Rutas, canal de pedido y catálogo pasan regresiones. Las pruebas no representan un escaneo con la cámara del usuario ni revisión visual móvil.
+- Firestore Emulator: `test-launch-security.mjs` aprobado, incluido pedido público de mesa 3 con 4 personas bajo reglas STAGED. No se desplegaron reglas.
+- Pendiente para diagnosticar el celular: obtener el enlace exacto de «Copiar enlace» del QR afectado; verificar dominio publicado frente a dirección temporal y la versión desplegada. No afirmar que cambiar la URL arregló ese caso sin probarlo.
+- **No es todavía una sesión de mesa como Calientito:** selección local al abrir el enlace, sin ocupar mesa, compartir comensales entre dispositivos, asignar mesero, llevar cuenta común o liberar mesa. Ese flujo necesita datos y permisos separados por negocio, pruebas de concurrencia y revisión antes de despliegue. No reutilizar `table-N` del sistema heredado.
+- Cambios en rama, no publicados. Tras publicar la versión probada, descargar QR nuevos si se quiere el formato portable; los antiguos siguen soportados si su dominio y ruta sirven la app.

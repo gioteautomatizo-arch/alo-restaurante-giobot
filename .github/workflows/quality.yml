@@ -64,6 +64,8 @@ jobs:
         run: node scripts/test-business-catalog-editor-read-ui.mjs
       - name: Test shift cash reconciliation (synthetic data, no Firebase writes)
         run: node --import tsx scripts/test-shift-sales.mts
+      - name: Test table QR decoding and routing (no Firebase writes)
+        run: node --import tsx scripts/test-business-table-qr.mts
       - name: Test public checkout interactions (mocked backend, no Firebase writes)
         run: node scripts/test-public-checkout-ui.mjs
       - name: Test safe public catalog checkout (no Firebase writes)
