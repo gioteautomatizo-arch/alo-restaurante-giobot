@@ -20,3 +20,28 @@ export function buildAtomicOwnerProposalRules(staged) {
   assert.notEqual(proposedRules, staged);
   return proposedRules;
 }
+
+
+/**
+ * Variante experimental adicional: impide borrar businesses/{id} desde el
+ * cliente mientras existan membresías y subcolecciones referidas por ese ID.
+ * No cubre borrados privilegiados (Admin SDK): requieren tombstone/limpieza
+ * auditada antes de permitir reutilización del identificador.
+ * NO modifica ni despliega reglas versionadas.
+ */
+export function buildAtomicOwnerAndNoClientDeleteProposalRules(staged) {
+  const atomicRules = buildAtomicOwnerProposalRules(staged);
+  const deleteAnchor = `      allow delete: if isSignedIn()
+        && (
+          (
+            hasActiveMembership(businessId)
+            && getCallerMembershipRole(businessId) == 'OWNER'
+          )
+          || isPlatformSuperAdmin()
+        );`;
+  assert.equal(atomicRules.split(deleteAnchor).length, 2,
+    'ALTO: cambió el permiso de eliminación de businesses; revisar la propuesta.');
+  return atomicRules.replace(deleteAnchor, `      // Propuesta aislada: impedir borrado desde SDK cliente; los datos
+      // asociados no se eliminan en cascada al borrar el documento raíz.
+      allow delete: if false;`);
+}
