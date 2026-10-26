@@ -7,7 +7,7 @@ import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import { buildAtomicOwnerProposalRules } from './owner-atomic-proposal-rules.mjs';
 import { registerThroughOnboardingUI } from './business-onboarding-emulator-ui.mjs';
 import {
-  acceptInviteThroughUI, createInviteThroughEmployeesUI, inspectEmployeesUI,
+  acceptInviteThroughUI, createInviteThroughEmployeesUI, deactivateEmployeeThroughUI, inspectEmployeesUI,
 } from './business-invites-emulator-ui.mjs';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { connectAuthEmulator, createUserWithEmailAndPassword, getIdToken, reload, signInWithEmailAndPassword, signOut } from 'firebase/auth';
@@ -45,7 +45,7 @@ connectFirestoreEmulator(db, '127.0.0.1', 8080);
 const { registerBusiness, getBusinessesForUser, getBusinessForUser } = await import('../src/lib/businessAuthService.ts');
 const { setBusinessPublication } = await import('../src/lib/businessPublicProfileService.ts');
 const { saveBusinessCatalog, seedBusinessCatalogIfMissing } = await import('../src/lib/businessCatalogService.ts');
-const { listBusinessEmployees } = await import('../src/lib/businessEmployeeService.ts');
+const { listBusinessEmployees, updateBusinessEmployee } = await import('../src/lib/businessEmployeeService.ts');
 const { registerBusinessInviteApi } = await import('../businessInviteApi.ts');
 const adminApp = initializeAdminApp({ projectId });
 const adminAuth = getAdminAuth(adminApp);
@@ -216,6 +216,8 @@ try {
   // conectados a Auth/Firestore emulados. Ningún fetch sale a producción.
   const uiBridge = {
     listEmployees: (businessId: string) => listBusinessEmployees(businessId),
+    updateEmployee: (businessId: string, userId: string, changes: { active?: boolean }) =>
+      updateBusinessEmployee(businessId, userId, changes),
     listInvites: async (businessId: string) => {
       const bearer = await getIdToken(auth.currentUser!, true);
       const result = await call('/api/business-invites?businessId=' + encodeURIComponent(businessId),
@@ -286,7 +288,11 @@ try {
   await inspectEmployeesUI({ businessId: idB, bridge: uiBridge,
     forbiddenText: 'Persona de prueba' });
   await signInWithEmailAndPassword(auth, aEmail, password);
-  await updateDoc(doc(db, 'businessMemberships', idA + '_' + staff.user.uid), { active: false });
+  await deactivateEmployeeThroughUI({
+    businessId: idA, name: 'Persona de prueba', bridge: uiBridge,
+  });
+  assert.equal((await getDoc(doc(db, 'businessMemberships', idA + '_' + staff.user.uid))).data()?.active, false,
+    'La UI revocó la membresía en Firestore emulado');
   await signInWithEmailAndPassword(auth, employeeEmail, password);
   await deny(getDoc(doc(db, 'businesses', idA)), 'Empleado revocado pierde acceso privado');
   await deny(getDoc(doc(db, 'businesses', idB)), 'Revocado tampoco accede a B');
