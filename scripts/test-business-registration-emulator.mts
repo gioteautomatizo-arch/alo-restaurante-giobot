@@ -209,7 +209,6 @@ try {
   });
   assert.equal((await getDoc(doc(db, 'businesses', idB))).data()?.branding.restaurantName, 'Negocio B configurado en UI');
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idB))).data()?.published, false);
-  assert.equal((await getDoc(doc(db, 'businesses', idA))).data()?.branding.restaurantName, 'Negocio A configurado en UI');
 
   // Un handle ocupado no debe sobrescribir al propietario anterior ni crear
   // una membresía cruzada. El segundo dueño conserva su sesión y negocio.
@@ -292,6 +291,7 @@ try {
   }, bToken)).status, 403);
 
   await signInWithEmailAndPassword(auth, aEmail, password);
+  assert.equal((await getDoc(doc(db, 'businesses', idA))).data()?.branding.restaurantName, 'Negocio A configurado en UI');
   const aToken = await getIdToken(auth.currentUser, true);
   const inviteToken = await createInviteThroughEmployeesUI({
     businessId: idA, name: 'Persona de prueba', email: employeeEmail,
