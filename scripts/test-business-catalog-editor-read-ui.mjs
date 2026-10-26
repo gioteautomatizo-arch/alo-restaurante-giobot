@@ -59,7 +59,7 @@ const waitFor = async (condition,label) => {
 };
 const button = label => [...document.querySelectorAll('button')].find(el=>el.textContent.trim()===label);
 const visible = text => document.body.textContent.includes(text) || [...document.querySelectorAll('input')].some(input => input.value === text);
-const catalog = name => ({items:[{
+const catalog = name => ({revision:name+'-revision',updatedAt:'2026-10-26T00:00:00.000Z',items:[{
   id:name,name,description:'',category:'General',price:25,available:true,sortOrder:10,
 }]});
 try {
@@ -83,23 +83,43 @@ try {
   button('Guardar catálogo').click();
   await waitFor(()=>window.qa.writes.length===1,'Guardar debe funcionar después de recuperar');
   assert.equal(window.qa.writes[0].businessId,'tenant-a');
+  await waitFor(()=>visible('Catálogo guardado correctamente.'),'Falta confirmación del guardado A');
+  // El usuario edita un borrador; un snapshot remoto NO puede borrarlo.
+  const nameInput = document.querySelector('input[placeholder="Nombre del producto"]');
+  assert(nameInput,'Falta editor de nombre');
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set.call(nameInput,'Borrador sin guardar A');
+  nameInput.dispatchEvent(new window.Event('input',{bubbles:true}));
+  nameInput.dispatchEvent(new window.Event('change',{bubbles:true}));
+  await waitFor(()=>visible('Borrador sin guardar A'),'Falta cambio local A');
+  window.qa.subscriptions[1].callback(catalog('Producto remoto A'));
+  await waitFor(()=>!!button('Descartar mi borrador y recargar catálogo'),'Falta aviso de conflicto remoto');
+  assert.equal(visible('Borrador sin guardar A'),true,'El snapshot no debe borrar el borrador');
+  assert.equal(visible('Producto remoto A'),false,'No reemplazar borrador por versión remota');
+  assert(button('Guardar cambios')?.disabled,'No permitir sobrescribir la versión remota');
+  assert.equal(window.qa.writes.length,1,'No debe haber escrituras durante conflicto');
+  button('Descartar mi borrador y recargar catálogo').click();
+  await waitFor(()=>window.qa.subscriptions.length===3,'Falta recarga explícita del catálogo');
+  assert.equal(window.qa.subscriptions[1].active,false,'Recarga debe cancelar suscripción antigua');
+  window.qa.subscriptions[2].callback(catalog('Producto remoto A'));
+  await waitFor(()=>visible('Producto remoto A'),'Recarga debe presentar la versión remota');
+  assert.equal(visible('Borrador sin guardar A'),false,'Solo el descarte explícito puede borrar el borrador');
 
   window.qa.render('tenant-b');
-  await waitFor(()=>window.qa.subscriptions.length===3,'Falta suscripción B');
+  await waitFor(()=>window.qa.subscriptions.length===4,'Falta suscripción B');
   assert.equal(visible('Producto A'),false,'Cambio de tenant no debe mostrar catálogo anterior');
   assert.equal(button('Guardar catálogo'),undefined,'No guardar mientras B carga');
-  window.qa.subscriptions[1].callback(catalog('Producto A tardío'));
+  window.qa.subscriptions[2].callback(catalog('Producto A tardío'));
   await new Promise(resolve=>setTimeout(resolve,20));
   assert.equal(visible('Producto A tardío'),false);
-  window.qa.subscriptions[2].callback(catalog('Producto B'));
+  window.qa.subscriptions[3].callback(catalog('Producto B'));
   await waitFor(()=>visible('Producto B'),'B debe mostrar solo su catálogo');
   assert.equal(visible('Producto A'),false);
-  window.qa.subscriptions[2].onError({code:'unavailable'});
+  window.qa.subscriptions[3].onError({code:'unavailable'});
   await waitFor(()=>!!button('Reintentar catálogo'),'Error posterior debe bloquear editor');
   assert.equal(button('Guardar catálogo'),undefined);
   assert.equal(window.qa.writes.length,1,'Error B no debe escribir sobre ningún catálogo');
   assert.deepEqual(errors,[],'No deben aparecer errores de React');
-  console.log('PASS: error de lectura bloquea edición, reintento recupera, cambio de tenant descarta callbacks obsoletos (React + jsdom).');
+  console.log('PASS: lectura recuperable, borrador conservado ante snapshot remoto, conflicto bloquea guardado, descarte explícito y aislamiento de tenant (React + jsdom).');
 } finally {
   window.qa.unmount?.();
   window.close();
