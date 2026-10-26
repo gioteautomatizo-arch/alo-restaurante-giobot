@@ -74,6 +74,8 @@ jobs:
         run: node --import tsx scripts/test-shift-sales.mts
       - name: Test table QR decoding and routing (no Firebase writes)
         run: node --import tsx scripts/test-business-table-qr.mts
+      - name: Test sent order receipts (local tab storage, no Firebase writes)
+        run: node --import tsx scripts/test-public-order-receipts.mts
       - name: Test public checkout interactions (mocked backend, no Firebase writes)
         run: node scripts/test-public-checkout-ui.mjs
       - name: Test safe public catalog checkout (no Firebase writes)

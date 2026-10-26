@@ -25,6 +25,8 @@ import type { PublicCartLine } from '../../lib/businessPublicPage';
 import { lineUnitPrice } from '../../lib/businessPublicPage';
 import { hasPriceFrom, selectionKey, selectionSummary } from '../../lib/catalogOptions';
 import type { OptionSelection } from '../../lib/catalogOptions';
+import { PublicOrderReceipts } from './PublicOrderReceipts';
+import { addPublicReceipt, readPublicReceipts } from '../../lib/publicOrderReceipts';
 import { BusinessTableWelcome } from './BusinessTableWelcome';
 import { BusinessProductModal } from './BusinessProductModal';
 import { VipCardModal } from '../VipCardModal';
@@ -40,6 +42,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
   const tableNumber = parsePublicTableNumber(tableParam);
   const [guestCount, setGuestCount] = useState<number | null>(null);
   const [tableConfirmed, setTableConfirmed] = useState(false);
+  const [sentReceipts, setSentReceipts] = useState(() => readPublicReceipts(businessId, tableNumber));
   const sendInFlight = useRef(false);
   const [profileAttempt, setProfileAttempt] = useState(0);
   const [business, setBusiness] = useState<RestaurantTenant | null>(null);
@@ -218,6 +221,15 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
         notes: [tableNumber ? `Mesa ${tableNumber}` : '', orderNotes].filter(Boolean).join(' · ') || undefined,
       });
       code = saved.code;
+      setSentReceipts((current) => addPublicReceipt(current, {
+        id: saved.id || saved.code,
+        businessId,
+        ...(tableNumber ? { tableNumber, guestCount: guestCount! } : {}),
+        code: saved.code,
+        sentAt: new Date().toISOString(),
+        total,
+        items: cartToOrderItems(cart).map(({ name, quantity, totalPrice, customizationSummary }) => ({ name, quantity, totalPrice, ...(customizationSummary ? { customizationSummary } : {}) })),
+      }));
       setSentCode(saved.code);
       setCart([]);
     } catch (err) {
@@ -312,7 +324,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
             {instagram && <a href={instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="flex h-9 w-9 items-center justify-center rounded-xl border" style={{ borderColor: border }}><Instagram className="h-4 w-4" style={{ color: accent }} /></a>}
             {facebook && <a href={facebook} target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="flex h-9 w-9 items-center justify-center rounded-xl border" style={{ borderColor: border }}><Facebook className="h-4 w-4" style={{ color: accent }} /></a>}
             <button type="button" onClick={() => setCartOpen(true)} className="relative flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-black" style={{ backgroundColor: primary, color: bg }}>
-              <ShoppingBag className="h-4 w-4" /> Pedido
+              <ShoppingBag className="h-4 w-4" /> Pedidos
               {itemCount > 0 && <span className="rounded-full px-1.5 text-xs" style={{ backgroundColor: bg, color: primary }}>{itemCount}</span>}
             </button>
           </div>
@@ -440,7 +452,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 sm:items-center" onClick={() => setCartOpen(false)}>
           <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl border p-5 sm:rounded-3xl" style={{ backgroundColor: surface, borderColor: border, color: text }} onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h2 className="font-serif text-xl font-black">Tu pedido</h2>
+              <h2 className="font-serif text-xl font-black">Mis pedidos</h2>
               <button type="button" aria-label="Cerrar" onClick={() => setCartOpen(false)} className="rounded-lg p-2"><X className="h-5 w-5" /></button>
             </div>
 
@@ -473,6 +485,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
               </div>
             )}
 
+            {cart.length > 0 && <h3 className="mt-4 font-bold">Carrito · Por enviar</h3>}
             {cart.length === 0 ? (
               sentCode ? (
                 <div className="mt-6 text-center">
@@ -481,7 +494,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
                   <button type="button" onClick={() => { setSentCode(null); setCartOpen(false); }} className="mt-4 rounded-xl border px-4 py-2 text-xs font-bold" style={{ borderColor: border }}>Seguir viendo el menú</button>
                 </div>
               ) : (
-                <p className="mt-6 text-center text-sm opacity-70">Aún no agregas productos.</p>
+                <p className="mt-6 text-center text-sm opacity-70">{sentReceipts.length ? 'Tus pedidos enviados aparecen abajo. Puedes seguir agregando productos al carrito.' : 'Aún no agregas productos.'}</p>
               )
             ) : (
               <>
@@ -515,6 +528,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
                 <button type="button" disabled={sending} onClick={() => { if (!sendInFlight.current) setCart([]); }} className="mt-3 w-full text-xs underline opacity-70">Vaciar pedido</button>
               </>
             )}
+            <PublicOrderReceipts receipts={sentReceipts} />
           </div>
         </div>
       )}

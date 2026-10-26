@@ -33,7 +33,7 @@ export const SiteUrlSetting: React.FC<SiteUrlSettingProps> = ({ tone = 'light', 
     <div className={`rounded-2xl border p-4 ${dark ? 'border-[#3A3022] bg-[#111111] text-[#F5F5F5]' : 'border-[#E7D7C4] bg-[#FFFDF9] text-[#2B1B13]'}`}>
       <p className={`text-[10px] font-black uppercase tracking-wide ${dark ? 'text-[#E3BC6B]' : 'text-[#A86B3D]'}`}>Dirección oficial de la app</p>
       <p className={`mt-1 text-[11px] ${dark ? 'text-[#B7B7B7]' : 'text-[#6B4028]'}`}>
-        Todos los QR y enlaces se arman con la dirección pública del sitio. Si cambia tu dominio, escríbelo aquí y vuelve a descargar tus QR.
+        Guarda aquí la dirección pública de la app, no la vista previa de AI Studio. Después vuelve a descargar los QR. Esta configuración se guarda en este navegador.
       </p>
       <input
         value={value}

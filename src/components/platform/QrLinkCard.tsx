@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { looksTemporary } from '../../lib/siteUrl';
 import { qrToDataUrl } from '../../lib/qrCode';
 
 interface QrLinkCardProps {
@@ -64,6 +65,7 @@ export const QrLinkCard: React.FC<QrLinkCardProps> = ({ title, url, fileName, hi
   return (
     <div className={`rounded-2xl border p-4 ${box}`}>
       <p className={`text-[10px] font-black uppercase tracking-wide ${dark ? 'text-[#E3BC6B]' : 'text-[#A86B3D]'}`}>{title}</p>
+      {looksTemporary(url) && <p role="alert" className="mt-2 rounded-xl bg-amber-100 p-3 text-xs font-semibold text-amber-950">QR de prueba: esta dirección es temporal y puede no abrir fuera de tu sesión. Guarda la dirección pública de la app y vuelve a descargar el QR para tus clientes.</p>}
       <div className="mt-3 flex flex-col items-center gap-4 sm:flex-row sm:items-start">
         {dataUrl ? (
           <img src={dataUrl} alt={`QR de ${title}`} className="h-40 w-40 shrink-0 rounded-xl border border-black/10 bg-white" />

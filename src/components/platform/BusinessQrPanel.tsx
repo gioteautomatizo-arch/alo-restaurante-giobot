@@ -40,6 +40,7 @@ export const BusinessQrPanel: React.FC<BusinessQrPanelProps> = ({ businessId, bu
 
   return (
     <div className="space-y-3">
+      <SiteUrlSetting tone="dark" onChanged={() => setVersion((v) => v + 1)} />
       <QrLinkCard tone="dark" title="Tu página y su QR" url={pageUrl} fileName={`qr-${businessId}`} hint="Es el enlace que compartes por WhatsApp, redes o Google. Tus clientes verán solo tu menú, nunca el panel." />
 
       <div className="rounded-2xl border border-[#3A3022] bg-[#111111] p-4 text-[#F5F5F5]">
@@ -72,7 +73,7 @@ export const BusinessQrPanel: React.FC<BusinessQrPanelProps> = ({ businessId, bu
         )}
       </div>
 
-      <SiteUrlSetting tone="dark" onChanged={() => setVersion((v) => v + 1)} />
+
     </div>
   );
 };
