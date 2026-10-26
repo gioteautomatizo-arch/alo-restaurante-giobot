@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import { buildAtomicOwnerProposalRules } from './owner-atomic-proposal-rules.mjs';
 import { registerThroughOnboardingUI } from './business-onboarding-emulator-ui.mjs';
+import { saveBrandingThroughUI, addCatalogProductThroughUI } from './business-management-emulator-ui.mjs';
 import {
   acceptInviteThroughUI, createInviteThroughEmployeesUI, deactivateEmployeeThroughUI, inspectEmployeesUI,
 } from './business-invites-emulator-ui.mjs';
@@ -43,8 +44,8 @@ const { auth, db } = await import('../src/lib/firebase.ts');
 connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
 connectFirestoreEmulator(db, '127.0.0.1', 8080);
 const { registerBusiness, getBusinessesForUser, getBusinessForUser } = await import('../src/lib/businessAuthService.ts');
-const { setBusinessPublication } = await import('../src/lib/businessPublicProfileService.ts');
-const { saveBusinessCatalog, seedBusinessCatalogIfMissing } = await import('../src/lib/businessCatalogService.ts');
+const { setBusinessPublication, syncPublicProfileIfNeeded } = await import('../src/lib/businessPublicProfileService.ts');
+const { saveBusinessCatalog, seedBusinessCatalogIfMissing, subscribeToBusinessCatalog } = await import('../src/lib/businessCatalogService.ts');
 const { listBusinessEmployees, updateBusinessEmployee } = await import('../src/lib/businessEmployeeService.ts');
 const { registerBusinessInviteApi } = await import('../businessInviteApi.ts');
 const adminApp = initializeAdminApp({ projectId });
@@ -71,6 +72,14 @@ try {
     businessType: 'restaurant', onRegister: registerBusiness,
   });
   const uidA = a.membership.userId;
+  const managementBridge = {
+    updateBranding: (id: string, patch: unknown) => updateDoc(doc(db, 'businesses', id), patch as object),
+    syncPublic: (id: string, tenant: any) => syncPublicProfileIfNeeded(id, tenant),
+    getBusiness: (uid: string, id: string) => getBusinessForUser(uid, id),
+    subscribeCatalog: (id: string, callback: any, onError: any) => subscribeToBusinessCatalog(id, callback, onError),
+    saveCatalog: (id: string, items: any, actor: string, revision: string | null) =>
+      saveBusinessCatalog(id, items, actor, revision),
+  };
   assert.equal(a.tenant.restaurantId, idA);
   assert.equal((await getDoc(doc(db, 'businessMemberships', idA + '_' + uidA))).data()?.role, 'OWNER');
   const catalogA = await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'));
@@ -142,7 +151,18 @@ try {
     'El reintento no sobrescribe la ficha original');
   assert((await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data()?.items.some(item => item.id === 'extra-a'),
     'El reintento no reemplaza el catálogo editado');
+  await addCatalogProductThroughUI({
+    businessId: idA, businessName: a.tenant.branding.restaurantName,
+    user: auth.currentUser!, bridge: managementBridge, productName: 'Producto UI A', price: 43,
+  });
+  assert((await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data()?.items.some((item: {name:string}) => item.name === 'Producto UI A'));
   await setBusinessPublication(idA, a.tenant, true);
+  await saveBrandingThroughUI({
+    tenant: (await getBusinessForUser(uidA, idA))!, user: auth.currentUser!,
+    bridge: managementBridge, name: 'Negocio A configurado en UI',
+  });
+  assert.equal((await getDoc(doc(db, 'businesses', idA))).data()?.branding.restaurantName, 'Negocio A configurado en UI');
+  assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.branding.restaurantName, 'Negocio A configurado en UI');
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
 
   await signOut(auth);
@@ -159,6 +179,11 @@ try {
     ...catalogB.data()!.items,
     { id: 'extra-b', name: 'Solo B', description: '', category: 'Prueba', price: 25, available: true, sortOrder: 99 },
   ], 'Propietario B');
+  await addCatalogProductThroughUI({
+    businessId: idB, businessName: b.tenant.branding.restaurantName,
+    user: auth.currentUser!, bridge: managementBridge, productName: 'Producto UI B', price: 26,
+  });
+  assert((await getDoc(doc(db, 'businesses', idB, 'catalog', 'menu_catalog'))).data()?.items.some((item: {name:string}) => item.name === 'Producto UI B'));
   assert(!(await getDoc(doc(db, 'businesses', idB, 'catalog', 'menu_catalog'))).data()?.items.some(item => item.id === 'extra-a'));
   assert(!(await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data()?.items.some(item => item.id === 'extra-b'));
   assert.deepEqual((await getBusinessesForUser(uidB)).map(x => x.restaurantId), [idB]);
@@ -176,6 +201,13 @@ try {
   await setBusinessPublication(idB, b.tenant, true);
   await setBusinessPublication(idB, b.tenant, false);
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idB))).data()?.published, false);
+  await saveBrandingThroughUI({
+    tenant: (await getBusinessForUser(uidB, idB))!, user: auth.currentUser!,
+    bridge: managementBridge, name: 'Negocio B configurado en UI',
+  });
+  assert.equal((await getDoc(doc(db, 'businesses', idB))).data()?.branding.restaurantName, 'Negocio B configurado en UI');
+  assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idB))).data()?.published, false);
+  assert.equal((await getDoc(doc(db, 'businesses', idA))).data()?.branding.restaurantName, 'Negocio A configurado en UI');
 
   // Un handle ocupado no debe sobrescribir al propietario anterior ni crear
   // una membresía cruzada. El segundo dueño conserva su sesión y negocio.
@@ -303,7 +335,7 @@ try {
   await signInWithEmailAndPassword(auth, bEmail, password);
   assert.deepEqual((await getBusinessesForUser(uidB)).map(x => x.restaurantId), [idB]);
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
-  console.log('PASS (' + (process.env.TEST_ATOMIC_OWNER_PROPOSAL === '1' ? 'propuesta OWNER aislada' : 'reglas staged') + '): onboarding React de dos dueños y pantallas React de empleados/invitación/aceptación conectadas a Auth/Firestore/API emulados; catálogo, publicación, permisos, revocación y recuperación de sesión.');
+  console.log('PASS (' + (process.env.TEST_ATOMIC_OWNER_PROPOSAL === '1' ? 'propuesta OWNER aislada' : 'reglas staged') + '): onboarding, identidad, catálogo y empleados/invitaciones en React conectados a Auth/Firestore/API emulados; publicación, aislamiento, revocación y recuperación de sesión.');
 } finally {
   if (server) await new Promise(resolve => server.close(resolve));
   await signOut(auth).catch(() => {});
