@@ -264,3 +264,10 @@ npx firebase emulators:exec --only firestore --project demo-gioteautomatizo-owne
 - **CI del bloque: PENDIENTE de comprobar tras commit.** La prueba usa Firestore/Auth simulados; no certifica permisos desplegados, ni sustituye la integración de emuladores ni validación visual Android/iPad.
 - **Paso 2 ABIERTO:** OWNER atómico staged pendiente de revisión/autorización; falta recorrido visual completo con dos cuentas ficticias. **Caja histórica/MIXTO sigue PENDIENTE** aunque otros tests concluyan con éxito.
 - **Siguiente:** comprobar CI, corregir regresiones; seguir con recorrido visual/manual del paso 2 en entorno aislado y revisión OWNER sin despliegue. Luego paso 3.
+
+### Verificación de CI de integridad de membresías (`9bcb3d15`)
+
+- [Quality checks #40287120478](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40287120478): **success**. TypeScript, build y regresión ampliada `test-business-account-list.mjs`, que incluye respuestas tardías entre dos UID, documentos con tenant discordante, rol inválido e inactivo, y lectura individual.
+- [Staged Firestore security tests #40287120562](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/40287120562): **success**. Emuladores y guard staged; las reglas no se modificaron ni desplegaron. La propuesta OWNER atómico sigue aislada.
+- **Evidencia delimitada:** los nuevos casos de membresía corrupta/sesión cambiada usan servicios simulados; la integración Auth/Firestore de dos negocios ya existente se volvió a ejecutar en el workflow de seguridad. No hay validación visual Android/iPad ni certificación de reglas desplegadas.
+- **Estado:** paso 2 **ABIERTO**. Próximo: recorrido visual de alta, catálogo, publicación e invitaciones con dos cuentas ficticias, más revisión/autorización de OWNER atómico sin desplegar. Paso 4 (Caja histórica y MIXTO) continúa **PENDIENTE**.
