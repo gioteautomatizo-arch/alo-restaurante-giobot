@@ -6,6 +6,9 @@ import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import { buildAtomicOwnerProposalRules } from './owner-atomic-proposal-rules.mjs';
 import { registerThroughOnboardingUI } from './business-onboarding-emulator-ui.mjs';
+import {
+  acceptInviteThroughUI, createInviteThroughEmployeesUI, inspectEmployeesUI,
+} from './business-invites-emulator-ui.mjs';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { connectAuthEmulator, createUserWithEmailAndPassword, getIdToken, reload, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { connectFirestoreEmulator, deleteDoc, doc, getDoc, setDoc, updateDoc, terminate } from 'firebase/firestore';
@@ -42,6 +45,7 @@ connectFirestoreEmulator(db, '127.0.0.1', 8080);
 const { registerBusiness, getBusinessesForUser, getBusinessForUser } = await import('../src/lib/businessAuthService.ts');
 const { setBusinessPublication } = await import('../src/lib/businessPublicProfileService.ts');
 const { saveBusinessCatalog, seedBusinessCatalogIfMissing } = await import('../src/lib/businessCatalogService.ts');
+const { listBusinessEmployees } = await import('../src/lib/businessEmployeeService.ts');
 const { registerBusinessInviteApi } = await import('../businessInviteApi.ts');
 const adminApp = initializeAdminApp({ projectId });
 const adminAuth = getAdminAuth(adminApp);
@@ -208,6 +212,43 @@ try {
     });
     return { status: response.status, data: await response.json() };
   };
+  // Las pantallas React de empleados/invitaciones delegan al SDK y API REALES
+  // conectados a Auth/Firestore emulados. Ningún fetch sale a producción.
+  const uiBridge = {
+    listEmployees: (businessId: string) => listBusinessEmployees(businessId),
+    listInvites: async (businessId: string) => {
+      const bearer = await getIdToken(auth.currentUser!, true);
+      const result = await call('/api/business-invites?businessId=' + encodeURIComponent(businessId),
+        undefined, bearer, 'GET');
+      if (result.status !== 200) throw new Error(result.data.error || 'No se cargaron invitaciones');
+      return result.data.invites;
+    },
+    createInvite: async (businessId: string, name: string, email: string, role: string) => {
+      const bearer = await getIdToken(auth.currentUser!, true);
+      const result = await call('/api/business-invites', { businessId, name, email, role }, bearer);
+      if (result.status !== 201) throw new Error(result.data.error || 'No se creó invitación');
+      return result.data;
+    },
+    revokeInvite: async (businessId: string, inviteId: string) => {
+      const bearer = await getIdToken(auth.currentUser!, true);
+      const result = await call('/api/business-invites/revoke', { businessId, inviteId }, bearer);
+      if (result.status !== 200) throw new Error(result.data.error || 'No se revocó invitación');
+      return result.data;
+    },
+    previewInvite: async (token: string) => {
+      const result = await call('/api/business-invites/preview', { token });
+      if (result.status !== 200) throw new Error(result.data.error || 'No se pudo consultar invitación');
+      return result.data;
+    },
+    acceptInvite: async (token: string) => {
+      const bearer = await getIdToken(auth.currentUser!, true);
+      const result = await call('/api/business-invites/accept', { token }, bearer);
+      if (result.status !== 200) throw new Error(result.data.error || 'No se pudo aceptar invitación');
+      return result.data;
+    },
+  };
+  await inspectEmployeesUI({ businessId: idB, bridge: uiBridge,
+    forbiddenText: 'Persona de prueba' });
   const bToken = await getIdToken(auth.currentUser, true);
   assert.equal((await call('/api/business-invites?businessId=' + idA, undefined, bToken, 'GET')).status, 403);
   assert.equal((await call('/api/business-invites', {
@@ -216,20 +257,22 @@ try {
 
   await signInWithEmailAndPassword(auth, aEmail, password);
   const aToken = await getIdToken(auth.currentUser, true);
-  const invitation = await call('/api/business-invites', {
-    businessId: idA, email: employeeEmail, name: 'Persona de prueba', role: 'KITCHEN',
-  }, aToken);
-  assert.equal(invitation.status, 201, JSON.stringify(invitation));
-  assert.equal((await call('/api/business-invites/preview', { token: invitation.data.token })).status, 200);
+  const inviteToken = await createInviteThroughEmployeesUI({
+    businessId: idA, name: 'Persona de prueba', email: employeeEmail,
+    role: 'KITCHEN', bridge: uiBridge,
+  });
+  assert.equal((await call('/api/business-invites/preview', { token: inviteToken })).status, 200);
 
   await signOut(auth);
   const staff = await createUserWithEmailAndPassword(auth, employeeEmail, password);
   await adminAuth.updateUser(staff.user.uid, { emailVerified: true });
   await reload(auth.currentUser);
   const staffToken = await getIdToken(auth.currentUser, true);
-  const accepted = await call('/api/business-invites/accept', { token: invitation.data.token }, staffToken);
-  assert.equal(accepted.status, 200, JSON.stringify(accepted));
-  assert.equal((await call('/api/business-invites/accept', { token: invitation.data.token }, staffToken)).status, 410);
+  const acceptedHash = await acceptInviteThroughUI({
+    token: inviteToken, user: auth.currentUser!, bridge: uiBridge, businessId: idA,
+  });
+  assert.equal(acceptedHash, '#business/' + idA);
+  assert.equal((await call('/api/business-invites/accept', { token: inviteToken }, staffToken)).status, 410);
   assert.equal((await getDoc(doc(db, 'businessMemberships', idA + '_' + staff.user.uid))).data()?.role, 'KITCHEN');
   assert((await getDoc(doc(db, 'businesses', idA))).exists(), 'Empleado accede a A');
   assert.deepEqual((await getBusinessesForUser(staff.user.uid)).map(x => x.restaurantId), [idA]);
@@ -239,6 +282,9 @@ try {
   await deny(getDoc(doc(db, 'businesses', idB)), 'Empleado A no accede a B');
   await assert.rejects(setBusinessPublication(idA, a.tenant, false), /propietario/, 'Empleado no publica A');
 
+  await signInWithEmailAndPassword(auth, bEmail, password);
+  await inspectEmployeesUI({ businessId: idB, bridge: uiBridge,
+    forbiddenText: 'Persona de prueba' });
   await signInWithEmailAndPassword(auth, aEmail, password);
   await updateDoc(doc(db, 'businessMemberships', idA + '_' + staff.user.uid), { active: false });
   await signInWithEmailAndPassword(auth, employeeEmail, password);
@@ -251,7 +297,7 @@ try {
   await signInWithEmailAndPassword(auth, bEmail, password);
   assert.deepEqual((await getBusinessesForUser(uidB)).map(x => x.restaurantId), [idB]);
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
-  console.log('PASS (' + (process.env.TEST_ATOMIC_OWNER_PROPOSAL === '1' ? 'propuesta OWNER aislada' : 'reglas staged') + '): onboarding React de dos dueños conectado a Auth/Firestore emulados, alta reintentable, siembra transaccional concurrente, catálogo preservado/restaurado, colisión de handle, visibilidad pública/privada, roles, invitación, revocación y recuperación de sesión en emuladores.');
+  console.log('PASS (' + (process.env.TEST_ATOMIC_OWNER_PROPOSAL === '1' ? 'propuesta OWNER aislada' : 'reglas staged') + '): onboarding React de dos dueños y pantallas React de empleados/invitación/aceptación conectadas a Auth/Firestore/API emulados; catálogo, publicación, permisos, revocación y recuperación de sesión.');
 } finally {
   if (server) await new Promise(resolve => server.close(resolve));
   await signOut(auth).catch(() => {});
