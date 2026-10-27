@@ -107,16 +107,43 @@ try {
   await waitFor(() => !visible('Creando tu negocio…'), 'Finalizar petición tardía');
   assert.equal(window.location.hash, '#business/otro-negocio', 'No secuestrar navegación posterior');
 
+  // Congelación o permisos insuficientes: no afirmar que la cuenta Auth no existe,
+  // no reintentar automáticamente ni confundir el rechazo con una pausa confirmada.
+  await remount('permisos');
+  window.qa.complete(window.qa.profile);
+  await waitFor(() => window.qa.calls.length === 5, 'Falta intento con permisos restringidos');
+  window.qa.pending[4].reject(Object.assign(new Error('Missing or insufficient permissions'), {code: 'permission-denied'}));
+  await waitFor(() => visible('El registro podría estar temporalmente restringido'), 'Mensaje prudente para permisos');
+  assert.equal(visible('Missing or insufficient permissions'), false, 'No mostrar error técnico de Firebase');
+  assert.equal(window.qa.calls.length, 5, 'No debe reintentar automáticamente');
+  assert(window.document.querySelector('[role="alert"]'), 'Error accesible');
+  const reviewBusinesses = () => [...window.document.querySelectorAll('button')]
+    .find(el => el.textContent.trim() === 'Revisar mis negocios');
+  assert(reviewBusinesses(), 'Debe existir una salida para revisar el registro');
+  reviewBusinesses().click();
+  assert.equal(window.location.hash, '#business', 'Salir al portal sin crear otra cuenta');
+
+  // Red incierta: el lote podría haberse confirmado. La pantalla no puede
+  // afirmar rollback ni crear otra solicitud por sí misma.
+  await remount('red');
+  window.qa.complete(window.qa.profile);
+  await waitFor(() => window.qa.calls.length === 6, 'Falta intento con respuesta de red incierta');
+  window.qa.pending[5].reject(Object.assign(new Error('Backend unavailable'), {code: 'unavailable'}));
+  await waitFor(() => visible('Es posible que el negocio sí se haya guardado'), 'Aviso de confirmación incierta');
+  assert.equal(window.qa.calls.length, 6, 'Sin reintentos automáticos tras red incierta');
+  reviewBusinesses().click();
+  assert.equal(window.location.hash, '#business', 'Revisar el portal después de error de red');
+
   // Desmontar durante un fallo no debe producir errores React ni redirección.
   await remount('cuarto');
   window.qa.complete(window.qa.profile);
-  await waitFor(() => window.qa.calls.length === 5, 'Falta intento antes de desmontar');
+  await waitFor(() => window.qa.calls.length === 7, 'Falta intento antes de desmontar');
   window.qa.unmount();
-  window.qa.pending[4].reject(new Error('Fallo después de salir'));
+  window.qa.pending[6].reject(new Error('Fallo después de salir'));
   await new Promise(resolve => setTimeout(resolve, 30));
   assert.equal(window.location.hash, '#business-new');
   assert.deepEqual(errors, [], 'Sin errores no controlados de React');
-  console.log('PASS: doble envío síncrono, fallo/reintento, cambio de ruta y desmontaje en alta (React/jsdom, sin Firebase).');
+  console.log('PASS: doble envío, fallo/reintento, cambio de ruta, permisos restringidos, red incierta, salida al portal y desmontaje (React/jsdom, sin Firebase).');
 } finally {
   window.close();
 }
