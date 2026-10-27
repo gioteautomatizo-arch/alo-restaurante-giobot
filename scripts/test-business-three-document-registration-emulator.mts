@@ -66,7 +66,7 @@ const stripUndefined = value => {
  * La reserva no puede leerse desde el SDK cliente, ni siquiera por OWNER.
  * Su resultado NO demuestra que registerBusiness ya haya sido migrado.
  */
-async function registerCandidate(input) {
+async function registerCandidate(input, options: { simulatedCommitFailure?: 'before' | 'after' } = {}) {
   const id = normalizeRestaurantSlug(input.handle || input.businessName);
   if (!id || id === 'alo-restaurante') throw new Error('Handle inválido o reservado');
   const email = input.email.trim().toLowerCase();
@@ -95,7 +95,15 @@ async function registerCandidate(input) {
   let confirmedTenant = tenant;
   let confirmedMembership = membership;
   try {
+    // Inyección exclusivamente de prueba: distinguir rechazo anterior al commit
+    // de una confirmación guardada cuya respuesta se pierde en el cliente.
+    if (options.simulatedCommitFailure === 'before') {
+      throw new Error('SIMULATED_PRE_COMMIT_FAILURE');
+    }
     await batch.commit();
+    if (options.simulatedCommitFailure === 'after') {
+      throw new Error('SIMULATED_LOST_COMMIT_RESPONSE');
+    }
   } catch (commitError) {
     // Recuperar únicamente si ya existen negocio y OWNER del MISMO UID.
     // No leer reservas: las reglas candidatas las mantienen privadas.
@@ -183,6 +191,48 @@ try {
     'Reintento no sobrescribe la identidad original');
   assert.equal((await adminRead(reservePath(idA))).data()?.ownerUserId, uidA);
 
+  // Respuesta perdida DESPUÉS del commit: recuperar los documentos del mismo
+  // propietario sin leer la reserva desde el SDK cliente ni repetir la siembra.
+  const lostId = 'beta-three-lost-ack';
+  const recovered = await registerCandidate({
+    businessName: 'Alta confirmada sin respuesta', handle: lostId,
+    email: emailA, password, businessType: 'restaurant',
+  }, { simulatedCommitFailure: 'after' });
+  assert.equal(recovered.membership.userId, uidA);
+  assert.equal(recovered.tenant.branding.restaurantName, 'Alta confirmada sin respuesta');
+  assert.equal((await adminRead(reservePath(lostId))).data()?.ownerUserId, uidA);
+  assert((await getDoc(doc(db, businessPath(lostId) + '/catalog/menu_catalog')))
+    .data()?.items?.length > 0, 'La recuperación siembra el catálogo');
+  const lostRetry = await registerCandidate({
+    businessName: 'No reemplazar el alta recuperada', handle: lostId,
+    email: emailA, password, businessType: 'ghost-kitchen',
+  });
+  assert.equal(lostRetry.tenant.branding.restaurantName, 'Alta confirmada sin respuesta',
+    'Un reintento posterior no reemplaza la identidad confirmada');
+  assert.equal((await adminRead(reservePath(lostId))).data()?.ownerUserId, uidA);
+
+  // Fallo ANTES de commit: no existe nada propio que recuperar, por lo que
+  // debe conservarse el error y no dejar documentos parciales.
+  const preCommitId = 'beta-three-precommit-failure';
+  await assert.rejects(registerCandidate({
+    businessName: 'Alta no confirmada', handle: preCommitId,
+    email: emailA, password, businessType: 'restaurant',
+  }, { simulatedCommitFailure: 'before' }), /SIMULATED_PRE_COMMIT_FAILURE/);
+  for (const path of [businessPath(preCommitId), memberPath(preCommitId, uidA), reservePath(preCommitId)]) {
+    assert.equal((await adminRead(path)).exists(), false, 'Fallo previo sin escrituras: ' + path);
+  }
+
+  // Otro UID no puede reclamar el alta cuya respuesta se perdió.
+  await signOut(auth);
+  await signInWithEmailAndPassword(auth, emailB, password);
+  await deny(registerCandidate({
+    businessName: 'Reclamo ajeno de alta recuperada', handle: lostId,
+    email: emailB, password,
+  }), 'B no puede reclamar una alta confirmada de A');
+  assert.equal((await adminRead(memberPath(lostId, uidB))).exists(), false);
+  await signOut(auth);
+  await signInWithEmailAndPassword(auth, emailA, password);
+
   // Un lote sin reserva y otro con OWNER inválido deben fallar enteros.
   const missing = writeBatch(db);
   missing.set(doc(db, businessPath('beta-three-missing')), {
@@ -248,9 +298,9 @@ try {
   ]) assert.equal((await adminRead(path)).exists(), false,
     'Cliente incompatible no deja escrituras parciales: ' + path);
 
-  console.log('PASS (solo emulador): onboarding React de dos negocios con batch candidato de tres documentos, catálogo, aislamiento, reintento, colisión, rollback y reserva persistente.');
+  console.log('PASS (solo emulador): onboarding React de dos negocios, recuperación sintética tras respuesta perdida, fallo previo sin escrituras, aislamiento, reintento, colisión, rollback y reserva persistente.');
   console.warn('PENDIENTE: registerBusiness de producción sigue escribiendo DOS documentos; coordinar cliente, reglas y migración histórica antes de cualquier despliegue.');
-  console.warn('PENDIENTE: el adaptador de prueba no certifica la recuperación ante respuesta de red perdida, compatibilidad de clientes antiguos ni reglas desplegadas.');
+  console.warn('PENDIENTE: la respuesta perdida se inyecta sintéticamente DESPUÉS del commit; falta comprobar fallos reales de transporte, compatibilidad de clientes antiguos y reglas desplegadas.');
 } finally {
   await signOut(auth).catch(() => {});
   await terminate(db);
