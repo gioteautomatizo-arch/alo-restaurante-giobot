@@ -97,10 +97,11 @@ async function registerCandidate(input, options: { simulatedCommitFailure?: 'bef
       plan: input.assistantMode === 'CUSTOM_AVATAR' ? 'CUSTOM_AVATAR' : 'GIOBOT_BASE',
     },
   }));
+  const registrationTenant = { ...tenant, registrationContractVersion: 3 };
   const membership = { restaurantId: id, userId: uid, role: 'OWNER', active: true };
   if (auth.currentUser?.uid !== uid) throw new Error('Sesión cambiada antes del alta');
   const batch = writeBatch(db);
-  batch.set(doc(db, businessPath(id)), tenant);
+  batch.set(doc(db, businessPath(id)), registrationTenant);
   batch.set(doc(db, memberPath(id, uid)), membership);
   batch.set(doc(db, reservePath(id)), { businessId: id, ownerUserId: uid });
   let confirmedTenant = tenant;
@@ -128,7 +129,8 @@ async function registerCandidate(input, options: { simulatedCommitFailure?: 'bef
       const business = await getDoc(doc(db, businessPath(id)));
       if (auth.currentUser?.uid !== uid) throw commitError;
       if (!business.exists() || business.data().ownerUserId !== uid
-        || business.data().restaurantId !== id) throw commitError;
+        || business.data().restaurantId !== id
+        || business.data().registrationContractVersion !== 3) throw commitError;
       confirmedTenant = business.data();
       confirmedMembership = member.data() as typeof membership;
     } catch {
@@ -502,6 +504,35 @@ try {
   assert.equal((await adminRead('publicBusinessProfiles/' + idB)).data()?.published, false,
     'El perfil B permanece oculto tras recuperar A');
   await deny(getDoc(doc(db, businessPath(idB))), 'A no lee la ficha privada de B');
+
+  // Negocio histórico creado con dos documentos y SIN reserva: una colisión
+  // de su propio OWNER no debe confundirse con confirmación 3-doc perdida.
+  const legacyNoReservationId = 'beta-three-legacy-no-reservation';
+  await env.withSecurityRulesDisabled(async context => {
+    const admin = context.firestore();
+    const historical = writeBatch(admin);
+    historical.set(doc(admin, businessPath(legacyNoReservationId)), stripUndefined(createRestaurantTenant({
+      restaurantId: legacyNoReservationId, ownerUserId: uidA,
+      restaurantName: 'Histórico sin reserva', businessType: 'restaurant',
+      publicSlug: legacyNoReservationId,
+      assistant: { name: 'Giobot', plan: 'GIOBOT_BASE' },
+    })));
+    historical.set(doc(admin, memberPath(legacyNoReservationId, uidA)), {
+      restaurantId: legacyNoReservationId, userId: uidA, role: 'OWNER', active: true,
+    });
+    await historical.commit();
+  });
+  assert.equal((await adminRead(reservePath(legacyNoReservationId))).exists(), false);
+  await assert.rejects(registerBusinessThreeDocumentCandidate({
+    businessName: 'No recuperar legado sin reserva', handle: legacyNoReservationId,
+    email: emailA, password, businessType: 'restaurant',
+  }), (error: any) => error?.code === 'permission-denied',
+  'Un tenant histórico sin reserva no es un alta 3-doc confirmada');
+  assert.equal((await adminRead(reservePath(legacyNoReservationId))).exists(), false,
+    'El rechazo no inventa ni crea reserva para el histórico');
+  assert.equal((await adminRead(businessPath(legacyNoReservationId))).data()?.ownerUserId, uidA,
+    'La raíz histórica conserva al propietario');
+  console.log('PASS recuperación legacy fail-closed (solo emulador): raíz+OWNER sin reserva no se considera alta 3-doc confirmada.');
 
   // Respuesta perdida DESPUÉS del commit: recuperar los documentos del mismo
   // propietario sin leer la reserva desde el SDK cliente ni repetir la siembra.
