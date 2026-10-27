@@ -173,3 +173,36 @@ export function buildRegistrationFreezeProposalRules(staged) {
       `      // Preservar ID y datos dependientes durante la transición.
       allow delete: if false;`);
 }
+
+
+/**
+ * Extensión estricta SOLO para ensayos de recuperación del cliente 3-doc.
+ * Una ficha legacy sin reserva no puede obtener el marcador mediante update
+ * del OWNER, y una nueva alta 3-doc debe traerlo en el lote atómico.
+ * El marcador NO sustituye una atestación privilegiada de la reserva real.
+ * No modifica staged ni autoriza despliegues.
+ */
+export function buildThreeDocumentRecoveryMarkerProposalRules(staged) {
+  const rules = buildPermanentHandleRetirementGuardProposalRules(staged);
+  const start = '    match /businesses/{businessId} {';
+  const end = '    match /businesses/{businessId}/employees/{employeeUserId} {';
+  assert.equal(rules.split(start).length, 2, 'ALTO: bloque raíz de negocio ambiguo.');
+  assert.equal(rules.split(end).length, 2, 'ALTO: límite de bloque raíz ambiguo.');
+  const prefix = rules.slice(0, rules.indexOf(start));
+  const root = rules.slice(rules.indexOf(start), rules.indexOf(end));
+  const suffix = rules.slice(rules.indexOf(end));
+  const createAnchor = `      allow create: if isSignedIn()
+        && request.resource.data.restaurantId == businessId
+        && request.resource.data.ownerUserId == request.auth.uid`;
+  assert.equal(root.split(createAnchor).length, 2,
+    'ALTO: cambió el alta raíz; revisar contrato de marcador.');
+  const updateAnchor = '      allow update: if isSignedIn()';
+  assert.equal(root.split(updateAnchor).length, 3,
+    'ALTO: deben existir exactamente dos permisos de actualización raíz.');
+  const guardedRoot = root.replace(createAnchor,
+    createAnchor + '\n        && request.resource.data.registrationContractVersion == 3')
+    .replaceAll(updateAnchor,
+      `      allow update: if request.resource.data.get('registrationContractVersion', null) == resource.data.get('registrationContractVersion', null)
+        && isSignedIn()`);
+  return prefix + guardedRoot + suffix;
+}
