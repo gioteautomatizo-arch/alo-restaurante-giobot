@@ -20,6 +20,7 @@ const mocks = {
     '}',
   ].join('\n'),
   '../../data/businessTemplates': 'export const getBusinessTemplateConfig = () => ({capabilities:["CATALOG","POS"]});',
+  '../../lib/firebase': 'export const auth = window.qa.auth;',
 };
 const bundle = await build({
   absWorkingDir: rootDir, bundle: true, write: false, format: 'iife', platform: 'browser',
@@ -50,6 +51,7 @@ const errors = [];
 window.addEventListener('error', event => errors.push(event.error));
 window.qa = {
   calls: [], pending: [], complete: null,
+  auth: {currentUser: {uid: 'owner-a', email: 'owner-a@example.test'}},
   profile: {
     name: 'Negocio ficticio A', handle: 'beta-a', businessType: 'restaurant',
     type: 'restaurant', email: 'owner-a@example.test', password: 'solo-prueba',
@@ -69,6 +71,7 @@ const remount = async key => {
   window.location.hash = '#business-new';
   window.qa.render(key);
   await waitFor(() => window.qa.complete && window.qa.complete !== previous, 'No se remontó el formulario');
+  await new Promise(resolve => setTimeout(resolve, 20)); // dejar procesar hashchange anterior
 };
 try {
   window.eval(bundle.outputFiles[0].text);
@@ -81,7 +84,7 @@ try {
   assert.equal(window.qa.calls[0].handle, 'beta-a');
   assert.equal(window.qa.calls[0].capabilities.includes('POS'), true);
   await waitFor(() => visible('Creando tu negocio…'), 'La pantalla debe mostrar el bloqueo de alta');
-  window.qa.pending[0].resolve({});
+  window.qa.pending[0].resolve({membership: {userId: 'owner-a'}});
   await waitFor(() => window.location.hash === '#business', 'El alta confirmada debe volver al portal');
 
   // Error recuperable: no dejar la pantalla bloqueada ni iniciar un segundo
@@ -94,7 +97,7 @@ try {
   await waitFor(() => !visible('Creando tu negocio…'), 'Liberar bloqueo tras fallo');
   window.qa.complete(window.qa.profile);
   await waitFor(() => window.qa.calls.length === 3, 'El reintento debe ser posible');
-  window.qa.pending[2].resolve({});
+  window.qa.pending[2].resolve({membership: {userId: 'owner-a'}});
   await waitFor(() => window.location.hash === '#business', 'Reintento confirmado');
 
   // Si el usuario cambia de ruta mientras la petición está en vuelo, una
@@ -103,7 +106,7 @@ try {
   window.qa.complete(window.qa.profile);
   await waitFor(() => window.qa.calls.length === 4, 'Falta intento con cambio de ruta');
   window.location.hash = '#business/otro-negocio';
-  window.qa.pending[3].resolve({});
+  window.qa.pending[3].resolve({membership: {userId: 'owner-a'}});
   await waitFor(() => !visible('Creando tu negocio…'), 'Finalizar petición tardía');
   assert.equal(window.location.hash, '#business/otro-negocio', 'No secuestrar navegación posterior');
 
@@ -134,16 +137,45 @@ try {
   reviewBusinesses().click();
   assert.equal(window.location.hash, '#business', 'Revisar el portal después de error de red');
 
+  // Pestaña/ruta antigua: salir y regresar al mismo hash NO autoriza a una
+  // respuesta de la vista anterior a redirigir el nuevo formulario.
+  await remount('ruta-vieja');
+  window.qa.complete(window.qa.profile);
+  await waitFor(() => window.qa.calls.length === 7, 'Falta intento con ruta antigua');
+  window.location.hash = '#business/otro-negocio';
+  await new Promise(resolve => setTimeout(resolve, 20));
+  window.location.hash = '#business-new';
+  await new Promise(resolve => setTimeout(resolve, 20));
+  window.qa.pending[6].resolve({membership: {userId: 'owner-a'}});
+  await waitFor(() => !visible('Creando tu negocio…'), 'Finalizar respuesta de ruta antigua');
+  assert.equal(window.location.hash, '#business-new', 'No redirigir una vista reabierta');
+  assert.equal(window.qa.calls.length, 7, 'No duplicar altas al reabrir la ruta');
+
+  // Una cuenta distinta puede activarse en otra pestaña después del commit.
+  // No redirigir silenciosamente al portal del UID que quedó conectado.
+  await remount('cambio-cuenta');
+  window.qa.complete(window.qa.profile);
+  await waitFor(() => window.qa.calls.length === 8, 'Falta intento con cambio de cuenta');
+  window.qa.auth.currentUser = {uid: 'owner-b', email: 'owner-b@example.test'};
+  window.qa.pending[7].resolve({membership: {userId: 'owner-a'}});
+  await waitFor(() => visible('La cuenta activa cambió durante el registro'), 'Avisar sesión distinta del OWNER');
+  assert.equal(window.location.hash, '#business-new', 'No redirigir al portal de otra cuenta');
+  assert.equal(window.qa.calls.length, 8, 'No reintentar tras cambio de cuenta');
+  assert(reviewBusinesses(), 'Mostrar salida de revisión con otra cuenta activa');
+  reviewBusinesses().click();
+  assert.equal(window.location.hash, '#business');
+  window.qa.auth.currentUser = {uid: 'owner-a', email: 'owner-a@example.test'};
+
   // Desmontar durante un fallo no debe producir errores React ni redirección.
   await remount('cuarto');
   window.qa.complete(window.qa.profile);
-  await waitFor(() => window.qa.calls.length === 7, 'Falta intento antes de desmontar');
+  await waitFor(() => window.qa.calls.length === 9, 'Falta intento antes de desmontar');
   window.qa.unmount();
-  window.qa.pending[6].reject(new Error('Fallo después de salir'));
+  window.qa.pending[8].reject(new Error('Fallo después de salir'));
   await new Promise(resolve => setTimeout(resolve, 30));
   assert.equal(window.location.hash, '#business-new');
   assert.deepEqual(errors, [], 'Sin errores no controlados de React');
-  console.log('PASS: doble envío, fallo/reintento, cambio de ruta, permisos restringidos, red incierta, salida al portal y desmontaje (React/jsdom, sin Firebase).');
+  console.log('PASS: doble envío, fallo/reintento, ruta abandonada y reabierta, cambio de UID, permisos restringidos, red incierta, salida al portal y desmontaje (React/jsdom, sin Firebase).');
 } finally {
   window.close();
 }
