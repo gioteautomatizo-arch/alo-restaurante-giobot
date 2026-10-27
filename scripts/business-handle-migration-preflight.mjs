@@ -23,7 +23,7 @@ function classifyRecord(record, map, globalProblems) {
   }
   const parts = record.path.split('/');
   const [collection, id] = parts;
-  if (!validId(id) || parts.some(p => !p)) {
+  if (parts.some(p => !validId(p))) {
     globalProblems.push('INVALID_PATH');
     return;
   }
@@ -123,7 +123,18 @@ export function auditHistoricalHandles(inventory) {
   const globalProblems = [];
   if (inventory.scope !== SCOPE || inventory.complete !== true)
     globalProblems.push('INVENTORY_NOT_CERTIFIED_COMPLETE');
-  for (const record of inventory.records) classifyRecord(record, map, globalProblems);
+  // Una misma ruta no puede representar dos documentos de Firestore. La
+  // duplicación entre tenants puede ocultarse si cada registro declara un
+  // restaurantId distinto (p. ej. IDs/UIDs con guiones bajos). Bloquear TODO
+  // el inventario, no solo las entradas a las que se asignaron los registros.
+  const seenPaths = new Set();
+  for (const record of inventory.records) {
+    if (record && typeof record.path === 'string') {
+      if (seenPaths.has(record.path)) globalProblems.push('DUPLICATE_INVENTORY_PATH');
+      else seenPaths.add(record.path);
+    }
+    classifyRecord(record, map, globalProblems);
+  }
   if (inventory.records.length === 0) globalProblems.push('EMPTY_INVENTORY_NOT_PROOF_OF_UNUSED_IDS');
 
   // Un cruce compromete ambos extremos: tampoco proponer el tenant destino
