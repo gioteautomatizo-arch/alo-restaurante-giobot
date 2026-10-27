@@ -12,7 +12,7 @@ import {
   signOut,
 } from 'firebase/auth';
 import {
-  connectFirestoreEmulator, doc, getDoc, writeBatch, deleteDoc, terminate,
+  connectFirestoreEmulator, doc, getDoc, writeBatch, deleteDoc, updateDoc, terminate,
 } from 'firebase/firestore';
 import { buildAtomicOwnerAndPermanentHandleProposalRules } from './owner-atomic-proposal-rules.mjs';
 import { registerThroughOnboardingUI } from './business-onboarding-emulator-ui.mjs';
