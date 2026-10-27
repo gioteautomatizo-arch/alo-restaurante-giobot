@@ -92,3 +92,42 @@ export function buildAtomicOwnerAndPermanentHandleProposalRules(staged) {
   return noDelete.replace(createAnchor, createWithReservation)
     .replace(businessAnchor, reservationRules + businessAnchor);
 }
+
+
+/**
+ * Puerta temporal de migración, SOLO para ensayos en Firebase Emulator.
+ * Congela nuevas raíces de negocio (clientes de dos o tres documentos) y
+ * borrados desde cliente, pero conserva las operaciones autorizadas de los
+ * negocios ya existentes. No sirve para migrar IDs históricos ni impide
+ * acciones privilegiadas del Admin SDK. No modificar ni desplegar staged.
+ *
+ * La reversión segura del contrato candidato debe usar una puerta de este
+ * tipo mientras se decide la compatibilidad, NUNCA volver directamente a
+ * staged, que permitiría nuevas altas sin reserva permanente.
+ */
+export function buildRegistrationFreezeProposalRules(staged) {
+  const createAnchor = `      allow create: if isSignedIn()
+        && request.resource.data.restaurantId == businessId
+        && request.resource.data.ownerUserId == request.auth.uid
+        && businessId != 'alo-restaurante'
+        && !exists(/databases/$(database)/documents/businesses/$(businessId));`;
+  const deleteAnchor = `      allow delete: if isSignedIn()
+        && (
+          (
+            hasActiveMembership(businessId)
+            && getCallerMembershipRole(businessId) == 'OWNER'
+          )
+          || isPlatformSuperAdmin()
+        );`;
+  const businessAnchor = '    match /businesses/{businessId} {';
+  assert.equal(staged.split(businessAnchor).length, 2,
+    'ALTO: cambió el bloque businesses; revisar la congelación.');
+  assert.equal(staged.split(createAnchor).length, 2,
+    'ALTO: cambió el contrato de alta; revisar la congelación.');
+  assert.equal(staged.split(deleteAnchor).length, 2,
+    'ALTO: cambió el permiso de borrado; revisar la congelación.');
+  return staged.replace(createAnchor,
+    '      // Puerta de migración en emulador: ninguna nueva alta de negocio.\\n      allow create: if false;')
+    .replace(deleteAnchor,
+      '      // Preservar ID y datos dependientes durante la transición.\\n      allow delete: if false;');
+}
