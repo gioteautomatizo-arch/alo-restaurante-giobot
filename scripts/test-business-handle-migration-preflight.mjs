@@ -185,5 +185,45 @@ assert.deepEqual(cleanPair.businesses.map(b => b.status), [
 ]);
 assert.deepEqual(cleanPair.globalBlockers, []);
 
+// Una ruta de Firestore solo identifica UN documento, incluso si dos pares
+// tenant/UID distintos producen la misma clave por concatenación con '_'.
+const membershipPathCollision = auditHistoricalHandles(inventory([
+  root('alpha', 'bob_charlie'), member('alpha', 'bob_charlie'),
+  root('alpha_bob', 'charlie'), member('alpha_bob', 'charlie'),
+]));
+assert(membershipPathCollision.globalBlockers.includes('DUPLICATE_INVENTORY_PATH'));
+assert.deepEqual(membershipPathCollision.businesses.map(b => b.status), [
+  'BLOCKED_INCOMPLETE_INVENTORY', 'BLOCKED_INCOMPLETE_INVENTORY',
+]);
+assert.equal(membershipPathCollision.counts.manualCandidates, 0);
+assert.equal(membershipPathCollision.counts.blockedOrHeld, 2);
+
+// También se bloquea una extracción repetida del mismo documento y rutas
+// inválidas en cualquier nivel, no solo en el identificador de negocio.
+const repeatedRoot = auditHistoricalHandles(inventory([
+  root('alpha', 'alice'), member('alpha', 'alice'), root('alpha', 'alice'),
+]));
+assert(repeatedRoot.globalBlockers.includes('DUPLICATE_INVENTORY_PATH'));
+assert.equal(repeatedRoot.businesses[0].status, 'BLOCKED_INCOMPLETE_INVENTORY');
+for (const invalidPath of [
+  'businesses/alpha/catalog/.',
+  'businesses/alpha/catalog/..',
+  'businesses/alpha/./menu',
+  'businesses/alpha/catalog//menu',
+]) {
+  const invalidNested = auditHistoricalHandles(inventory([
+    root('alpha', 'alice'), member('alpha', 'alice'),
+    { path: invalidPath, data: { items: [] } },
+  ]));
+  assert(invalidNested.globalBlockers.includes('INVALID_PATH'), invalidPath);
+  assert.equal(invalidNested.businesses[0].status, 'BLOCKED_INCOMPLETE_INVENTORY');
+}
+const cleanUnderscorePair = auditHistoricalHandles(inventory([
+  root('alpha_bob', 'charlie'), member('alpha_bob', 'charlie'),
+  root('alpha', 'alice'), member('alpha', 'alice'),
+]));
+assert.deepEqual(cleanUnderscorePair.globalBlockers, []);
+assert.equal(cleanUnderscorePair.counts.manualCandidates, 2);
+
 console.log('PASS: 17 escenarios originales y variantes adicionales de perfil/residuales entre tenants; solo inventario local, ninguna escritura ni Firebase.');
 console.warn('PENDIENTE: inventario real completo, respaldo, validación de propietarios y backfill autorizado; ningún candidato es aprobación automática.');
