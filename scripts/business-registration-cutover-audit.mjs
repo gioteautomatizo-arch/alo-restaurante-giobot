@@ -7,6 +7,47 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+
+function compactRules(value) {
+  return value.replace(/\s+/g, '').replace(/"/g, "'");
+}
+
+function hasRule(value, expression) {
+  return compactRules(value).includes(compactRules(expression));
+}
+
+// Leer solo el bloque exacto: un match de otra ruta o un comentario no es evidencia.
+function matchRulesBlock(source, path) {
+  const marker = `match ${path} {`;
+  const start = source.indexOf(marker);
+  if (start < 0 || source.indexOf(marker, start + marker.length) >= 0) return '';
+  const open = start + marker.length - 1;
+  let depth = 0;
+  for (let i = open; i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    if (source[i] === '}' && --depth === 0) return source.slice(open + 1, i);
+  }
+  return '';
+}
+
+function createClause(section) {
+  return section.match(/\ballow\s+create\s*:\s*if\s+([^;]*);/)?.[1] || '';
+}
+
+function hasNoAlternatives(condition) {
+  // Conservador: una cláusula con OR necesita revisión manual, aunque sea válida.
+  return !!condition && !condition.includes('||');
+}
+
+function isImmutableReservation(section) {
+  const rules = [...section.matchAll(/\ballow\s+([^:;]+)\s*:\s*if\s+([^;]*);/g)];
+  const mutations = rules.filter(([, verbs]) => /\b(?:update|delete|write)\b/.test(verbs));
+  return mutations.length > 0
+    && mutations.some(([, verbs]) => /\bupdate\b/.test(verbs))
+    && mutations.some(([, verbs]) => /\bdelete\b/.test(verbs))
+    && mutations.every(([, , condition]) => condition.trim() === 'false');
+}
+
 export const REQUIRED_CUTOVER_EVIDENCE = Object.freeze([
   'historicalInventoryCertified',
   'historicalReservationsReviewed',
@@ -45,17 +86,53 @@ export function auditRegistrationCutoverSources({ clientSource, stagedRules, pro
     blockers.push(clientContract === 'TWO_DOCUMENTS' ? 'CLIENT_STILL_WRITES_TWO_DOCUMENTS' : 'CLIENT_CONTRACT_UNVERIFIED');
   }
 
-  const rootStart = staged.indexOf('match /businesses/{businessId} {');
-  const rootSection = rootStart < 0 ? '' : staged.slice(rootStart, staged.indexOf('match /businesses/{businessId}/', rootStart) < 0
-    ? undefined : staged.indexOf('match /businesses/{businessId}/', rootStart));
-  const createStart = rootSection.indexOf('allow create: if');
-  const rootCreate = createStart < 0 ? '' : rootSection.slice(createStart).split(';')[0];
-  const ownerAtomic = /existsAfter\s*\(\s*\/databases\/\$\(database\)\/documents\/businessMemberships\//.test(rootCreate);
-  const reservationAtomic = /existsAfter\s*\(\s*\/databases\/\$\(database\)\/documents\/businessHandleReservations\//.test(rootCreate);
-  const reservationRule = /match\s+\/businessHandleReservations\/\{businessId\}\s*\{/.test(staged);
+  const cleanRules = executableSource(staged);
+  const rootSection = matchRulesBlock(cleanRules, '/businesses/{businessId}');
+  const reservationSection = matchRulesBlock(cleanRules, '/businessHandleReservations/{businessId}');
+  const rootCreate = createClause(rootSection);
+  const reservationCreate = createClause(reservationSection);
+  const ownerPath = "/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)";
+  const reservationPath = '/databases/$(database)/documents/businessHandleReservations/$(businessId)';
+  const rootPath = '/databases/$(database)/documents/businesses/$(businessId)';
+
+  const rootIdentity = hasNoAlternatives(rootCreate)
+    && hasRule(rootCreate, 'request.resource.data.restaurantId == businessId')
+    && hasRule(rootCreate, 'request.resource.data.ownerUserId == request.auth.uid')
+    && hasRule(rootCreate, `!exists(${rootPath})`);
+  const ownerAtomic = rootIdentity && hasRule(rootCreate, `existsAfter(${ownerPath})`);
+  const ownerBinding = ownerAtomic
+    && hasRule(rootCreate, `getAfter(${ownerPath}).data.restaurantId == businessId`)
+    && hasRule(rootCreate, `getAfter(${ownerPath}).data.userId == request.auth.uid`)
+    && hasRule(rootCreate, `getAfter(${ownerPath}).data.role == 'OWNER'`)
+    && hasRule(rootCreate, `getAfter(${ownerPath}).data.active == true`);
+
+  const reservationAtomic = rootIdentity
+    && hasRule(rootCreate, `!exists(${reservationPath})`)
+    && hasRule(rootCreate, `existsAfter(${reservationPath})`);
+  const reservationBinding = reservationAtomic
+    && hasRule(rootCreate, `getAfter(${reservationPath}).data.businessId == businessId`)
+    && hasRule(rootCreate, `getAfter(${reservationPath}).data.ownerUserId == request.auth.uid`);
+  const reservationRule = !!reservationSection;
+  const reservationCreateBinding = reservationRule && hasNoAlternatives(reservationCreate)
+    && hasRule(reservationCreate, 'isSignedIn()')
+    && hasRule(reservationCreate, 'request.resource.data.businessId == businessId')
+    && hasRule(reservationCreate, 'request.resource.data.ownerUserId == request.auth.uid')
+    && hasRule(reservationCreate, `!exists(${rootPath})`)
+    && hasRule(reservationCreate, `existsAfter(${rootPath})`)
+    && hasRule(reservationCreate, `getAfter(${rootPath}).data.restaurantId == businessId`)
+    && hasRule(reservationCreate, `getAfter(${rootPath}).data.ownerUserId == request.auth.uid`);
+  const reservationImmutable = reservationRule && isImmutableReservation(reservationSection)
+    && /\ballow\s+read\s*:\s*if\s+false\s*;/.test(reservationSection);
+
   if (!ownerAtomic) blockers.push('STAGED_OWNER_ATOMICITY_NOT_PROVEN');
+  if (!ownerBinding) blockers.push('STAGED_OWNER_UID_ROLE_TENANT_BINDING_NOT_PROVEN');
   if (!reservationAtomic || !reservationRule) blockers.push('STAGED_PERMANENT_RESERVATION_NOT_PROVEN');
-  if (!ownerAtomic || !reservationAtomic || !reservationRule) blockers.push('DIRECT_ROLLBACK_TO_STAGED_UNSAFE');
+  if (!reservationBinding || !reservationCreateBinding) blockers.push('STAGED_RESERVATION_RECIPROCAL_BINDING_NOT_PROVEN');
+  if (!reservationImmutable) blockers.push('STAGED_RESERVATION_IMMUTABILITY_NOT_PROVEN');
+  if (![ownerAtomic, ownerBinding, reservationAtomic, reservationRule,
+    reservationBinding, reservationCreateBinding, reservationImmutable].every(Boolean)) {
+    blockers.push('DIRECT_ROLLBACK_TO_STAGED_UNSAFE');
+  }
 
   const hasCandidate = proposal.includes('export function buildAtomicOwnerAndPermanentHandleProposalRules(');
   const hasFreeze = proposal.includes('export function buildRegistrationFreezeProposalRules(');
@@ -69,7 +146,7 @@ export function auditRegistrationCutoverSources({ clientSource, stagedRules, pro
     status: blockers.length ? 'BLOCKED' : 'READY_FOR_INDEPENDENT_REVIEW',
     safeToDeploy: false,
     clientContract,
-    observed: { ownerAtomic, reservationAtomic, reservationRule, hasCandidate, hasFreeze },
+    observed: { ownerAtomic, ownerBinding, reservationAtomic, reservationBinding, reservationRule, reservationCreateBinding, reservationImmutable, hasCandidate, hasFreeze },
     missingEvidence,
     blockers,
     caveat: 'La revisión automatizada no certifica reglas desplegadas, respaldos ni aprobaciones humanas.',
