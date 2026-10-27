@@ -129,8 +129,16 @@ async function registerCandidate(input) {
   return { tenant: confirmedTenant, membership: confirmedMembership };
 }
 
-const adminRead = async path => env.withSecurityRulesDisabled(async context =>
-  getDoc(doc(context.firestore(), path)));
+// withSecurityRulesDisabled devuelve void; conservar la instantánea dentro
+// del callback antes de cerrar el contexto privilegiado del emulador.
+const adminRead = async path => {
+  let snapshot;
+  await env.withSecurityRulesDisabled(async context => {
+    snapshot = await getDoc(doc(context.firestore(), path));
+  });
+  assert(snapshot, 'No se pudo obtener instantánea de prueba: ' + path);
+  return snapshot;
+};
 
 try {
   const a = await registerThroughOnboardingUI({
