@@ -3,6 +3,7 @@
 // Solo lee archivos locales; no conecta con Firebase ni escribe datos.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { buildThreeDocumentRecoveryMarkerProposalRules } from './owner-atomic-proposal-rules.mjs';
 
 const current = readFileSync('src/lib/businessAuthService.ts', 'utf8');
 const candidate = readFileSync('src/lib/businessRegistrationThreeDocumentCandidate.ts', 'utf8');
@@ -54,4 +55,18 @@ assert.match(onboarding,
   'El onboarding público sigue usando el cliente vigente');
 assert.doesNotMatch(onboarding, /registerBusinessThreeDocumentCandidate|businessRegistrationThreeDocumentCandidate/,
   'No activar el candidato sin revisión de reglas, migración y rollback');
+// Solo propuesta de emulador: comprobar que el OWNER no pueda añadir/quitar
+// el marcador de recuperación por una actualización ordinaria de la raíz.
+const staged = readFileSync('docs/firestore.launch-security.STAGED.rules', 'utf8');
+const proposal = buildThreeDocumentRecoveryMarkerProposalRules(staged);
+const rootStart = proposal.indexOf('match /businesses/{businessId} {');
+const rootEnd = proposal.indexOf('match /businesses/{businessId}/employees/{employeeUserId} {');
+assert(rootStart >= 0 && rootEnd > rootStart, 'La propuesta debe conservar la raíz de negocios');
+const rootRules = proposal.slice(rootStart, rootEnd);
+assert.match(rootRules, /request\\.resource\\.data\\.registrationContractVersion == 3/,
+  'Las reglas candidatas deben exigir el marcador al crear');
+assert.equal(rootRules.split("request.resource.data.get('registrationContractVersion', null) == resource.data.get('registrationContractVersion', null)").length - 1, 2,
+  'Ambas rutas de update deben preservar el marcador sin cambios');
+assert.doesNotMatch(staged, /registrationContractVersion/,
+  'La propuesta de emulador nunca debe modificar las reglas staged originales');
 console.log('PASS: paridad funcional 2/3 documentos y candidato desconectado del onboarding público.');
