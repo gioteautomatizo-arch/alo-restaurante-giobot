@@ -116,6 +116,24 @@ for (const [name, before, after, blocker] of mutations) {
   assert(result.blockers.includes(blocker), `${name}: falta ${blocker}`);
   assert(result.blockers.includes('DIRECT_ROLLBACK_TO_STAGED_UNSAFE'), name);
 }
+// Firestore combina cláusulas allow con OR: un segundo create/write
+// permisivo no debe pasar aunque el primer guard sea perfecto.
+const extraRootGrant = strongerRules.replace('    match /businesses/{businessId} {',
+  '    match /businesses/{businessId} {\n      allow create: if true;');
+const extraReservationGrant = strongerRules.replace('      allow update, delete: if false;',
+  '      allow create: if true;\n      allow update, delete: if false;');
+const extraRootWrite = strongerRules.replace('    match /businesses/{businessId} {',
+  '    match /businesses/{businessId} {\n      allow write: if true;');
+for (const [name, rules, blocker] of [
+  ['extra root create', extraRootGrant, 'STAGED_OWNER_ATOMICITY_NOT_PROVEN'],
+  ['extra reservation create', extraReservationGrant, 'STAGED_RESERVATION_RECIPROCAL_BINDING_NOT_PROVEN'],
+  ['extra root write', extraRootWrite, 'STAGED_OWNER_ATOMICITY_NOT_PROVEN'],
+]) {
+  const result = inspect({ clientSource: threeDocClient, stagedRules: rules, evidence: allEvidence });
+  assert.equal(result.status, 'BLOCKED', name);
+  assert(result.blockers.includes(blocker), name);
+  assert(result.blockers.includes('DIRECT_ROLLBACK_TO_STAGED_UNSAFE'), name);
+}
 const fakeCommentRules = stagedRules.replace(rootAnchor,
   `&& !exists(${rootPath}); // existsAfter(${ownerPath})`);
 assert(inspect({ clientSource: threeDocClient, stagedRules: fakeCommentRules, evidence: allEvidence })
