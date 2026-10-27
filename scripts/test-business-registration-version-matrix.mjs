@@ -188,7 +188,10 @@ try {
   await assertSucceeds(getDoc(doc(staff, catalog(legacyId))));
   await assertSucceeds(getDoc(doc(staff, catalog(proposedThreeId))));
   await assertFails(getDoc(doc(alice, catalog(proposedThreeId))));
-  await assertFails(getDoc(doc(bob, catalog(legacyId))));
+  // A se publicó durante freeze-before: su catálogo ahora es público,
+  // aunque Pedidos y la ficha interna continúan privados para B.
+  await assertSucceeds(getDoc(doc(bob, catalog(legacyId))));
+  await assertFails(getDoc(doc(bob, root(legacyId))));
   await assertFails(getDoc(doc(visitor, catalog(proposedThreeId))));
   // El cambio a reglas candidatas no debe cortar pedidos del legado publicado.
   const candidateOrder = 'matrix-a-candidate-order';
