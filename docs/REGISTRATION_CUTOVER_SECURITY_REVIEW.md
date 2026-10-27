@@ -10,6 +10,14 @@ La matriz `scripts/test-business-registration-version-matrix.mjs` demuestra en F
 
 `node scripts/business-registration-cutover-audit.mjs` es un diagnóstico **sin Firebase ni red**, que inspecciona fuentes locales y marca `BLOCKED` cuando detecta el cliente de dos documentos, ausencia de OWNER atómico/reserva en staged, rollback directo inseguro o evidencia de revisión ausente. La opción `--enforce` devuelve error cuando la revisión no está completa. Su salida `READY_FOR_INDEPENDENT_REVIEW` solo sería una invitación a revisar pruebas y aprobaciones, **nunca una autorización automática para desplegar**. La detección del código usa patrones conservadores: si el código cambia de forma no reconocida, se bloquea para revisión.
 
+## Alcance reforzado de la auditoría estática (27 de octubre de 2026)
+
+El diagnóstico ahora bloquea una **falsa señal de seguridad**: antes bastaba con encontrar `existsAfter` para OWNER/reserva y la declaración de `match` de reservas. Un fixture con OWNER no vinculado al UID o con reserva borrable podía llegar a `READY_FOR_INDEPENDENT_REVIEW`. Esto **no** representaba un permiso de despliegue, pero sí podía engañar al proceso de revisión.
+
+La comprobación de fuentes ahora exige en la creación de la raíz empresarial: identidad del propietario y tenant, `existsAfter/getAfter` de membresía OWNER activa vinculada a UID y tenant, ausencia previa y `existsAfter/getAfter` de reserva permanente vinculada a ID y UID. En la regla de reserva exige vínculo recíproco con la raíz, creación autenticada, prohibición de actualización/borrado y lectura cerrada. También rechaza cláusulas alternativas `allow create/write` y operadores `||` dentro de las cláusulas críticas, porque las reglas de Firestore se combinan con OR. Las pruebas sintéticas mutan UID, rol, estado, reserva, reglas de borrado y concesiones superpuestas para confirmar `BLOCKED`.
+
+**Límites:** es un detector de patrones conservador, **no** un parser formal de Firestore ni una prueba de todas las reglas que podrían solaparse en otras rutas o funciones. Un resultado `READY_FOR_INDEPENDENT_REVIEW` sigue requiriendo revisión humana, compilación/pruebas en emulador con las reglas exactas, comprobación de permisos del Admin SDK y autorización separada. La auditoría **no** comprueba reglas desplegadas ni acepta booleanos sintéticos como evidencia real. En las fuentes actuales el resultado sigue siendo `BLOCKED`, y `safeToDeploy` siempre es `false`.
+
 ## Puertas obligatorias antes de cualquier cambio de producción
 
 | Puerta | Evidencia requerida | Estado |
