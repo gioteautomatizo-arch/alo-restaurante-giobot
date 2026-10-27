@@ -22,7 +22,7 @@ import {
 import { buildPermanentHandleRetirementGuardProposalRules } from './owner-atomic-proposal-rules.mjs';
 import { registerThroughOnboardingUI } from './business-onboarding-emulator-ui.mjs';
 import { saveBrandingThroughUI, addCatalogProductThroughUI } from './business-management-emulator-ui.mjs';
-import { publishBusinessThroughUI, publishAndHideBusinessThroughUI, assertForeignWorkspaceDeniedThroughUI } from './business-publication-emulator-ui.mjs';
+import { publishBusinessThroughUI, publishAndHideBusinessThroughUI, assertForeignWorkspaceDeniedThroughUI, assertStaffCannotPublishThroughUI } from './business-publication-emulator-ui.mjs';
 
 const projectId = 'gioteautomatizo-three-doc-onboarding-test';
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080');
@@ -266,6 +266,9 @@ async function verifyCandidateInvitations(uidA: string, uidB: string) {
     const member = await getDoc(doc(db, memberPath(idA, employee.uid)));
     assert.equal(member.data()?.role, 'KITCHEN');
     assert.equal(member.data()?.active, true);
+    await assertStaffCannotPublishThroughUI({
+      businessId: idA, user: auth.currentUser!, bridge: publicationBridge,
+    });
     assert((await getDoc(doc(db, businessPath(idA)))).exists(),
       'Empleado aceptado consulta su ficha A');
     await deny(getDoc(doc(db, businessPath(idB))),
