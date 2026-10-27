@@ -282,6 +282,43 @@ async function verifyCandidateInvitations(uidA: string, uidB: string) {
       role: 'OWNER',
     }), 'Empleado no se asciende a OWNER');
 
+    // Una misma cuenta puede trabajar en A y B con roles independientes.
+    // B invita al mismo UID ya registrado como KITCHEN de A, ahora como WAITER.
+    await signOut(auth);
+    await signInWithEmailAndPassword(auth, emailB, password);
+    const inviteB = await call('/api/business-invites', {
+      businessId: idB, email: employeeEmail, name: 'Mesero de B', role: 'WAITER',
+    }, await auth.currentUser!.getIdToken());
+    assert.equal(inviteB.status, 201, JSON.stringify(inviteB));
+    assert.equal((await adminRead(memberPath(idB, employee.uid))).exists(), false,
+      'Invitar en B no crea membresía antes de aceptar');
+    await signOut(auth);
+    await signInWithEmailAndPassword(auth, employeeEmail, password);
+    const acceptedB = await call('/api/business-invites/accept', {
+      token: inviteB.data.token,
+    }, await auth.currentUser!.getIdToken());
+    assert.equal(acceptedB.status, 200, JSON.stringify(acceptedB));
+    assert.equal(acceptedB.data.businessId, idB);
+    assert.equal((await call('/api/business-invites/accept', {
+      token: inviteB.data.token,
+    }, await auth.currentUser!.getIdToken())).status, 410,
+    'Token consumido de B no se reutiliza');
+    assert.equal((await getDoc(doc(db, memberPath(idB, employee.uid)))).data()?.role, 'WAITER');
+    assert.equal((await getDoc(doc(db, memberPath(idA, employee.uid)))).data()?.role, 'KITCHEN',
+      'Aceptar B no altera rol KITCHEN de A');
+    assert((await getDoc(doc(db, businessPath(idA)))).exists());
+    assert((await getDoc(doc(db, businessPath(idB)))).exists(),
+      'Empleado compartido puede consultar ambas fichas autorizadas');
+    await assertStaffCannotPublishThroughUI({
+      businessId: idB, user: auth.currentUser!, bridge: publicationBridge,
+    });
+    await deny(updateDoc(doc(db, businessPath(idB) + '/catalog/menu_catalog'), {
+      sourceLabel: 'WAITER intenta modificar B',
+    }), 'WAITER no modifica catálogo B');
+    await deny(updateDoc(doc(db, memberPath(idB, employee.uid)), {
+      role: 'OWNER',
+    }), 'WAITER no se asciende a OWNER B');
+
     // Ni el OWNER B puede revocar una membresía de A, ni A afecta B.
     await signOut(auth);
     await signInWithEmailAndPassword(auth, emailB, password);
@@ -331,15 +368,35 @@ async function verifyCandidateInvitations(uidA: string, uidB: string) {
     await deny(updateDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog'), {
       businessId: idA, sourceLabel: 'Edición tras revocación',
     }), 'Empleado revocado no modifica catálogo');
+    assert((await getDoc(doc(db, businessPath(idB)))).exists(),
+      'Revocar A no revoca acceso WAITER al negocio B');
+    assert.equal((await getDoc(doc(db, memberPath(idB, employee.uid)))).data()?.active, true,
+      'Membresía B del mismo UID permanece activa');
+    await deny(updateDoc(doc(db, businessPath(idB) + '/catalog/menu_catalog'), {
+      sourceLabel: 'WAITER sin permisos de edición B',
+    }), 'Conservar acceso B no concede permisos de edición');
+
+    // Revocar B por separado; después el UID compartido no debe leer ninguno.
+    await signOut(auth);
+    await signInWithEmailAndPassword(auth, emailB, password);
+    await updateDoc(doc(db, memberPath(idB, employee.uid)), { active: false });
+    assert.equal((await adminRead(memberPath(idB, employee.uid))).data()?.active, false);
+    await signOut(auth);
+    await signInWithEmailAndPassword(auth, employeeEmail, password);
+    await deny(getDoc(doc(db, businessPath(idA))),
+      'Empleado revocado en A sigue sin leer A tras revocar B');
     await deny(getDoc(doc(db, businessPath(idB))),
-      'Empleado revocado tampoco consulta B');
+      'Empleado revocado en B tampoco lee B');
+    await deny(updateDoc(doc(db, businessPath(idB) + '/catalog/menu_catalog'), {
+      sourceLabel: 'Edición B tras revocación',
+    }), 'Revocación B impide escritura B');
 
     await signOut(auth);
     await signInWithEmailAndPassword(auth, emailA, password);
     assert.equal((await adminRead(memberPath(idB, uidB))).data()?.active, true,
-      'OWNER B conserva sus permisos tras revocaciones en A');
+      'OWNER B conserva sus permisos tras ambas revocaciones');
     assert((await getDoc(doc(db, businessPath(idA)))).exists());
-    console.log('PASS (solo emulador): API real de invitaciones, aceptación, roles KITCHEN, aislamiento A/B y revocación bajo registro candidato de tres documentos.');
+    console.log('PASS (solo emulador): API real de invitaciones, UID compartido KITCHEN A/WAITER B, roles separados, aceptación y revocación independiente bajo registro candidato de tres documentos.');
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     await deleteAdminApp(adminApp);
