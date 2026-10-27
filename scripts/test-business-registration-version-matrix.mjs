@@ -59,6 +59,7 @@ try {
   const bob = signed('matrix-bob');
   const legacyId = 'matrix-legacy-two-docs';
   const stagedThreeId = 'matrix-staged-three-docs';
+  const proposedThreeId = 'matrix-proposed-three-docs';
 
   if (phase === 'staged') {
   // Fase 1: staged acepta el cliente vigente, pero rechaza el futuro batch
@@ -89,7 +90,6 @@ try {
     root(proposedTwoId), owner(proposedTwoId, 'matrix-alice'), handle(proposedTwoId),
   ], 'propuesta rechaza cliente vigente sin escritura parcial');
 
-  const proposedThreeId = 'matrix-proposed-three-docs';
   await assertSucceeds(registration(bob, proposedThreeId, 'matrix-bob', 3));
   await assertSucceeds(getDoc(doc(bob, root(proposedThreeId))));
   await assertFails(getDoc(doc(alice, root(proposedThreeId))));
