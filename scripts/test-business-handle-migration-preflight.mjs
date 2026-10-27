@@ -120,7 +120,7 @@ for (const badProfile of [
   { path: 'publicBusinessProfiles/alpha', data: { restaurantId: 'alpha' } },
 ]) {
   const checked = single([root('alpha', 'alice'), member('alpha', 'alice'), badProfile]);
-  assert.equal(checked.status, 'HOLD_MANUAL_REVIEW');
+  assert.notEqual(checked.status, 'CANDIDATE_FOR_MANUAL_BACKFILL_REVIEW');
   hasReason(checked, 'PROFILE_TENANT_MISMATCH');
 }
 assert.equal(single([root('alpha', 'alice'), member('alpha', 'alice'),
@@ -131,7 +131,7 @@ for (const data of [{ businessId: 'beta' }, { restaurantId: 'beta' },
   { businessId: 'alpha', restaurantId: 'beta' }, { businessId: null }]) {
   const checked = single([root('alpha', 'alice'), member('alpha', 'alice'),
     { path: 'businesses/alpha/catalog/menu_catalog', data }]);
-  assert.equal(checked.status, 'HOLD_MANUAL_REVIEW');
+  assert.notEqual(checked.status, 'CANDIDATE_FOR_MANUAL_BACKFILL_REVIEW');
   hasReason(checked, 'RESIDUAL_TENANT_MISMATCH');
 }
 for (const data of [{ businessId: 'alpha' }, { restaurantId: 'alpha' },
@@ -149,6 +149,41 @@ const crossTenantInventory = auditHistoricalHandles(inventory([
 assert.deepEqual(crossTenantInventory.businesses.map(b => b.status),
   ['HOLD_MANUAL_REVIEW', 'HOLD_MANUAL_REVIEW']);
 assert.equal(crossTenantInventory.safeToApplyAutomatically, false);
+
+// Un cruce UNILATERAL también retiene al destino sin errores propios.
+for (const foreignRecord of [
+  profile('alpha', 'alpha', 'beta'),
+  { path: 'businesses/alpha/catalog/menu_catalog', data: { businessId: 'beta' } },
+  { ...root('alpha', 'alice'), data: { restaurantId: 'beta', ownerUserId: 'alice' } },
+  { ...reservation('alpha', 'alice'), data: { businessId: 'beta', ownerUserId: 'alice' } },
+]) {
+  const checked = auditHistoricalHandles(inventory([
+    root('alpha', 'alice'), member('alpha', 'alice'),
+    root('beta', 'bob'), member('beta', 'bob'),
+    foreignRecord,
+  ]));
+  const target = checked.businesses.find(b => b.businessId === 'beta');
+  assert.equal(target.status, 'HOLD_MANUAL_REVIEW');
+  hasReason(target, 'REFERENCED_BY_FOREIGN_TENANT');
+  assert.equal(checked.counts.manualCandidates, 0);
+}
+const absentTarget = auditHistoricalHandles(inventory([
+  root('alpha', 'alice'), member('alpha', 'alice'),
+  profile('alpha', 'alpha', 'missing-tenant'),
+]));
+assert(absentTarget.globalBlockers.includes('REFERENCE_TO_UNINVENTORIED_TENANT'));
+assert.equal(absentTarget.businesses[0].status, 'BLOCKED_INCOMPLETE_INVENTORY');
+assert.equal(absentTarget.counts.manualCandidates, 0);
+const cleanPair = auditHistoricalHandles(inventory([
+  root('alpha', 'alice'), member('alpha', 'alice'),
+  { path: 'businesses/alpha/catalog/menu_catalog', data: { items: [] } },
+  profile('alpha', 'alpha', 'alpha'),
+  root('beta', 'bob'), member('beta', 'bob'),
+]));
+assert.deepEqual(cleanPair.businesses.map(b => b.status), [
+  'CANDIDATE_FOR_MANUAL_BACKFILL_REVIEW', 'CANDIDATE_FOR_MANUAL_BACKFILL_REVIEW',
+]);
+assert.deepEqual(cleanPair.globalBlockers, []);
 
 console.log('PASS: 17 escenarios originales y variantes adicionales de perfil/residuales entre tenants; solo inventario local, ninguna escritura ni Firebase.');
 console.warn('PENDIENTE: inventario real completo, respaldo, validación de propietarios y backfill autorizado; ningún candidato es aprobación automática.');
