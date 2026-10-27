@@ -96,8 +96,16 @@ function inspectEntry(entry, globallyBlocked) {
     problems.push('INVALID_RESERVATION');
   if (reserve && root && reserve.ownerUserId !== owner)
     problems.push('RESERVATION_OWNER_CONFLICT');
-  if (entry.profiles.some(p => p.data.businessId !== id && p.data.restaurantId !== id))
+  // Ambos identificadores del perfil público deben coincidir con la ruta.
+  // Con && se ignoraba un perfil que apuntaba a A en un campo y a B en otro.
+  if (entry.profiles.some(p => p.data.businessId !== id || p.data.restaurantId !== id))
     problems.push('PROFILE_TENANT_MISMATCH');
+  // Los documentos históricos pueden carecer de estos metadatos. Si existen,
+  // no pueden referir a otro tenant: retener el inventario para revisión.
+  if (entry.residual.some(record =>
+    (Object.hasOwn(record.data, 'businessId') && record.data.businessId !== id)
+    || (Object.hasOwn(record.data, 'restaurantId') && record.data.restaurantId !== id)))
+    problems.push('RESIDUAL_TENANT_MISMATCH');
   const unique = [...new Set(problems)].sort();
   const status = globallyBlocked ? 'BLOCKED_INCOMPLETE_INVENTORY'
     : unique.length ? 'HOLD_MANUAL_REVIEW'
