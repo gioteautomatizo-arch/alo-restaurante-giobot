@@ -236,7 +236,13 @@ try {
   await assert.rejects(setBusinessPublication(idA, a.tenant, false),
     /propietario|permission-denied/i, 'B no puede ocultar la página pública de A');
   await deny(getDoc(doc(db, businessPath(idA))), 'B no lee A');
-  await deny(getDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog')), 'B no lee catálogo A');
+  // El catálogo publicado de A es intencionalmente público; el aislamiento
+  // protege su edición y los datos privados, no su lectura de escaparate.
+  assert((await getDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog'))).exists(),
+    'B puede consultar el catálogo público publicado de A');
+  await deny(updateDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog'), {
+    sourceLabel: 'Cruce desde B',
+  }), 'B no puede modificar el catálogo de A');
   await deny(registerCandidate({
     businessName: 'Intento de B', handle: idA, email: emailB, password,
   }), 'B no puede reclamar el handle de A');
