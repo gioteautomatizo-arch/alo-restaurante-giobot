@@ -54,6 +54,8 @@ jobs:
         run: node scripts/test-business-portal-isolation-ui.mjs
       - name: Test business account list fail-closed on partial reads (mocked Firestore, no writes)
         run: node scripts/test-business-account-list.mjs
+      - name: Test historical business handle migration preflight (synthetic inventory, no Firebase)
+        run: node scripts/test-business-handle-migration-preflight.mjs
       - name: Test owner registration session drift (mocked Auth/Firestore, no writes)
         run: node scripts/test-business-registration-session.mjs
       - name: Test onboarding duplicate submit and stale navigation (React/jsdom, no Firebase)
