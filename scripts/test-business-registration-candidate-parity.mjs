@@ -63,7 +63,7 @@ const rootStart = proposal.indexOf('match /businesses/{businessId} {');
 const rootEnd = proposal.indexOf('match /businesses/{businessId}/employees/{employeeUserId} {');
 assert(rootStart >= 0 && rootEnd > rootStart, 'La propuesta debe conservar la raíz de negocios');
 const rootRules = proposal.slice(rootStart, rootEnd);
-assert.match(rootRules, /request\\.resource\\.data\\.registrationContractVersion == 3/,
+assert.match(rootRules, /request\.resource\.data\.registrationContractVersion == 3/,
   'Las reglas candidatas deben exigir el marcador al crear');
 assert.equal(rootRules.split("request.resource.data.get('registrationContractVersion', null) == resource.data.get('registrationContractVersion', null)").length - 1, 2,
   'Ambas rutas de update deben preservar el marcador sin cambios');
