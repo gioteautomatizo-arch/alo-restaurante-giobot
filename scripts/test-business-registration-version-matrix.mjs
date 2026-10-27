@@ -36,6 +36,11 @@ const reservation = (id, uid) => ({ businessId: id, ownerUserId: uid });
 const root = id => 'businesses/' + id;
 const owner = (id, uid) => 'businessMemberships/' + id + '_' + uid;
 const handle = id => 'businessHandleReservations/' + id;
+const catalog = id => 'businesses/' + id + '/catalog/menu_catalog';
+const profile = id => 'publicBusinessProfiles/' + id;
+const staffMembership = (id, role) => ({
+  restaurantId: id, userId: 'matrix-staff', role, active: true,
+});
 
 function registration(db, id, uid, version) {
   const batch = writeBatch(db);
@@ -58,6 +63,8 @@ async function assertNoPartialDocuments(paths, label) {
 try {
   const alice = signed('matrix-alice');
   const bob = signed('matrix-bob');
+  const staff = signed('matrix-staff');
+  const visitor = env.unauthenticatedContext().firestore();
   const legacyId = 'matrix-legacy-two-docs';
   const stagedThreeId = 'matrix-staged-three-docs';
   const proposedThreeId = 'matrix-proposed-three-docs';
@@ -68,6 +75,15 @@ try {
   await assertSucceeds(registration(alice, legacyId, 'matrix-alice', 2));
   await assertSucceeds(getDoc(doc(alice, root(legacyId))));
   await assertNoPartialDocuments([handle(legacyId)], 'staged no crea reserva');
+  // Datos y empleado reales del tenant legado antes de congelar altas.
+  await assertSucceeds(setDoc(doc(alice, catalog(legacyId)), {
+    businessId: legacyId, items: [{ id: 'legacy', price: 12 }],
+  }));
+  await assertSucceeds(setDoc(doc(alice, owner(legacyId, 'matrix-staff')),
+    staffMembership(legacyId, 'KITCHEN')));
+  await assertSucceeds(getDoc(doc(staff, catalog(legacyId))));
+  await assertFails(getDoc(doc(bob, catalog(legacyId))));
+  await assertFails(getDoc(doc(visitor, catalog(legacyId))));
   await assertFails(registration(bob, stagedThreeId, 'matrix-bob', 3));
   await assertNoPartialDocuments([
     root(stagedThreeId), owner(stagedThreeId, 'matrix-bob'), handle(stagedThreeId),
@@ -83,6 +99,16 @@ try {
   }));
   await assertFails(deleteDoc(doc(alice, root(legacyId))));
   await assertSucceeds(getDoc(doc(alice, root(legacyId))));
+  // Congelar el registro NO debe bloquear el catálogo privado de un negocio
+  // ya existente, ni conceder permisos de edición a empleados u otros dueños.
+  await assertSucceeds(updateDoc(doc(alice, catalog(legacyId)), {
+    items: [{ id: 'legacy', price: 15 }],
+  }));
+  assert.equal((await getDoc(doc(staff, catalog(legacyId)))).data()?.items?.[0]?.price, 15);
+  await assertFails(updateDoc(doc(staff, catalog(legacyId)), { items: [] }));
+  await assertFails(getDoc(doc(bob, catalog(legacyId))));
+  await assertFails(updateDoc(doc(bob, catalog(legacyId)), { items: [] }));
+  await assertFails(getDoc(doc(visitor, catalog(legacyId))));
 
   for (const version of [2, 3]) {
     const id = 'matrix-freeze-before-' + version;
@@ -113,6 +139,16 @@ try {
   await assertSucceeds(getDoc(doc(bob, root(proposedThreeId))));
   await assertFails(getDoc(doc(alice, root(proposedThreeId))));
   await assertFails(getDoc(doc(bob, handle(proposedThreeId))));
+  await assertSucceeds(setDoc(doc(bob, catalog(proposedThreeId)), {
+    businessId: proposedThreeId, items: [{ id: 'candidate', price: 22 }],
+  }));
+  await assertSucceeds(setDoc(doc(bob, owner(proposedThreeId, 'matrix-staff')),
+    staffMembership(proposedThreeId, 'WAITER')));
+  await assertSucceeds(getDoc(doc(staff, catalog(legacyId))));
+  await assertSucceeds(getDoc(doc(staff, catalog(proposedThreeId))));
+  await assertFails(getDoc(doc(alice, catalog(proposedThreeId))));
+  await assertFails(getDoc(doc(bob, catalog(legacyId))));
+  await assertFails(getDoc(doc(visitor, catalog(proposedThreeId))));
   await env.withSecurityRulesDisabled(async context => {
     const snap = await getDoc(doc(context.firestore(), handle(proposedThreeId)));
     assert.equal(snap.data()?.ownerUserId, 'matrix-bob');
@@ -131,6 +167,27 @@ try {
   await assertFails(deleteDoc(doc(bob, root(proposedThreeId))));
   await assertSucceeds(getDoc(doc(bob, root(proposedThreeId))));
   await assertFails(getDoc(doc(bob, handle(proposedThreeId))));
+  // Segunda congelación: preservar operación de ambos tenants y los dos
+  // roles de una misma cuenta, sin habilitar edición cruzada ni nuevas altas.
+  await assertSucceeds(updateDoc(doc(bob, catalog(proposedThreeId)), {
+    items: [{ id: 'candidate', price: 24 }],
+  }));
+  assert.equal((await getDoc(doc(staff, catalog(proposedThreeId)))).data()?.items?.[0]?.price, 24);
+  assert.equal((await getDoc(doc(staff, catalog(legacyId)))).data()?.items?.[0]?.price, 15);
+  await assertFails(updateDoc(doc(staff, catalog(proposedThreeId)), { items: [] }));
+  await assertFails(updateDoc(doc(alice, catalog(proposedThreeId)), { items: [] }));
+  await assertFails(updateDoc(doc(bob, catalog(legacyId)), { items: [] }));
+  await assertFails(getDoc(doc(visitor, catalog(proposedThreeId))));
+  // Un OWNER de negocio existente puede publicar incluso durante la puerta
+  // de altas cerrada; solo entonces el catálogo pasa a lectura pública.
+  await assertSucceeds(setDoc(doc(bob, profile(proposedThreeId)), {
+    businessId: proposedThreeId, restaurantId: proposedThreeId,
+    businessType: 'restaurant', branding: { restaurantName: 'Candidato B' },
+    published: true, updatedAt: '2026-10-27T00:00:00.000Z',
+  }));
+  await assertSucceeds(getDoc(doc(visitor, profile(proposedThreeId))));
+  await assertSucceeds(getDoc(doc(visitor, catalog(proposedThreeId))));
+  await assertFails(getDoc(doc(visitor, catalog(legacyId))));
   await env.withSecurityRulesDisabled(async context => {
     const snap = await getDoc(doc(context.firestore(), handle(proposedThreeId)));
     assert.equal(snap.data()?.ownerUserId, 'matrix-bob',
