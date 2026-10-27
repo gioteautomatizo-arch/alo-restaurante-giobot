@@ -110,6 +110,10 @@ export async function registerBusinessThreeDocumentCandidate(input: RegisterBusi
     },
   }));
 
+  // Señal de contrato para distinguir altas nuevas de raíces legacy sin reserva.
+  // NO certifica la existencia de la reserva: exige revisión privilegiada antes del corte.
+  const registrationTenant = { ...tenant, registrationContractVersion: 3 };
+
   const membership: RestaurantMembership = {
     restaurantId: businessId,
     userId,
@@ -127,7 +131,7 @@ export async function registerBusinessThreeDocumentCandidate(input: RegisterBusi
   // o ninguno. Las reglas candidatas validan el UID mediante getAfter().
   // Un fallo no deja negocios huérfanos sin acceso administrativo.
   const batch = writeBatch(db);
-  batch.set(businessRef(businessId), tenant);
+  batch.set(businessRef(businessId), registrationTenant);
   batch.set(membershipRef(businessId, userId), membership);
   batch.set(doc(db, 'businessHandleReservations', businessId), { businessId, ownerUserId: userId });
   let confirmedTenant = tenant;
@@ -151,7 +155,8 @@ export async function registerBusinessThreeDocumentCandidate(input: RegisterBusi
       assertCurrentBusinessSession(userId);
       if (!existingTenantSnap.exists()) throw commitError;
       const existingTenant = existingTenantSnap.data() as RestaurantTenant;
-      if (existingTenant.restaurantId !== businessId || existingTenant.ownerUserId !== userId) {
+      if (existingTenant.restaurantId !== businessId || existingTenant.ownerUserId !== userId
+          || (existingTenant as RestaurantTenant & { registrationContractVersion?: number }).registrationContractVersion !== 3) {
         throw commitError;
       }
       confirmedTenant = existingTenant;
