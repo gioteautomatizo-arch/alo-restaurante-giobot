@@ -163,7 +163,12 @@ for (const foreignRecord of [
     foreignRecord,
   ]));
   const target = checked.businesses.find(b => b.businessId === 'beta');
-  assert.equal(target.status, 'HOLD_MANUAL_REVIEW');
+  // El caso de raíz discordante añade una segunda copia de businesses/alpha
+  // y ahora bloquea globalmente la extracción, además de retener el destino.
+  assert.equal(target.status, foreignRecord.path === 'businesses/alpha'
+    ? 'BLOCKED_INCOMPLETE_INVENTORY' : 'HOLD_MANUAL_REVIEW');
+  if (foreignRecord.path === 'businesses/alpha')
+    assert(checked.globalBlockers.includes('DUPLICATE_INVENTORY_PATH'));
   hasReason(target, 'REFERENCED_BY_FOREIGN_TENANT');
   assert.equal(checked.counts.manualCandidates, 0);
 }
