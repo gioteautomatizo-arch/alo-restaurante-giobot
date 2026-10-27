@@ -14,7 +14,7 @@ import {
 import {
   connectFirestoreEmulator, doc, getDoc, writeBatch, deleteDoc, updateDoc, terminate,
 } from 'firebase/firestore';
-import { buildAtomicOwnerAndPermanentHandleProposalRules } from './owner-atomic-proposal-rules.mjs';
+import { buildPermanentHandleRetirementGuardProposalRules } from './owner-atomic-proposal-rules.mjs';
 import { registerThroughOnboardingUI } from './business-onboarding-emulator-ui.mjs';
 import { saveBrandingThroughUI, addCatalogProductThroughUI } from './business-management-emulator-ui.mjs';
 import { publishBusinessThroughUI, publishAndHideBusinessThroughUI, assertForeignWorkspaceDeniedThroughUI } from './business-publication-emulator-ui.mjs';
@@ -26,7 +26,7 @@ const staged = readFileSync('docs/firestore.launch-security.STAGED.rules', 'utf8
 const env = await initializeTestEnvironment({
   projectId,
   firestore: {
-    rules: buildAtomicOwnerAndPermanentHandleProposalRules(staged),
+    rules: buildPermanentHandleRetirementGuardProposalRules(staged),
     host: '127.0.0.1', port: 8080,
   },
 });
@@ -163,6 +163,18 @@ const managementBridge = {
   saveCatalog: (id: string, items: any, actor: string, revision: string | null) =>
     saveBusinessCatalog(id, JSON.parse(JSON.stringify(items)), actor, revision),
 };
+const publicOrder = (id: string, code: string) => {
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'restaurant_orders', code), {
+    code, restaurantId: id, orderType: 'pickup', status: 'NUEVO',
+    items: [{ name: 'Producto de prueba', quantity: 1, price: 20 }],
+    total: 20, subtotal: 20, discountAmount: 0, deliveryFee: 0,
+    orderSource: 'CLIENTE_QR', customerName: 'Comprador ficticio',
+    paymentMethod: 'efectivo', billingStatus: 'PENDIENTE',
+    createdAt: '2026-10-27T00:00:00.000Z', updatedAt: '2026-10-27T00:00:00.000Z',
+  });
+  return batch.commit();
+};
 const publicationBridge = {
   getBusiness: (uid: string, id: string) => getBusinessForUser(uid, id),
   getMembership: (uid: string, id: string) => getBusinessMembership(uid, id),
@@ -286,6 +298,10 @@ try {
   assert.equal(lostRetry.tenant.branding.restaurantName, 'Alta confirmada sin respuesta',
     'Un reintento posterior no reemplaza la identidad confirmada');
   assert.equal((await adminRead(reservePath(lostId))).data()?.ownerUserId, uidA);
+  // Segundo negocio de prueba para una baja CORRECTA: el perfil y catálogo
+  // se despublicarán en el mismo lote privilegiado que retira la raíz.
+  await setBusinessPublication(lostId, (await getBusinessForUser(uidA, lostId))!, true);
+  assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', lostId))).data()?.published, true);
 
   // Fallo ANTES de commit: no existe nada propio que recuperar, por lo que
   // debe conservarse el error y no dejar documentos parciales.
@@ -352,17 +368,61 @@ try {
   }), 'Reserva permanente impide reabrir A tras borrado privilegiado');
   assert.equal((await adminRead(reservePath(idA))).data()?.ownerUserId, uidA);
   assert.equal((await adminRead(memberPath(idA, uidB))).exists(), false);
-  // La reserva bloquea el secuestro del handle, pero un borrado privilegiado
-  // de la raíz NO despublica automáticamente el catálogo/perfil de escaparate.
-  // Esta lectura pública es esperada con las reglas candidatas actuales:
-  // documentar la limpieza administrativa pendiente, sin alterar reglas.
-  assert((await getDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog'))).exists(),
-    'El catálogo previamente publicado continúa legible tras borrar la raíz');
-  assert.equal((await adminRead('publicBusinessProfiles/' + idA)).data()?.published, true,
-    'El perfil público huérfano persiste hasta intervención administrativa');
+  // El borrado privilegiado incorrecto sigue dejando el perfil público
+  // huérfano visible: las reglas no pueden despublicar un documento vecino.
+  assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true,
+    'ALERTA: perfil huérfano visible hasta intervención administrativa');
+  assert.equal((await adminRead('publicBusinessProfiles/' + idA)).data()?.published, true);
+  // Defensa aislada: el catálogo huérfano ya NO es legible por compradores,
+  // aunque el perfil siga publicado; tampoco se aceptan pedidos públicos.
+  await deny(getDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog')),
+    'Catálogo huérfano no legible por cuenta ajena');
+  await deny(publicOrder(idA, 'beta-orphan-public-order'),
+    'Un pedido público no debe dirigirse a raíz inexistente');
   await deny(updateDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog'), {
     sourceLabel: 'Intento de secuestro del catálogo residual',
   }), 'B no puede modificar el catálogo residual de A');
+
+  // Control positivo: un comprador de B sí puede pedir al escaparate A2
+  // publicado, antes de la baja, con los mismos campos de pedido.
+  await publicOrder(lostId, 'beta-valid-before-retirement');
+  assert((await adminRead('restaurant_orders/beta-valid-before-retirement')).exists());
+
+  // Baja CORRECTA en entorno aislado: despublicar y borrar raíz en UN lote
+  // privilegiado. No borrar la reserva ni eliminar catálogos/ventas históricas.
+  await env.withSecurityRulesDisabled(async context => {
+    const privilegedDb = context.firestore();
+    const retirement = writeBatch(privilegedDb);
+    retirement.update(doc(privilegedDb, 'publicBusinessProfiles', lostId), {
+      published: false, updatedAt: '2026-10-27T00:00:00.000Z',
+    });
+    retirement.delete(doc(privilegedDb, businessPath(lostId)));
+    await retirement.commit();
+  });
+  assert.equal((await adminRead(businessPath(lostId))).exists(), false);
+  assert.equal((await adminRead('publicBusinessProfiles/' + lostId)).data()?.published, false);
+  assert.equal((await adminRead(reservePath(lostId))).data()?.ownerUserId, uidA,
+    'La baja nunca libera la reserva permanente');
+  await deny(getDoc(doc(db, 'publicBusinessProfiles', lostId)),
+    'Perfil despublicado no legible por comprador ajeno');
+  await deny(getDoc(doc(db, businessPath(lostId) + '/catalog/menu_catalog')),
+    'Catálogo despublicado no legible por comprador ajeno');
+  await deny(publicOrder(lostId, 'beta-invalid-after-retirement'),
+    'Baja bloquea nuevos pedidos públicos');
+  assert.equal((await adminRead('restaurant_orders/beta-invalid-after-retirement')).exists(), false);
+  await deny(registerCandidate({
+    businessName: 'B reclama negocio retirado', handle: lostId, email: emailB, password,
+  }), 'B no puede reutilizar un ID retirado');
+  assert((await getDoc(doc(db, businessPath(idB)))).exists(),
+    'La baja de A no afecta al negocio B');
+
+  // La membresía OWNER residual no autoriza a republicar tras borrar raíz.
+  await signOut(auth);
+  await signInWithEmailAndPassword(auth, emailA, password);
+  await deny(setBusinessPublication(idA, retry.tenant, true),
+    'OWNER no puede republicar perfil huérfano A');
+  await deny(setBusinessPublication(lostId, recovered.tenant, true),
+    'OWNER no puede reactivar un negocio retirado');
 
   // Comprobar explícitamente el cliente ACTUAL, sin modificarlo: su batch de
   // dos documentos debe ser rechazado por la propuesta permanente. La cuenta
@@ -383,8 +443,8 @@ try {
   ]) assert.equal((await adminRead(path)).exists(), false,
     'Cliente incompatible no deja escrituras parciales: ' + path);
 
-  console.log('PASS (solo emulador): onboarding React 3 documentos, catálogo/identidad/publicación React de dos negocios, aislamiento cruzado, recuperación, colisión y reserva persistente.');
-  console.warn('PENDIENTE: borrar una raíz con privilegios NO despublica el perfil/catálogo público residual; exige política de baja y limpieza administrativa auditada.');
+  console.log('PASS (solo emulador): onboarding React 3 documentos, aislamiento de dos negocios, baja administrativa atómica, catálogo no público tras baja, OWNER sin republicación y reserva persistente.');
+  console.warn('PENDIENTE: un borrado privilegiado sin despublicación deja visible el perfil huérfano; la propuesta aislada bloquea catálogo y republicación, pero exige baja administrativa atómica y revisión.');
   console.warn('PENDIENTE: registerBusiness de producción sigue escribiendo DOS documentos; coordinar cliente, reglas y migración histórica antes de cualquier despliegue.');
   console.warn('PENDIENTE: la respuesta perdida se inyecta sintéticamente DESPUÉS del commit; falta comprobar fallos reales de transporte, compatibilidad de clientes antiguos y reglas desplegadas.');
 } finally {
