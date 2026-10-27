@@ -38,6 +38,21 @@ const owner = (id, uid) => 'businessMemberships/' + id + '_' + uid;
 const handle = id => 'businessHandleReservations/' + id;
 const catalog = id => 'businesses/' + id + '/catalog/menu_catalog';
 const profile = id => 'publicBusinessProfiles/' + id;
+const orderPath = code => 'restaurant_orders/' + code;
+const publicOrder = (id, code) => ({
+  restaurantId: id, code, status: 'NUEVO', billingStatus: 'PENDIENTE',
+  orderType: 'pickup', orderSource: 'CLIENTE_QR',
+  customerName: 'Comprador ficticio', paymentMethod: 'efectivo',
+  items: [{ name: 'Producto sintético', quantity: 1, unitPrice: 10, totalPrice: 10 }],
+  subtotal: 10, discountAmount: 0, deliveryFee: 0, total: 10,
+  createdAt: '2026-10-27T00:00:00.000Z',
+  updatedAt: '2026-10-27T00:00:00.000Z',
+});
+const publishedProfile = id => ({
+  businessId: id, restaurantId: id, businessType: 'restaurant',
+  branding: { restaurantName: id }, published: true,
+  updatedAt: '2026-10-27T00:00:00.000Z',
+});
 const staffMembership = (id, role) => ({
   restaurantId: id, userId: 'matrix-staff', role, active: true,
 });
@@ -110,6 +125,32 @@ try {
   await assertFails(updateDoc(doc(bob, catalog(legacyId)), { items: [] }));
   await assertFails(getDoc(doc(visitor, catalog(legacyId))));
 
+  // La congelación de altas no debe interrumpir pedidos de negocios existentes.
+  // Un visitante no puede pedir antes de la publicación ni consultar Pedidos.
+  const beforePublish = 'matrix-a-unpublished';
+  await assertFails(setDoc(doc(visitor, orderPath(beforePublish)),
+    publicOrder(legacyId, beforePublish)));
+  await assertNoPartialDocuments([orderPath(beforePublish)],
+    'un negocio oculto no recibe pedido público');
+  await assertSucceeds(setDoc(doc(alice, profile(legacyId)), publishedProfile(legacyId)));
+  await assertSucceeds(getDoc(doc(visitor, catalog(legacyId))));
+  const firstOrder = 'matrix-a-freeze-before-order';
+  await assertSucceeds(setDoc(doc(visitor, orderPath(firstOrder)),
+    publicOrder(legacyId, firstOrder)));
+  await assertSucceeds(getDoc(doc(alice, orderPath(firstOrder))));
+  await assertSucceeds(getDoc(doc(staff, orderPath(firstOrder))));
+  await assertFails(getDoc(doc(bob, orderPath(firstOrder))));
+  await assertFails(getDoc(doc(visitor, orderPath(firstOrder))));
+  await assertSucceeds(updateDoc(doc(staff, orderPath(firstOrder)), {
+    status: 'PREPARANDO', updatedAt: '2026-10-27T00:01:00.000Z',
+  }));
+  await assertFails(updateDoc(doc(staff, orderPath(firstOrder)), { total: 0 }));
+  await assertFails(updateDoc(doc(staff, orderPath(firstOrder)), { billingStatus: 'PAGADO' }));
+  await assertFails(updateDoc(doc(bob, orderPath(firstOrder)), { status: 'LISTO' }));
+  await assertFails(updateDoc(doc(visitor, orderPath(firstOrder)), { status: 'LISTO' }));
+  assert.equal((await getDoc(doc(alice, orderPath(firstOrder)))).data()?.status, 'PREPARANDO');
+  console.log('PASS pedidos freeze-before: alta cerrada, publicación A, pedido público, gestión KITCHEN y dinero protegido.');
+
   for (const version of [2, 3]) {
     const id = 'matrix-freeze-before-' + version;
     await assertFails(registration(bob, id, 'matrix-bob', version));
@@ -149,6 +190,17 @@ try {
   await assertFails(getDoc(doc(alice, catalog(proposedThreeId))));
   await assertFails(getDoc(doc(bob, catalog(legacyId))));
   await assertFails(getDoc(doc(visitor, catalog(proposedThreeId))));
+  // El cambio a reglas candidatas no debe cortar pedidos del legado publicado.
+  const candidateOrder = 'matrix-a-candidate-order';
+  await assertSucceeds(setDoc(doc(visitor, orderPath(candidateOrder)),
+    publicOrder(legacyId, candidateOrder)));
+  await assertSucceeds(getDoc(doc(alice, orderPath(candidateOrder))));
+  await assertFails(getDoc(doc(bob, orderPath(candidateOrder))));
+  const unpublishedB = 'matrix-b-candidate-unpublished';
+  await assertFails(setDoc(doc(visitor, orderPath(unpublishedB)),
+    publicOrder(proposedThreeId, unpublishedB)));
+  await assertNoPartialDocuments([orderPath(unpublishedB)],
+    'negocio candidato no publicado rechaza pedido público');
   await env.withSecurityRulesDisabled(async context => {
     const snap = await getDoc(doc(context.firestore(), handle(proposedThreeId)));
     assert.equal(snap.data()?.ownerUserId, 'matrix-bob');
@@ -187,7 +239,36 @@ try {
   }));
   await assertSucceeds(getDoc(doc(visitor, profile(proposedThreeId))));
   await assertSucceeds(getDoc(doc(visitor, catalog(proposedThreeId))));
-  await assertFails(getDoc(doc(visitor, catalog(legacyId))));
+  await assertSucceeds(getDoc(doc(visitor, catalog(legacyId))));
+  // Segunda congelación: A y B siguen recibiendo pedidos públicos y los
+  // empleados compartidos ven/gestionan solo los tenants autorizados.
+  const orderA = 'matrix-a-freeze-after-order';
+  const orderB = 'matrix-b-freeze-after-order';
+  await assertSucceeds(setDoc(doc(visitor, orderPath(orderA)),
+    publicOrder(legacyId, orderA)));
+  await assertSucceeds(setDoc(doc(visitor, orderPath(orderB)),
+    publicOrder(proposedThreeId, orderB)));
+  await assertSucceeds(getDoc(doc(alice, orderPath(orderA))));
+  await assertSucceeds(getDoc(doc(bob, orderPath(orderB))));
+  await assertSucceeds(getDoc(doc(staff, orderPath(orderA))));
+  await assertSucceeds(getDoc(doc(staff, orderPath(orderB))));
+  await assertFails(getDoc(doc(alice, orderPath(orderB))));
+  await assertFails(getDoc(doc(bob, orderPath(orderA))));
+  await assertFails(getDoc(doc(visitor, orderPath(orderA))));
+  await assertFails(getDoc(doc(visitor, orderPath(orderB))));
+  await assertSucceeds(updateDoc(doc(staff, orderPath(orderA)), {
+    status: 'PREPARANDO', updatedAt: '2026-10-27T00:02:00.000Z',
+  }));
+  await assertSucceeds(updateDoc(doc(bob, orderPath(orderB)), {
+    status: 'LISTO', updatedAt: '2026-10-27T00:03:00.000Z',
+  }));
+  await assertFails(updateDoc(doc(alice, orderPath(orderB)), { status: 'CANCELADO' }));
+  await assertFails(updateDoc(doc(bob, orderPath(orderA)), { status: 'CANCELADO' }));
+  await assertFails(updateDoc(doc(staff, orderPath(orderB)), { total: 0 }));
+  await assertFails(updateDoc(doc(staff, orderPath(orderB)), { billingStatus: 'PAGADO' }));
+  await assertFails(updateDoc(doc(visitor, orderPath(orderB)), { status: 'ENTREGADO' }));
+  assert.equal((await getDoc(doc(bob, orderPath(orderB)))).data()?.status, 'LISTO');
+  console.log('PASS pedidos freeze-after: A/B reciben, gestión por tenant, sin lectura cruzada ni cobros manipulados.');
   await env.withSecurityRulesDisabled(async context => {
     const snap = await getDoc(doc(context.firestore(), handle(proposedThreeId)));
     assert.equal(snap.data()?.ownerUserId, 'matrix-bob',
