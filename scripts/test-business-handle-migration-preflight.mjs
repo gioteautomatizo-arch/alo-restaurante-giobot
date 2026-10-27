@@ -106,5 +106,49 @@ assert.equal(result.counts.manualCandidates, 1);
 assert.equal(result.counts.blockedOrHeld, 0);
 assert.deepEqual(result.businesses.map(x => x.businessId), ['alpha', 'beta']);
 assert.throws(() => auditHistoricalHandles(null), /inventario/);
-console.log('PASS: 17 escenarios sintéticos de preflight fail-closed; ninguna escritura ni Firebase.');
+// Regresión: basta UN identificador de perfil público cruzado para detener
+// el preflight. No se debe considerar segura una coincidencia parcial.
+const profile = (id, businessId, restaurantId) => ({
+  path: 'publicBusinessProfiles/' + id,
+  data: { businessId, restaurantId, published: true },
+});
+for (const badProfile of [
+  profile('alpha', 'alpha', 'beta'),
+  profile('alpha', 'beta', 'alpha'),
+  profile('alpha', 'beta', 'beta'),
+  { path: 'publicBusinessProfiles/alpha', data: { businessId: 'alpha' } },
+  { path: 'publicBusinessProfiles/alpha', data: { restaurantId: 'alpha' } },
+]) {
+  const checked = single([root('alpha', 'alice'), member('alpha', 'alice'), badProfile]);
+  assert.equal(checked.status, 'HOLD_MANUAL_REVIEW');
+  hasReason(checked, 'PROFILE_TENANT_MISMATCH');
+}
+assert.equal(single([root('alpha', 'alice'), member('alpha', 'alice'),
+  profile('alpha', 'alpha', 'alpha')]).status, 'CANDIDATE_FOR_MANUAL_BACKFILL_REVIEW');
+
+// Documentos dependientes con tenant explícito cruzado también bloquean.
+for (const data of [{ businessId: 'beta' }, { restaurantId: 'beta' },
+  { businessId: 'alpha', restaurantId: 'beta' }, { businessId: null }]) {
+  const checked = single([root('alpha', 'alice'), member('alpha', 'alice'),
+    { path: 'businesses/alpha/catalog/menu_catalog', data }]);
+  assert.equal(checked.status, 'HOLD_MANUAL_REVIEW');
+  hasReason(checked, 'RESIDUAL_TENANT_MISMATCH');
+}
+for (const data of [{ businessId: 'alpha' }, { restaurantId: 'alpha' },
+  { businessId: 'alpha', restaurantId: 'alpha' }, { items: [] }]) {
+  assert.equal(single([root('alpha', 'alice'), member('alpha', 'alice'),
+    { path: 'businesses/alpha/catalog/menu_catalog', data }]).status,
+  'CANDIDATE_FOR_MANUAL_BACKFILL_REVIEW');
+}
+const crossTenantInventory = auditHistoricalHandles(inventory([
+  root('alpha', 'alice'), member('alpha', 'alice'),
+  profile('alpha', 'alpha', 'beta'),
+  root('beta', 'bob'), member('beta', 'bob'),
+  { path: 'businesses/beta/catalog/menu_catalog', data: { businessId: 'alpha' } },
+]));
+assert.deepEqual(crossTenantInventory.businesses.map(b => b.status),
+  ['HOLD_MANUAL_REVIEW', 'HOLD_MANUAL_REVIEW']);
+assert.equal(crossTenantInventory.safeToApplyAutomatically, false);
+
+console.log('PASS: 17 escenarios originales y 16 variantes adicionales de perfil/residuales entre tenants; solo inventario local, ninguna escritura ni Firebase.');
 console.warn('PENDIENTE: inventario real completo, respaldo, validación de propietarios y backfill autorizado; ningún candidato es aprobación automática.');
