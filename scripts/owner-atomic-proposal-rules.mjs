@@ -95,6 +95,46 @@ export function buildAtomicOwnerAndPermanentHandleProposalRules(staged) {
 
 
 /**
+ * Ensayo de retiro de negocio (NO desplegar). Mantiene la lectura del
+ * directorio como está: un get/consulta pública condicionado por exists(root)
+ * podría invalidar listados de Firestore, cuyas reglas no son filtros.
+ *
+ * - Un perfil huérfano NO autoriza pedidos ni lectura pública del catálogo.
+ * - Ningún OWNER residual puede volver a publicar si falta la raíz.
+ * - El administrador DEBE despublicar el perfil ANTES de borrar la raíz:
+ *   un borrado privilegiado incorrecto deja visible el perfil ya publicado.
+ * No modifica staged ni impide acciones del Admin SDK.
+ */
+export function buildPermanentHandleRetirementGuardProposalRules(staged) {
+  const permanent = buildAtomicOwnerAndPermanentHandleProposalRules(staged);
+  const publishedAnchor = `        && get(/databases/$(database)/documents/publicBusinessProfiles/$(businessId)).data.published == true;`;
+  assert.equal(permanent.split(publishedAnchor).length, 2,
+    'ALTO: cambió isPublishedBusiness; revisar la defensa de baja.');
+  const withRootGuard = permanent.replace(publishedAnchor,
+    `        && get(/databases/$(database)/documents/publicBusinessProfiles/$(businessId)).data.published == true
+        && exists(/databases/$(database)/documents/businesses/$(businessId));`);
+
+  const start = '    match /publicBusinessProfiles/{businessId} {';
+  const end = '    match /businesses/{businessId}/catalog/{catalogDoc} {';
+  assert.equal(withRootGuard.split(start).length, 2,
+    'ALTO: cambió el bloque de perfiles públicos.');
+  assert.equal(withRootGuard.split(end).length, 2,
+    'ALTO: cambió el bloque de catálogo.');
+  const prefix = withRootGuard.slice(0, withRootGuard.indexOf(start));
+  const middle = withRootGuard.slice(withRootGuard.indexOf(start), withRootGuard.indexOf(end));
+  const suffix = withRootGuard.slice(withRootGuard.indexOf(end));
+  const writeAnchor = `      allow create, update: if isSignedIn()
+        && (`;
+  assert.equal(middle.split(writeAnchor).length, 2,
+    'ALTO: cambió la escritura de perfiles; revisar la defensa de baja.');
+  return prefix + middle.replace(writeAnchor,
+    `      allow create, update: if isSignedIn()
+        && exists(/databases/$(database)/documents/businesses/$(businessId))
+        && (`) + suffix;
+}
+
+
+/**
  * Puerta temporal de migración, SOLO para ensayos en Firebase Emulator.
  * Congela nuevas raíces de negocio (clientes de dos o tres documentos) y
  * borrados desde cliente, pero conserva las operaciones autorizadas de los
