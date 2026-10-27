@@ -56,6 +56,8 @@ jobs:
         run: node scripts/test-business-account-list.mjs
       - name: Test historical business handle migration preflight (synthetic inventory, no Firebase)
         run: node scripts/test-business-handle-migration-preflight.mjs
+      - name: Diagnose registration cutover and fail-closed rollback (read-only, no Firebase)
+        run: node scripts/test-business-registration-cutover-audit.mjs
       - name: Test owner registration session drift (mocked Auth/Firestore, no writes)
         run: node scripts/test-business-registration-session.mjs
       - name: Test onboarding duplicate submit and stale navigation (React/jsdom, no Firebase)
