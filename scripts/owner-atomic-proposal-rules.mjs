@@ -127,7 +127,9 @@ export function buildRegistrationFreezeProposalRules(staged) {
   assert.equal(staged.split(deleteAnchor).length, 2,
     'ALTO: cambió el permiso de borrado; revisar la congelación.');
   return staged.replace(createAnchor,
-    '      // Puerta de migración en emulador: ninguna nueva alta de negocio.\\n      allow create: if false;')
+    `      // Puerta de migración en emulador: ninguna nueva alta de negocio.
+      allow create: if false;`)
     .replace(deleteAnchor,
-      '      // Preservar ID y datos dependientes durante la transición.\\n      allow delete: if false;');
+      `      // Preservar ID y datos dependientes durante la transición.
+      allow delete: if false;`);
 }
