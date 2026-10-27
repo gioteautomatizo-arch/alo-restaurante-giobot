@@ -230,5 +230,62 @@ const cleanUnderscorePair = auditHistoricalHandles(inventory([
 assert.deepEqual(cleanUnderscorePair.globalBlockers, []);
 assert.equal(cleanUnderscorePair.counts.manualCandidates, 2);
 
-console.log('PASS: 17 escenarios originales y variantes adicionales de perfil/residuales entre tenants; solo inventario local, ninguna escritura ni Firebase.');
+// Contrato nuevo: una raíz marcada 3-doc NO puede convertirse en candidato
+// de backfill legacy si falta la reserva atómica o su vinculación es inválida.
+// Un solo caso anómalo debe bloquear el inventario ENTERO, incluido el otro
+// negocio ficticio, hasta revisión privilegiada independiente.
+const contractRoot = (id, owner, version) => ({
+  ...root(id, owner),
+  data: { ...root(id, owner).data, registrationContractVersion: version },
+});
+const validThreeDoc = auditHistoricalHandles(inventory([
+  contractRoot('alpha', 'alice', 3), member('alpha', 'alice'), reservation('alpha', 'alice'),
+  root('beta', 'bob'), member('beta', 'bob'),
+]));
+assert.deepEqual(validThreeDoc.globalBlockers, []);
+assert.deepEqual(validThreeDoc.businesses.map(b => b.status), [
+  'EXISTING_RESERVATION_REVIEW', 'CANDIDATE_FOR_MANUAL_BACKFILL_REVIEW',
+]);
+assert.equal(validThreeDoc.safeToApplyAutomatically, false);
+
+const missingThreeDocReservation = auditHistoricalHandles(inventory([
+  contractRoot('alpha', 'alice', 3), member('alpha', 'alice'),
+  root('beta', 'bob'), member('beta', 'bob'),
+]));
+assert(missingThreeDocReservation.globalBlockers.includes('THREE_DOC_ROOT_WITHOUT_UNIQUE_RESERVATION'));
+assert.deepEqual(missingThreeDocReservation.businesses.map(b => b.status), [
+  'BLOCKED_INCOMPLETE_INVENTORY', 'BLOCKED_INCOMPLETE_INVENTORY',
+]);
+assert.equal(missingThreeDocReservation.counts.manualCandidates, 0);
+
+for (const version of ['3', 4, null]) {
+  const invalidVersion = auditHistoricalHandles(inventory([
+    contractRoot('alpha', 'alice', version), member('alpha', 'alice'),
+    root('beta', 'bob'), member('beta', 'bob'),
+  ]));
+  assert(invalidVersion.globalBlockers.includes('UNKNOWN_REGISTRATION_CONTRACT_VERSION'));
+  assert.equal(invalidVersion.counts.manualCandidates, 0);
+}
+const wrongThreeDocOwner = auditHistoricalHandles(inventory([
+  contractRoot('alpha', 'alice', 3), member('alpha', 'alice'), reservation('alpha', 'bob'),
+  root('beta', 'bob'), member('beta', 'bob'),
+]));
+assert(wrongThreeDocOwner.globalBlockers.includes('THREE_DOC_RESERVATION_BINDING_INVALID'));
+assert.equal(wrongThreeDocOwner.counts.manualCandidates, 0);
+const extraReservationFields = auditHistoricalHandles(inventory([
+  contractRoot('alpha', 'alice', 3), member('alpha', 'alice'),
+  { ...reservation('alpha', 'alice'), data: { businessId: 'alpha', ownerUserId: 'alice', mutable: true } },
+]));
+assert(extraReservationFields.globalBlockers.includes('THREE_DOC_RESERVATION_BINDING_INVALID'));
+const duplicateThreeDocReservation = auditHistoricalHandles(inventory([
+  contractRoot('alpha', 'alice', 3), member('alpha', 'alice'),
+  reservation('alpha', 'alice'), reservation('alpha', 'alice'),
+]));
+assert(duplicateThreeDocReservation.globalBlockers.includes('THREE_DOC_ROOT_WITHOUT_UNIQUE_RESERVATION'));
+assert(duplicateThreeDocReservation.globalBlockers.includes('DUPLICATE_INVENTORY_PATH'));
+// La raíz histórica sin marcador sigue siendo candidata SOLO a revisión manual.
+assert.equal(single([root('alpha', 'alice'), member('alpha', 'alice')]).status,
+  'CANDIDATE_FOR_MANUAL_BACKFILL_REVIEW');
+
+console.log('PASS: 17 escenarios originales, variantes y contrato 3-doc de perfil/residuales entre tenants; solo inventario local, ninguna escritura ni Firebase.');
 console.warn('PENDIENTE: inventario real completo, respaldo, validación de propietarios y backfill autorizado; ningún candidato es aprobación automática.');
