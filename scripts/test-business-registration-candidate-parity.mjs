@@ -28,6 +28,11 @@ assert.equal((candidateFn.match(/\bbatch\.set\s*\(/g) || []).length, 3,
 const normalizedCandidate = candidateFn
   .replace('export async function registerBusinessThreeDocumentCandidate(',
     'export async function registerBusiness(')
+  // El marcador del contrato solo existe en el candidato; NO prueba la reserva.
+  .replace("  // Señal de contrato para distinguir altas nuevas de raíces legacy sin reserva.\\n  // NO certifica la existencia de la reserva: exige revisión privilegiada antes del corte.\\n  const registrationTenant = { ...tenant, registrationContractVersion: 3 };\\n\\n", '')
+  .replace('  batch.set(businessRef(businessId), registrationTenant);',
+    '  batch.set(businessRef(businessId), tenant);')
+  .replace('\\n          || (existingTenant as RestaurantTenant & { registrationContractVersion?: number }).registrationContractVersion !== 3', '')
   .replace("  batch.set(doc(db, 'businessHandleReservations', businessId), { businessId, ownerUserId: userId });\n", '')
   .replace('// El tenant, OWNER y reserva permanente se crean en una sola operación: todos se guardan',
     '// El tenant y su OWNER se crean en una sola operación: ambos se guardan')
