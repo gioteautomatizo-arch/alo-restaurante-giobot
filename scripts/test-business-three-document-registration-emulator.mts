@@ -16,6 +16,8 @@ import {
 } from 'firebase/firestore';
 import { buildAtomicOwnerAndPermanentHandleProposalRules } from './owner-atomic-proposal-rules.mjs';
 import { registerThroughOnboardingUI } from './business-onboarding-emulator-ui.mjs';
+import { saveBrandingThroughUI, addCatalogProductThroughUI } from './business-management-emulator-ui.mjs';
+import { publishBusinessThroughUI, publishAndHideBusinessThroughUI, assertForeignWorkspaceDeniedThroughUI } from './business-publication-emulator-ui.mjs';
 
 const projectId = 'gioteautomatizo-three-doc-onboarding-test';
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080');
@@ -37,7 +39,9 @@ connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
 connectFirestoreEmulator(db, '127.0.0.1', 8080);
 const { createRestaurantTenant, normalizeRestaurantSlug } = await import('../src/lib/restaurantCore.ts');
 const { getBusinessCatalogTemplate } = await import('../src/data/businessCatalogTemplates.ts');
-const { seedBusinessCatalogIfMissing, createCatalogItemId } = await import('../src/lib/businessCatalogService.ts');
+const { seedBusinessCatalogIfMissing, createCatalogItemId, saveBusinessCatalog, subscribeToBusinessCatalog } = await import('../src/lib/businessCatalogService.ts');
+const { getBusinessForUser, getBusinessMembership } = await import('../src/lib/businessAuthService.ts');
+const { setBusinessPublication, getBusinessPublicationStatus, syncPublicProfileIfNeeded } = await import('../src/lib/businessPublicProfileService.ts');
 
 const password = 'EmulatorOnlyPass123!';
 const idA = 'beta-three-doc-a';
@@ -148,6 +152,26 @@ const adminRead = async path => {
   return snapshot;
 };
 
+// Puentes hacia los servicios REALES, ejecutados solo contra Auth/Firestore emulados.
+// Las vistas son React reales; los módulos de SDK viven en este proceso.
+const managementBridge = {
+  getBusiness: (uid: string, id: string) => getBusinessForUser(uid, id),
+  updateBranding: (id: string, patch: any) => updateDoc(doc(db, businessPath(id)), patch),
+  syncPublic: (id: string, tenant: any) => syncPublicProfileIfNeeded(id, tenant),
+  subscribeCatalog: (id: string, callback: any, onError: any) =>
+    subscribeToBusinessCatalog(id, callback, onError),
+  saveCatalog: (id: string, items: any, actor: string, revision: string | null) =>
+    saveBusinessCatalog(id, JSON.parse(JSON.stringify(items)), actor, revision),
+};
+const publicationBridge = {
+  getBusiness: (uid: string, id: string) => getBusinessForUser(uid, id),
+  getMembership: (uid: string, id: string) => getBusinessMembership(uid, id),
+  getStatus: (id: string) => getBusinessPublicationStatus(id),
+  setPublication: (id: string, tenant: any, published: boolean) =>
+    setBusinessPublication(id, JSON.parse(JSON.stringify(tenant)), published),
+  syncPublic: (id: string, tenant: any) => syncPublicProfileIfNeeded(id, tenant),
+};
+
 try {
   const a = await registerThroughOnboardingUI({
     name: 'Restaurante candidato A', handle: idA, email: emailA,
@@ -161,6 +185,24 @@ try {
   assert((await getDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog')))
     .data()?.items?.length > 0, 'La plantilla del negocio A fue sembrada');
   await deny(getDoc(doc(db, reservePath(idA))), 'Reserva ilegible incluso para OWNER');
+  // La propuesta de tres documentos debe permitir gestionar un negocio real,
+  // no solo completar su alta: catálogo, publicación y marca desde React.
+  await addCatalogProductThroughUI({
+    businessId: idA, businessName: a.tenant.branding.restaurantName,
+    user: auth.currentUser!, bridge: managementBridge, productName: 'Producto candidato A', price: 41,
+  });
+  assert((await getDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog')))
+    .data()?.items?.some((item: { name: string }) => item.name === 'Producto candidato A'));
+  await publishBusinessThroughUI({
+    businessId: idA, user: auth.currentUser!, bridge: publicationBridge,
+  });
+  await saveBrandingThroughUI({
+    tenant: (await getBusinessForUser(uidA, idA))!, user: auth.currentUser!,
+    bridge: managementBridge, name: 'Candidato A configurado',
+  });
+  assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
+  assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA)))
+    .data()?.branding.restaurantName, 'Candidato A configurado');
 
   await signOut(auth);
   const b = await registerThroughOnboardingUI({
@@ -172,6 +214,27 @@ try {
   assert.equal((await adminRead(reservePath(idB))).data()?.ownerUserId, uidB);
   assert((await getDoc(doc(db, businessPath(idB) + '/catalog/menu_catalog')))
     .data()?.items?.length > 0, 'La plantilla del negocio B fue sembrada');
+  await addCatalogProductThroughUI({
+    businessId: idB, businessName: b.tenant.branding.restaurantName,
+    user: auth.currentUser!, bridge: managementBridge, productName: 'Producto candidato B', price: 26,
+  });
+  await publishAndHideBusinessThroughUI({
+    businessId: idB, user: auth.currentUser!, bridge: publicationBridge,
+  });
+  await saveBrandingThroughUI({
+    tenant: (await getBusinessForUser(uidB, idB))!, user: auth.currentUser!,
+    bridge: managementBridge, name: 'Candidato B configurado',
+  });
+  assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idB))).data()?.published, false);
+  assert.equal((await getDoc(doc(db, businessPath(idB) + '/catalog/menu_catalog')))
+    .data()?.items?.some((item: { name: string }) => item.name === 'Producto candidato A'), false);
+  assert.equal((await getDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog')))
+    .data()?.items?.some((item: { name: string }) => item.name === 'Producto candidato B'), false);
+  await assertForeignWorkspaceDeniedThroughUI({
+    businessId: idA, user: auth.currentUser!, bridge: publicationBridge,
+  });
+  await assert.rejects(setBusinessPublication(idA, a.tenant, false),
+    /propietario|permission-denied/i, 'B no puede ocultar la página pública de A');
   await deny(getDoc(doc(db, businessPath(idA))), 'B no lee A');
   await deny(getDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog')), 'B no lee catálogo A');
   await deny(registerCandidate({
@@ -190,6 +253,11 @@ try {
   assert.equal(retry.tenant.branding.restaurantName, 'Restaurante candidato A',
     'Reintento no sobrescribe la identidad original');
   assert.equal((await adminRead(reservePath(idA))).data()?.ownerUserId, uidA);
+  assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true,
+    'El reintento de A conserva su publicación');
+  assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idB))).data()?.published, false,
+    'La sesión de A no publica B');
+  await deny(getDoc(doc(db, businessPath(idB))), 'A no lee la ficha privada de B');
 
   // Respuesta perdida DESPUÉS del commit: recuperar los documentos del mismo
   // propietario sin leer la reserva desde el SDK cliente ni repetir la siembra.
@@ -298,7 +366,7 @@ try {
   ]) assert.equal((await adminRead(path)).exists(), false,
     'Cliente incompatible no deja escrituras parciales: ' + path);
 
-  console.log('PASS (solo emulador): onboarding React de dos negocios, recuperación sintética tras respuesta perdida, fallo previo sin escrituras, aislamiento, reintento, colisión, rollback y reserva persistente.');
+  console.log('PASS (solo emulador): onboarding React 3 documentos, catálogo/identidad/publicación React de dos negocios, aislamiento cruzado, recuperación, colisión y reserva persistente.');
   console.warn('PENDIENTE: registerBusiness de producción sigue escribiendo DOS documentos; coordinar cliente, reglas y migración histórica antes de cualquier despliegue.');
   console.warn('PENDIENTE: la respuesta perdida se inyecta sintéticamente DESPUÉS del commit; falta comprobar fallos reales de transporte, compatibilidad de clientes antiguos y reglas desplegadas.');
 } finally {
