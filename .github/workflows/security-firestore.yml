@@ -37,7 +37,7 @@ jobs:
       - name: Test isolated permanent business handle reservations (no rule deployment)
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-permanent-handle-proposal-test --config firebase.launch-security-emulator.json "node scripts/test-business-permanent-handle-proposal.mjs"
       - name: Test registration client/rules version matrix and rollback (emulator only)
-        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-registration-version-matrix-test --config firebase.launch-security-emulator.json "node scripts/test-business-registration-version-matrix.mjs"
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-registration-version-matrix-test --config firebase.launch-security-emulator.json "node scripts/test-business-registration-version-matrix.mjs staged && node scripts/test-business-registration-version-matrix.mjs candidate && node scripts/test-business-registration-version-matrix.mjs rollback"
       - name: Test candidate three-document onboarding with permanent handles (emulators only)
         run: npx firebase emulators:exec --only auth,firestore --project gioteautomatizo-three-doc-onboarding-test --config firebase.invites-emulator.json "node --import tsx scripts/test-business-three-document-registration-emulator.mts"
       - name: Test real two-business registration and invitation flow in emulators
