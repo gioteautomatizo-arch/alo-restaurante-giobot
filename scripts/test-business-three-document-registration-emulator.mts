@@ -48,7 +48,7 @@ const businessPath = id => 'businesses/' + id;
 const memberPath = (id, uid) => 'businessMemberships/' + id + '_' + uid;
 const reservePath = id => 'businessHandleReservations/' + id;
 const deny = async (promise, label) => {
-  await assert.rejects(promise, error => error?.code === 'permission-denied', label);
+  await assert.rejects(promise, error => (error as { code?: string })?.code === 'permission-denied', label);
 };
 const stripUndefined = value => {
   if (Array.isArray(value)) return value.map(stripUndefined);
@@ -111,7 +111,7 @@ async function registerCandidate(input) {
       if (!business.exists() || business.data().ownerUserId !== uid
         || business.data().restaurantId !== id) throw commitError;
       confirmedTenant = business.data();
-      confirmedMembership = member.data();
+      confirmedMembership = member.data() as typeof membership;
     } catch {
       throw commitError;
     }
