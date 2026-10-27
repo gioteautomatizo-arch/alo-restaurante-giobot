@@ -221,6 +221,25 @@ try {
   await deny(getDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog')),
     'B no accede a datos residuales de A');
 
+  // Comprobar explícitamente el cliente ACTUAL, sin modificarlo: su batch de
+  // dos documentos debe ser rechazado por la propuesta permanente. La cuenta
+  // ficticia puede quedar creada en Auth, pero NO debe dejar datos en Firestore.
+  await signOut(auth);
+  const { registerBusiness } = await import('../src/lib/businessAuthService.ts');
+  await deny(registerBusiness({
+    businessName: 'Cliente actual incompatible', handle: 'beta-three-old-client',
+    email: 'three-doc-old-client@beta.example.test', password,
+    businessType: 'restaurant',
+  }), 'El cliente vigente de dos documentos NO cumple la propuesta');
+  const oldClientUid = auth.currentUser?.uid;
+  assert(oldClientUid, 'La cuenta ficticia existe aunque el lote fue rechazado');
+  for (const path of [
+    businessPath('beta-three-old-client'),
+    memberPath('beta-three-old-client', oldClientUid),
+    reservePath('beta-three-old-client'),
+  ]) assert.equal((await adminRead(path)).exists(), false,
+    'Cliente incompatible no deja escrituras parciales: ' + path);
+
   console.log('PASS (solo emulador): onboarding React de dos negocios con batch candidato de tres documentos, catálogo, aislamiento, reintento, colisión, rollback y reserva persistente.');
   console.warn('PENDIENTE: registerBusiness de producción sigue escribiendo DOS documentos; coordinar cliente, reglas y migración histórica antes de cualquier despliegue.');
   console.warn('PENDIENTE: el adaptador de prueba no certifica la recuperación ante respuesta de red perdida, compatibilidad de clientes antiguos ni reglas desplegadas.');
