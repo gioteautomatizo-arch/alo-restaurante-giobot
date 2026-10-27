@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { BusinessOnboarding, DemoBusinessProfile } from './BusinessOnboarding';
 import { registerBusiness } from '../../lib/businessAuthService';
+import { auth } from '../../lib/firebase';
 import { getBusinessTemplateConfig } from '../../data/businessTemplates';
 
 // Un rechazo de Firestore no demuestra que Auth no haya creado la cuenta ni
@@ -24,24 +25,36 @@ export const BusinessOnboardingDemo: React.FC = () => {
   // Ref síncrona: dos callbacks antes del próximo render no pueden duplicar el alta.
   const savingRef = useRef(false);
   const mountedRef = useRef(false);
+  // Una respuesta de una pestaña/ruta anterior no debe redirigir el formulario
+  // nuevo si el usuario salió y volvió a #business-new antes de que terminara.
+  const routeEpochRef = useRef(0);
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    const onHashChange = (event: HashChangeEvent) => {
+      if (new URL(event.newURL).hash !== '#business-new') routeEpochRef.current += 1;
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => {
+      mountedRef.current = false;
+      window.removeEventListener('hashchange', onHashChange);
+    };
   }, []);
   const [error, setError] = useState<string | null>(null);
 
   const handleCancel = () => {
+    routeEpochRef.current += 1;
     window.location.hash = '#business';
   };
 
   const handleComplete = async (profile: DemoBusinessProfile) => {
     if (savingRef.current) return;
     savingRef.current = true;
+    const requestRouteEpoch = routeEpochRef.current;
     setIsSaving(true);
     setError(null);
 
     try {
-      await registerBusiness({
+      const result = await registerBusiness({
         businessName: profile.name,
         businessType: profile.businessType,
         handle: profile.handle,
@@ -53,10 +66,20 @@ export const BusinessOnboardingDemo: React.FC = () => {
         assistantName: profile.assistantName,
         assistantMode: profile.assistantMode,
       });
-      // Una respuesta tardía no debe secuestrar otra ruta ni un componente desmontado.
-      if (mountedRef.current && window.location.hash === '#business-new') window.location.hash = '#business';
+      // La misma ruta puede haberse abandonado y reabierto mientras el
+      // servidor respondía: el hash final, por sí solo, no identifica la vista.
+      if (!mountedRef.current || routeEpochRef.current !== requestRouteEpoch
+        || window.location.hash !== '#business-new') return;
+      // Auth se comparte entre pestañas. Si otra cuenta quedó activa tras el
+      // commit, no presentar su portal como el del propietario recién creado.
+      if (auth.currentUser?.uid !== result.membership.userId) {
+        setError('La cuenta activa cambió durante el registro. El negocio podría haberse guardado en la cuenta anterior. Revisa Mis negocios con el correo usado para el alta antes de reintentar.');
+        return;
+      }
+      window.location.hash = '#business';
     } catch (err: any) {
-      if (mountedRef.current && window.location.hash === '#business-new') {
+      if (mountedRef.current && routeEpochRef.current === requestRouteEpoch
+        && window.location.hash === '#business-new') {
         setError(registrationErrorMessage(err));
       }
     } finally {
