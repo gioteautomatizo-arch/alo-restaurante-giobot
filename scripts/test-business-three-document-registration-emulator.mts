@@ -1,7 +1,8 @@
 /**
  * Paso 2: contrato candidato de alta de TRES documentos desde onboarding React.
  * SOLO Auth/Firestore emulados y reglas derivadas en memoria.
- * NO sustituye registerBusiness de producción, que todavía escribe dos documentos.
+ * Ejercita el candidato reutilizable real de 3 documentos; el onboarding público
+ * sigue usando registerBusiness de 2 documentos y NO se activa aquí.
  */
 import assert from 'node:assert/strict';
 import express from 'express';
@@ -46,6 +47,7 @@ const { createRestaurantTenant, normalizeRestaurantSlug } = await import('../src
 const { getBusinessCatalogTemplate } = await import('../src/data/businessCatalogTemplates.ts');
 const { seedBusinessCatalogIfMissing, createCatalogItemId, saveBusinessCatalog, subscribeToBusinessCatalog } = await import('../src/lib/businessCatalogService.ts');
 const { getBusinessForUser, getBusinessMembership } = await import('../src/lib/businessAuthService.ts');
+const { registerBusinessThreeDocumentCandidate } = await import('../src/lib/businessRegistrationThreeDocumentCandidate.ts');
 const { setBusinessPublication, getBusinessPublicationStatus, syncPublicProfileIfNeeded } = await import('../src/lib/businessPublicProfileService.ts');
 
 const password = 'EmulatorOnlyPass123!';
@@ -70,10 +72,10 @@ const stripUndefined = value => {
 };
 
 /**
- * Adaptador EXCLUSIVO de esta prueba: conserva la forma de negocio, OWNER,
- * siembra y recuperación del cliente, pero añade la reserva al mismo batch.
+ * Adaptador EXCLUSIVO para inyectar fallos antes/después del commit;
+ * el resto del recorrido ejecuta el módulo candidato real de 3 documentos.
  * La reserva no puede leerse desde el SDK cliente, ni siquiera por OWNER.
- * Su resultado NO demuestra que registerBusiness ya haya sido migrado.
+ * No demuestra que registerBusiness público haya sido migrado.
  */
 async function registerCandidate(input, options: { simulatedCommitFailure?: 'before' | 'after' } = {}) {
   const id = normalizeRestaurantSlug(input.handle || input.businessName);
@@ -407,7 +409,7 @@ async function verifyCandidateInvitations(uidA: string, uidB: string) {
 try {
   const a = await registerThroughOnboardingUI({
     name: 'Restaurante candidato A', handle: idA, email: emailA,
-    businessType: 'restaurant', onRegister: registerCandidate,
+    businessType: 'restaurant', onRegister: registerBusinessThreeDocumentCandidate,
   });
   const uidA = a.membership.userId;
   assert.equal(auth.currentUser?.uid, uidA);
@@ -439,7 +441,7 @@ try {
   await signOut(auth);
   const b = await registerThroughOnboardingUI({
     name: 'Ghost Kitchen candidata B', handle: idB, email: emailB,
-    businessType: 'ghost-kitchen', onRegister: registerCandidate,
+    businessType: 'ghost-kitchen', onRegister: registerBusinessThreeDocumentCandidate,
   });
   const uidB = b.membership.userId;
   assert.notEqual(uidA, uidB);
@@ -475,7 +477,7 @@ try {
   await deny(updateDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog'), {
     sourceLabel: 'Cruce desde B',
   }), 'B no puede modificar el catálogo de A');
-  await deny(registerCandidate({
+  await deny(registerBusinessThreeDocumentCandidate({
     businessName: 'Intento de B', handle: idA, email: emailB, password,
   }), 'B no puede reclamar el handle de A');
   assert.equal((await adminRead(memberPath(idA, uidB))).exists(), false,
@@ -485,7 +487,7 @@ try {
 
   await signOut(auth);
   await signInWithEmailAndPassword(auth, emailA, password);
-  const retry = await registerCandidate({
+  const retry = await registerBusinessThreeDocumentCandidate({
     businessName: 'No debe reemplazar A', handle: idA, email: emailA,
     password, businessType: 'ghost-kitchen',
   });
@@ -513,7 +515,7 @@ try {
   assert.equal((await adminRead(reservePath(lostId))).data()?.ownerUserId, uidA);
   assert((await getDoc(doc(db, businessPath(lostId) + '/catalog/menu_catalog')))
     .data()?.items?.length > 0, 'La recuperación siembra el catálogo');
-  const lostRetry = await registerCandidate({
+  const lostRetry = await registerBusinessThreeDocumentCandidate({
     businessName: 'No reemplazar el alta recuperada', handle: lostId,
     email: emailA, password, businessType: 'ghost-kitchen',
   });
@@ -539,7 +541,7 @@ try {
   // Otro UID no puede reclamar el alta cuya respuesta se perdió.
   await signOut(auth);
   await signInWithEmailAndPassword(auth, emailB, password);
-  await deny(registerCandidate({
+  await deny(registerBusinessThreeDocumentCandidate({
     businessName: 'Reclamo ajeno de alta recuperada', handle: lostId,
     email: emailB, password,
   }), 'B no puede reclamar una alta confirmada de A');
@@ -585,7 +587,7 @@ try {
   });
   await signOut(auth);
   await signInWithEmailAndPassword(auth, emailB, password);
-  await deny(registerCandidate({
+  await deny(registerBusinessThreeDocumentCandidate({
     businessName: 'B intenta reabrir A', handle: idA, email: emailB, password,
   }), 'Reserva permanente impide reabrir A tras borrado privilegiado');
   assert.equal((await adminRead(reservePath(idA))).data()?.ownerUserId, uidA);
@@ -632,7 +634,7 @@ try {
   await deny(publicOrder(lostId, 'beta-invalid-after-retirement'),
     'Baja bloquea nuevos pedidos públicos');
   assert.equal((await adminRead('restaurant_orders/beta-invalid-after-retirement')).exists(), false);
-  await deny(registerCandidate({
+  await deny(registerBusinessThreeDocumentCandidate({
     businessName: 'B reclama negocio retirado', handle: lostId, email: emailB, password,
   }), 'B no puede reutilizar un ID retirado');
   assert((await getDoc(doc(db, businessPath(idB)))).exists(),
@@ -671,7 +673,7 @@ try {
   // sin crear otra cuenta ni reclamar un negocio de un tercero.
   const oldClientId = 'beta-three-old-client';
   const oldClientEmail = 'three-doc-old-client@beta.example.test';
-  const recoveredOldClient = await registerCandidate({
+  const recoveredOldClient = await registerBusinessThreeDocumentCandidate({
     businessName: 'Cliente recuperado', handle: oldClientId,
     email: oldClientEmail, password, businessType: 'restaurant',
   });
@@ -692,7 +694,7 @@ try {
   await signOut(auth);
   await signInWithEmailAndPassword(auth, oldClientEmail, password);
   assert.equal(auth.currentUser?.uid, oldClientUid);
-  const repeated = await registerCandidate({
+  const repeated = await registerBusinessThreeDocumentCandidate({
     businessName: 'Nombre distinto en reintento', handle: oldClientId,
     email: oldClientEmail, password, businessType: 'restaurant',
   });
@@ -705,7 +707,7 @@ try {
   // Un UID ajeno nunca puede usar el mismo handle, aunque el cliente viejo
   // hubiera fallado antes. La reserva, el OWNER y el otro negocio sobreviven.
   await signOut(auth);
-  await deny(registerCandidate({
+  await deny(registerBusinessThreeDocumentCandidate({
     businessName: 'Intento de apropiación', handle: oldClientId,
     email: 'three-doc-intruder@beta.example.test', password, businessType: 'restaurant',
   }), 'Un UID ajeno no reclama el handle recuperado');
@@ -720,10 +722,11 @@ try {
   assert.equal((await adminRead(businessPath(idB))).exists(), true,
     'La recuperación de un cliente no altera el segundo negocio');
   console.log('PASS recuperación 2→3 (solo emulador): Auth persistente, mismo UID/handle, OWNER y reserva, catálogo idempotente y rechazo de otro propietario.');
+  console.log('PASS cliente candidato reutilizable 3-doc (solo emulador): onboarding A/B, recuperación Auth y reservas con servicio real; NO conectado a producción.');
 
   console.log('PASS (solo emulador): onboarding React 3 documentos, aislamiento de dos negocios, baja administrativa atómica, catálogo no público tras baja, OWNER sin republicación y reserva persistente.');
   console.warn('PENDIENTE: un borrado privilegiado sin despublicación deja visible el perfil huérfano; la propuesta aislada bloquea catálogo y republicación, pero exige baja administrativa atómica y revisión.');
-  console.warn('PENDIENTE: registerBusiness de producción sigue escribiendo DOS documentos; coordinar cliente, reglas y migración histórica antes de cualquier despliegue.');
+  console.warn('PENDIENTE: el onboarding de producción sigue llamando registerBusiness de DOS documentos; candidato 3-doc NO activado. Coordinar cliente, reglas y migración histórica antes de cualquier despliegue.');
   console.warn('PENDIENTE: la respuesta perdida se inyecta sintéticamente DESPUÉS del commit; falta comprobar fallos reales de transporte, compatibilidad de clientes antiguos y reglas desplegadas.');
 } finally {
   await signOut(auth).catch(() => {});
