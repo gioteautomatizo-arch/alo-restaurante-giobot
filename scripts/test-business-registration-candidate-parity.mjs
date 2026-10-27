@@ -20,15 +20,15 @@ const currentFn = functionSection(current,
   'export async function registerBusiness(', 'export async function loginBusinessOwner');
 const candidateFn = functionSection(candidate,
   'export async function registerBusinessThreeDocumentCandidate(');
-assert.equal((currentFn.match(/\\bbatch\\.set\\s*\\(/g) || []).length, 2,
+assert.equal((currentFn.match(/\bbatch\.set\s*\(/g) || []).length, 2,
   'El registro público no debe cambiar de contrato sin corte aprobado');
-assert.equal((candidateFn.match(/\\bbatch\\.set\\s*\\(/g) || []).length, 3,
+assert.equal((candidateFn.match(/\bbatch\.set\s*\(/g) || []).length, 3,
   'El candidato requiere negocio, OWNER y reserva en un solo batch');
 
 const normalizedCandidate = candidateFn
   .replace('export async function registerBusinessThreeDocumentCandidate(',
     'export async function registerBusiness(')
-  .replace("  batch.set(doc(db, 'businessHandleReservations', businessId), { businessId, ownerUserId: userId });\\n", '')
+  .replace("  batch.set(doc(db, 'businessHandleReservations', businessId), { businessId, ownerUserId: userId });\n", '')
   .replace('// El tenant, OWNER y reserva permanente se crean en una sola operación: todos se guardan',
     '// El tenant y su OWNER se crean en una sola operación: ambos se guardan')
   .replace('// o ninguno. Las reglas candidatas validan el UID mediante getAfter().',
@@ -36,7 +36,7 @@ const normalizedCandidate = candidateFn
 assert.equal(normalizedCandidate.trim(), currentFn,
   'El candidato debe conservar Auth, recuperación, validación de sesión y catálogo del cliente vigente');
 assert.match(onboarding,
-  /import\\s*\\{\\s*registerBusiness\\s*\\}\\s*from\\s*['"]\\.\\.\\/\\.\\.\\/lib\\/businessAuthService['"]/,
+  /import\s*\{\s*registerBusiness\s*\}\s*from\s*['"]\.\.\/\.\.\/lib\/businessAuthService['"]/,
   'El onboarding público sigue usando el cliente vigente');
 assert.doesNotMatch(onboarding, /registerBusinessThreeDocumentCandidate|businessRegistrationThreeDocumentCandidate/,
   'No activar el candidato sin revisión de reglas, migración y rollback');
