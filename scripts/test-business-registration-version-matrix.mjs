@@ -17,9 +17,12 @@ assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080',
   'Esta prueba requiere Firestore Emulator aislado; nunca usar Firestore real.');
 const staged = readFileSync('docs/firestore.launch-security.STAGED.rules', 'utf8');
 const proposed = buildAtomicOwnerAndPermanentHandleProposalRules(staged);
+const phase = process.argv[2];
+assert(['staged', 'candidate', 'rollback'].includes(phase),
+  'Indicar fase staged, candidate o rollback dentro del mismo emulador.');
 const env = await initializeTestEnvironment({
   projectId,
-  firestore: { rules: staged, host: '127.0.0.1', port: 8080 },
+  firestore: { rules: phase === 'candidate' ? proposed : staged, host: '127.0.0.1', port: 8080 },
 });
 const signed = uid => env.authenticatedContext(uid).firestore();
 const business = (id, uid) => ({
@@ -57,6 +60,7 @@ try {
   const legacyId = 'matrix-legacy-two-docs';
   const stagedThreeId = 'matrix-staged-three-docs';
 
+  if (phase === 'staged') {
   // Fase 1: staged acepta el cliente vigente, pero rechaza el futuro batch
   // de tres documentos porque no tiene permiso de crear reservas.
   await assertSucceeds(registration(alice, legacyId, 'matrix-alice', 2));
@@ -67,10 +71,11 @@ try {
     root(stagedThreeId), owner(stagedThreeId, 'matrix-bob'), handle(stagedThreeId),
   ], 'staged rechaza los tres documentos sin escritura parcial');
 
-  // Fase 2: activar solo EN EL EMULADOR la propuesta de reserva permanente.
-  // El negocio histórico sigue existiendo sin reserva: las reglas no migran
-  // documentos ni permiten a su propietario reservar el handle desde cliente.
-  await env.loadFirestoreRules({ firestore: { rules: proposed } });
+  console.log('PASS fase staged: cliente de dos documentos aceptado; tres rechazado sin escrituras parciales.');
+  } else if (phase === 'candidate') {
+  // Fase 2: el mismo emulador conserva los documentos de la fase anterior.
+  // Se cargan reglas candidatas SOLO para este proceso de prueba.
+  // Un negocio histórico sin reserva no se protege automáticamente.
   await assertSucceeds(getDoc(doc(alice, root(legacyId))));
   await assertFails(getDoc(doc(bob, root(legacyId))));
   await assertFails(setDoc(doc(alice, handle(legacyId)),
@@ -94,10 +99,11 @@ try {
     assert.equal(snap.data()?.ownerUserId, 'matrix-bob');
   });
 
-  // Fase 3: reversión de reglas en el EMULADOR, sin tocar la aplicación.
+  console.log('PASS fase candidate: cliente de tres documentos aceptado; dos rechazado; histórico sin backfill no protegido.');
+  } else {
+  // Fase 3: reglas staged cargadas de nuevo en el mismo emulador.
   // Los datos candidatos sobreviven, pero los clientes de tres documentos
   // vuelven a fallar y los antiguos pueden crear altas sin reserva.
-  await env.loadFirestoreRules({ firestore: { rules: staged } });
   await assertSucceeds(getDoc(doc(bob, root(proposedThreeId))));
   const rollbackThreeId = 'matrix-rollback-three-docs';
   await assertFails(registration(bob, rollbackThreeId, 'matrix-bob', 3));
@@ -109,7 +115,8 @@ try {
   await assertNoPartialDocuments([handle(rollbackTwoId)],
     'rollback permite otra alta sin reserva');
 
-  console.log('PASS (solo emulador): staged acepta 2/rechaza 3; propuesta rechaza 2/acepta 3; ambos rechazos son atómicos; rollback vuelve a aceptar 2.');
+  console.log('PASS fase rollback (solo emulador): staged acepta de nuevo 2/rechaza 3; datos candidatos sobreviven.');
+  }
   console.warn('PENDIENTE: no existe una fase de reglas comprobada que permita convivir ambos clientes sin riesgo. Planificar versionado, pestañas antiguas y reversión antes de desplegar.');
   console.warn('PENDIENTE: negocios históricos sin reserva siguen desprotegidos ante borrados privilegiados; backfill requiere inventario, respaldo, revisión y autorización.');
 } finally {
