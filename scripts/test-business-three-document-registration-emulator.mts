@@ -261,8 +261,10 @@ try {
   assert.equal((await adminRead(reservePath(idA))).data()?.ownerUserId, uidA);
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true,
     'El reintento de A conserva su publicación');
-  assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idB))).data()?.published, false,
-    'La sesión de A no publica B');
+  await deny(getDoc(doc(db, 'publicBusinessProfiles', idB)),
+    'A no puede leer el perfil oculto de B');
+  assert.equal((await adminRead('publicBusinessProfiles/' + idB)).data()?.published, false,
+    'El perfil B permanece oculto tras recuperar A');
   await deny(getDoc(doc(db, businessPath(idB))), 'A no lee la ficha privada de B');
 
   // Respuesta perdida DESPUÉS del commit: recuperar los documentos del mismo
