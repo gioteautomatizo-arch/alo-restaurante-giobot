@@ -56,6 +56,17 @@ const duplicate = single([root('alpha', 'alice'), root('alpha', 'alice'),
   member('alpha', 'alice')]);
 hasReason(duplicate, 'DUPLICATE_DOCUMENT_PATH');
 
+const crossTenantKey = auditHistoricalHandles(inventory([
+  root('alpha', 'alice'), member('alpha', 'alice'),
+  { ...member('alpha', 'alice'), path: 'businessMemberships/beta_alice' },
+]));
+assert(crossTenantKey.globalBlockers.includes('MEMBERSHIP_PATH_TENANT_MISMATCH'));
+assert.equal(crossTenantKey.businesses[0].status, 'BLOCKED_INCOMPLETE_INVENTORY');
+
+const duplicateMember = single([root('alpha', 'alice'),
+  member('alpha', 'alice'), member('alpha', 'alice')]);
+hasReason(duplicateMember, 'DUPLICATE_DOCUMENT_PATH');
+
 const malformedReservation = single([root('alpha', 'alice'), member('alpha', 'alice'),
   { ...reservation('alpha', 'alice'), data: { businessId: 'alpha', ownerUserId: 'alice', writable: true } }]);
 hasReason(malformedReservation, 'INVALID_RESERVATION');
@@ -95,5 +106,5 @@ assert.equal(result.counts.manualCandidates, 1);
 assert.equal(result.counts.blockedOrHeld, 0);
 assert.deepEqual(result.businesses.map(x => x.businessId), ['alpha', 'beta']);
 assert.throws(() => auditHistoricalHandles(null), /inventario/);
-console.log('PASS: 15 escenarios sintéticos de preflight fail-closed; ninguna escritura ni Firebase.');
+console.log('PASS: 17 escenarios sintéticos de preflight fail-closed; ninguna escritura ni Firebase.');
 console.warn('PENDIENTE: inventario real completo, respaldo, validación de propietarios y backfill autorizado; ningún candidato es aprobación automática.');
