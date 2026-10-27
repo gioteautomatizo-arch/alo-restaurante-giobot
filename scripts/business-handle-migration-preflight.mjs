@@ -125,6 +125,24 @@ export function auditHistoricalHandles(inventory) {
     globalProblems.push('INVENTORY_NOT_CERTIFIED_COMPLETE');
   for (const record of inventory.records) classifyRecord(record, map, globalProblems);
   if (inventory.records.length === 0) globalProblems.push('EMPTY_INVENTORY_NOT_PROOF_OF_UNUSED_IDS');
+
+  // Un cruce compromete ambos extremos: tampoco proponer el tenant destino
+  // para backfill si otro documento lo identifica como propietario de datos.
+  // Un destino ausente invalida la exhaustividad del inventario.
+  for (const entry of map.values()) {
+    const references = [
+      ...entry.roots.map(record => record.data.restaurantId),
+      ...entry.reservations.map(record => record.data.businessId),
+      ...entry.profiles.flatMap(record => [record.data.businessId, record.data.restaurantId]),
+      ...entry.residual.flatMap(record => [record.data.businessId, record.data.restaurantId]),
+    ];
+    for (const target of references) {
+      if (!validId(target) || target === entry.id) continue;
+      const destination = map.get(target);
+      if (destination) destination.problems.push('REFERENCED_BY_FOREIGN_TENANT');
+      else globalProblems.push('REFERENCE_TO_UNINVENTORIED_TENANT');
+    }
+  }
   const blockers = [...new Set(globalProblems)].sort();
   const businesses = [...map.values()].sort((a,b)=>a.id.localeCompare(b.id))
     .map(entry => inspectEntry(entry, blockers.length > 0));
