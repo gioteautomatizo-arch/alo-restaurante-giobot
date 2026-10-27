@@ -154,6 +154,29 @@ export function auditHistoricalHandles(inventory) {
       else globalProblems.push('REFERENCE_TO_UNINVENTORIED_TENANT');
     }
   }
+  // Una raíz 3-doc implica reserva permanente creada en el MISMO batch.
+  // Su ausencia, duplicación o discordancia NO es un caso legacy reparable
+  // automáticamente: invalida la integridad del inventario entero.
+  // El marcador es solo un indicio: la existencia de un documento en este
+  // inventario tampoco certifica las reglas desplegadas ni su inmutabilidad.
+  for (const entry of map.values()) {
+    const root = entry.roots[0]?.data;
+    if (!root || !Object.hasOwn(root, 'registrationContractVersion')) continue;
+    if (root.registrationContractVersion !== 3) {
+      globalProblems.push('UNKNOWN_REGISTRATION_CONTRACT_VERSION');
+      continue;
+    }
+    if (entry.reservations.length !== 1) {
+      globalProblems.push('THREE_DOC_ROOT_WITHOUT_UNIQUE_RESERVATION');
+      continue;
+    }
+    const reservation = entry.reservations[0].data;
+    if (reservation.businessId !== entry.id
+        || reservation.ownerUserId !== root.ownerUserId
+        || Object.keys(reservation).sort().join(',') !== 'businessId,ownerUserId') {
+      globalProblems.push('THREE_DOC_RESERVATION_BINDING_INVALID');
+    }
+  }
   const blockers = [...new Set(globalProblems)].sort();
   const businesses = [...map.values()].sort((a,b)=>a.id.localeCompare(b.id))
     .map(entry => inspectEntry(entry, blockers.length > 0));
