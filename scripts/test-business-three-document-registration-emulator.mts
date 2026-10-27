@@ -352,8 +352,17 @@ try {
   }), 'Reserva permanente impide reabrir A tras borrado privilegiado');
   assert.equal((await adminRead(reservePath(idA))).data()?.ownerUserId, uidA);
   assert.equal((await adminRead(memberPath(idA, uidB))).exists(), false);
-  await deny(getDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog')),
-    'B no accede a datos residuales de A');
+  // La reserva bloquea el secuestro del handle, pero un borrado privilegiado
+  // de la raíz NO despublica automáticamente el catálogo/perfil de escaparate.
+  // Esta lectura pública es esperada con las reglas candidatas actuales:
+  // documentar la limpieza administrativa pendiente, sin alterar reglas.
+  assert((await getDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog'))).exists(),
+    'El catálogo previamente publicado continúa legible tras borrar la raíz');
+  assert.equal((await adminRead('publicBusinessProfiles/' + idA)).data()?.published, true,
+    'El perfil público huérfano persiste hasta intervención administrativa');
+  await deny(updateDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog'), {
+    sourceLabel: 'Intento de secuestro del catálogo residual',
+  }), 'B no puede modificar el catálogo residual de A');
 
   // Comprobar explícitamente el cliente ACTUAL, sin modificarlo: su batch de
   // dos documentos debe ser rechazado por la propuesta permanente. La cuenta
@@ -375,6 +384,7 @@ try {
     'Cliente incompatible no deja escrituras parciales: ' + path);
 
   console.log('PASS (solo emulador): onboarding React 3 documentos, catálogo/identidad/publicación React de dos negocios, aislamiento cruzado, recuperación, colisión y reserva persistente.');
+  console.warn('PENDIENTE: borrar una raíz con privilegios NO despublica el perfil/catálogo público residual; exige política de baja y limpieza administrativa auditada.');
   console.warn('PENDIENTE: registerBusiness de producción sigue escribiendo DOS documentos; coordinar cliente, reglas y migración histórica antes de cualquier despliegue.');
   console.warn('PENDIENTE: la respuesta perdida se inyecta sintéticamente DESPUÉS del commit; falta comprobar fallos reales de transporte, compatibilidad de clientes antiguos y reglas desplegadas.');
 } finally {
