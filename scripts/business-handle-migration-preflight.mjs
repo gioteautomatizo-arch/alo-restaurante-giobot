@@ -40,6 +40,12 @@ function classifyRecord(record, map, globalProblems) {
       globalProblems.push('MEMBERSHIP_WITHOUT_TENANT');
       return;
     }
+    // Un ID de documento que apunta a otro tenant no permite conocer el
+    // inventario completo de ninguno: bloquear globalmente, sin inferir dueño.
+    if (!validId(record.data.userId)
+        || id !== tenantId + '_' + record.data.userId) {
+      globalProblems.push('MEMBERSHIP_PATH_TENANT_MISMATCH');
+    }
     const entry = entryFor(map, tenantId);
     entry.memberships.push(record);
     return;
@@ -60,7 +66,10 @@ function classifyRecord(record, map, globalProblems) {
 function inspectEntry(entry, globallyBlocked) {
   const problems = [...entry.problems];
   if (entry.roots.length > 1 || entry.reservations.length > 1
-      || entry.profiles.length > 1) problems.push('DUPLICATE_DOCUMENT_PATH');
+      || entry.profiles.length > 1
+      || new Set(entry.memberships.map(m => m.path)).size !== entry.memberships.length
+      || new Set(entry.residual.map(m => m.path)).size !== entry.residual.length)
+    problems.push('DUPLICATE_DOCUMENT_PATH');
   const root = entry.roots[0]?.data;
   const reserve = entry.reservations[0]?.data;
   const id = entry.id;
