@@ -4,6 +4,11 @@
  * NO sustituye registerBusiness de producción, que todavía escribe dos documentos.
  */
 import assert from 'node:assert/strict';
+import express from 'express';
+import { initializeApp as initializeAdminApp, deleteApp as deleteAdminApp } from 'firebase-admin/app';
+import { getAuth as getAdminAuth } from 'firebase-admin/auth';
+import { registerBusinessInviteApi } from '../businessInviteApi.ts';
+
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import { initializeApp, deleteApp } from 'firebase/app';
@@ -184,6 +189,161 @@ const publicationBridge = {
   syncPublic: (id: string, tenant: any) => syncPublicProfileIfNeeded(id, JSON.parse(JSON.stringify(tenant))),
 };
 
+
+/**
+ * Invitaciones API reales + permisos SDK bajo las MISMAS reglas candidatas
+ * de tres documentos. Solo se usan cuentas Auth y Firestore del emulador.
+ * Admin SDK omite las reglas: las lecturas/escrituras de empleado se comprueban
+ * también con el SDK cliente, sin suplantar la autorización de Firestore.
+ */
+async function verifyCandidateInvitations(uidA: string, uidB: string) {
+  process.env.FIREBASE_PROJECT_ID = projectId;
+  process.env.ENABLE_BUSINESS_INVITES = 'true';
+  const adminApp = initializeAdminApp({ projectId });
+  const adminAuth = getAdminAuth(adminApp);
+  const api = express();
+  api.use(express.json());
+  registerBusinessInviteApi(api);
+  const server = api.listen(0, '127.0.0.1');
+  try {
+    await new Promise<void>(resolve => server.once('listening', resolve));
+    const address = server.address();
+    assert(address && typeof address !== 'string');
+    const origin = 'http://127.0.0.1:' + address.port;
+    const call = async (
+      path: string, body: any, token?: string, method = 'POST',
+    ): Promise<{ status: number; data: any }> => {
+      const response = await fetch(origin + path, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: 'Bearer ' + token } : {}),
+        },
+        ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
+      });
+      return { status: response.status, data: await response.json() };
+    };
+    // Comenzamos con OWNER B autenticado. Nunca puede invitar en A.
+    assert.equal(auth.currentUser?.uid, uidB);
+    const tokenB = await auth.currentUser!.getIdToken();
+    const employeeEmail = 'three-doc-kitchen@beta.example.test';
+    assert.equal((await call('/api/business-invites', {
+      businessId: idA, email: employeeEmail, name: 'Cocina de A', role: 'KITCHEN',
+    }, tokenB)).status, 403, 'OWNER B no invita personal de A');
+
+    const employee = await adminAuth.createUser({
+      email: employeeEmail, password, emailVerified: true,
+    });
+    await signOut(auth);
+    await signInWithEmailAndPassword(auth, emailA, password);
+    assert.equal(auth.currentUser?.uid, uidA);
+    const tokenA = await auth.currentUser!.getIdToken();
+    const invite = await call('/api/business-invites', {
+      businessId: idA, email: employeeEmail, name: 'Cocina de A', role: 'KITCHEN',
+    }, tokenA);
+    assert.equal(invite.status, 201, JSON.stringify(invite));
+    assert.equal((await call('/api/business-invites/preview', {
+      token: invite.data.token,
+    })).status, 200);
+
+    // Un token válido no autoriza a la cuenta B a aceptar por otra persona.
+    assert.equal((await call('/api/business-invites/accept', {
+      token: invite.data.token,
+    }, tokenB)).status, 403);
+    await signOut(auth);
+    await signInWithEmailAndPassword(auth, employeeEmail, password);
+    assert.equal(auth.currentUser?.uid, employee.uid);
+    const employeeToken = await auth.currentUser!.getIdToken();
+    const accepted = await call('/api/business-invites/accept', {
+      token: invite.data.token,
+    }, employeeToken);
+    assert.equal(accepted.status, 200, JSON.stringify(accepted));
+    assert.equal(accepted.data.businessId, idA);
+    assert.equal((await call('/api/business-invites/accept', {
+      token: invite.data.token,
+    }, employeeToken)).status, 410, 'Token consumido no se reutiliza');
+
+    const member = await getDoc(doc(db, memberPath(idA, employee.uid)));
+    assert.equal(member.data()?.role, 'KITCHEN');
+    assert.equal(member.data()?.active, true);
+    assert((await getDoc(doc(db, businessPath(idA)))).exists(),
+      'Empleado aceptado consulta su ficha A');
+    await deny(getDoc(doc(db, businessPath(idB))),
+      'Empleado de A no consulta la ficha B');
+    await deny(getDoc(doc(db, businessPath(idB) + '/catalog/menu_catalog')),
+      'Empleado de A no consulta catálogo privado B');
+    await deny(updateDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog'), {
+      businessId: idA, sourceLabel: 'Cambio de precio no autorizado',
+    }), 'KITCHEN no edita catálogo A');
+    await deny(updateDoc(doc(db, memberPath(idA, employee.uid)), {
+      role: 'OWNER',
+    }), 'Empleado no se asciende a OWNER');
+
+    // Ni el OWNER B puede revocar una membresía de A, ni A afecta B.
+    await signOut(auth);
+    await signInWithEmailAndPassword(auth, emailB, password);
+    await deny(updateDoc(doc(db, memberPath(idA, employee.uid)), {
+      active: false,
+    }), 'OWNER B no revoca personal A');
+    assert.equal((await call('/api/business-invites?businessId=' + idA,
+      undefined, await auth.currentUser!.getIdToken(), 'GET')).status, 403);
+    await signOut(auth);
+    await signInWithEmailAndPassword(auth, emailA, password);
+    await updateDoc(doc(db, memberPath(idA, employee.uid)), { active: false });
+    assert.equal((await adminRead(memberPath(idA, employee.uid))).data()?.active, false);
+
+    // También se puede revocar una invitación pendiente antes de aceptarla.
+    const pendingEmail = 'three-doc-pending@beta.example.test';
+    const pendingUser = await adminAuth.createUser({
+      email: pendingEmail, password, emailVerified: true,
+    });
+    const pending = await call('/api/business-invites', {
+      businessId: idA, email: pendingEmail, name: 'Pendiente A', role: 'WAITER',
+    }, await auth.currentUser!.getIdToken());
+    assert.equal(pending.status, 201, JSON.stringify(pending));
+    const pendingList = await call('/api/business-invites?businessId=' + idA,
+      undefined, await auth.currentUser!.getIdToken(), 'GET');
+    assert.equal(pendingList.status, 200);
+    const pendingRecord = pendingList.data.invites.find(
+      (entry: any) => entry.email === pendingEmail,
+    );
+    assert(pendingRecord, 'Invitación pendiente visible solo para OWNER A');
+    assert.equal((await call('/api/business-invites/revoke', {
+      businessId: idA, inviteId: pendingRecord.id,
+    }, await auth.currentUser!.getIdToken())).status, 200);
+    await signOut(auth);
+    await signInWithEmailAndPassword(auth, pendingEmail, password);
+    assert.equal(auth.currentUser?.uid, pendingUser.uid);
+    assert.equal((await call('/api/business-invites/accept', {
+      token: pending.data.token,
+    }, await auth.currentUser!.getIdToken())).status, 410);
+    assert.equal((await adminRead(memberPath(idA, pendingUser.uid))).exists(), false,
+      'Revocación de invitación no crea membresía');
+
+    // La revocación de la membresía activa corta el acceso en el SDK cliente.
+    await signOut(auth);
+    await signInWithEmailAndPassword(auth, employeeEmail, password);
+    await deny(getDoc(doc(db, businessPath(idA))),
+      'Empleado revocado no consulta datos privados de A');
+    await deny(updateDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog'), {
+      businessId: idA, sourceLabel: 'Edición tras revocación',
+    }), 'Empleado revocado no modifica catálogo');
+    await deny(getDoc(doc(db, businessPath(idB))),
+      'Empleado revocado tampoco consulta B');
+
+    await signOut(auth);
+    await signInWithEmailAndPassword(auth, emailA, password);
+    assert.equal((await adminRead(memberPath(idB, uidB))).data()?.active, true,
+      'OWNER B conserva sus permisos tras revocaciones en A');
+    assert((await getDoc(doc(db, businessPath(idA)))).exists());
+    console.log('PASS (solo emulador): API real de invitaciones, aceptación, roles KITCHEN, aislamiento A/B y revocación bajo registro candidato de tres documentos.');
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    await deleteAdminApp(adminApp);
+    delete process.env.ENABLE_BUSINESS_INVITES;
+  }
+}
+
 try {
   const a = await registerThroughOnboardingUI({
     name: 'Restaurante candidato A', handle: idA, email: emailA,
@@ -260,6 +420,8 @@ try {
   }), 'B no puede reclamar el handle de A');
   assert.equal((await adminRead(memberPath(idA, uidB))).exists(), false,
     'La colisión no crea membresía cruzada');
+
+  await verifyCandidateInvitations(uidA, uidB);
 
   await signOut(auth);
   await signInWithEmailAndPassword(auth, emailA, password);
