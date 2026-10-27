@@ -71,3 +71,22 @@ El análisis compara `businesses/{id}`, `businessMemberships/{id}_{uid}`, `busin
 **Procedimiento pendiente de aprobación humana:** inventariar de forma privilegiada y auditada todas las fuentes de IDs (incluidos documentos raíz eliminados con subcolecciones o membresías remanentes), contrastar respaldos, resolver propietarios ambiguos sin asignarlos automáticamente, revisar cada reserva propuesta y ejecutar un backfill reversible/auditable **solo con autorización explícita y plan de reversión**. Nunca borrar ni reutilizar reservas para resolver colisiones. Antes de activar reglas nuevas, coordinar la actualización del cliente de dos a tres documentos y el manejo de clientes antiguos. El preflight no modifica ni valida reglas desplegadas.
 
 **Pruebas:** `node scripts/test-business-handle-migration-preflight.mjs` cubre 17 escenarios sintéticos; su resultado no sustituye la ejecución completa de CI ni el recorrido manual Android/iPad. Paso 2 **ABIERTO**; Caja histórica/MIXTO **PENDIENTE**.
+
+
+## Compatibilidad entre clientes y reglas: puerta de despliegue (26 de octubre de 2026)
+
+**NO APROBADO PARA DESPLIEGUE.** El cliente actual `registerBusiness` escribe **dos** documentos (negocio y OWNER). El candidato de pruebas escribe **tres** (añade `businessHandleReservations/{id}`). La propuesta de reserva permanente exige los tres; las reglas staged no permiten crear el tercero. No existe una ventana de convivencia segura demostrada por estas dos versiones de reglas.
+
+La prueba `scripts/test-business-registration-version-matrix.mjs`, ejecutada en **tres procesos consecutivos dentro del mismo Firestore Emulator**, conserva datos ficticios entre cambios de reglas en memoria y verifica la matriz:
+
+| Reglas de prueba | Cliente 2 documentos | Cliente 3 documentos | Efecto |
+| --- | --- | --- | --- |
+| Staged actual | Permitido | Rechazado | El alta vigente no crea reserva permanente. |
+| Propuesta permanente | Rechazado | Permitido | Las pestañas antiguas no pueden dar de alta; las nuevas requieren reglas nuevas. |
+| Reversión a staged | Permitido de nuevo | Rechazado de nuevo | Una reversión simple vuelve a permitir altas sin reserva. |
+
+La prueba también comprueba que un rechazo de batch no deja documentos parciales, que los negocios candidatos previos sobreviven al cambio de reglas, y que un negocio histórico creado bajo staged **no adquiere una reserva automáticamente**. Intentar crearla desde cliente después de existir el negocio es rechazado: requiere un backfill privilegiado y auditado. Los resultados concretos de CI deben confirmarse en el checklist; esta descripción **no certifica todavía la ejecución**.
+
+**Condiciones previas a un corte futuro (requieren revisión/autorización, no ejecutar ahora):** inventario exhaustivo y respaldo verificado de identificadores históricos y datos residuales; resolución manual de propietarios dudosos; backfill auditado de reservas sin borrar ni reusar IDs; revisión independiente de reglas y límites de acceso; versión cliente candidata probada con Auth/Firestore aislados; estrategia explícita para pestañas abiertas/clientes viejos, control de altas durante la transición, observabilidad y salida segura si falla. Una reversión que restaure staged sin controles **no es una reversión de seguridad**. Preservar reservas y no permitir nuevas altas inseguras hasta restaurar un contrato compatible. La herramienta de preflight local no demuestra exhaustividad ni autoriza migración.
+
+**Límites:** no se alteró `registerBusiness`, reglas versionadas/desplegadas, `main` ni datos reales. El ensayo no prueba versiones móviles instaladas, fallos de transporte reales, reglas de producción ni validación visual Android/iPad. Paso 2 ABIERTO; paso 4 Caja histórica/MIXTO PENDIENTE aunque CI resulte verde.
