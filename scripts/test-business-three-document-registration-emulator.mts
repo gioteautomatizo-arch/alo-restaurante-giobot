@@ -156,8 +156,8 @@ const adminRead = async path => {
 // Las vistas son React reales; los módulos de SDK viven en este proceso.
 const managementBridge = {
   getBusiness: (uid: string, id: string) => getBusinessForUser(uid, id),
-  updateBranding: (id: string, patch: any) => updateDoc(doc(db, businessPath(id)), patch),
-  syncPublic: (id: string, tenant: any) => syncPublicProfileIfNeeded(id, tenant),
+  updateBranding: (id: string, patch: any) => updateDoc(doc(db, businessPath(id)), JSON.parse(JSON.stringify(patch))),
+  syncPublic: (id: string, tenant: any) => syncPublicProfileIfNeeded(id, JSON.parse(JSON.stringify(tenant))),
   subscribeCatalog: (id: string, callback: any, onError: any) =>
     subscribeToBusinessCatalog(id, callback, onError),
   saveCatalog: (id: string, items: any, actor: string, revision: string | null) =>
@@ -169,7 +169,7 @@ const publicationBridge = {
   getStatus: (id: string) => getBusinessPublicationStatus(id),
   setPublication: (id: string, tenant: any, published: boolean) =>
     setBusinessPublication(id, JSON.parse(JSON.stringify(tenant)), published),
-  syncPublic: (id: string, tenant: any) => syncPublicProfileIfNeeded(id, tenant),
+  syncPublic: (id: string, tenant: any) => syncPublicProfileIfNeeded(id, JSON.parse(JSON.stringify(tenant))),
 };
 
 try {
