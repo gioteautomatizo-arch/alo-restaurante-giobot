@@ -20,7 +20,7 @@ import {
 import {
   connectFirestoreEmulator, doc, getDoc, writeBatch, deleteDoc, updateDoc, terminate,
 } from 'firebase/firestore';
-import { buildPermanentHandleRetirementGuardProposalRules } from './owner-atomic-proposal-rules.mjs';
+import { buildThreeDocumentRecoveryMarkerProposalRules } from './owner-atomic-proposal-rules.mjs';
 import { registerThroughOnboardingUI } from './business-onboarding-emulator-ui.mjs';
 import { saveBrandingThroughUI, addCatalogProductThroughUI } from './business-management-emulator-ui.mjs';
 import { publishBusinessThroughUI, publishAndHideBusinessThroughUI, assertForeignWorkspaceDeniedThroughUI, assertStaffCannotPublishThroughUI } from './business-publication-emulator-ui.mjs';
@@ -32,7 +32,7 @@ const staged = readFileSync('docs/firestore.launch-security.STAGED.rules', 'utf8
 const env = await initializeTestEnvironment({
   projectId,
   firestore: {
-    rules: buildPermanentHandleRetirementGuardProposalRules(staged),
+    rules: buildThreeDocumentRecoveryMarkerProposalRules(staged),
     host: '127.0.0.1', port: 8080,
   },
 });
@@ -523,6 +523,9 @@ try {
     await historical.commit();
   });
   assert.equal((await adminRead(reservePath(legacyNoReservationId))).exists(), false);
+  await deny(updateDoc(doc(db, businessPath(legacyNoReservationId)), {
+    registrationContractVersion: 3,
+  }), 'OWNER legacy no puede falsificar contrato 3-doc mediante update');
   await assert.rejects(registerBusinessThreeDocumentCandidate({
     businessName: 'No recuperar legado sin reserva', handle: legacyNoReservationId,
     email: emailA, password, businessType: 'restaurant',
@@ -532,7 +535,27 @@ try {
     'El rechazo no inventa ni crea reserva para el histórico');
   assert.equal((await adminRead(businessPath(legacyNoReservationId))).data()?.ownerUserId, uidA,
     'La raíz histórica conserva al propietario');
+  await deny(updateDoc(doc(db, businessPath(idA)), { registrationContractVersion: 2 }),
+    'OWNER candidato no puede degradar marcador 3-doc');
   console.log('PASS recuperación legacy fail-closed (solo emulador): raíz+OWNER sin reserva no se considera alta 3-doc confirmada.');
+
+  // El contrato de prueba exige la marca 3-doc incluso si el batch trae
+  // raíz, OWNER y reserva con identidades válidas.
+  const noMarkerId = 'beta-three-missing-contract-marker';
+  const noMarkerBatch = writeBatch(db);
+  noMarkerBatch.set(doc(db, businessPath(noMarkerId)), {
+    restaurantId: noMarkerId, ownerUserId: uidA,
+  });
+  noMarkerBatch.set(doc(db, memberPath(noMarkerId, uidA)), {
+    restaurantId: noMarkerId, userId: uidA, role: 'OWNER', active: true,
+  });
+  noMarkerBatch.set(doc(db, reservePath(noMarkerId)), {
+    businessId: noMarkerId, ownerUserId: uidA,
+  });
+  await deny(noMarkerBatch.commit(), 'Contrato candidato rechaza raíz sin marcador 3-doc');
+  for (const path of [businessPath(noMarkerId), memberPath(noMarkerId, uidA), reservePath(noMarkerId)]) {
+    assert.equal((await adminRead(path)).exists(), false, 'Sin alta parcial sin marcador: ' + path);
+  }
 
   // Respuesta perdida DESPUÉS del commit: recuperar los documentos del mismo
   // propietario sin leer la reserva desde el SDK cliente ni repetir la siembra.
