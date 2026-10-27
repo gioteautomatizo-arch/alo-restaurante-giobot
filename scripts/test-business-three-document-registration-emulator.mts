@@ -665,6 +665,62 @@ try {
   ]) assert.equal((await adminRead(path)).exists(), false,
     'Cliente incompatible no deja escrituras parciales: ' + path);
 
+  // Continuidad de una cuenta Auth creada por el cliente antiguo: el lote de
+  // dos documentos falló por reglas candidatas, pero Auth NO se revierte.
+  // El cliente candidato debe poder completar el alta con el MISMO UID/handle,
+  // sin crear otra cuenta ni reclamar un negocio de un tercero.
+  const oldClientId = 'beta-three-old-client';
+  const oldClientEmail = 'three-doc-old-client@beta.example.test';
+  const recoveredOldClient = await registerCandidate({
+    businessName: 'Cliente recuperado', handle: oldClientId,
+    email: oldClientEmail, password, businessType: 'restaurant',
+  });
+  assert.equal(recoveredOldClient.membership.userId, oldClientUid,
+    'El cliente candidato recupera el UID Auth creado por el cliente antiguo');
+  assert.equal(recoveredOldClient.tenant.ownerUserId, oldClientUid);
+  assert.equal((await getDoc(doc(db, memberPath(oldClientId, oldClientUid)))).data()?.role,
+    'OWNER', 'OWNER recuperado sin cambio de identidad');
+  assert.equal((await adminRead(reservePath(oldClientId))).data()?.ownerUserId,
+    oldClientUid, 'La reserva permanente corresponde al mismo propietario');
+  const recoveredCatalog = await getDoc(doc(db, businessPath(oldClientId), 'catalog', 'menu_catalog'));
+  assert(recoveredCatalog.exists() && recoveredCatalog.data()?.items?.length > 0,
+    'La recuperación completa siembra un catálogo propio');
+
+  // Reintento tras volver a iniciar sesión: el lote ya no puede crear la raíz,
+  // pero la recuperación idempotente confirma el OWNER y NO reemplaza catálogo.
+  const catalogRevision = recoveredCatalog.data()?.revision ?? null;
+  await signOut(auth);
+  await signInWithEmailAndPassword(auth, oldClientEmail, password);
+  assert.equal(auth.currentUser?.uid, oldClientUid);
+  const repeated = await registerCandidate({
+    businessName: 'Nombre distinto en reintento', handle: oldClientId,
+    email: oldClientEmail, password, businessType: 'restaurant',
+  });
+  assert.equal(repeated.membership.userId, oldClientUid);
+  assert.equal(repeated.tenant.branding.restaurantName, 'Cliente recuperado',
+    'Un reintento no reemplaza identidad empresarial confirmada');
+  assert.equal((await getDoc(doc(db, businessPath(oldClientId), 'catalog', 'menu_catalog'))).data()?.revision ?? null,
+    catalogRevision, 'Un reintento no sobreescribe el catálogo');
+
+  // Un UID ajeno nunca puede usar el mismo handle, aunque el cliente viejo
+  // hubiera fallado antes. La reserva, el OWNER y el otro negocio sobreviven.
+  await signOut(auth);
+  await deny(registerCandidate({
+    businessName: 'Intento de apropiación', handle: oldClientId,
+    email: 'three-doc-intruder@beta.example.test', password, businessType: 'restaurant',
+  }), 'Un UID ajeno no reclama el handle recuperado');
+  const intruderUid = auth.currentUser?.uid;
+  assert(intruderUid && intruderUid !== oldClientUid);
+  assert.equal((await adminRead(memberPath(oldClientId, intruderUid))).exists(), false,
+    'No se crea OWNER para el intruso');
+  assert.equal((await adminRead(reservePath(oldClientId))).data()?.ownerUserId, oldClientUid,
+    'La reserva conserva su propietario tras el intento ajeno');
+  assert.equal((await adminRead(businessPath(oldClientId))).data()?.ownerUserId, oldClientUid,
+    'La raíz empresarial conserva su propietario');
+  assert.equal((await adminRead(businessPath(idB))).exists(), true,
+    'La recuperación de un cliente no altera el segundo negocio');
+  console.log('PASS recuperación 2→3 (solo emulador): Auth persistente, mismo UID/handle, OWNER y reserva, catálogo idempotente y rechazo de otro propietario.');
+
   console.log('PASS (solo emulador): onboarding React 3 documentos, aislamiento de dos negocios, baja administrativa atómica, catálogo no público tras baja, OWNER sin republicación y reserva persistente.');
   console.warn('PENDIENTE: un borrado privilegiado sin despublicación deja visible el perfil huérfano; la propuesta aislada bloquea catálogo y republicación, pero exige baja administrativa atómica y revisión.');
   console.warn('PENDIENTE: registerBusiness de producción sigue escribiendo DOS documentos; coordinar cliente, reglas y migración histórica antes de cualquier despliegue.');
