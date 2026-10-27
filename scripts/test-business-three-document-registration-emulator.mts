@@ -256,8 +256,8 @@ try {
     password, businessType: 'ghost-kitchen',
   });
   assert.equal(retry.membership.userId, uidA, 'Reintento legítimo recupera OWNER');
-  assert.equal(retry.tenant.branding.restaurantName, 'Restaurante candidato A',
-    'Reintento no sobrescribe la identidad original');
+  assert.equal(retry.tenant.branding.restaurantName, 'Candidato A configurado',
+    'Reintento conserva la identidad editada, sin sobrescribirla con el formulario');
   assert.equal((await adminRead(reservePath(idA))).data()?.ownerUserId, uidA);
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true,
     'El reintento de A conserva su publicación');
