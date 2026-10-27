@@ -947,3 +947,11 @@ npx firebase emulators:exec --only firestore --project demo-gioteautomatizo-owne
 - **CI integrado:** `.github/workflows/quality.yml` ejecutará `node scripts/test-business-registration-cutover-gate.mjs` junto con las regresiones, TypeScript y build. Commits `edc1d69d` (modelo), `fc1600c4` (test), `7f8e7985` (CI). **Quality y Security sobre el SHA final: PENDIENTES de confirmar**; no declarar compilación aprobada hasta obtener evidencia de los runs push.
 - **Estado:** paso 2 **ABIERTO**. Este preflight no resuelve compatibilidad 2/3 real, reglas desplegadas, revisión humana, inventario/backfill autorizado, backup/restore ni recorrido visual Android/iPad de dos negocios. Paso 3 pedidos/recuperación y paso 4 Caja histórica/MIXTO continúan **PENDIENTES**; los diagnósticos con `PENDIENTE` no prueban conciliación.
 - **Siguiente bloque:** confirmar Quality y Security del commit final y reparar cualquier regresión; después revisar independientemente reglas y rollback con datos sintéticos, y completar recorrido UI/visual de dos negocios. No publicar ni desplegar reglas o datos.
+
+
+## Paso 2 — PLAN: guard global de activación 3-doc (27 de octubre de 2026)
+
+- Base: HEAD `4a23bb46`; revisión de commits y checklist completada. `fetch_commit_workflow_runs` devuelve `[]` para push, por lo que CI de ese SHA no queda confirmado por esa consulta.
+- Hueco: el guard de paridad solo inspecciona `BusinessOnboardingDemo.tsx`, no imports desde otros componentes ni reexportaciones.
+- Bloque: comprobar con AST TypeScript todo `src` para impedir referencias directas, alias, reexportaciones e imports dinámicos del candidato 3-doc y del preflight consultivo; añadir fixtures y CI Quality. Sin conectar cliente, desplegar reglas ni tocar datos reales.
+- Verificación: pruebas locales y luego Quality/TypeScript/build del SHA final; si CI no se puede consultar, dejarlo pendiente. Paso 2 abierto hasta revisión independiente, compatibilidad 2/3, backup/restore y validación Android/iPad. Pasos 3 y 4 (Caja/MIXTO) PENDIENTES.
