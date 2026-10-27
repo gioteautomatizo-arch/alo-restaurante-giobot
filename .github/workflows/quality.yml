@@ -64,6 +64,8 @@ jobs:
         run: node scripts/test-business-registration-candidate-parity.mjs
       - name: Test registration cutover and rollback preflight (synthetic, no Firebase)
         run: node scripts/test-business-registration-cutover-gate.mjs
+      - name: Guard candidate activation across all production sources (TypeScript AST, no Firebase)
+        run: node scripts/test-inactive-registration-candidate.mjs && node scripts/guard-inactive-registration-candidate.mjs
       - name: Test onboarding duplicate submit and stale navigation (React/jsdom, no Firebase)
         run: node scripts/test-business-onboarding-submit-ui.mjs
       - name: Test complete six-screen onboarding for two fictitious businesses (React/jsdom, mocked backend)
