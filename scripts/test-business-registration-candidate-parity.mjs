@@ -24,6 +24,15 @@ assert.equal((currentFn.match(/\bbatch\.set\s*\(/g) || []).length, 2,
   'El registro público no debe cambiar de contrato sin corte aprobado');
 assert.equal((candidateFn.match(/\bbatch\.set\s*\(/g) || []).length, 3,
   'El candidato requiere negocio, OWNER y reserva en un solo batch');
+assert.doesNotMatch(currentFn, /registrationContractVersion/,
+  'El registro público no debe simular el contrato 3-doc');
+assert.match(candidateFn, /const registrationTenant = \\{ \\.\\.\\.tenant, registrationContractVersion: 3 \\};/,
+  'El candidato debe marcar nuevas altas 3-doc');
+assert.match(candidateFn, /batch\\.set\\(businessRef\\(businessId\\), registrationTenant\\)/,
+  'El marcador debe persistirse en la raíz del negocio');
+assert.match(candidateFn, /existingTenant as RestaurantTenant & \\{ registrationContractVersion\\?: number \\}\\)\\.registrationContractVersion !== 3/,
+  'Una raíz legacy sin marcador no puede recuperarse como alta 3-doc');
+
 
 const normalizedCandidate = candidateFn
   .replace('export async function registerBusinessThreeDocumentCandidate(',
