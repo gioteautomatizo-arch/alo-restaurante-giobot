@@ -39,6 +39,16 @@ function hasNoAlternatives(condition) {
   return !!condition && !condition.includes('||');
 }
 
+function hasSingleCreateClause(section) {
+  // Firestore combina reglas allow con OR: otra cláusula create/write puede
+  // anular todos los guards aunque la primera cláusula sea correcta.
+  const grants = [...section.matchAll(/\ballow\s+([^:;]+)\s*:\s*if\s+([^;]*);/g)]
+    .filter(([, verbs]) => /\b(?:create|write)\b/.test(verbs));
+  return grants.length === 1
+    && /\bcreate\b/.test(grants[0][1])
+    && !/\bwrite\b/.test(grants[0][1]);
+}
+
 function isImmutableReservation(section) {
   const rules = [...section.matchAll(/\ballow\s+([^:;]+)\s*:\s*if\s+([^;]*);/g)];
   const mutations = rules.filter(([, verbs]) => /\b(?:update|delete|write)\b/.test(verbs));
@@ -95,7 +105,7 @@ export function auditRegistrationCutoverSources({ clientSource, stagedRules, pro
   const reservationPath = '/databases/$(database)/documents/businessHandleReservations/$(businessId)';
   const rootPath = '/databases/$(database)/documents/businesses/$(businessId)';
 
-  const rootIdentity = hasNoAlternatives(rootCreate)
+  const rootIdentity = hasSingleCreateClause(rootSection) && hasNoAlternatives(rootCreate)
     && hasRule(rootCreate, 'request.resource.data.restaurantId == businessId')
     && hasRule(rootCreate, 'request.resource.data.ownerUserId == request.auth.uid')
     && hasRule(rootCreate, `!exists(${rootPath})`);
@@ -113,7 +123,8 @@ export function auditRegistrationCutoverSources({ clientSource, stagedRules, pro
     && hasRule(rootCreate, `getAfter(${reservationPath}).data.businessId == businessId`)
     && hasRule(rootCreate, `getAfter(${reservationPath}).data.ownerUserId == request.auth.uid`);
   const reservationRule = !!reservationSection;
-  const reservationCreateBinding = reservationRule && hasNoAlternatives(reservationCreate)
+  const reservationCreateBinding = reservationRule && hasSingleCreateClause(reservationSection)
+    && hasNoAlternatives(reservationCreate)
     && hasRule(reservationCreate, 'isSignedIn()')
     && hasRule(reservationCreate, 'request.resource.data.businessId == businessId')
     && hasRule(reservationCreate, 'request.resource.data.ownerUserId == request.auth.uid')
