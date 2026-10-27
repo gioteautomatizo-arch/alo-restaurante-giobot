@@ -150,5 +150,5 @@ assert.deepEqual(crossTenantInventory.businesses.map(b => b.status),
   ['HOLD_MANUAL_REVIEW', 'HOLD_MANUAL_REVIEW']);
 assert.equal(crossTenantInventory.safeToApplyAutomatically, false);
 
-console.log('PASS: 17 escenarios originales y 16 variantes adicionales de perfil/residuales entre tenants; solo inventario local, ninguna escritura ni Firebase.');
+console.log('PASS: 17 escenarios originales y variantes adicionales de perfil/residuales entre tenants; solo inventario local, ninguna escritura ni Firebase.');
 console.warn('PENDIENTE: inventario real completo, respaldo, validación de propietarios y backfill autorizado; ningún candidato es aprobación automática.');
