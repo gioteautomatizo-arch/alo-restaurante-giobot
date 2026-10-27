@@ -9,20 +9,21 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, writeBatch } from 'firebase/firestore';
-import { buildAtomicOwnerAndPermanentHandleProposalRules } from './owner-atomic-proposal-rules.mjs';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { buildAtomicOwnerAndPermanentHandleProposalRules, buildRegistrationFreezeProposalRules } from './owner-atomic-proposal-rules.mjs';
 
 const projectId = 'gioteautomatizo-registration-version-matrix-test';
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080',
   'Esta prueba requiere Firestore Emulator aislado; nunca usar Firestore real.');
 const staged = readFileSync('docs/firestore.launch-security.STAGED.rules', 'utf8');
 const proposed = buildAtomicOwnerAndPermanentHandleProposalRules(staged);
+const frozen = buildRegistrationFreezeProposalRules(staged);
 const phase = process.argv[2];
-assert(['staged', 'candidate', 'rollback'].includes(phase),
+assert(['staged', 'freeze-before', 'candidate', 'freeze-after', 'rollback'].includes(phase),
   'Indicar fase staged, candidate o rollback dentro del mismo emulador.');
 const env = await initializeTestEnvironment({
   projectId,
-  firestore: { rules: phase === 'candidate' ? proposed : staged, host: '127.0.0.1', port: 8080 },
+  firestore: { rules: phase === 'candidate' ? proposed : phase.startsWith('freeze-') ? frozen : staged, host: '127.0.0.1', port: 8080 },
 });
 const signed = uid => env.authenticatedContext(uid).firestore();
 const business = (id, uid) => ({
@@ -73,6 +74,24 @@ try {
   ], 'staged rechaza los tres documentos sin escritura parcial');
 
   console.log('PASS fase staged: cliente de dos documentos aceptado; tres rechazado sin escrituras parciales.');
+  } else if (phase === 'freeze-before') {
+  // Puerta fail-closed antes de cambiar el contrato: nadie puede registrar
+  // con dos ni tres documentos, pero el OWNER existente sigue operando.
+  await assertSucceeds(getDoc(doc(alice, root(legacyId))));
+  await assertSucceeds(updateDoc(doc(alice, root(legacyId)), {
+    'branding.restaurantName': 'Legado activo durante congelación',
+  }));
+  await assertFails(deleteDoc(doc(alice, root(legacyId))));
+  await assertSucceeds(getDoc(doc(alice, root(legacyId))));
+
+  for (const version of [2, 3]) {
+    const id = 'matrix-freeze-before-' + version;
+    await assertFails(registration(bob, id, 'matrix-bob', version));
+    await assertNoPartialDocuments([
+      root(id), owner(id, 'matrix-bob'), handle(id),
+    ], 'congelación previa rechaza cliente ' + version);
+  }
+  console.log('PASS fase freeze-before: alta 2/3 bloqueada, sin parciales; legado editable, borrado cliente denegado.');
   } else if (phase === 'candidate') {
   // Fase 2: el mismo emulador conserva los documentos de la fase anterior.
   // Se cargan reglas candidatas SOLO para este proceso de prueba.
@@ -100,8 +119,34 @@ try {
   });
 
   console.log('PASS fase candidate: cliente de tres documentos aceptado; dos rechazado; histórico sin backfill no protegido.');
+  } else if (phase === 'freeze-after') {
+  // Reversión hacia una puerta cerrada, NO a staged abierto. Los negocios
+  // candidatos y sus reservas siguen presentes y sus OWNER pueden operar.
+  await assertSucceeds(getDoc(doc(alice, root(legacyId))));
+  await assertSucceeds(getDoc(doc(bob, root(proposedThreeId))));
+  await assertFails(getDoc(doc(alice, root(proposedThreeId))));
+  await assertSucceeds(updateDoc(doc(bob, root(proposedThreeId)), {
+    'branding.restaurantName': 'Candidato activo durante reversión',
+  }));
+  await assertFails(deleteDoc(doc(bob, root(proposedThreeId))));
+  await assertSucceeds(getDoc(doc(bob, root(proposedThreeId))));
+  await assertFails(getDoc(doc(bob, handle(proposedThreeId))));
+  await env.withSecurityRulesDisabled(async context => {
+    const snap = await getDoc(doc(context.firestore(), handle(proposedThreeId)));
+    assert.equal(snap.data()?.ownerUserId, 'matrix-bob',
+      'reversión congelada preserva la reserva inmutable');
+  });
+
+  for (const version of [2, 3]) {
+    const id = 'matrix-freeze-after-' + version;
+    await assertFails(registration(alice, id, 'matrix-alice', version));
+    await assertNoPartialDocuments([
+      root(id), owner(id, 'matrix-alice'), handle(id),
+    ], 'reversión congelada rechaza cliente ' + version);
+  }
+  console.log('PASS fase freeze-after: sin altas 2/3, sin parciales, datos y reservas conservados.');
   } else {
-  // Fase 3: reglas staged cargadas de nuevo en el mismo emulador.
+  // Fase 5: reversión INSEGURA intencional como diagnóstico, no como plan.
   // Los datos candidatos sobreviven, pero los clientes de tres documentos
   // vuelven a fallar y los antiguos pueden crear altas sin reserva.
   await assertSucceeds(getDoc(doc(bob, root(proposedThreeId))));
@@ -117,7 +162,8 @@ try {
 
   console.log('PASS fase rollback (solo emulador): staged acepta de nuevo 2/rechaza 3; datos candidatos sobreviven.');
   }
-  console.warn('PENDIENTE: no existe una fase de reglas comprobada que permita convivir ambos clientes sin riesgo. Planificar versionado, pestañas antiguas y reversión antes de desplegar.');
+  console.warn('PENDIENTE: la congelación ensayada impide altas (no habilita convivencia de clientes); exige plan operativo, revisión independiente y autorización antes de desplegar.');
+  console.warn('PENDIENTE: la reversión simple a staged sigue permitiendo altas sin reserva; NO utilizarla como rollback de seguridad.');
   console.warn('PENDIENTE: negocios históricos sin reserva siguen desprotegidos ante borrados privilegiados; backfill requiere inventario, respaldo, revisión y autorización.');
 } finally {
   await env.cleanup();
