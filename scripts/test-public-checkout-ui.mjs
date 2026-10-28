@@ -93,6 +93,7 @@ try {
   }
   assert.equal(button('Vaciar pedido').disabled, true);
   assert.equal(window.qa.calls[0].id, 'demo-a');
+  assert.equal(window.qa.calls[0].order.orderType, 'pickup', 'QR externo no debe convertirse en mesa');
   assert.equal(window.qa.calls[0].order.total, 25);
   assert.equal(window.qa.calls[0].order.items[0].quantity, 1);
   assert.match(window.qa.calls[0].attemptId, /^web_[0-9a-f]{32}$/);
@@ -154,6 +155,7 @@ try {
   await waitFor(() => window.qa.calls.at(-1)?.id === 'demo-table', 'Table write reached backend');
   const tableOrder = window.qa.calls.at(-1);
   assert.equal(tableOrder.id, 'demo-table');
+  assert.equal(tableOrder.order.orderType, 'dine_in', 'QR con mesa debe crear comanda de mesa, no pickup');
   assert.equal(tableOrder.order.tableNumber, 3);
   assert.equal(tableOrder.order.orderOrigin, 'MESA_QR');
   assert.equal(tableOrder.order.notes, 'Mesa 3 · 4 personas');
