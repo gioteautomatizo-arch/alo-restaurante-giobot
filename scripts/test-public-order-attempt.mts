@@ -7,11 +7,20 @@ import {
 import type { PublicCartLine } from '../src/lib/businessPublicPage.ts';
 
 const storage = new Map<string, string>();
+const secondTab = new Map<string, string>();
+const sharedStorage = new Map<string, string>();
+let activeTab = storage;
 const original = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+const originalLocal = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
 Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: {
-  getItem: (key: string) => storage.get(key) ?? null,
-  setItem: (key: string, value: string) => { storage.set(key, value); },
-  removeItem: (key: string) => { storage.delete(key); },
+  getItem: (key: string) => activeTab.get(key) ?? null,
+  setItem: (key: string, value: string) => { activeTab.set(key, value); },
+  removeItem: (key: string) => { activeTab.delete(key); },
+}});
+Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+  getItem: (key: string) => sharedStorage.get(key) ?? null,
+  setItem: (key: string, value: string) => { sharedStorage.set(key, value); },
+  removeItem: (key: string) => { sharedStorage.delete(key); },
 }});
 const cart = [{ key: 'taco', item: { id: 'taco', name: 'Taco', price: 25, available: true }, quantity: 1 }] as PublicCartLine[];
 const now = Date.now();
@@ -44,19 +53,53 @@ try {
   const reviewed = getOrCreatePublicOrderAttempt('business-a', undefined, changedFingerprint, now + 4000);
   assert.notEqual(reviewed, unresolved, 'Only explicit review allows a new order ID');
   assert.equal(getOrCreatePublicOrderAttempt('business-b', undefined, fp, now + 4000), getOrCreatePublicOrderAttempt('business-b', undefined, fp, now + 4000), 'Review does not clear another tenant');
+  // Dos pestañas comparten referencia sin compartir carrito ni datos personales.
+  const sharedId = getOrCreatePublicOrderAttempt('cross-tab', undefined, fp, now);
+  const sharedKey = publicOrderAttemptKey('cross-tab');
+  assert.equal(JSON.parse(sharedStorage.get(sharedKey)!).id, sharedId);
+  activeTab = secondTab;
+  assert.equal(getOrCreatePublicOrderAttempt('cross-tab', undefined, fp, now + 100), sharedId,
+    'Second tab must reuse the same unresolved Firestore ID');
+  assert.equal(JSON.parse(secondTab.get(sharedKey)!).id, sharedId, 'Second tab keeps its own mirror');
+  assert.throws(() => getOrCreatePublicOrderAttempt('cross-tab', undefined, changedFingerprint, now + 100),
+    PublicOrderAttemptReviewRequiredError, 'Changed cart in second tab must not create a new ID');
+  // Referencias distintas (por una carrera o restauración) se bloquean sin escoger una.
+  sharedStorage.set(sharedKey, JSON.stringify({id: 'web_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', fingerprint: fp, createdAt: now}));
+  assert.throws(() => getOrCreatePublicOrderAttempt('cross-tab', undefined, fp, now + 100),
+    /Hay intentos diferentes/, 'Conflicting tab and shared references require explicit review');
+  assert.equal(secondTab.get(sharedKey) !== null, true, 'Conflict must not erase either reference');
+  discardPublicOrderAttemptAfterReview('cross-tab');
+  assert.equal(sharedStorage.has(sharedKey), false, 'Review clears shared reference');
+  assert.equal(secondTab.has(sharedKey), false, 'Review clears active tab reference');
+  activeTab = storage;
+  // Compatibilidad: un intento antiguo de sessionStorage se migra sin cambiar de ID.
+  const legacyKey = publicOrderAttemptKey('legacy-tab');
+  const legacyId = 'web_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+  storage.set(legacyKey, JSON.stringify({id: legacyId, fingerprint: fp, createdAt: now}));
+  assert.equal(getOrCreatePublicOrderAttempt('legacy-tab', undefined, fp, now + 100), legacyId);
+  assert.equal(JSON.parse(sharedStorage.get(legacyKey)!).id, legacyId);
+  clearPublicOrderAttempt('legacy-tab', undefined, legacyId);
+  assert.equal(sharedStorage.has(legacyKey), false);
+  assert.equal(storage.has(legacyKey), false);
+  // Otro tenant no se borra por la revisión o limpieza de uno.
+  assert.ok(sharedStorage.has(publicOrderAttemptKey('business-b')));
   storage.set(key, '{corrupt');
   assert.throws(() => getOrCreatePublicOrderAttempt('business-a', undefined, fp, now), /No se pudo conservar/);
   storage.delete(key);
-  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: {
-    getItem: () => { throw new Error('storage disabled'); },
-    setItem: () => { throw new Error('storage disabled'); },
-    removeItem: () => { throw new Error('storage disabled'); },
-  }});
+  for (const storageName of ['sessionStorage', 'localStorage']) {
+    Object.defineProperty(globalThis, storageName, { configurable: true, value: {
+      getItem: () => { throw new Error('storage disabled'); },
+      setItem: () => { throw new Error('storage disabled'); },
+      removeItem: () => { throw new Error('storage disabled'); },
+    }});
+  }
   assert.throws(() => getOrCreatePublicOrderAttempt('business-a', undefined, fp, now), /No se pudo conservar/);
   clearPublicOrderAttempt('business-a', undefined, first);
   assert.throws(() => getOrCreatePublicOrderAttempt('', undefined, fp, now), /inválida/);
-  console.log('PASS: intento web estable y aislado; carrito cambiado, expiración y reloj bloquean ID nuevo hasta revisión explícita; almacenamiento fail-closed.');
+  console.log('PASS: intento web compartido entre pestañas, conflicto y migración legacy; carrito cambiado, expiración y reloj bloquean ID nuevo hasta revisión; almacenamiento fail-closed.');
 } finally {
   if (original) Object.defineProperty(globalThis, 'sessionStorage', original);
   else Reflect.deleteProperty(globalThis, 'sessionStorage');
+  if (originalLocal) Object.defineProperty(globalThis, 'localStorage', originalLocal);
+  else Reflect.deleteProperty(globalThis, 'localStorage');
 }
