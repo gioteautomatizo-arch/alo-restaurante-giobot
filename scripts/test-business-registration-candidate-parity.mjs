@@ -3,7 +3,7 @@
 // Solo lee archivos locales; no conecta con Firebase ni escribe datos.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildThreeDocumentRecoveryMarkerProposalRules } from './owner-atomic-proposal-rules.mjs';
+import { buildThreeDocumentRecoveryMarkerProposalRules, buildRegistrationFreezeProposalRules } from './owner-atomic-proposal-rules.mjs';
 
 const current = readFileSync('src/lib/businessAuthService.ts', 'utf8');
 const candidate = readFileSync('src/lib/businessRegistrationThreeDocumentCandidate.ts', 'utf8');
@@ -69,4 +69,16 @@ assert.equal(rootRules.split("request.resource.data.get('registrationContractVer
   'Ambas rutas de update deben preservar el marcador sin cambios');
 assert.doesNotMatch(staged, /registrationContractVersion/,
   'La propuesta de emulador nunca debe modificar las reglas staged originales');
+const frozen = buildRegistrationFreezeProposalRules(staged);
+const freezeStart = frozen.indexOf('match /businesses/{businessId} {');
+const freezeEnd = frozen.indexOf('match /businesses/{businessId}/employees/{employeeUserId} {');
+assert(freezeStart >= 0 && freezeEnd > freezeStart, 'La congelación conserva el bloque raíz');
+const freezeRoot = frozen.slice(freezeStart, freezeEnd);
+assert.equal(freezeRoot.split("request.resource.data.get('registrationContractVersion', null) == resource.data.get('registrationContractVersion', null)").length - 1, 2,
+  'Freeze-before/after deben preservar el marcador en ambas rutas de update');
+assert.match(freezeRoot, /allow create: if false;/,
+  'La congelación debe rechazar altas nuevas');
+assert.match(freezeRoot, /allow delete: if false;/,
+  'La congelación debe rechazar borrados de raíces');
+
 console.log('PASS: paridad funcional 2/3 documentos y candidato desconectado del onboarding público.');
