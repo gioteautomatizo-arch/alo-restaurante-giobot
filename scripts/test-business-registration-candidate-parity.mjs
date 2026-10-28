@@ -67,6 +67,9 @@ assert.match(rootRules, /request\.resource\.data\.registrationContractVersion ==
   'Las reglas candidatas deben exigir el marcador al crear');
 assert.equal(rootRules.split("request.resource.data.get('registrationContractVersion', null) == resource.data.get('registrationContractVersion', null)").length - 1, 2,
   'Ambas rutas de update deben preservar el marcador sin cambios');
+const presenceGuard = "request.resource.data.keys().hasAny(['registrationContractVersion']) == resource.data.keys().hasAny(['registrationContractVersion'])";
+assert.equal(rootRules.split(presenceGuard).length - 1, 2,
+  'Ambas rutas candidate deben preservar la presencia del marcador (no añadir null)');
 assert.doesNotMatch(staged, /registrationContractVersion/,
   'La propuesta de emulador nunca debe modificar las reglas staged originales');
 const frozen = buildRegistrationFreezeProposalRules(staged);
@@ -76,6 +79,8 @@ assert(freezeStart >= 0 && freezeEnd > freezeStart, 'La congelación conserva el
 const freezeRoot = frozen.slice(freezeStart, freezeEnd);
 assert.equal(freezeRoot.split("request.resource.data.get('registrationContractVersion', null) == resource.data.get('registrationContractVersion', null)").length - 1, 2,
   'Freeze-before/after deben preservar el marcador en ambas rutas de update');
+assert.equal(freezeRoot.split(presenceGuard).length - 1, 2,
+  'Freeze-before/after no deben permitir insertar marcador null en legacy');
 assert.match(freezeRoot, /allow create: if false;/,
   'La congelación debe rechazar altas nuevas');
 assert.match(freezeRoot, /allow delete: if false;/,
