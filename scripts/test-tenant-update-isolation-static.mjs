@@ -43,6 +43,17 @@ assert.throws(() => buildTenantUpdateIsolationProposalRules(staged.replace(
 const nestedPath = 'businesses/{businessId}/{moduleCol}/{moduleDoc}';
 const nestedBefore = blockFor(staged, nestedPath);
 const nestedAfter = blockFor(proposed, nestedPath);
+assert(nestedBefore.includes('allow read: if isTenantModule(moduleCol)'),
+  'El contrato de lectura STAGED cambió');
+assert(nestedAfter.includes('allow read: if resource.data.businessId == businessId'),
+  'La propuesta debe impedir leer documentos anidados de otro negocio');
+const tenantModulesSource = readFileSync('src/lib/tenantModules.ts', 'utf8');
+assert(tenantModulesSource.includes("where('businessId', '==', businessId)"),
+  'Los listeners deben filtrar businessId para permitir reglas de lectura');
+assert(!tenantModulesSource.includes('orderBy(sortField'),
+  'No introducir índices compuestos implícitos sin inventario/despliegue');
+assert(tenantModulesSource.includes('sortModuleRows('),
+  'Conservar ordenación local después de filtrar por tenant');
 assert(nestedBefore.includes('allow update: if isTenantModule(moduleCol)'),
   'El contrato de actualización anidada cambió');
 assert(nestedAfter.includes('allow update: if resource.data.businessId == businessId'),
@@ -60,5 +71,5 @@ assert.throws(() => buildTenantUpdateIsolationProposalRules(staged.replace(
   'match /businesses/{businessId}/{moduleCol}/{moduleDoc} {',
   'match /businesses/{businessId}/{moduleCol}/{moduleDocRenamed} {'
 )), /ALTO/);
-console.log('PASS: 12 rutas raíz y 6 módulos anidados protegidos; identidad original en update/delete; fail-closed ante drift.');
+console.log('PASS: 12 rutas raíz y 6 módulos anidados protegidos; lectura filtrada e identidad original en update/delete; fail-closed ante drift.');
 console.warn('PENDIENTE: STAGED/despliegue siguen sin estos guards; falta emulador, revisión independiente y autorización.');
