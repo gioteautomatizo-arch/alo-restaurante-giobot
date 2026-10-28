@@ -15,6 +15,7 @@ const mocks = {
     export const onSnapshot = () => () => {};
     export const addDoc = async () => { throw new Error('No se permite crear pedidos en esta prueba'); };
     export const setDoc = async () => { throw new Error('No se permite crear pedidos en esta prueba'); };
+    export const writeBatch = () => { throw new Error('No se permite crear pedidos en esta prueba'); };
     export async function getDoc(ref) {
       globalThis.testReads.push(key(ref));
       const value = globalThis.testDocs.get(key(ref));
