@@ -113,8 +113,13 @@ async function runScenario(rules, diagnostic) {
       const inventoryDocuments = [];
       for (const tenant of [a, b]) {
         for (const moduleCol of nestedModules) {
-          scannedPartitions.push({ businessId: tenant, module: moduleCol });
           const rows = await getDocs(collection(db, 'businesses', tenant, moduleCol));
+          // Solo marcar completa una partición después de resolver getDocs.
+          // El recuento de la consulta se contrasta con el inventario recibido.
+          scannedPartitions.push({
+            businessId: tenant, module: moduleCol,
+            complete: true, documentCount: rows.size,
+          });
           for (const row of rows.docs) {
             inventoryDocuments.push({
               pathBusinessId: tenant, module: moduleCol,
@@ -133,6 +138,20 @@ async function runScenario(rules, diagnostic) {
       assert.equal(audit.counts.foreignIdentity, 12);
       assert.equal(audit.counts.incompletePartitions, 0);
       assert.equal(audit.counts.documents, 30);
+      assert.equal(audit.counts.countMismatchPartitions, 0);
+      const truncated = auditTenantModuleInventory({
+        expectedBusinessIds: [a, b], scannedPartitions,
+        documents: inventoryDocuments.slice(1),
+      });
+      assert.equal(truncated.safeToProceed, false, 'una página o documento perdido bloquea el corte');
+      assert.equal(truncated.counts.countMismatchPartitions, 1);
+      const unfinished = auditTenantModuleInventory({
+        expectedBusinessIds: [a, b],
+        scannedPartitions: scannedPartitions.map((p, i) => i === 0 ? { ...p, complete: false } : p),
+        documents: inventoryDocuments,
+      });
+      assert.equal(unfinished.safeToProceed, false, 'escaneo no terminado bloquea el corte');
+      assert.equal(unfinished.counts.incompletePartitions, 1);
       console.warn('PENDIENTE INVENTARIO SINTÉTICO: 6 documentos sin businessId y 12 mal asociados; preflight bloquea migración.');
     });
     const alice = env.authenticatedContext('alice').firestore();
