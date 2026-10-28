@@ -138,7 +138,7 @@ export function discardPublicOrderAttemptAfterReview(businessId: string, tableNu
     const { tab, shared } = attemptStores(key);
     if (shared) shared.removeItem(key);
     if (tab) tab.removeItem(key);
-    if (shared?.getItem(key) !== null || tab?.getItem(key) !== null) throw new Error('No se pudo eliminar el intento.');
+    if ((shared && shared.getItem(key) !== null) || (tab && tab.getItem(key) !== null)) throw new Error('No se pudo eliminar el intento.');
   } catch {
     throw new Error('No se pudo iniciar otro intento seguro. Revisa el almacenamiento del navegador.');
   }
