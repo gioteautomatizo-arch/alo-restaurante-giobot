@@ -2,6 +2,7 @@
 // transaccional en memoria. No usa Firebase, usuarios ni cobros reales.
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -152,4 +153,9 @@ await updateBusinessRestaurantOrderStatus('alo-restaurante', 'legacy', 'PREPARAN
 assert.equal(read('legacy').status, 'PREPARANDO', 'Calientito conserva su flujo legado');
 assert.ok(globalThis.testReads.includes(docKey('legacy')));
 assert.ok(globalThis.testLegacyWrites.some(x => x.key === docKey('legacy')));
+const ui = readFileSync('src/components/platform/BusinessOperationsView.tsx', 'utf8');
+assert.match(ui, /businessId !== 'alo-restaurante' && order\.billingStatus !== 'PENDIENTE'/,
+  'La interfaz bloquea cancelación de pagos de nuevos tenants');
+assert.match(ui, /businessId === 'alo-restaurante' \|\| order\.billingStatus === 'PENDIENTE'/,
+  'La interfaz no ofrece cancelar un pedido cobrado sin conciliación');
 console.log('PASS: transición atómica tenant A/B, avance, reintento, carrera, terminales, cancelación pagada, espejo y Calientito legado.');
