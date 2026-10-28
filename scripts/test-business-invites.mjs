@@ -78,8 +78,11 @@ try{
  const secondEmployee=await auth.createUser({email:'second-'+unique+'@example.test',emailVerified:true});
  const secondToken=await getToken(secondEmployee);
  const pendingToken=await create(secondEmployee.email);
+ assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,200);
  const ownerMembership=db.collection('businessMemberships').doc(businessId+'_'+owner.uid);
  await ownerMembership.update({restaurantId:otherBusiness});
+ assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,410,
+   'Una invitación de A no debe verse vigente con un invitador vinculado a B');
  assert.equal((await call('/api/business-invites',{businessId,email:employee.email,name:'Cruce',role:'KITCHEN'},ownerToken)).status,403);
  assert.equal((await call('/api/business-invites?businessId='+businessId,undefined,ownerToken,'GET')).status,403);
  const pendingList=await db.collection('business_invites').where('businessId','==',businessId).get();
@@ -88,11 +91,34 @@ try{
  assert.equal((await call('/api/business-invites/revoke',{businessId,inviteId:pendingDoc.id},ownerToken)).status,403);
  assert.equal((await call('/api/business-invites/accept',{token:pendingToken},secondToken)).status,403);
  await ownerMembership.update({restaurantId:businessId,userId:other.uid});
+ assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,410,
+   'El UID de membresía discordante debe invalidar también la vista previa');
  assert.equal((await call('/api/business-invites?businessId='+businessId,undefined,ownerToken,'GET')).status,403);
  await ownerMembership.update({userId:owner.uid,active:false});
+ assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,410,
+   'Revocar al invitador debe ocultar una invitación pendiente');
  assert.equal((await call('/api/business-invites',{businessId,email:employee.email,name:'Revocado',role:'KITCHEN'},ownerToken)).status,403);
  assert.equal((await call('/api/business-invites/accept',{token:pendingToken},secondToken)).status,403);
  await ownerMembership.update({active:true});
+ // Un rol sin capacidad de invitar, o una raíz de tenant discordante,
+ // tampoco puede dejar la vista previa en estado engañosamente válido.
+ await ownerMembership.update({role:'KITCHEN'});
+ assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,410);
+ await ownerMembership.update({role:'OWNER'});
+ const businessRoot=db.collection('businesses').doc(businessId);
+ await businessRoot.update({restaurantId:otherBusiness});
+ assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,410,
+   'La vista previa no debe mostrar el nombre de un negocio con raíz discordante');
+ await businessRoot.update({restaurantId:businessId});
+ await pendingDoc.ref.update({role:'OWNER'});
+ assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,410,
+   'Rol de invitación inválido debe fallar cerrado');
+ await pendingDoc.ref.update({role:'KITCHEN',createdBy:other.uid});
+ assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,410,
+   'No aceptar una invitación atribuida a un OWNER de otro tenant');
+ await pendingDoc.ref.update({createdBy:owner.uid});
+ assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,200,
+   'Restaurar identidad y permisos debe recuperar la vista previa');
  const recovered=await call('/api/business-invites/accept',{token:pendingToken},secondToken);
  assert.equal(recovered.status,200,JSON.stringify(recovered));
  assert.equal((await db.collection('businessMemberships').doc(businessId+'_'+secondEmployee.uid).get()).data().restaurantId,businessId);
@@ -108,5 +134,5 @@ try{
  assert(simultaneous.some(x=>x.status===429),'hourly rate limit');
  const attempted=simultaneous.filter(x=>x.status===201).length;
  assert(attempted<=7,'hourly rate cap');
- console.log('PASS: two-tenant invite isolation, membership identity, revocation/restore, token lifecycle and concurrent rate limiting.');
+ console.log('PASS: two-tenant invite isolation, fail-closed preview on revoked inviter/role/root, recovery, token lifecycle and concurrent rate limiting.');
 }finally{await new Promise(resolve=>server.close(resolve));}
