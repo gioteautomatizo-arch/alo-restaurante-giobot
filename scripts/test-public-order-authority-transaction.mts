@@ -110,6 +110,17 @@ try {
   assert.equal(mirror.data()?.total, 200);
   assert.equal((await attemptRef('business-a', id(11)).get()).data()?.total, 200);
 
+  // Recuperar una respuesta perdida no puede encubrir un espejo o pedido alterado.
+  await mirrorRef('business-a', id(11)).update({ total: 1 });
+  await assert.rejects(commitTrustedPublicOrder(db, tableDraft), /INTEGRIDAD_PEDIDO/);
+  await mirrorRef('business-a', id(11)).update({ total: 200, code: 'FOLIO-AJENO' });
+  await assert.rejects(commitTrustedPublicOrder(db, tableDraft), /INTEGRIDAD_PEDIDO/);
+  await mirrorRef('business-a', id(11)).update({ code: parallel[0].code });
+  await orderRef('business-a', id(11)).update({ orderType: 'pickup' });
+  await assert.rejects(commitTrustedPublicOrder(db, tableDraft), /INTEGRIDAD_PEDIDO/);
+  await orderRef('business-a', id(11)).update({ orderType: 'dine_in' });
+  assert.equal((await commitTrustedPublicOrder(db, tableDraft)).created, false);
+
   // Un resumen preexistente incompatible aborta pedido e intento sin escritura parcial.
   await mirrorRef('business-a', id(12)).set({ restaurantId: 'business-b', orderId: 'foreign', total: 1 });
   await assert.rejects(commitTrustedPublicOrder(db, draft(12, {
