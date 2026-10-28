@@ -265,19 +265,76 @@ export async function createBusinessRestaurantOrder(
   return { ...payload, id: ref.id } as RestaurantOrder;
 }
 
-/** Actualiza un pedido solo si su documento pertenece al tenant que abrió el panel. */
+/**
+ * Transición atómica de pedidos del módulo multinegocio.
+ * La pertenencia y el estado se comprueban en la misma transacción que escribe:
+ * dos operadores con pantallas antiguas no pueden retroceder una comanda.
+ * Calientito conserva el flujo heredado hasta revisar su contrato de reglas.
+ */
 export async function updateBusinessRestaurantOrderStatus(
   businessId: string,
   orderId: string,
   status: RestaurantOrderStatus,
   user: Pick<StaffUser, 'id' | 'name'>
 ): Promise<void> {
-  const orderSnap = await getDoc(doc(db, ORDERS_COLLECTION, orderId));
-  if (!orderSnap.exists()) throw new Error('El pedido ya no existe.');
-  if ((orderSnap.data() as RestaurantOrder).restaurantId !== businessId) {
-    throw new Error('Este pedido pertenece a otro negocio.');
+  if (!businessId.trim() || !orderId.trim()) throw new Error('Falta identificar el negocio o el pedido.');
+  const ref = doc(db, ORDERS_COLLECTION, orderId);
+  if (businessId === 'alo-restaurante') {
+    const legacySnap = await getDoc(ref);
+    if (!legacySnap.exists()) throw new Error('El pedido ya no existe.');
+    if ((legacySnap.data() as RestaurantOrder).restaurantId !== businessId) {
+      throw new Error('Este pedido pertenece a otro negocio.');
+    }
+    await updateRestaurantOrderStatus(orderId, status, user);
+    return;
   }
-  await updateRestaurantOrderStatus(orderId, status, user);
+
+  const next: Partial<Record<RestaurantOrderStatus, RestaurantOrderStatus>> = {
+    NUEVO: 'PREPARANDO',
+    PREPARANDO: 'LISTO',
+    LISTO: 'ENTREGADO',
+  };
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = { status, updatedAt: now };
+  if (status === 'PREPARANDO') {
+    patch.claimedById = user.id;
+    patch.claimedByName = user.name;
+  }
+  if (status === 'LISTO') patch.readyAt = now;
+  if (status === 'ENTREGADO') patch.deliveredAt = now;
+  if (status === 'CANCELADO') {
+    patch.cancelledAt = now;
+    patch.cancelledBy = user.name;
+  }
+
+  const changed = await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ref);
+    if (!snap.exists()) throw new Error('El pedido ya no existe.');
+    const current = snap.data() as RestaurantOrder;
+    if (current.restaurantId !== businessId) throw new Error('Este pedido pertenece a otro negocio.');
+    if (current.status === status) return null; // Reintento ya confirmado: no modificar fechas.
+    if (status === 'CANCELADO') {
+      if (!['NUEVO', 'PREPARANDO', 'LISTO'].includes(current.status)) {
+        throw new Error('El pedido ya fue entregado o cancelado; no puede cancelarse desde esta pantalla.');
+      }
+      if (current.billingStatus !== 'PENDIENTE') {
+        throw new Error('El pedido tiene un cobro registrado o desconocido. Revisa Caja antes de cancelarlo.');
+      }
+    } else if (next[current.status] !== status) {
+      throw new Error('El estado del pedido cambió en otro dispositivo. Actualiza la lista antes de continuar.');
+    }
+    transaction.update(ref, sanitizeFirestorePayload(patch));
+    return { orderType: current.orderType, tableNumber: current.tableNumber };
+  });
+
+  // Compatibilidad con el resumen público de mesa: falla independiente del
+  // cambio principal, como en el servicio heredado. No es una garantía atómica
+  // de espejo y requiere revisión adicional para QR de mesa multinegocio.
+  if (changed?.orderType === 'dine_in' && changed.tableNumber) {
+    await updateDoc(doc(db, PUBLIC_TABLE_ORDERS_COLLECTION, orderId), sanitizeFirestorePayload({
+      status, updatedAt: now,
+    })).catch((error) => console.warn('[ordersService] no se pudo sincronizar resumen público de mesa:', error));
+  }
 }
 
 export function subscribeToRestaurantOrders(
