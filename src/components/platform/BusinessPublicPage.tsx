@@ -27,7 +27,7 @@ import { hasPriceFrom, selectionKey, selectionSummary } from '../../lib/catalogO
 import type { OptionSelection } from '../../lib/catalogOptions';
 import { PublicOrderReceipts } from './PublicOrderReceipts';
 import { addPublicReceipt, readPublicReceipts } from '../../lib/publicOrderReceipts';
-import { publicCartAttemptFingerprint, getOrCreatePublicOrderAttempt, clearPublicOrderAttempt, discardPublicOrderAttemptAfterReview, PublicOrderAttemptReviewRequiredError } from '../../lib/publicOrderAttempt';
+import { publicCartAttemptFingerprint, getOrCreatePublicOrderAttemptCoordinated, clearPublicOrderAttempt, discardPublicOrderAttemptAfterReview, PublicOrderAttemptReviewRequiredError } from '../../lib/publicOrderAttempt';
 import { BusinessTableWelcome } from './BusinessTableWelcome';
 import { BusinessProductModal } from './BusinessProductModal';
 import { VipCardModal } from '../VipCardModal';
@@ -208,10 +208,14 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
     let code: string | undefined;
     let attemptedWrite = false;
     try {
-      // Persistir antes de escribir. El mismo carrito reintenta sobre el mismo documento.
-      const attemptId = getOrCreatePublicOrderAttempt(businessId, tableNumber, publicCartAttemptFingerprint(cart, guestCount));
-      // Abrir antes del await evita el bloqueo de ventanas; solo navegar si hay folio confirmado.
+      // Abrir con el gesto del usuario, ANTES de esperar el Web Lock.
+      // Nunca navegar con WhatsApp si Firestore no devuelve un folio.
       try { popup = whatsappNumber ? window.open('', '_blank') : null; } catch { /* WhatsApp es opcional. */ }
+      // Coordinar la creación inicial del ID entre pestañas cuando Web Locks existe.
+      // Persistir y comprobar la referencia ANTES de enviar a Firestore.
+      const attemptId = await getOrCreatePublicOrderAttemptCoordinated(
+        businessId, tableNumber, publicCartAttemptFingerprint(cart, guestCount),
+      );
       attemptedWrite = true;
       const saved = await createBusinessRestaurantOrder(businessId, {
         orderType: 'pickup',
