@@ -1,4 +1,5 @@
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
+import assert from 'node:assert/strict';
 import { doc, setDoc, updateDoc, deleteDoc, getDoc, getDocs, collection } from 'firebase/firestore';
 import { readFileSync } from 'node:fs';
 const env=await initializeTestEnvironment({projectId:'gioteautomatizo-launch-security-test',firestore:{rules:readFileSync('docs/firestore.launch-security.STAGED.rules','utf8'),host:'127.0.0.1',port:8080}});
@@ -36,6 +37,14 @@ await assertSucceeds(updateDoc(doc(db('manager'),'businesses/business-a/catalog/
 await assertFails(updateDoc(doc(db('manager'),'businesses/business-b/catalog/draft'),{name:'Negocio ajeno'}));
 await assertFails(getDoc(doc(guest(),'businesses/business-b/catalog/draft')));
 await assertSucceeds(setDoc(doc(guest(),'restaurant_orders/public'),order('business-a')));
+// Reintento anónimo con ID estable: la segunda escritura es update, no otro create.
+const webId = 'web_0123456789abcdef0123456789abcdef';
+await assertSucceeds(setDoc(doc(guest(),'restaurant_orders',webId),order('business-a')));
+await assertFails(setDoc(doc(guest(),'restaurant_orders',webId),{...order('business-a'),code:'RETRY-002'}));
+await env.withSecurityRulesDisabled(async ctx=>{
+  const saved = await getDoc(doc(ctx.firestore(),'restaurant_orders',webId));
+  assert.equal(saved.data().code,'AAA-123','Retry must not overwrite original order');
+});
 // QR de mesa multinegocio conserva mesa/personas en el pedido sin crear sesión heredada.
 await assertSucceeds(setDoc(doc(guest(),'restaurant_orders/table-qr'),{...order('business-a'),orderOrigin:'MESA_QR',tableNumber:3,notes:'Mesa 3 · 4 personas'}));
 await assertFails(setDoc(doc(guest(),'restaurant_orders/unpublished'),order('business-b')));
