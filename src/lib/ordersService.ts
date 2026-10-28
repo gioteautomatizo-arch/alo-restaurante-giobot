@@ -231,12 +231,15 @@ export async function createBusinessRestaurantOrder(
     updatedAt: now,
   }) as Omit<RestaurantOrder, 'id'>;
 
-  const ref = orderDocumentId === undefined
-    ? await addDoc(collection(db, ORDERS_COLLECTION), payload)
-    : doc(db, ORDERS_COLLECTION, orderDocumentId);
-  // Reintentar el mismo ID nunca crea un segundo documento. Las reglas de
-  // actualización de pedidos públicos deben denegar sobrescrituras anónimas.
-  if (orderDocumentId !== undefined) await setDoc(ref, payload);
+  // Calientito heredado tiene reglas de update más amplias para usuarios internos:
+  // no usar setDoc estable allí hasta revisar su contrato, pues podría sobrescribir.
+  const stableWebId = orderDocumentId !== undefined && businessId !== 'alo-restaurante';
+  const ref = stableWebId
+    ? doc(db, ORDERS_COLLECTION, orderDocumentId!)
+    : await addDoc(collection(db, ORDERS_COLLECTION), payload);
+  // En los otros tenants, reintentar el mismo ID no crea otro documento;
+  // las reglas de update deniegan reemplazar un pedido web existente.
+  if (stableWebId) await setDoc(ref, payload);
 
   if (payload.orderType === 'dine_in' && payload.tableNumber) {
     const publicPayload: Omit<PublicTableOrder, 'id'> = {
