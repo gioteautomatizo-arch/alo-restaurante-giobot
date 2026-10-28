@@ -97,7 +97,10 @@ export function getOrCreatePublicOrderAttempt(
       if (now < attempt.createdAt) throw new PublicOrderAttemptReviewRequiredError('clock');
       if (now - attempt.createdAt > TTL_MS) throw new PublicOrderAttemptReviewRequiredError('expired');
       // Migración de intentos de la pestaña y sincronización con otras pestañas.
-      if (shared && sharedRaw === null) shared.setItem(key, raw);
+      if (shared && sharedRaw === null) {
+        shared.setItem(key, raw);
+        if (shared.getItem(key) !== raw) throw new Error('Migración no persistida.');
+      }
       if (tab && tabRaw === null) {
         try { tab.setItem(key, raw); } catch { /* la referencia compartida basta */ }
       }
@@ -109,7 +112,12 @@ export function getOrCreatePublicOrderAttempt(
     const encoded = JSON.stringify({ id, fingerprint, createdAt: now });
     // Escribir primero la referencia compartida; sin ella se conserva el
     // comportamiento previo de una sola pestaña.
-    if (shared) shared.setItem(key, encoded);
+    if (shared) {
+      shared.setItem(key, encoded);
+      // Algunos navegadores/extensiones aceptan setItem sin persistirlo.
+      // No permitir la escritura si la referencia compartida no se conserva.
+      if (shared.getItem(key) !== encoded) throw new Error('Intento compartido no persistido.');
+    }
     if (tab) {
       try { tab.setItem(key, encoded); } catch (error) {
         if (!shared) throw error;
