@@ -64,6 +64,10 @@ deny(withLine({ ...regular, quantity: Infinity }), 'Infinito');
 deny({ lines: [] }, 'Pedido vacío');
 deny({ lines: Array(51).fill(regular) }, 'Demasiadas partidas');
 deny({ lines: [regular, regular] }, 'Partida duplicada');
+deny({ lines: [
+  { ...regular, selections: { guiso: ['Res'], extras: ['Salsa', 'Queso'] } },
+  { ...regular, selections: { guiso: ['Res'], extras: ['Queso', 'Salsa'] } },
+] }, 'La misma selección en distinto orden es duplicada');
 deny(withLine({ ...regular, selections: {} }), 'Opción requerida ausente');
 deny(withLine({ ...regular, selections: { guiso: ['Pollo', 'Res'] } }), 'Selección única múltiple');
 deny(withLine({ ...regular, selections: { guiso: ['Pato'] } }), 'Opción inexistente');
@@ -77,11 +81,11 @@ deny({ catalog: { ...catalog, items: [{ ...catalog.items[0], price: -1 }] } }, '
 deny({ catalog: { ...catalog, items: [{ ...catalog.items[0], price: Infinity }] } }, 'Precio infinito');
 deny({ catalog: { ...catalog, items: [{ ...catalog.items[0], optionGroups: [
   { id: 'guiso', name: 'Guiso', required: true, multiple: false, choices: [{name: 'Res', price: 5}, {name: 'res', price: 10}] },
-] }] } }, 'Opciones duplicadas por mayúsculas');
+] }] }, lines: [{ productId: 'a-regular', quantity: 1, selections: { guiso: ['Res'] } }] }, 'Opciones duplicadas por mayúsculas');
 deny({ catalog: { ...catalog, items: [{ ...catalog.items[0], optionGroups: [
   { id: 'guiso', name: 'Guiso', required: true, multiple: false, choices: [{name: 'Res', price: 5}] },
   { id: 'guiso', name: 'Duplicado', required: false, multiple: true, choices: [{name: 'Queso', price: 10}] },
-] }] } }, 'Grupos duplicados');
+] }] }, lines: [{ productId: 'a-regular', quantity: 1, selections: { guiso: ['Res'] } }] }, 'Grupos duplicados');
 deny({ catalog: { ...catalog, items: [{ ...catalog.items[0], price: 1_000_000 }] },
   lines: [{ ...regular, quantity: 2 }] }, 'Tope de importe');
 const decimal = quotePublicOrderFromTrustedCatalog({
