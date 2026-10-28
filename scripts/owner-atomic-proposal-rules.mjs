@@ -166,12 +166,33 @@ export function buildRegistrationFreezeProposalRules(staged) {
     'ALTO: cambió el contrato de alta; revisar la congelación.');
   assert.equal(staged.split(deleteAnchor).length, 2,
     'ALTO: cambió el permiso de borrado; revisar la congelación.');
-  return staged.replace(createAnchor,
+  const frozen = staged.replace(createAnchor,
     `      // Puerta de migración en emulador: ninguna nueva alta de negocio.
       allow create: if false;`)
     .replace(deleteAnchor,
       `      // Preservar ID y datos dependientes durante la transición.
       allow delete: if false;`);
+
+  // La misma congelación sirve ANTES y DESPUÉS del contrato 3-doc.
+  // Después del corte, un OWNER no debe poder borrar/alterar el marcador 3
+  // mediante una actualización ordinaria: el inventario lo clasificaría
+  // erróneamente como legacy. Para raíces antiguas sin marcador, null == null
+  // permite editar branding y operar durante ambas congelaciones.
+  const rootEnd = '    match /businesses/{businessId}/employees/{employeeUserId} {';
+  assert.equal(frozen.split(rootEnd).length, 2,
+    'ALTO: cambió el límite del bloque raíz; revisar freeze.');
+  const startIndex = frozen.indexOf(businessAnchor);
+  const endIndex = frozen.indexOf(rootEnd);
+  assert(startIndex >= 0 && endIndex > startIndex,
+    'ALTO: bloque raíz de freeze ambiguo.');
+  const root = frozen.slice(startIndex, endIndex);
+  const updateAnchor = '      allow update: if isSignedIn()';
+  assert.equal(root.split(updateAnchor).length, 3,
+    'ALTO: freeze debe proteger ambas rutas de actualización raíz.');
+  const guarded = root.replaceAll(updateAnchor,
+    `      allow update: if request.resource.data.get('registrationContractVersion', null) == resource.data.get('registrationContractVersion', null)
+        && isSignedIn()`);
+  return frozen.slice(0, startIndex) + guarded + frozen.slice(endIndex);
 }
 
 
