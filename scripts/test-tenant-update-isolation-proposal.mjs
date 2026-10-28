@@ -46,9 +46,10 @@ const sessionReopen = id => ({
   updatedAt: '2026-10-27T00:01:00.000Z',
 });
 
-async function runScenario(projectId, rules, diagnostic) {
+async function runScenario(rules, diagnostic) {
   const env = await initializeTestEnvironment({
-    projectId, firestore: { rules, host: '127.0.0.1', port: 8080 },
+    projectId: 'gioteautomatizo-tenant-update-isolation-test',
+    firestore: { rules, host: '127.0.0.1', port: 8080 },
   });
   try {
     await env.withSecurityRulesDisabled(async ctx => {
@@ -95,10 +96,11 @@ async function runScenario(projectId, rules, diagnostic) {
     assert.equal((await getDoc(doc(bob, 'table_sessions', b + '-session'))).data()?.restaurantId, b);
     console.log('PASS propuesta aislada: 7 módulos operativos + mesas/sesiones sin traslado; ediciones legítimas A/B continúan.');
   } finally {
+    await env.clearFirestore();
     await env.cleanup();
   }
 }
 
-await runScenario('gioteautomatizo-tenant-reassignment-staged-diagnostic', staged, true);
-await runScenario('gioteautomatizo-tenant-reassignment-proposal-test', proposed, false);
+await runScenario(staged, true);
+await runScenario(proposed, false);
 console.warn('PENDIENTE: reglas STAGED/desplegadas NO corregidas; falta revisión independiente y autorización de migración. No publicar.');
