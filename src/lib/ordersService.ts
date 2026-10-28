@@ -8,6 +8,7 @@ import {
   setDoc,
   updateDoc,
   runTransaction,
+  writeBatch,
   where,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -234,14 +235,22 @@ export async function createBusinessRestaurantOrder(
   // Calientito heredado tiene reglas de update más amplias para usuarios internos:
   // no usar setDoc estable allí hasta revisar su contrato, pues podría sobrescribir.
   const stableWebId = orderDocumentId !== undefined && businessId !== 'alo-restaurante';
+  const tableOrder = payload.orderType === 'dine_in' && !!payload.tableNumber;
+  const atomicTenantTableOrder = tableOrder && businessId !== 'alo-restaurante';
+  // El ID se reserva localmente para el batch; todavía no existe un pedido
+  // confirmado hasta que se escriben pedido y resumen juntos.
   const ref = stableWebId
     ? doc(db, ORDERS_COLLECTION, orderDocumentId!)
-    : await addDoc(collection(db, ORDERS_COLLECTION), payload);
-  // En los otros tenants, reintentar el mismo ID no crea otro documento;
-  // las reglas de update deniegan reemplazar un pedido web existente.
-  if (stableWebId) await setDoc(ref, payload);
+    : atomicTenantTableOrder
+      ? doc(collection(db, ORDERS_COLLECTION))
+      : await addDoc(collection(db, ORDERS_COLLECTION), payload);
 
-  if (payload.orderType === 'dine_in' && payload.tableNumber) {
+  if (stableWebId && !atomicTenantTableOrder) {
+    // Reintentar un ID web existente no debe sobrescribir la comanda.
+    await setDoc(ref, payload);
+  }
+
+  if (tableOrder) {
     const publicPayload: Omit<PublicTableOrder, 'id'> = {
       orderId: ref.id,
       code: payload.code,
@@ -258,8 +267,20 @@ export async function createBusinessRestaurantOrder(
       createdAt: payload.createdAt,
       updatedAt: payload.updatedAt,
     };
-    await setDoc(doc(db, PUBLIC_TABLE_ORDERS_COLLECTION, ref.id), sanitizeFirestorePayload(publicPayload))
-      .catch((error) => console.warn('[ordersService] no se pudo publicar resumen de mesa del tenant:', error));
+    const mirrorRef = doc(db, PUBLIC_TABLE_ORDERS_COLLECTION, ref.id);
+    const mirrorPayload = sanitizeFirestorePayload(publicPayload);
+    if (atomicTenantTableOrder) {
+      // Un fallo de reglas, permisos o red en el resumen debe revertir también
+      // el pedido principal. No devolver un folio de mesa sin resumen público.
+      const batch = writeBatch(db);
+      batch.set(ref, payload);
+      batch.set(mirrorRef, mirrorPayload);
+      await batch.commit();
+    } else {
+      // Mantener Calientito sin cambios hasta revisar sus reglas históricas.
+      await setDoc(mirrorRef, mirrorPayload)
+        .catch((error) => console.warn('[ordersService] no se pudo publicar resumen de mesa del tenant:', error));
+    }
   }
 
   return { ...payload, id: ref.id } as RestaurantOrder;
