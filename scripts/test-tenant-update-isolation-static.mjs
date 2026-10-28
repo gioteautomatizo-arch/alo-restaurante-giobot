@@ -9,7 +9,9 @@ const operational = ['staff_users', 'shifts', 'expenses', 'cxc_records',
 const other = ['tables', 'table_sessions', 'table_service_requests',
   'public_table_orders', 'restaurant_orders'];
 function blockFor(rules, name) {
-  const anchor = '    match /' + name + '/{';
+  const anchor = name.includes('{')
+    ? '    match /' + name + ' {'
+    : '    match /' + name + '/{';
   const start = rules.indexOf(anchor);
   assert(start >= 0, 'Falta ruta ' + name);
   const end = rules.indexOf('\n    match /', start + anchor.length);
