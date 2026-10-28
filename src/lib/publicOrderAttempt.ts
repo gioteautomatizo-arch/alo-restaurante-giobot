@@ -136,8 +136,10 @@ export function discardPublicOrderAttemptAfterReview(businessId: string, tableNu
   try {
     const key = publicOrderAttemptKey(businessId, tableNumber);
     const { tab, shared } = attemptStores(key);
-    if (shared) shared.removeItem(key);
+    // Si falla la eliminación de pestaña, conservar intacta la referencia
+    // compartida para que otras pestañas no creen un folio nuevo.
     if (tab) tab.removeItem(key);
+    if (shared) shared.removeItem(key);
     if ((shared && shared.getItem(key) !== null) || (tab && tab.getItem(key) !== null)) throw new Error('No se pudo eliminar el intento.');
   } catch {
     throw new Error('No se pudo iniciar otro intento seguro. Revisa el almacenamiento del navegador.');
