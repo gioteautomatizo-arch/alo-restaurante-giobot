@@ -86,7 +86,7 @@ export async function commitTrustedPublicOrder(
   const profileRef = db.doc(`publicBusinessProfiles/${businessId}`);
   const catalogRef = db.doc(`businesses/${businessId}/catalog/menu_catalog`);
   const orderRef = db.doc(`restaurant_orders/${orderId}`);
-  const mirrorRef = draft.orderType === 'dine_in' ? db.doc(`public_table_orders/${orderId}`) : null;
+  // Revisar colisiones de espejo incluso para pickup: un ID no puede reciclarse.\n  const mirrorRef = db.doc(`public_table_orders/${orderId}`);
   const now = new Date().toISOString();
 
   return db.runTransaction(async tx => {
@@ -99,7 +99,7 @@ export async function commitTrustedPublicOrder(
       }
       const savedOrder = await tx.get(orderRef);
       if (!savedOrder.exists || savedOrder.data()?.restaurantId !== businessId ||
-          savedOrder.data()?.total !== prior.total) {
+          savedOrder.data()?.total !== prior.total ||\n          savedOrder.data()?.code !== prior.code || typeof prior.code !== 'string') {
         throw new Error('INTEGRIDAD_PEDIDO: pedido previo ausente o discordante.');
       }
       if (mirrorRef) {
@@ -115,11 +115,11 @@ export async function commitTrustedPublicOrder(
     const profile = await tx.get(profileRef);
     const catalog = await tx.get(catalogRef);
     const existingOrder = await tx.get(orderRef);
-    const existingMirror = mirrorRef ? await tx.get(mirrorRef) : null;
+    const existingMirror = await tx.get(mirrorRef);
     if (!profile.exists || !catalog.exists) {
       throw new Error('PEDIDO_NO_VALIDO: negocio o catálogo no disponible.');
     }
-    if (existingOrder.exists || existingMirror?.exists) {
+    if (existingOrder.exists || existingMirror.exists) {
       throw new Error('CONFLICTO_ID: identificador de pedido o espejo ya ocupado.');
     }
     const quote = quotePublicOrderFromTrustedCatalog({
