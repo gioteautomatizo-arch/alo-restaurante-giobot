@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   publicOrderAttemptKey, publicCartAttemptFingerprint,
-  getOrCreatePublicOrderAttempt, clearPublicOrderAttempt,
+  getOrCreatePublicOrderAttempt, getOrCreatePublicOrderAttemptCoordinated, clearPublicOrderAttempt,
   discardPublicOrderAttemptAfterReview, PublicOrderAttemptReviewRequiredError,
 } from '../src/lib/publicOrderAttempt.ts';
 import type { PublicCartLine } from '../src/lib/businessPublicPage.ts';
@@ -10,12 +11,15 @@ const storage = new Map<string, string>();
 const secondTab = new Map<string, string>();
 const sharedStorage = new Map<string, string>();
 let activeTab = storage;
+const tabContext = new AsyncLocalStorage<Map<string, string>>();
+const currentTab = () => tabContext.getStore() ?? activeTab;
+const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
 const original = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
 const originalLocal = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
 Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: {
-  getItem: (key: string) => activeTab.get(key) ?? null,
-  setItem: (key: string, value: string) => { activeTab.set(key, value); },
-  removeItem: (key: string) => { activeTab.delete(key); },
+  getItem: (key: string) => currentTab().get(key) ?? null,
+  setItem: (key: string, value: string) => { currentTab().set(key, value); },
+  removeItem: (key: string) => { currentTab().delete(key); },
 }});
 Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
   getItem: (key: string) => sharedStorage.get(key) ?? null,
@@ -137,6 +141,68 @@ try {
   assert.throws(() => getOrCreatePublicOrderAttempt('silent-storage', undefined, fp, now),
     /No se pudo conservar/, 'Silently dropped shared write must fail closed');
   Object.defineProperty(globalThis, 'localStorage', workingLocal);
+  // Sin localStorage y con sessionStorage que descarta setItem, jamás enviar:
+  // la pérdida de ACK permitiría otro documento con ID nuevo.
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    getItem: () => { throw new Error('shared disabled'); },
+  }});
+  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: {
+    getItem: () => null,
+    setItem: () => {}, // escritura silenciosamente ignorada
+    removeItem: () => {},
+  }});
+  assert.throws(() => getOrCreatePublicOrderAttempt('silent-tab', undefined, fp, now),
+    /No se pudo conservar/, 'Silently dropped session-only write must fail closed');
+  Object.defineProperty(globalThis, 'sessionStorage', workingSession);
+  Object.defineProperty(globalThis, 'localStorage', workingLocal);
+
+  // Simular Web Locks con exclusión por clave y dos contextos de pestaña
+  // separados. La referencia común debe ganar antes del segundo callback.
+  const lockQueue = new Map<string, Promise<void>>();
+  const lockNames: string[] = [];
+  const locks = {
+    request: async (name: string, options: {mode: string}, callback: () => string | Promise<string>) => {
+      lockNames.push(name);
+      assert.equal(options.mode, 'exclusive');
+      const previous = lockQueue.get(name) ?? Promise.resolve();
+      let release!: () => void;
+      const finished = new Promise<void>(resolve => { release = resolve; });
+      lockQueue.set(name, previous.then(() => finished));
+      await previous;
+      try { return await callback(); } finally { release(); }
+    },
+  };
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { locks } });
+  const concurrentA = tabContext.run(storage, () =>
+    getOrCreatePublicOrderAttemptCoordinated('locked-tabs', undefined, fp, now));
+  const concurrentB = tabContext.run(secondTab, () =>
+    getOrCreatePublicOrderAttemptCoordinated('locked-tabs', undefined, fp, now));
+  const [lockedA, lockedB] = await Promise.all([concurrentA, concurrentB]);
+  assert.equal(lockedA, lockedB, 'Two concurrent tabs under Web Lock must choose one Firestore ID');
+  assert.equal(JSON.parse(storage.get(publicOrderAttemptKey('locked-tabs'))!).id, lockedA);
+  assert.equal(JSON.parse(secondTab.get(publicOrderAttemptKey('locked-tabs'))!).id, lockedA);
+  assert.deepEqual(lockNames, [
+    'gio-public-order:' + publicOrderAttemptKey('locked-tabs'),
+    'gio-public-order:' + publicOrderAttemptKey('locked-tabs'),
+  ]);
+  await assert.rejects(
+    getOrCreatePublicOrderAttemptCoordinated('locked-tabs', undefined, changedFingerprint, now),
+    PublicOrderAttemptReviewRequiredError,
+    'Web Lock must preserve explicit review errors');
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {
+    locks: { request: async () => { throw new Error('locks denied'); } },
+  }});
+  await assert.rejects(
+    getOrCreatePublicOrderAttemptCoordinated('lock-failure', undefined, fp, now),
+    /No se pudo coordinar/,
+    'An available but failing Web Locks API must not fall back to an unsafe write');
+  assert.equal(sharedStorage.has(publicOrderAttemptKey('lock-failure')), false);
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {} });
+  const noLocks = await getOrCreatePublicOrderAttemptCoordinated('no-locks', undefined, fp, now);
+  assert.equal(noLocks, getOrCreatePublicOrderAttempt('no-locks', undefined, fp, now),
+    'Older browsers retain existing best-effort storage behavior');
+  if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+  else Reflect.deleteProperty(globalThis, 'navigator');
   for (const storageName of ['sessionStorage', 'localStorage']) {
     Object.defineProperty(globalThis, storageName, { configurable: true, value: {
       getItem: () => { throw new Error('storage disabled'); },
@@ -147,10 +213,12 @@ try {
   assert.throws(() => getOrCreatePublicOrderAttempt('business-a', undefined, fp, now), /No se pudo conservar/);
   clearPublicOrderAttempt('business-a', undefined, first);
   assert.throws(() => getOrCreatePublicOrderAttempt('', undefined, fp, now), /inválida/);
-  console.log('PASS: intento web compartido entre pestañas, conflicto y migración legacy; carrito cambiado, expiración y reloj bloquean ID nuevo hasta revisión; almacenamiento fail-closed.');
+  console.log('PASS: intento web durable y Web Locks simulado entre pestañas; conflicto, revisión, migración y almacenamiento fail-closed.');
 } finally {
   if (original) Object.defineProperty(globalThis, 'sessionStorage', original);
   else Reflect.deleteProperty(globalThis, 'sessionStorage');
   if (originalLocal) Object.defineProperty(globalThis, 'localStorage', originalLocal);
   else Reflect.deleteProperty(globalThis, 'localStorage');
+  if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+  else Reflect.deleteProperty(globalThis, 'navigator');
 }
