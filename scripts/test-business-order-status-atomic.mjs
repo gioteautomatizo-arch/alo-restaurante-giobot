@@ -41,6 +41,10 @@ const mocks = {
           update: (ref, patch) => updates.push({ key: key(ref), patch }),
         };
         const result = await callback(tx);
+        // Una escritura de espejo denegada aborta el lote completo, como Firestore.
+        if (globalThis.testRejectMirrorWrite && updates.some(update => update.key.startsWith('public_table_orders/'))) {
+          throw new Error('Simulated mirror write rejection');
+        }
         for (const update of updates) {
           const previousDoc = globalThis.testDocs.get(update.key);
           if (!previousDoc) throw new Error('Documento desaparecido');
@@ -76,6 +80,7 @@ globalThis.testReads = [];
 globalThis.testLegacyWrites = [];
 globalThis.testTransactionWrites = [];
 globalThis.testTransactionQueue = Promise.resolve();
+globalThis.testRejectMirrorWrite = false;
 const user = { id: 'staff-a', name: 'Encargado A' };
 const docKey = (id) => 'restaurant_orders/' + id;
 const sample = (restaurantId, status = 'NUEVO', billingStatus = 'PENDIENTE', orderType = 'pickup') => ({
@@ -141,9 +146,59 @@ await assert.rejects(updateBusinessRestaurantOrderStatus('demo-b', 'skip', 'ENTR
 assert.equal(read('skip').status, 'NUEVO');
 
 put('table', { ...sample('demo-a', 'NUEVO', 'PENDIENTE', 'dine_in'), tableNumber: 1 });
-globalThis.testDocs.set('public_table_orders/table', { status: 'NUEVO', restaurantId: 'demo-a' });
+globalThis.testDocs.set('public_table_orders/table', {
+  status: 'NUEVO', restaurantId: 'demo-a', orderId: 'table', tableNumber: 1,
+  code: 'DEMO-001', updatedAt: '2026-10-28T10:00:00Z',
+});
 await updateBusinessRestaurantOrderStatus('demo-a', 'table', 'PREPARANDO', user);
 assert.equal(globalThis.testDocs.get('public_table_orders/table').status, 'PREPARANDO');
+assert.equal(globalThis.testDocs.get('public_table_orders/table').updatedAt, read('table').updatedAt,
+  'Pedido y resumen comparten la fecha de transición');
+assert.ok(globalThis.testTransactionWrites.some(x => x.key === 'public_table_orders/table'),
+  'El espejo se escribe dentro de la transacción, no después');
+const tableTimestamp = read('table').updatedAt;
+globalThis.testDocs.set('public_table_orders/table', {
+  ...globalThis.testDocs.get('public_table_orders/table'), status: 'NUEVO',
+  updatedAt: '2026-10-28T10:00:00Z',
+});
+await updateBusinessRestaurantOrderStatus('demo-a', 'table', 'PREPARANDO', user);
+assert.equal(read('table').updatedAt, tableTimestamp, 'Reintento no reescribe fecha principal');
+assert.equal(globalThis.testDocs.get('public_table_orders/table').status, 'PREPARANDO',
+  'Reintento repara un resumen obsoleto');
+assert.equal(globalThis.testDocs.get('public_table_orders/table').updatedAt, tableTimestamp);
+put('table-atomic-fail', { ...sample('demo-a', 'NUEVO', 'PENDIENTE', 'dine_in'), tableNumber: 1 });
+globalThis.testDocs.set('public_table_orders/table-atomic-fail', {
+  ...globalThis.testDocs.get('public_table_orders/table'), orderId: 'table-atomic-fail', status: 'NUEVO',
+});
+globalThis.testRejectMirrorWrite = true;
+await assert.rejects(
+  updateBusinessRestaurantOrderStatus('demo-a', 'table-atomic-fail', 'PREPARANDO', user),
+  /Simulated mirror write rejection/,
+);
+globalThis.testRejectMirrorWrite = false;
+assert.equal(read('table-atomic-fail').status, 'NUEVO', 'Fallo de espejo revierte pedido principal');
+assert.equal(globalThis.testDocs.get('public_table_orders/table-atomic-fail').status, 'NUEVO');
+put('table-mismatch', { ...sample('demo-a', 'NUEVO', 'PENDIENTE', 'dine_in'), tableNumber: 1 });
+globalThis.testDocs.set('public_table_orders/table-mismatch', {
+  ...globalThis.testDocs.get('public_table_orders/table'), orderId: 'table-mismatch',
+  restaurantId: 'demo-b',
+});
+await assert.rejects(updateBusinessRestaurantOrderStatus('demo-a', 'table-mismatch', 'PREPARANDO', user),
+  /resumen de mesa no coincide/);
+assert.equal(read('table-mismatch').status, 'NUEVO');
+put('table-no-mirror', { ...sample('demo-a', 'NUEVO', 'PENDIENTE', 'dine_in'), tableNumber: 1 });
+const originalWarn = console.warn;
+const warnings = [];
+console.warn = (...args) => warnings.push(args.join(' '));
+try {
+  await updateBusinessRestaurantOrderStatus('demo-a', 'table-no-mirror', 'PREPARANDO', user);
+} finally {
+  console.warn = originalWarn;
+}
+assert.equal(read('table-no-mirror').status, 'PREPARANDO',
+  'Espejo histórico ausente no paraliza cocina');
+assert.ok(warnings.some(warning => warning.includes('PENDIENTE') && warning.includes('table-no-mirror')),
+  'La falta de espejo queda marcada como pendiente, no como conciliada');
 assert.equal(globalThis.testLegacyWrites.filter(x => x.key === 'restaurant_orders/table').length, 0,
   'Tenant nuevo escribe pedido únicamente por transacción');
 
