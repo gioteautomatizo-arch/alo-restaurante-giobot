@@ -58,6 +58,8 @@ jobs:
         run: node scripts/test-tenant-update-isolation-static.mjs
       - name: Test tenant module sorting after tenant-only query (synthetic, no Firebase)
         run: node --import tsx scripts/test-tenant-module-sort.mts
+      - name: Preflight nested tenant historical identity and full inventory coverage (synthetic, no Firebase)
+        run: node scripts/test-tenant-module-inventory-preflight.mjs
       - name: Test historical business handle migration preflight (synthetic inventory, no Firebase)
         run: node scripts/test-business-handle-migration-preflight.mjs
       - name: Diagnose registration cutover and fail-closed rollback (read-only, no Firebase)
