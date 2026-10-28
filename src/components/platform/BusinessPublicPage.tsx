@@ -1,7 +1,7 @@
 import { createBusinessRestaurantOrder } from '../../lib/ordersService';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Award, Clock, Facebook, Instagram, MapPin, MessageCircle, Minus, Plus, Search, ShoppingBag, Sparkles, Store, Utensils, X } from 'lucide-react';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, getDocFromServer } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { subscribeToBusinessCatalog } from '../../lib/businessCatalogService';
 import type { BusinessCatalogItem } from '../../lib/businessCatalogService';
@@ -33,6 +33,34 @@ import { BusinessProductModal } from './BusinessProductModal';
 import { VipCardModal } from '../VipCardModal';
 import { getVipProfile, VIP_DATA_EVENT } from '../../lib/vipStorage';
 import type { VipProfile } from '../../types';
+
+/** Fallos previos a la escritura: nunca se deben describir como un pedido incierto. */
+class PublicCheckoutPreflightError extends Error {}
+
+/**
+ * Lectura obligatoria desde el servidor (no desde la caché del navegador).
+ * Reduce envíos con menús obsoletos, pero NO es validación autoritativa:
+ * el catálogo puede cambiar después de leerlo y el cliente no es confiable.
+ */
+async function readFreshPublicCheckoutCatalog(businessId: string): Promise<BusinessCatalogItem[]> {
+  let profile;
+  let catalog;
+  try {
+    [profile, catalog] = await Promise.all([
+      getDocFromServer(doc(db, 'publicBusinessProfiles', businessId)),
+      getDocFromServer(doc(db, 'businesses', businessId, 'catalog', 'menu_catalog')),
+    ]);
+  } catch {
+    throw new PublicCheckoutPreflightError('No pudimos comprobar en el servidor si el negocio sigue publicado y el menú está vigente. Conservamos tu carrito; revisa tu conexión y vuelve a intentar. No se envió un pedido nuevo.');
+  }
+  if (!profile.exists() || profile.data().published !== true) {
+    throw new PublicCheckoutPreflightError('Este negocio ya no está publicado. Conservamos tu carrito, pero no podemos enviar el pedido.');
+  }
+  if (!catalog.exists() || catalog.data().businessId !== businessId || !Array.isArray(catalog.data().items)) {
+    throw new PublicCheckoutPreflightError('No pudimos verificar un catálogo válido de este negocio. Conservamos tu carrito; no se envió el pedido.');
+  }
+  return catalog.data().items as BusinessCatalogItem[];
+}
 
 /**
  * Página pública de un negocio: lo que ve el cliente al abrir su enlace (#negocio/{id}).
@@ -211,6 +239,15 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
       // Abrir con el gesto del usuario, ANTES de esperar el Web Lock.
       // Nunca navegar con WhatsApp si Firestore no devuelve un folio.
       try { popup = whatsappNumber ? window.open('', '_blank') : null; } catch { /* WhatsApp es opcional. */ }
+      // El listener puede estar atrasado u offline. Comprobar publicación, precio,
+      // disponibilidad y opciones con lecturas de servidor ANTES de crear el ID
+      // o realizar cualquier escritura. No reemplaza validación en backend.
+      const freshItems = await readFreshPublicCheckoutCatalog(businessId);
+      setItems(freshItems);
+      setCatalogStatus('ready');
+      if (outdatedPublicCartKeys(cart, freshItems).length > 0) {
+        throw new PublicCheckoutPreflightError('El menú cambió: algún producto, precio, disponibilidad u opción ya no coincide. Conservamos tu carrito; quita los productos que cambiaron y vuelve a elegirlos. No se envió el pedido.');
+      }
       // Coordinar la creación inicial del ID entre pestañas cuando Web Locks existe.
       // Persistir y comprobar la referencia ANTES de enviar a Firestore.
       const attemptId = await getOrCreatePublicOrderAttemptCoordinated(
@@ -249,7 +286,9 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
       setAttemptNeedsReview(false);
     } catch (err) {
       console.warn('No se pudo registrar el pedido en el negocio:', err);
-      if (err instanceof PublicOrderAttemptReviewRequiredError) {
+      if (err instanceof PublicCheckoutPreflightError) {
+        setSendError(err.message);
+      } else if (err instanceof PublicOrderAttemptReviewRequiredError) {
         setAttemptNeedsReview(true);
         setSendError(err.message);
       } else {
