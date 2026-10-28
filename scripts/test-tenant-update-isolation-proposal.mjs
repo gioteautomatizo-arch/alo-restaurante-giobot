@@ -58,12 +58,30 @@ async function runScenario(rules, diagnostic) {
         await setDoc(doc(db, 'businesses', id), { restaurantId: id, ownerUserId: uid });
         await setDoc(doc(db, 'businessMemberships', id + '_' + uid),
           { restaurantId: id, userId: uid, role: 'OWNER', active: true });
+        // Bob también colabora en A: ni un usuario con acceso a ambos tenants
+        // puede reasignar un documento de B a A.
+        if (id === a) await setDoc(doc(db, 'businessMemberships', a + '_bob'),
+          { restaurantId: a, userId: 'bob', role: 'WAITER', active: true });
         for (const [collection, fields] of fixtures) {
           await setDoc(doc(db, collection, id + '-record'), { restaurantId: id, ...fields });
         }
         await setDoc(doc(db, 'tables', id + '-table'), table(id));
         await setDoc(doc(db, 'table_sessions', id + '-session'), session(id));
+        await setDoc(doc(db, 'table_service_requests', id + '-request'), {
+          restaurantId: id, status: 'PENDIENTE', tableNumber: 1,
+          requestType: 'LLAMAR_MESERO', createdAt: '2026-10-27T00:00:00.000Z',
+        });
+        await setDoc(doc(db, 'public_table_orders', id + '-order'), {
+          restaurantId: id, orderId: id + '-order', tableNumber: 1,
+          code: id + '-code', items: [{ name: 'Prueba', quantity: 1 }],
+          total: 10, status: 'NUEVO', createdAt: '2026-10-27T00:00:00.000Z',
+          updatedAt: '2026-10-27T00:00:00.000Z',
+        });
       }
+      await setDoc(doc(db, 'restaurant_orders', 'legacy-order'), {
+        restaurantId: 'alo-restaurante', code: 'legacy-order', status: 'NUEVO',
+        items: [{ name: 'Prueba', quantity: 1 }], total: 10,
+      });
     });
     const alice = env.authenticatedContext('alice').firestore();
     const bob = env.authenticatedContext('bob').firestore();
@@ -71,11 +89,17 @@ async function runScenario(rules, diagnostic) {
     const expenseB = doc(alice, 'expenses', b + '-record');
     const tableB = doc(visitor, 'tables', b + '-table');
     const sessionB = doc(visitor, 'table_sessions', b + '-session');
+    const serviceB = doc(bob, 'table_service_requests', b + '-request');
+    const publicOrderB = doc(bob, 'public_table_orders', b + '-order');
+    const legacyOrder = doc(bob, 'restaurant_orders', 'legacy-order');
     if (diagnostic) {
       await assertSucceeds(updateDoc(expenseB, { restaurantId: a, amount: 999 }));
       await assertSucceeds(updateDoc(tableB, { restaurantId: a, status: 'OCUPADA' }));
       await assertSucceeds(updateDoc(sessionB, sessionReopen(a)));
-      console.warn('PENDIENTE SEGURIDAD STAGED: miembro de A trasladó gasto de B; visitante trasladó mesa y sesión de B a A (solo emulador).');
+      await assertSucceeds(updateDoc(serviceB, { restaurantId: a }));
+      await assertSucceeds(updateDoc(publicOrderB, { restaurantId: a }));
+      await assertSucceeds(updateDoc(legacyOrder, { restaurantId: b }));
+      console.warn('PENDIENTE SEGURIDAD STAGED: traslados entre tenants permitidos en gasto, mesa, sesión, solicitud, orden de mesa y pedido legado (solo emulador).');
       return;
     }
     for (const [collection, , patch] of fixtures) {
@@ -92,9 +116,15 @@ async function runScenario(rules, diagnostic) {
     await assertSucceeds(updateDoc(tableB, { restaurantId: b, status: 'OCUPADA' }));
     await assertFails(updateDoc(sessionB, sessionReopen(a)));
     await assertSucceeds(updateDoc(sessionB, sessionReopen(b)));
+    await assertFails(updateDoc(serviceB, { restaurantId: a }));
+    await assertSucceeds(updateDoc(serviceB, { status: 'ATENDIDA' }));
+    await assertFails(updateDoc(publicOrderB, { restaurantId: a }));
+    await assertSucceeds(updateDoc(publicOrderB, { status: 'PREPARANDO' }));
+    await assertFails(updateDoc(legacyOrder, { restaurantId: b }));
+    await assertSucceeds(updateDoc(legacyOrder, { status: 'PREPARANDO' }));
     assert.equal((await getDoc(doc(bob, 'tables', b + '-table'))).data()?.restaurantId, b);
     assert.equal((await getDoc(doc(bob, 'table_sessions', b + '-session'))).data()?.restaurantId, b);
-    console.log('PASS propuesta aislada: 7 módulos operativos + mesas/sesiones sin traslado; ediciones legítimas A/B continúan.');
+    console.log('PASS propuesta aislada: 12 rutas protegidas (7 operativas, mesas, sesiones, solicitudes y pedidos); ediciones legítimas A/B continúan.');
   } finally {
     await env.clearFirestore();
     await env.cleanup();
