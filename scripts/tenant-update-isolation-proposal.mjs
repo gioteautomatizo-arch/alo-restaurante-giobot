@@ -72,5 +72,17 @@ export function buildTenantUpdateIsolationProposalRules(staged) {
       + '        && (' + condition + ');\n'
       + '      allow delete: if ' + condition + ';');
   });
+  // Los módulos anidados se autorizan por la ruta businesses/{businessId}.
+  // Si un documento fue mal asociado, no permitir que un miembro de esa ruta
+  // reclame o borre datos que declaran pertenecer a otro negocio.
+  rules = updateMatch(rules, 'businesses/{businessId}/{moduleCol}/{moduleDoc}', block => {
+    const withUpdate = replacePermission(block, '      allow update: if ', condition =>
+      '      allow update: if resource.data.businessId == businessId\n'
+      + '        && request.resource.data.businessId == resource.data.businessId\n'
+      + '        && (' + condition + ');');
+    return replacePermission(withUpdate, '      allow delete: if ', condition =>
+      '      allow delete: if resource.data.businessId == businessId\n'
+      + '        && (' + condition + ');');
+  });
   return rules;
 }
