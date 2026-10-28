@@ -28,6 +28,8 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-security-test --config firebase.security-emulator.json "node scripts/test-firestore-vip.mjs"
       - name: Test staged order and catalog permissions
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-launch-security-test --config firebase.launch-security-emulator.json "node scripts/test-launch-security.mjs"
+      - name: Diagnose cross-tenant update reassignment and test isolated invariant proposal
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-tenant-update-isolation-test --config firebase.launch-security-emulator.json "node scripts/test-tenant-update-isolation-proposal.mjs"
       - name: Test atomic owner registration and employee access
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-owner-security-test --config firebase.launch-security-emulator.json "node scripts/test-owner-registration.mjs"
       - name: Test isolated atomic OWNER rule proposal (no rule deployment)
