@@ -181,7 +181,7 @@ try {
   window.qa.reject();
   await waitFor(() => document.querySelector('[role="alert"]')?.textContent.includes('Conservamos tu pedido'), 'Uncertain write explained');
   document.querySelector('[aria-label="Agregar uno"]').click();
-  await waitFor(() => document.body.textContent.includes('2 ×'), 'Changed cart quantity');
+  await waitFor(() => document.querySelector('[aria-label="Agregar uno"]')?.previousElementSibling?.textContent === '2', 'Changed cart quantity');
   button('Enviar pedido al negocio').click();
   await waitFor(() => button('Ya consulté al negocio; iniciar pedido nuevo'), 'Changed cart blocked until review');
   assert.equal(window.qa.calls.length, beforeReview + 1, 'Changed cart must not write a second order');
