@@ -104,6 +104,8 @@ jobs:
         run: node scripts/test-public-checkout-ui.mjs
       - name: Test safe public catalog checkout (no Firebase writes)
         run: node --import tsx scripts/test-business-public-catalog.mts
+      - name: Test isolated trusted public order price calculation (synthetic, no backend writes)
+        run: node --import tsx scripts/test-public-order-authority-core.mts
       - name: Test business order QR channel labels (no Firebase writes)
         run: node --import tsx scripts/test-business-order-channel.mts
       - name: Test business POS readiness and order list isolation (synthetic data, no Firebase writes)
