@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { buildTenantUpdateIsolationProposalRules } from './tenant-update-isolation-proposal.mjs';
 
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080',
@@ -30,6 +30,10 @@ const fixtures = [
   ['sobre_movements', { amount: 10 }, { amount: 11 }],
   ['daily_menu', { name: 'Platillo ficticio' }, { name: 'Platillo actualizado' }],
 ];
+const nestedModules = ['shifts', 'expenses', 'vault', 'receivables', 'payables', 'auditLog'];
+const nestedDeletable = ['expenses', 'vault', 'receivables', 'payables'];
+const nestedRef = (db, tenant, moduleCol, name) =>
+  doc(db, 'businesses', tenant, moduleCol, name);
 const table = id => ({
   restaurantId: id, tableId: 'table-' + id, tableNumber: 1, status: 'LIBRE',
 });
@@ -65,6 +69,20 @@ async function runScenario(rules, diagnostic) {
         for (const [collection, fields] of fixtures) {
           await setDoc(doc(db, collection, id + '-record'), { restaurantId: id, ...fields });
         }
+        for (const moduleCol of nestedModules) {
+          await setDoc(nestedRef(db, id, moduleCol, 'valid'), {
+            businessId: id, amount: 10, actorId: uid, action: 'CREATED',
+          });
+          if (id === a) {
+            // Datos mal asociados sembrados por el emulador administrador:
+            // el dueño A no debe apropiarse de una ficha que declara B.
+            for (const name of ['misrouted-update', 'misrouted-delete']) {
+              await setDoc(nestedRef(db, a, moduleCol, name), {
+                businessId: b, amount: 10, actorId: uid, action: 'CREATED',
+              });
+            }
+          }
+        }
         await setDoc(doc(db, 'tables', id + '-table'), table(id));
         await setDoc(doc(db, 'table_sessions', id + '-session'), session(id));
         await setDoc(doc(db, 'table_service_requests', id + '-request'), {
@@ -99,7 +117,17 @@ async function runScenario(rules, diagnostic) {
       await assertSucceeds(updateDoc(serviceB, { restaurantId: a }));
       await assertSucceeds(updateDoc(publicOrderB, { restaurantId: a }));
       await assertSucceeds(updateDoc(legacyOrder, { restaurantId: b }));
+      for (const moduleCol of nestedModules) {
+        if (moduleCol !== 'auditLog') {
+          await assertSucceeds(updateDoc(nestedRef(alice, a, moduleCol, 'misrouted-update'),
+            { businessId: a, amount: 99 }));
+        }
+        if (nestedDeletable.includes(moduleCol)) {
+          await assertSucceeds(deleteDoc(nestedRef(alice, a, moduleCol, 'misrouted-delete')));
+        }
+      }
       console.warn('PENDIENTE SEGURIDAD STAGED: traslados entre tenants permitidos en gasto, mesa, sesión, solicitud, orden de mesa y pedido legado (solo emulador).');
+      console.warn('PENDIENTE SEGURIDAD STAGED: módulos anidados mal asociados permiten reclamo y borrado por el tenant de la ruta (solo emulador).');
       return;
     }
     for (const [collection, , patch] of fixtures) {
@@ -125,7 +153,30 @@ async function runScenario(rules, diagnostic) {
     await assertSucceeds(updateDoc(legacyOrder, { status: 'PREPARANDO' }));
     assert.equal((await getDoc(doc(bob, 'tables', b + '-table'))).data()?.restaurantId, b);
     assert.equal((await getDoc(doc(bob, 'table_sessions', b + '-session'))).data()?.restaurantId, b);
-    console.log('PASS propuesta aislada: 12 rutas protegidas (7 operativas, mesas, sesiones, solicitudes y pedidos); ediciones legítimas A/B continúan.');
+    for (const moduleCol of nestedModules) {
+      const misroutedUpdate = nestedRef(alice, a, moduleCol, 'misrouted-update');
+      const misroutedDelete = nestedRef(alice, a, moduleCol, 'misrouted-delete');
+      const validA = nestedRef(alice, a, moduleCol, 'valid');
+      const validB = nestedRef(bob, b, moduleCol, 'valid');
+      if (moduleCol !== 'auditLog') {
+        await assertFails(updateDoc(misroutedUpdate, { businessId: a, amount: 99 }));
+        await assertFails(updateDoc(validA, { businessId: b }));
+        await assertFails(updateDoc(nestedRef(alice, b, moduleCol, 'valid'), { amount: 99 }));
+        await assertSucceeds(updateDoc(validA, { amount: 11 }));
+        await assertSucceeds(updateDoc(validB, { amount: 12 }));
+      } else {
+        await assertFails(updateDoc(validA, { amount: 11 }));
+      }
+      if (nestedDeletable.includes(moduleCol)) {
+        await assertFails(deleteDoc(misroutedDelete));
+        await assertFails(deleteDoc(nestedRef(alice, b, moduleCol, 'valid')));
+        await assertSucceeds(deleteDoc(validA));
+        await assertSucceeds(deleteDoc(validB));
+      } else {
+        await assertFails(deleteDoc(validA)); // shifts y auditLog nunca se borran
+      }
+    }
+    console.log('PASS propuesta aislada: 12 rutas raíz y 6 módulos anidados protegidos; reclamo/borrado cruzado negados y operaciones legítimas A/B conservadas.');
   } finally {
     await env.clearFirestore();
     await env.cleanup();
