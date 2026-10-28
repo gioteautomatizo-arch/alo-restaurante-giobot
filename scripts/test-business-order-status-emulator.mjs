@@ -28,19 +28,25 @@ const env = await initializeTestEnvironment({
 globalThis.orderStatusSdk = sdk;
 globalThis.orderStatusDb = null;
 const firestoreProxy = [
-  'doc', 'getDoc', 'updateDoc', 'runTransaction',
+  'doc', 'getDoc', 'updateDoc', 'runTransaction', 'writeBatch',
   'addDoc', 'collection', 'onSnapshot', 'query', 'setDoc', 'where',
 ].map(name => {
-  if (name === 'doc' || name === 'collection' || name === 'runTransaction') {
+  if (name === 'doc') {
+    // doc(db, collection, id) y doc(collection(db, collection)) comparten SDK.
+    return `export const doc = (first, ...args) => first?.type === 'collection'
+      ? globalThis.orderStatusSdk.doc(first, ...args)
+      : globalThis.orderStatusSdk.doc(globalThis.orderStatusDb, ...args);`;
+  }
+  if (name === 'collection' || name === 'runTransaction' || name === 'writeBatch') {
     return `export const ${name} = (_db, ...args) => globalThis.orderStatusSdk.${name}(globalThis.orderStatusDb, ...args);`;
   }
   return `export const ${name} = (...args) => globalThis.orderStatusSdk.${name}(...args);`;
-}).join('\n');
+}).join('\\n');
 
 const mocks = {
   'firebase/firestore': firestoreProxy,
   './firebase': 'export const db = {};',
-  './firestoreService': 'export const sanitizeFirestorePayload = value => value;',
+  './firestoreService': 'export const sanitizeFirestorePayload = value => JSON.parse(JSON.stringify(value));',
   './restaurantContext': "export const getActiveRestaurantId = () => globalThis.orderStatusTenant || 'alo-restaurante'; export const isCalientitoTenant = () => getActiveRestaurantId() === 'alo-restaurante';",
   './adminStorage': "export const getRestaurantInfo = () => ({orderFolioPrefix: 'CAL'});",
 };
@@ -62,7 +68,7 @@ const bundle = await build({
     },
   }],
 });
-const { updateBusinessRestaurantOrderStatus: transition, updateOffTableOrderDetails: editOffTable, chargeOffTableOrder: chargeOffTable } = await import(
+const { createBusinessRestaurantOrder: createOrder, updateBusinessRestaurantOrderStatus: transition, updateOffTableOrderDetails: editOffTable, chargeOffTableOrder: chargeOffTable } = await import(
   'data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64')
 );
 
@@ -72,6 +78,7 @@ const managerA = signed('manager-a');
 const ownerB = signed('owner-b');
 const outsider = signed('outsider');
 const revoked = signed('revoked-a');
+const anonymous = env.unauthenticatedContext().firestore();
 const user = { id: 'manager-a', name: 'Encargado ficticio' };
 const order = (restaurantId, extras = {}) => ({
   restaurantId, code: 'DEMO-001', status: 'NUEVO', billingStatus: 'PENDIENTE',
@@ -103,6 +110,9 @@ try {
     });
     await sdk.setDoc(sdk.doc(db, 'businessMemberships/business-a_revoked-a'), {
       restaurantId: 'business-a', userId: 'revoked-a', role: 'MANAGER', active: false,
+    });
+    await sdk.setDoc(sdk.doc(db, 'publicBusinessProfiles/business-a'), {
+      restaurantId: 'business-a', published: true, name: 'Negocio A ficticio',
     });
     await sdk.setDoc(ref(db, 'a-normal'), order('business-a'));
     await sdk.setDoc(ref(db, 'a-edit-staged'), order('business-a'));
@@ -234,7 +244,52 @@ try {
   assert.equal(charged.total, 55);
   assert.equal(charged.billingStatus, 'PAGADO');
 
-  console.log('PASS: servicio real + Firestore Emulator, dos tenants, roles, transacciones, reintentos, carrera, cobro y mesa y edición/cobro en emulador.');
+  // Creación atómica: la comanda y el espejo comparten ID y folio.
+  const tableInput = (source = 'CAJA', extras = {}) => ({
+    orderType: 'dine_in', tableNumber: 1, tableSessionId: 'session-ficticia',
+    accountId: 'general', accountLabel: 'General', orderSource: source,
+    customerName: 'Cliente ficticio', paymentMethod: 'efectivo',
+    bringOwnContainer: false,
+    items: [{productId: 'demo', name: 'Producto ficticio', quantity: 1, unitPrice: 55, totalPrice: 55}],
+    subtotal: 55, discountAmount: 0, deliveryFee: 0, total: 55, ...extras,
+  });
+  const aId = 'web_' + 'a'.repeat(32);
+  const bId = 'web_' + 'b'.repeat(32);
+  as(ownerA);
+  const createdA = await createOrder('business-a', tableInput(), aId);
+  assert.equal(createdA.id, aId);
+  assert.equal((await read(ownerA, aId)).code, createdA.code);
+  assert.equal((await sdk.getDoc(sdk.doc(ownerA, 'public_table_orders', aId))).data().code, createdA.code);
+  assert.equal((await sdk.getDoc(sdk.doc(ownerA, 'public_table_orders', aId))).data().orderId, aId);
+  as(ownerB);
+  const createdB = await createOrder('business-b', tableInput(), bId);
+  assert.equal(createdB.id, bId);
+  assert.equal((await sdk.getDoc(sdk.doc(ownerB, 'public_table_orders', bId))).data().restaurantId, 'business-b');
+
+  // El OWNER de A no puede crear una comanda interna de B.
+  as(ownerA);
+  await expectDenied(() => createOrder('business-b', tableInput(), 'web_' + 'c'.repeat(32)));
+  // La página pública A puede crear; B aún no publicada, no.
+  as(anonymous);
+  const publicId = 'web_' + 'd'.repeat(32);
+  await createOrder('business-a', tableInput('CLIENTE_QR'), publicId);
+  await expectDenied(() => createOrder('business-b', tableInput('CLIENTE_QR'), 'web_' + 'e'.repeat(32)));
+  // Mesa inválida: la regla del espejo falla y revierte también el pedido.
+  as(ownerA);
+  const invalidId = 'web_' + 'f'.repeat(32);
+  await expectDenied(() => createOrder('business-a', tableInput('CAJA', {tableNumber: 3}), invalidId));
+  await env.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.firestore();
+    assert.equal((await sdk.getDoc(ref(db, invalidId))).exists(), false,
+      'No debe existir pedido principal si falla el espejo');
+    assert.equal((await sdk.getDoc(sdk.doc(db, 'public_table_orders', invalidId))).exists(), false);
+  });
+  // Un ID ya usado no debe reemplazar ni pedido ni espejo.
+  await expectDenied(() => createOrder('business-a', tableInput('CAJA', {total: 999}), aId));
+  assert.equal((await read(ownerA, aId)).total, 55);
+  assert.equal((await sdk.getDoc(sdk.doc(ownerA, 'public_table_orders', aId))).data().total, 55);
+
+  console.log('PASS: servicio real + Firestore Emulator: estados y cobro; creación atómica de mesa A/B, cliente público, rechazo y rollback.');
 } finally {
   globalThis.orderStatusDb = null;
   await env.cleanup();
