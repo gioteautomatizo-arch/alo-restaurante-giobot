@@ -612,7 +612,12 @@ export async function chargeOffTableOrder(
   });
 }
 
-/** Corrige un pedido para llevar / domicilio que todavía no se cobra (productos, datos del cliente, tipo, cancelación). */
+/**
+ * Corrige pedidos para llevar/domicilio solo mientras siguen pendientes.
+ * La comprobación de cobro, tenant y versión ocurre dentro de la transacción:
+ * no permite que una edición abierta antes de cobrar altere el pedido cobrado.
+ * La autorización final sigue dependiendo de las reglas Firestore vigentes.
+ */
 export async function updateOffTableOrderDetails(
   order: RestaurantOrder,
   patch: Partial<Pick<RestaurantOrder,
@@ -621,30 +626,51 @@ export async function updateOffTableOrderDetails(
   user: Pick<StaffUser, 'id' | 'name'>
 ): Promise<void> {
   if (!order.id) throw new Error('El pedido no tiene identificador.');
-  const ref = doc(db, ORDERS_COLLECTION, order.id);
-  // No confiar en una copia antigua recibida por la interfaz.
-  const freshSnap = await getDoc(ref);
-  if (!freshSnap.exists()) throw new Error('El pedido ya no existe.');
-  const fresh = freshSnap.data() as RestaurantOrder;
-  if (fresh.restaurantId !== getActiveRestaurantId() || (order.restaurantId && fresh.restaurantId !== order.restaurantId)) {
-    throw new Error('El pedido pertenece a otro negocio.');
+  if (patch.status && patch.status !== 'CANCELADO') {
+    throw new Error('Solo se permite cancelar el pedido desde este formulario.');
   }
-  if (fresh.orderType === 'dine_in') throw new Error('Los pedidos de mesa no se editan desde este formulario.');
-  if (fresh.billingStatus === 'PAGADO') throw new Error('Este pedido ya está cobrado y no se puede editar o cancelar.');
-  if (fresh.status === 'CANCELADO') throw new Error('Este pedido ya fue cancelado.');
-  if (patch.status && patch.status !== 'CANCELADO') throw new Error('Solo se permite cancelar el pedido desde este formulario.');
-  const now = new Date().toISOString();
-  await updateDoc(ref, sanitizeFirestorePayload({
-    ...patch,
-    status: patch.status || fresh.status,
-    ...(patch.status === 'CANCELADO' ? {
-      cancelledAt: now,
-      cancelledBy: user.name,
-      cancelledById: user.id,
-    } : {}),
-    editedById: user.id,
-    editedByName: user.name,
-    editedAt: now,
-    updatedAt: now,
-  }));
+  const restaurantId = getActiveRestaurantId();
+  if (!restaurantId) throw new Error('No hay un negocio activo. Actualiza la pantalla.');
+  const ref = doc(db, ORDERS_COLLECTION, order.id);
+  await runTransaction(db, async (transaction) => {
+    const freshSnap = await transaction.get(ref);
+    if (!freshSnap.exists()) throw new Error('El pedido ya no existe.');
+    const fresh = freshSnap.data() as RestaurantOrder;
+    if (getActiveRestaurantId() !== restaurantId) {
+      throw new Error('Cambió la sesión del negocio. Actualiza la pantalla antes de editar.');
+    }
+    if (fresh.restaurantId !== restaurantId || (order.restaurantId && fresh.restaurantId !== order.restaurantId)) {
+      throw new Error('El pedido pertenece a otro negocio.');
+    }
+    if (!['pickup', 'delivery'].includes(fresh.orderType)) {
+      throw new Error('Los pedidos de mesa no se editan desde este formulario.');
+    }
+    if (fresh.billingStatus !== 'PENDIENTE') {
+      throw new Error('El pedido tiene un cobro registrado o desconocido. Revisa Caja antes de editar o cancelar.');
+    }
+    if (fresh.status === 'CANCELADO' || fresh.status === 'ENTREGADO') {
+      throw new Error('Este pedido ya fue cancelado o entregado. Actualiza la pantalla.');
+    }
+    // La interfaz puede llevar minutos abierta. No reemplazar un cambio posterior
+    // de otro empleado, ni siquiera si el pedido todavía no está cobrado.
+    if ((order.updatedAt && fresh.updatedAt !== order.updatedAt)
+      || (order.status && fresh.status !== order.status)
+      || (order.orderType && fresh.orderType !== order.orderType)) {
+      throw new Error('El pedido cambió en otro dispositivo. Actualiza la lista antes de editar.');
+    }
+    const now = new Date().toISOString();
+    transaction.update(ref, sanitizeFirestorePayload({
+      ...patch,
+      status: patch.status || fresh.status,
+      ...(patch.status === 'CANCELADO' ? {
+        cancelledAt: now,
+        cancelledBy: user.name,
+        cancelledById: user.id,
+      } : {}),
+      editedById: user.id,
+      editedByName: user.name,
+      editedAt: now,
+      updatedAt: now,
+    }));
+  });
 }
