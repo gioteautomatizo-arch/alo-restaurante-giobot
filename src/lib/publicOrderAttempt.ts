@@ -119,7 +119,12 @@ export function getOrCreatePublicOrderAttempt(
       if (shared.getItem(key) !== encoded) throw new Error('Intento compartido no persistido.');
     }
     if (tab) {
-      try { tab.setItem(key, encoded); } catch (error) {
+      try {
+        tab.setItem(key, encoded);
+        // Un navegador puede aceptar setItem sin conservar el valor también
+        // en sessionStorage. Sin referencia durable, el reintento duplicaría.
+        if (tab.getItem(key) !== encoded) throw new Error('Intento de pestaña no persistido.');
+      } catch (error) {
         if (!shared) throw error;
       }
     }
@@ -157,4 +162,36 @@ export function clearPublicOrderAttempt(businessId: string, tableNumber: number 
       if (raw && parseAttempt(raw).id === id) store.removeItem(key);
     }
   } catch { /* No borrar otros intentos ni convertir un pedido confirmado en error. */ }
+}
+
+/**
+ * Serializa la elección inicial del folio entre pestañas del mismo origen
+ * cuando el navegador ofrece Web Locks. El lock NO cubre el envío de red ni
+ * sustituye idempotencia del servidor; localStorage sigue siendo necesario
+ * para compartir la referencia. En navegadores sin Web Locks, se conserva
+ * la coordinación best-effort previa.
+ */
+export async function getOrCreatePublicOrderAttemptCoordinated(
+  businessId: string,
+  tableNumber: number | undefined,
+  fingerprint: string,
+  now = Date.now(),
+): Promise<string> {
+  let locks: LockManager | undefined;
+  try {
+    locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  } catch {
+    throw new Error('No se pudo acceder a la coordinación del navegador. Conservamos tu pedido sin enviarlo.');
+  }
+  if (!locks?.request) return getOrCreatePublicOrderAttempt(businessId, tableNumber, fingerprint, now);
+  try {
+    return await locks.request(
+      'gio-public-order:' + publicOrderAttemptKey(businessId, tableNumber),
+      { mode: 'exclusive' },
+      () => getOrCreatePublicOrderAttempt(businessId, tableNumber, fingerprint, now),
+    );
+  } catch (error) {
+    if (error instanceof PublicOrderAttemptReviewRequiredError) throw error;
+    throw new Error('No se pudo coordinar el identificador entre pestañas. Conservamos tu pedido sin enviarlo.');
+  }
 }
