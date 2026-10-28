@@ -166,6 +166,37 @@ try {
   window.qa.render('demo-other');
   await waitFor(() => document.body.textContent.includes('El QR no tiene una mesa válida'), 'Invalid table blocked');
   assert.equal(button('Agregar'), undefined);
+  // Una escritura de resultado incierto NO autoriza otro folio si se modifica el carrito.
+  window.history.replaceState(null, '', '/#negocio/demo-review');
+  window.qa.render('demo-review');
+  await waitFor(() => document.body.textContent.includes('Negocio demo-review'), 'Review tenant opened');
+  button('Agregar').click();
+  await waitFor(() => button('Ver mi pedido (1)'), 'Review cart');
+  button('Ver mi pedido (1)').click();
+  await waitFor(() => button('Enviar pedido al negocio'), 'Review checkout');
+  const beforeReview = window.qa.calls.length;
+  button('Enviar pedido al negocio').click();
+  await waitFor(() => window.qa.calls.length === beforeReview + 1, 'First uncertain write');
+  const uncertainId = window.qa.calls.at(-1).attemptId;
+  window.qa.reject();
+  await waitFor(() => document.querySelector('[role="alert"]')?.textContent.includes('Conservamos tu pedido'), 'Uncertain write explained');
+  document.querySelector('[aria-label="Agregar uno"]').click();
+  await waitFor(() => document.body.textContent.includes('2 ×'), 'Changed cart quantity');
+  button('Enviar pedido al negocio').click();
+  await waitFor(() => button('Ya consulté al negocio; iniciar pedido nuevo'), 'Changed cart blocked until review');
+  assert.equal(window.qa.calls.length, beforeReview + 1, 'Changed cart must not write a second order');
+  assert.ok(document.querySelector('[role="alert"]').textContent.includes('carrito cambió'));
+  window.confirm = () => false;
+  button('Ya consulté al negocio; iniciar pedido nuevo').click();
+  assert.ok(button('Ya consulté al negocio; iniciar pedido nuevo'), 'Cancelled review preserves pending attempt');
+  window.confirm = () => true;
+  button('Ya consulté al negocio; iniciar pedido nuevo').click();
+  await waitFor(() => !button('Ya consulté al negocio; iniciar pedido nuevo'), 'Explicit review clears pending attempt');
+  button('Enviar pedido al negocio').click();
+  await waitFor(() => window.qa.calls.length === beforeReview + 2, 'New order only after review');
+  assert.notEqual(window.qa.calls.at(-1).attemptId, uncertainId, 'New ID only after customer review');
+  window.qa.resolve();
+  await waitFor(() => button('Seguir viendo el menú'), 'Reviewed order confirmed');
   // WhatsApp no debe recibir un pedido sin folio si la escritura falló.
   window.history.replaceState(null, '', '/#negocio/demo-whatsapp');
   window.qa.whatsapp = true;
