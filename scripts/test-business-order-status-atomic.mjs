@@ -52,7 +52,7 @@ const mocks = {
     }`,
   './firebase': 'export const db = {};',
   './firestoreService': 'export const sanitizeFirestorePayload = value => value;',
-  './restaurantContext': "export const getActiveRestaurantId = () => 'alo-restaurante'; export const isCalientitoTenant = () => true;",
+  './restaurantContext': "export const getActiveRestaurantId = () => globalThis.testActiveRestaurantId || 'alo-restaurante'; export const isCalientitoTenant = () => getActiveRestaurantId() === 'alo-restaurante';",
   './adminStorage': "export const getRestaurantInfo = () => ({orderFolioPrefix: 'CAL'});",
 };
 const bundle = await build({
@@ -68,7 +68,7 @@ const bundle = await build({
     builder.onLoad({ filter: /.*/, namespace: 'mock' }, args => ({ contents: mocks[args.path], loader: 'js' }));
   } }],
 });
-const { updateBusinessRestaurantOrderStatus } = await import(
+const { updateBusinessRestaurantOrderStatus, updateOffTableOrderDetails, chargeOffTableOrder } = await import(
   'data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64')
 );
 globalThis.testDocs = new Map();
@@ -159,3 +159,69 @@ assert.match(ui, /businessId !== 'alo-restaurante' && order\.billingStatus !== '
 assert.match(ui, /businessId === 'alo-restaurante' \|\| order\.billingStatus === 'PENDIENTE'/,
   'La interfaz no ofrece cancelar un pedido cobrado sin conciliación');
 console.log('PASS: transición atómica tenant A/B, avance, reintento, carrera, terminales, cancelación pagada, espejo y Calientito legado.');
+
+
+// Edición de pedidos fuera de mesa: mismo servicio real, transacciones simuladas.
+// En particular, nunca debe cambiar el importe después de que Caja cobre.
+globalThis.testActiveRestaurantId = 'demo-a';
+const snapshot = id => ({ ...read(id), id });
+put('edit-a', sample('demo-a'));
+const beforeEdit = snapshot('edit-a');
+await updateOffTableOrderDetails(beforeEdit, { notes: 'Sin cebolla', total: 60 }, user);
+assert.equal(read('edit-a').total, 60);
+assert.equal(read('edit-a').notes, 'Sin cebolla');
+assert.equal(read('edit-a').billingStatus, 'PENDIENTE');
+await assert.rejects(updateOffTableOrderDetails(beforeEdit, { total: 10 }, user), /cambió/,
+  'La segunda edición con pantalla antigua no debe sobrescribir la primera');
+assert.equal(read('edit-a').total, 60);
+
+put('edit-paid', sample('demo-a'));
+const beforePayment = snapshot('edit-paid');
+const paid = await chargeOffTableOrder(beforePayment, 'tarjeta', user);
+assert.equal(paid.alreadyPaid, false);
+assert.equal(read('edit-paid').billingStatus, 'PAGADO');
+await assert.rejects(updateOffTableOrderDetails(beforePayment, { total: 1 }, user), /Revisa Caja/);
+assert.equal(read('edit-paid').total, 55, 'Editar tras cobrar no altera el importe');
+assert.equal(read('edit-paid').paymentMethod, 'tarjeta');
+
+// En orden inverso la edición se confirma primero y el cobro usa el importe nuevo.
+put('edit-then-charge', sample('demo-a'));
+const beforeConcurrent = snapshot('edit-then-charge');
+const both = await Promise.allSettled([
+  updateOffTableOrderDetails(beforeConcurrent, { total: 90 }, user),
+  chargeOffTableOrder(beforeConcurrent, 'efectivo', user),
+]);
+assert.deepEqual(both.map(result => result.status), ['fulfilled', 'fulfilled']);
+assert.equal(read('edit-then-charge').total, 90);
+assert.equal(read('edit-then-charge').billingStatus, 'PAGADO');
+
+put('edit-delivered', sample('demo-a', 'ENTREGADO'));
+await assert.rejects(updateOffTableOrderDetails(snapshot('edit-delivered'), { status: 'CANCELADO' }, user), /entregado/);
+put('edit-unknown', { ...sample('demo-a'), billingStatus: undefined });
+await assert.rejects(updateOffTableOrderDetails(snapshot('edit-unknown'), { total: 1 }, user), /Revisa Caja/);
+put('edit-cancel', sample('demo-a'));
+await updateOffTableOrderDetails(snapshot('edit-cancel'), { status: 'CANCELADO', notes: 'Solicitud del cliente' }, user);
+assert.equal(read('edit-cancel').status, 'CANCELADO');
+assert.equal(read('edit-cancel').cancelledById, user.id);
+await assert.rejects(updateOffTableOrderDetails(snapshot('edit-cancel'), { total: 1 }, user), /cancelado/);
+await assert.rejects(updateOffTableOrderDetails(snapshot('edit-a'), { status: 'LISTO' }, user), /Solo se permite cancelar/);
+await assert.rejects(updateOffTableOrderDetails({ ...sample('demo-a') }, { total: 1 }, user), /identificador/);
+await assert.rejects(updateOffTableOrderDetails(snapshot('order-b'), { total: 1 }, user), /otro negocio/);
+assert.equal(read('order-b').total, 55);
+
+// Cambiar de tenant mientras se resuelve la lectura de la transacción bloquea el write.
+put('edit-switch', sample('demo-a'));
+const pendingSwitch = updateOffTableOrderDetails(snapshot('edit-switch'), { total: 1 }, user);
+globalThis.testActiveRestaurantId = 'demo-b';
+await assert.rejects(pendingSwitch, /Cambió la sesión/);
+assert.equal(read('edit-switch').total, 55);
+
+// El editor de Calientito mantiene el contrato de datos, ahora sin carrera con Caja.
+globalThis.testActiveRestaurantId = 'alo-restaurante';
+put('edit-legacy', sample('alo-restaurante'));
+const legacyWritesBefore = globalThis.testLegacyWrites.length;
+await updateOffTableOrderDetails(snapshot('edit-legacy'), { notes: 'Mostrador' }, user);
+assert.equal(read('edit-legacy').notes, 'Mostrador');
+assert.equal(globalThis.testLegacyWrites.length, legacyWritesBefore,
+  'La edición usa transacción, no updateDoc separado');
+console.log('PASS: edición transaccional, cobro concurrente, pantalla obsoleta, tenant, cancelación y compatibilidad Calientito.');
