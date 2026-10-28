@@ -30,6 +30,8 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-launch-security-test --config firebase.launch-security-emulator.json "node scripts/test-launch-security.mjs"
       - name: Diagnose public order price authority gap (expected PENDIENTE, emulator only)
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-public-price-authority-audit --config firebase.launch-security-emulator.json "node scripts/test-public-order-price-authority-audit.mjs"
+      - name: Test isolated public order write gate candidate (emulator only, no rule deployment)
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-public-order-gate-proposal --config firebase.launch-security-emulator.json "node scripts/test-public-order-write-gate-proposal.mjs"
       - name: Test isolated trusted public order transaction (Admin SDK, emulator only, no endpoint)
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-public-order-transaction-test --config firebase.launch-security-emulator.json "node --import tsx scripts/test-public-order-authority-transaction.mts"
       - name: Test real tenant order status transactions with Firestore Emulator
