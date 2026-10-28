@@ -38,5 +38,25 @@ assert.throws(() => buildTenantUpdateIsolationProposalRules(staged.replace(
   'allow create, update: if isAuthorizedRestaurant(request.resource.data)',
   'allow create: if isAuthorizedRestaurant(request.resource.data)'
 )), /ALTO/);
-console.log('PASS: 12 rutas con tenant inmutable en propuesta aislada; 7 módulos exigen autorización sobre origen; fail-closed ante drift.');
+const nestedPath = 'businesses/{businessId}/{moduleCol}/{moduleDoc}';
+const nestedBefore = blockFor(staged, nestedPath);
+const nestedAfter = blockFor(proposed, nestedPath);
+assert(nestedBefore.includes('allow update: if isTenantModule(moduleCol)'),
+  'El contrato de actualización anidada cambió');
+assert(nestedAfter.includes('allow update: if resource.data.businessId == businessId'),
+  'Falta exigir identidad original de módulo anidado en update');
+assert(nestedAfter.includes('request.resource.data.businessId == resource.data.businessId'),
+  'Falta inmutabilidad de businessId anidado');
+assert(nestedAfter.includes('allow delete: if resource.data.businessId == businessId'),
+  'Falta exigir identidad original de módulo anidado en delete');
+assert(nestedAfter.includes('allow create: if isTenantModule(moduleCol)'),
+  'No alterar create de módulos anidados');
+assert(nestedAfter.includes("moduleCol != 'auditLog'")
+  && nestedAfter.includes("moduleCol != 'shifts'"),
+  'No relajar bitácora inmutable ni borrado de turnos');
+assert.throws(() => buildTenantUpdateIsolationProposalRules(staged.replace(
+  'match /businesses/{businessId}/{moduleCol}/{moduleDoc} {',
+  'match /businesses/{businessId}/{moduleCol}/{moduleDocRenamed} {'
+)), /ALTO/);
+console.log('PASS: 12 rutas raíz y 6 módulos anidados protegidos; identidad original en update/delete; fail-closed ante drift.');
 console.warn('PENDIENTE: STAGED/despliegue siguen sin estos guards; falta emulador, revisión independiente y autorización.');
