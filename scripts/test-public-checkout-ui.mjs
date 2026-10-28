@@ -6,10 +6,10 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const mocks = {
-  '../../lib/ordersService': `export async function createBusinessRestaurantOrder(id, order) {
-    window.qa.calls.push({id, order});
+  '../../lib/ordersService': `export async function createBusinessRestaurantOrder(id, order, attemptId) {
+    window.qa.calls.push({id, order, attemptId});
     return new Promise((resolve, reject) => {
-      window.qa.resolve = () => resolve({code: 'TEST-001'});
+      window.qa.resolve = () => resolve({id: attemptId, code: 'TEST-001'});
       window.qa.reject = () => reject(new Error('simulated offline'));
     });
   }`,
@@ -18,7 +18,7 @@ const mocks = {
       window.qa.reads++;
       if (window.qa.failProfile) throw new Error('simulated offline');
       return {exists: () => !window.qa.missing, data: () => ({published: true,
-        branding: {restaurantName: 'Negocio ' + ref.id, whatsapp: ''}})};
+        branding: {restaurantName: 'Negocio ' + ref.id, whatsapp: window.qa.whatsapp ? '5512345678' : ''}})};
     }`,
   '../../lib/firebase': `export const db = {};`,
   '../../lib/businessCatalogService': `export function subscribeToBusinessCatalog(id, callback) {
@@ -89,6 +89,8 @@ try {
   assert.equal(window.qa.calls[0].id, 'demo-a');
   assert.equal(window.qa.calls[0].order.total, 25);
   assert.equal(window.qa.calls[0].order.items[0].quantity, 1);
+  assert.match(window.qa.calls[0].attemptId, /^web_[0-9a-f]{32}$/);
+  const originalAttemptId = window.qa.calls[0].attemptId;
   window.qa.reject();
   await waitFor(() => document.querySelector('[role="alert"]')?.textContent.includes('Conservamos tu pedido'), 'Failure should explain uncertainty');
   assert.equal(document.querySelector('[aria-label="Pedidos enviados"]'), null, 'Failed save never creates receipt');
@@ -96,6 +98,7 @@ try {
   assert.equal(document.querySelector('[aria-label="Agregar uno"]').disabled, false);
   button('Enviar pedido al negocio').click();
   assert.equal(window.qa.calls.length, 2, 'Explicit retry after failure allowed');
+  assert.equal(window.qa.calls[1].attemptId, originalAttemptId, 'Retry must reuse the same Firestore document ID');
   window.qa.resolve();
   await waitFor(() => button('Seguir viendo el menú'), 'Success confirmation');
   assert.ok(document.body.textContent.includes('TEST-001'));
@@ -163,6 +166,33 @@ try {
   window.qa.render('demo-other');
   await waitFor(() => document.body.textContent.includes('El QR no tiene una mesa válida'), 'Invalid table blocked');
   assert.equal(button('Agregar'), undefined);
+  // WhatsApp no debe recibir un pedido sin folio si la escritura falló.
+  window.history.replaceState(null, '', '/#negocio/demo-whatsapp');
+  window.qa.whatsapp = true;
+  window.qa.popups = [];
+  window.open = (url) => {
+    const popup = { location: { href: url }, closed: false, close() { this.closed = true; } };
+    window.qa.popups.push(popup);
+    return popup;
+  };
+  window.qa.render('demo-whatsapp');
+  await waitFor(() => document.body.textContent.includes('Negocio demo-whatsapp'), 'WhatsApp demo opened');
+  button('Agregar').click();
+  await waitFor(() => button('Ver mi pedido (1)'), 'WhatsApp cart');
+  button('Ver mi pedido (1)').click();
+  await waitFor(() => button('Enviar pedido (se registra y abre WhatsApp)'), 'WhatsApp checkout');
+  button('Enviar pedido (se registra y abre WhatsApp)').click();
+  await waitFor(() => window.qa.popups.length === 1, 'Preopened WhatsApp tab');
+  window.qa.reject();
+  await waitFor(() => window.qa.popups[0].closed, 'Failed save closes empty WhatsApp tab');
+  assert.equal(window.qa.popups[0].location.href, '', 'No unconfirmed order is sent to WhatsApp');
+  button('Enviar pedido (se registra y abre WhatsApp)').click();
+  await waitFor(() => window.qa.popups.length === 2, 'Retry preopens new tab');
+  const lastTwo = window.qa.calls.slice(-2);
+  assert.equal(lastTwo[0].attemptId, lastTwo[1].attemptId, 'WhatsApp retry preserves ID');
+  window.qa.resolve();
+  await waitFor(() => window.qa.popups[1].location.href.startsWith('https://wa.me/'), 'Confirmed WhatsApp order');
+  assert.ok(decodeURIComponent(window.qa.popups[1].location.href).includes('Pedido TEST-001'));
   assert.deepEqual(errors, [], 'No React errors');
   console.log('PASS: retry profile, same-turn double submit, frozen cart, failure recovery, success, tenant switch and table QR guest selection (React + DOM; mocked backend).');
 } finally {
