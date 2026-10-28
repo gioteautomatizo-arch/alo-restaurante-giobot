@@ -27,6 +27,7 @@ import { hasPriceFrom, selectionKey, selectionSummary } from '../../lib/catalogO
 import type { OptionSelection } from '../../lib/catalogOptions';
 import { PublicOrderReceipts } from './PublicOrderReceipts';
 import { addPublicReceipt, readPublicReceipts } from '../../lib/publicOrderReceipts';
+import { publicCartAttemptFingerprint, getOrCreatePublicOrderAttempt, clearPublicOrderAttempt } from '../../lib/publicOrderAttempt';
 import { BusinessTableWelcome } from './BusinessTableWelcome';
 import { BusinessProductModal } from './BusinessProductModal';
 import { VipCardModal } from '../VipCardModal';
@@ -201,11 +202,15 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
     sendInFlight.current = true;
     setSending(true);
     setSendError(null);
-    // Abrimos la pestaña antes del await para que el navegador no la bloquee.
     let popup: Window | null = null;
-    try { popup = whatsappNumber ? window.open('', '_blank') : null; } catch { /* El pedido puede registrarse aunque el navegador bloquee ventanas. */ }
     let code: string | undefined;
+    let attemptedWrite = false;
     try {
+      // Persistir antes de escribir. El mismo carrito reintenta sobre el mismo documento.
+      const attemptId = getOrCreatePublicOrderAttempt(businessId, tableNumber, publicCartAttemptFingerprint(cart, guestCount));
+      // Abrir antes del await evita el bloqueo de ventanas; solo navegar si hay folio confirmado.
+      try { popup = whatsappNumber ? window.open('', '_blank') : null; } catch { /* WhatsApp es opcional. */ }
+      attemptedWrite = true;
       const saved = await createBusinessRestaurantOrder(businessId, {
         orderType: 'pickup',
         orderSource: 'CLIENTE_QR',
@@ -219,7 +224,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
         deliveryFee: 0,
         total,
         notes: [tableNumber ? `Mesa ${tableNumber}` : '', orderNotes].filter(Boolean).join(' · ') || undefined,
-      });
+      }, attemptId);
       code = saved.code;
       setSentReceipts((current) => addPublicReceipt(current, {
         id: saved.id || saved.code,
@@ -232,20 +237,23 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
       }));
       setSentCode(saved.code);
       setCart([]);
+      clearPublicOrderAttempt(businessId, tableNumber, attemptId);
     } catch (err) {
       console.warn('No se pudo registrar el pedido en el negocio:', err);
-      setSendError(whatsappNumber
-        ? 'No pudimos confirmar el registro. Conservamos tu pedido; antes de reenviarlo, consulta al negocio por WhatsApp para evitar duplicados.'
-        : 'No pudimos confirmar el registro. Conservamos tu pedido; antes de reenviarlo, consulta al negocio para evitar duplicados.');
+      setSendError(!attemptedWrite
+        ? 'No pudimos preparar el envío seguro en este navegador. Conservamos tu pedido; revisa el almacenamiento antes de intentarlo de nuevo.'
+        : whatsappNumber
+          ? 'No pudimos confirmar el registro. Conservamos tu pedido; antes de reenviarlo, consulta al negocio por WhatsApp para evitar duplicados.'
+          : 'No pudimos confirmar el registro. Conservamos tu pedido; antes de reenviarlo, consulta al negocio para evitar duplicados.');
     } finally {
       sendInFlight.current = false;
       setSending(false);
     }
-    if (whatsappNumber) {
+    if (whatsappNumber && code) {
       const url = buildWhatsappOrderUrl({ whatsapp: b.whatsapp || '', businessName: b.restaurantName, lines: cart, customerName, notes: orderNotes, tableNumber, orderCode: code });
       if (popup) popup.location.href = url;
       else window.open(url, '_blank');
-    }
+    } else if (popup) popup.close();
   };
 
   const add = (item: BusinessCatalogItem, selection: OptionSelection = {}, quantity = 1) =>
