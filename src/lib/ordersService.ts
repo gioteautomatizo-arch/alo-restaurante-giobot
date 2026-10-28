@@ -312,28 +312,51 @@ export async function updateBusinessRestaurantOrderStatus(
     if (!snap.exists()) throw new Error('El pedido ya no existe.');
     const current = snap.data() as RestaurantOrder;
     if (current.restaurantId !== businessId) throw new Error('Este pedido pertenece a otro negocio.');
-    if (current.status === status) return null; // Reintento ya confirmado: no modificar fechas.
-    if (status === 'CANCELADO') {
+    const retry = current.status === status;
+    if (!retry && status === 'CANCELADO') {
       if (!['NUEVO', 'PREPARANDO', 'LISTO'].includes(current.status)) {
         throw new Error('El pedido ya fue entregado o cancelado; no puede cancelarse desde esta pantalla.');
       }
       if (current.billingStatus !== 'PENDIENTE') {
         throw new Error('El pedido tiene un cobro registrado o desconocido. Revisa Caja antes de cancelarlo.');
       }
-    } else if (next[current.status] !== status) {
+    } else if (!retry && next[current.status] !== status) {
       throw new Error('El estado del pedido cambió en otro dispositivo. Actualiza la lista antes de continuar.');
     }
-    transaction.update(ref, sanitizeFirestorePayload(patch));
-    return { orderType: current.orderType, tableNumber: current.tableNumber };
+
+    // La lectura del espejo ocurre antes de cualquier escritura: Firestore confirma
+    // pedido y resumen juntos, o revierte ambos. Nunca tocar un espejo de otro tenant.
+    let missingMirror = false;
+    if (current.orderType === 'dine_in' && current.tableNumber) {
+      const mirrorRef = doc(db, PUBLIC_TABLE_ORDERS_COLLECTION, orderId);
+      const mirrorSnap = await transaction.get(mirrorRef);
+      if (!mirrorSnap.exists()) {
+        // Algunos pedidos históricos fueron creados antes de la sincronización.
+        // No detener cocina por un espejo ausente; dejar advertencia verificable.
+        missingMirror = true;
+      } else {
+        const mirror = mirrorSnap.data() as PublicTableOrder;
+        if (mirror.restaurantId !== businessId || mirror.orderId !== orderId
+          || mirror.tableNumber !== current.tableNumber || mirror.code !== current.code) {
+          throw new Error('El resumen de mesa no coincide con el pedido. Revisa la mesa antes de continuar.');
+        }
+        const effectiveUpdatedAt = retry ? current.updatedAt : now;
+        // Un reintento de estado ya confirmado también repara un espejo rezagado
+        // sin reescribir fechas del pedido principal.
+        if (mirror.status !== status || mirror.updatedAt !== effectiveUpdatedAt) {
+          transaction.update(mirrorRef, sanitizeFirestorePayload({
+            status, updatedAt: effectiveUpdatedAt,
+          }));
+        }
+      }
+    }
+    if (!retry) transaction.update(ref, sanitizeFirestorePayload(patch));
+    return { missingMirror };
   });
 
-  // Compatibilidad con el resumen público de mesa: falla independiente del
-  // cambio principal, como en el servicio heredado. No es una garantía atómica
-  // de espejo y requiere revisión adicional para QR de mesa multinegocio.
-  if (changed?.orderType === 'dine_in' && changed.tableNumber) {
-    await updateDoc(doc(db, PUBLIC_TABLE_ORDERS_COLLECTION, orderId), sanitizeFirestorePayload({
-      status, updatedAt: now,
-    })).catch((error) => console.warn('[ordersService] no se pudo sincronizar resumen público de mesa:', error));
+  if (changed.missingMirror) {
+    console.warn('[ordersService] PENDIENTE: falta resumen público de mesa para pedido', orderId,
+      'del negocio', businessId, '; requiere reconciliación autorizada.');
   }
 }
 
