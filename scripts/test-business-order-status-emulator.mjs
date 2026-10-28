@@ -114,8 +114,17 @@ try {
     await sdk.setDoc(ref(db, 'a-cancel'), order('business-a', { status: 'LISTO' }));
     await sdk.setDoc(ref(db, 'a-race'), order('business-a'));
     await sdk.setDoc(ref(db, 'a-table'), order('business-a', { orderType: 'dine_in', tableNumber: 1 }));
+    await sdk.setDoc(ref(db, 'a-table-mismatch'), order('business-a', { orderType: 'dine_in', tableNumber: 1 }));
+    await sdk.setDoc(ref(db, 'a-table-no-mirror'), order('business-a', { orderType: 'dine_in', tableNumber: 1 }));
     await sdk.setDoc(sdk.doc(db, 'public_table_orders/a-table'), {
       restaurantId: 'business-a', orderId: 'a-table', tableNumber: 1,
+      code: 'DEMO-001', status: 'NUEVO', total: 55,
+      items: [{ name: 'Producto ficticio', quantity: 1, unitPrice: 55, totalPrice: 55 }],
+      createdAt: '2026-10-28T10:00:00.000Z', updatedAt: '2026-10-28T10:00:00.000Z',
+    });
+    // Espejo corrupto simulado: el ID coincide pero pertenece a B.
+    await sdk.setDoc(sdk.doc(db, 'public_table_orders/a-table-mismatch'), {
+      restaurantId: 'business-b', orderId: 'a-table-mismatch', tableNumber: 1,
       code: 'DEMO-001', status: 'NUEVO', total: 55,
       items: [{ name: 'Producto ficticio', quantity: 1, unitPrice: 55, totalPrice: 55 }],
       createdAt: '2026-10-28T10:00:00.000Z', updatedAt: '2026-10-28T10:00:00.000Z',
@@ -169,7 +178,39 @@ try {
   as(ownerA);
   await transition('business-a', 'a-table', 'PREPARANDO', { id: 'owner-a', name: 'Propietario A' });
   assert.equal((await read(ownerA, 'a-table')).status, 'PREPARANDO');
-  assert.equal((await sdk.getDoc(sdk.doc(ownerA, 'public_table_orders/a-table'))).data().status, 'PREPARANDO');
+  const mirrorRef = sdk.doc(ownerA, 'public_table_orders/a-table');
+  assert.equal((await sdk.getDoc(mirrorRef)).data().status, 'PREPARANDO');
+  const mainUpdatedAt = (await read(ownerA, 'a-table')).updatedAt;
+  assert.equal((await sdk.getDoc(mirrorRef)).data().updatedAt, mainUpdatedAt,
+    'La transacción confirma las mismas fechas para pedido y resumen');
+  // Una respuesta anterior pudo perderse: repetir el estado debe reparar
+  // un espejo rezagado sin reescribir la fecha del pedido principal.
+  await env.withSecurityRulesDisabled(async ctx => {
+    await sdk.updateDoc(sdk.doc(ctx.firestore(), 'public_table_orders/a-table'), {
+      status: 'NUEVO', updatedAt: '2026-10-28T10:00:00.000Z',
+    });
+  });
+  await transition('business-a', 'a-table', 'PREPARANDO', { id: 'owner-a', name: 'Propietario A' });
+  assert.equal((await sdk.getDoc(mirrorRef)).data().status, 'PREPARANDO');
+  assert.equal((await sdk.getDoc(mirrorRef)).data().updatedAt, mainUpdatedAt);
+  assert.equal((await read(ownerA, 'a-table')).updatedAt, mainUpdatedAt);
+  await assert.rejects(
+    transition('business-a', 'a-table-mismatch', 'PREPARANDO', { id: 'owner-a', name: 'Propietario A' }),
+    /resumen de mesa no coincide/,
+  );
+  assert.equal((await read(ownerA, 'a-table-mismatch')).status, 'NUEVO',
+    'Un espejo de otro negocio no permite avanzar el pedido');
+  const warn = console.warn;
+  const warnings = [];
+  console.warn = (...args) => warnings.push(args.join(' '));
+  try {
+    await transition('business-a', 'a-table-no-mirror', 'PREPARANDO', { id: 'owner-a', name: 'Propietario A' });
+  } finally {
+    console.warn = warn;
+  }
+  assert.equal((await read(ownerA, 'a-table-no-mirror')).status, 'PREPARANDO');
+  assert(warnings.some(line => line.includes('PENDIENTE') && line.includes('a-table-no-mirror')),
+    'El espejo ausente debe seguir marcado como pendiente');
 
   // La regla STAGED de tenants nuevos solo admite cambios de estado.
   // No presentar edición de importes/productos como habilitada hasta revisar reglas.
