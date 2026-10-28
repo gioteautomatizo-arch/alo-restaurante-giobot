@@ -72,6 +72,13 @@ export function buildTenantUpdateIsolationProposalRules(staged) {
       + '        && (' + condition + ');\n'
       + '      allow delete: if ' + condition + ';');
   });
+  // La identidad interna también protege lecturas. Firestore evalúa reglas
+  // contra el resultado potencial de una consulta: los listeners deben filtrar
+  // businessId == businessId de la ruta para no quedar denegados.
+  rules = updateMatch(rules, 'businesses/{businessId}/{moduleCol}/{moduleDoc}', block =>
+    replacePermission(block, '      allow read: if ', condition =>
+      '      allow read: if resource.data.businessId == businessId\\n'
+      + '        && (' + condition + ');'));
   // Los módulos anidados se autorizan por la ruta businesses/{businessId}.
   // Si un documento fue mal asociado, no permitir que un miembro de esa ruta
   // reclame o borre datos que declaran pertenecer a otro negocio.
