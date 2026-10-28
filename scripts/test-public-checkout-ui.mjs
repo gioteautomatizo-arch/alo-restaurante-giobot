@@ -260,6 +260,25 @@ try {
   window.qa.resolve();
   await waitFor(() => window.qa.popups[1].location.href.startsWith('https://wa.me/'), 'Confirmed WhatsApp order');
   assert.ok(decodeURIComponent(window.qa.popups[1].location.href).includes('Pedido TEST-001'));
+  // Web Locks disponible pero rechazado: no enviar nada a Firestore ni WhatsApp.
+  const beforeDeniedCalls = window.qa.calls.length;
+  const beforeDeniedPopups = window.qa.popups.length;
+  Object.defineProperty(window.navigator, 'locks', {configurable: true, value: {
+    request: async () => { throw new Error('simulated lock denied'); },
+  }});
+  window.history.replaceState(null, '', '/#negocio/demo-lock-denied');
+  window.qa.render('demo-lock-denied');
+  await waitFor(() => document.body.textContent.includes('Negocio demo-lock-denied'), 'Lock-denied tenant loaded');
+  button('Agregar').click();
+  await waitFor(() => button('Ver mi pedido (1)'), 'Lock-denied cart');
+  button('Ver mi pedido (1)').click();
+  await waitFor(() => button('Enviar pedido (se registra y abre WhatsApp)'), 'Lock-denied checkout');
+  button('Enviar pedido (se registra y abre WhatsApp)').click();
+  await waitFor(() => window.qa.popups.length === beforeDeniedPopups + 1, 'Popup opened on click before lock');
+  await waitFor(() => window.qa.popups.at(-1).closed, 'Rejected lock closes empty popup');
+  assert.equal(window.qa.calls.length, beforeDeniedCalls, 'Denied lock must never reach Firestore');
+  assert.equal(window.qa.popups.at(-1).location.href, '', 'Denied lock must never send WhatsApp order');
+  assert.ok(document.querySelector('[role="alert"]')?.textContent.includes('No pudimos preparar el envío seguro'));
   assert.ok(window.qa.locks.length >= window.qa.calls.length, 'Checkout acquires Web Lock before each backend write');
   assert.ok(window.qa.locks.every(lock => lock.mode === 'exclusive' && lock.name.startsWith('gio-public-order:')), 'Locks are exclusive and scoped to order identity');
   assert.deepEqual(errors, [], 'No React errors');
