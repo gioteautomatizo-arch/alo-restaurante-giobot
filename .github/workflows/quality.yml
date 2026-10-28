@@ -54,6 +54,8 @@ jobs:
         run: node scripts/test-business-portal-isolation-ui.mjs
       - name: Test business account list fail-closed on partial reads (mocked Firestore, no writes)
         run: node scripts/test-business-account-list.mjs
+      - name: Guard tenant reassignment proposal against rule drift (read-only, no Firebase)
+        run: node scripts/test-tenant-update-isolation-static.mjs
       - name: Test historical business handle migration preflight (synthetic inventory, no Firebase)
         run: node scripts/test-business-handle-migration-preflight.mjs
       - name: Diagnose registration cutover and fail-closed rollback (read-only, no Firebase)
