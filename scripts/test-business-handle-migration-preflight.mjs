@@ -287,5 +287,59 @@ assert(duplicateThreeDocReservation.globalBlockers.includes('DUPLICATE_INVENTORY
 assert.equal(single([root('alpha', 'alice'), member('alpha', 'alice')]).status,
   'CANDIDATE_FOR_MANUAL_BACKFILL_REVIEW');
 
-console.log('PASS: 17 escenarios originales, variantes y contrato 3-doc de perfil/residuales entre tenants; solo inventario local, ninguna escritura ni Firebase.');
+// Regresión del contrato atómico: raíz 3-doc + reserva NO bastan.
+// La membresía OWNER también debió crearse activa, con UID, tenant y ruta
+// coherentes en el mismo batch. Un error en A bloquea el backfill de B.
+const invalidThreeDocOwnerCases = [
+  { name: 'OWNER ausente', memberships: [] },
+  { name: 'OWNER inactivo', memberships: [member('alpha', 'alice', 'OWNER', false)] },
+  { name: 'OWNER con rol distinto', memberships: [member('alpha', 'alice', 'ADMIN')] },
+  { name: 'OWNER de otro UID', memberships: [member('alpha', 'mallory')] },
+  { name: 'dos OWNER', memberships: [member('alpha', 'alice'), member('alpha', 'mallory')] },
+  { name: 'OWNER con ruta discordante', memberships: [{
+    ...member('alpha', 'alice'), path: 'businessMemberships/alpha_wrong',
+  }] },
+  { name: 'OWNER con tenant discordante', memberships: [{
+    ...member('alpha', 'alice'),
+    data: { ...member('alpha', 'alice').data, restaurantId: 'beta' },
+  }] },
+];
+for (const scenario of invalidThreeDocOwnerCases) {
+  const checked = auditHistoricalHandles(inventory([
+    contractRoot('alpha', 'alice', 3),
+    ...scenario.memberships,
+    reservation('alpha', 'alice'),
+    root('beta', 'bob'), member('beta', 'bob'),
+  ]));
+  assert(checked.globalBlockers.includes('THREE_DOC_OWNER_MEMBERSHIP_INVALID'), scenario.name);
+  assert.deepEqual(checked.businesses.map(b => b.status), [
+    'BLOCKED_INCOMPLETE_INVENTORY', 'BLOCKED_INCOMPLETE_INVENTORY',
+  ], scenario.name);
+  assert.equal(checked.counts.manualCandidates, 0, scenario.name);
+  assert.equal(checked.safeToApplyAutomatically, false, scenario.name);
+}
+for (const invalidRoot of [
+  { ...contractRoot('alpha', 'alice', 3),
+    data: { ...contractRoot('alpha', 'alice', 3).data, restaurantId: 'beta' } },
+  { ...contractRoot('alpha', 'alice', 3),
+    data: { ...contractRoot('alpha', 'alice', 3).data, ownerUserId: '' } },
+]) {
+  const checked = auditHistoricalHandles(inventory([
+    invalidRoot, member('alpha', 'alice'), reservation('alpha', 'alice'),
+    root('beta', 'bob'), member('beta', 'bob'),
+  ]));
+  assert(checked.globalBlockers.includes('THREE_DOC_ROOT_IDENTITY_INVALID'));
+  assert.equal(checked.counts.manualCandidates, 0);
+}
+// La raíz legacy SIN marcador con OWNER ausente sigue en revisión local,
+// no se interpreta como un contrato atómico nuevo ni se autoriza backfill.
+const legacyMissingOwner = auditHistoricalHandles(inventory([
+  root('alpha', 'alice'), reservation('alpha', 'alice'),
+  root('beta', 'bob'), member('beta', 'bob'),
+]));
+assert.deepEqual(legacyMissingOwner.globalBlockers, []);
+assert.equal(legacyMissingOwner.businesses[0].status, 'HOLD_MANUAL_REVIEW');
+assert.equal(legacyMissingOwner.businesses[1].status, 'CANDIDATE_FOR_MANUAL_BACKFILL_REVIEW');
+
+console.log('PASS: 17 escenarios originales, variantes y OWNER atómico del contrato 3-doc de perfil/residuales entre tenants; solo inventario local, ninguna escritura ni Firebase.');
 console.warn('PENDIENTE: inventario real completo, respaldo, validación de propietarios y backfill autorizado; ningún candidato es aprobación automática.');
