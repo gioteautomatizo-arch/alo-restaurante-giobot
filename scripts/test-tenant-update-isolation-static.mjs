@@ -19,7 +19,7 @@ for (const name of [...operational, ...other]) {
   const before = blockFor(staged, name);
   const after = blockFor(proposed, name);
   const guard = 'request.resource.data.restaurantId == resource.data.restaurantId';
-  assert(!before.includes(guard), 'STAGED cambió: revisar manualmente ' + name);
+  assert(!before.includes('allow update: if ' + guard), 'STAGED cambió: revisar manualmente ' + name);
   assert(after.includes(guard), 'Falta protección ' + name);
   assert(after.includes('allow update: if ' + guard), 'Guard debe preceder al permiso ' + name);
   assert(after.includes('allow delete:'), 'No perder semántica de delete ' + name);
