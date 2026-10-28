@@ -30,6 +30,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** Huella independiente del orden de propiedades JSON, sin cambiar el orden de las partidas. */
+function canonicalJson(value: unknown): string {
+  const normalize = (input: unknown): unknown => {
+    if (Array.isArray(input)) return input.map(normalize);
+    if (isRecord(input)) {
+      return Object.fromEntries(Object.keys(input).sort().map(key => [key, normalize(input[key])]));
+    }
+    return input;
+  };
+  return JSON.stringify(normalize(value));
+}
+
 function validateDraft(raw: unknown): TrustedPublicOrderDraft {
   if (!isRecord(raw) || Object.keys(raw).some(key =>
     !['businessId', 'attemptId', 'orderType', 'tableNumber', 'paymentMethod', 'customerName', 'lines'].includes(key))) {
@@ -81,8 +93,9 @@ export async function commitTrustedPublicOrder(
   const businessId = draft.businessId;
   const orderId = deriveTrustedOrderId(businessId, draft.attemptId);
   const code = 'WEB-' + orderId.slice(-8).toUpperCase();
-  const fingerprint = createHash('sha256').update(JSON.stringify(draft)).digest('hex');
+  const fingerprint = createHash('sha256').update(canonicalJson(draft)).digest('hex');
   const attemptRef = db.doc(`businesses/${businessId}/publicOrderAttempts/${draft.attemptId}`);
+  const businessRef = db.doc(`businesses/${businessId}`);
   const profileRef = db.doc(`publicBusinessProfiles/${businessId}`);
   const catalogRef = db.doc(`businesses/${businessId}/catalog/menu_catalog`);
   const orderRef = db.doc(`restaurant_orders/${orderId}`);
@@ -117,12 +130,14 @@ export async function commitTrustedPublicOrder(
       return { orderId, code: prior.code as string, total: prior.total as number, created: false };
     }
 
+    const business = await tx.get(businessRef);
     const profile = await tx.get(profileRef);
     const catalog = await tx.get(catalogRef);
     const existingOrder = await tx.get(orderRef);
     const existingMirror = await tx.get(mirrorRef);
-    if (!profile.exists || !catalog.exists) {
-      throw new Error('PEDIDO_NO_VALIDO: negocio o catálogo no disponible.');
+    if (!business.exists || business.data()?.restaurantId !== businessId ||
+        !profile.exists || !catalog.exists) {
+      throw new Error('PEDIDO_NO_VALIDO: negocio o catálogo no disponible o discordante.');
     }
     if (existingOrder.exists || existingMirror.exists) {
       throw new Error('CONFLICTO_ID: identificador de pedido o espejo ya ocupado.');
