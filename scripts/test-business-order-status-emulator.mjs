@@ -287,6 +287,24 @@ try {
   assert.equal(publicMirror.data().restaurantId, 'business-a');
   assert.equal(publicMirror.data().tableNumber, 1);
   await expectDenied(() => createOrder('business-b', publicTableInput, 'web_' + 'e'.repeat(32)));
+  // Un QR sin mesa sigue siendo pedido para recoger y no crea espejo ficticio.
+  const externalId = 'web_' + '1'.repeat(32);
+  const externalCreated = await createOrder('business-a', {
+    ...publicTableInput, orderType: 'pickup', orderOrigin: 'QR_EXTERNO',
+    tableNumber: undefined, notes: 'Pedido externo ficticio',
+  }, externalId);
+  assert.equal(externalCreated.orderType, 'pickup');
+  assert.equal((await read(ownerA, externalId)).orderOrigin, 'QR_EXTERNO');
+  assert.equal((await sdk.getDoc(sdk.doc(anonymous, 'public_table_orders', externalId))).exists(), false);
+  // Las reglas STAGED limitan los números de mesa: nunca confirmar un pedido
+  // sin espejo si el QR señala una mesa no permitida por dichas reglas.
+  const invalidPublicId = 'web_' + '2'.repeat(32);
+  await expectDenied(() => createOrder('business-a', {...publicTableInput, tableNumber: 3}, invalidPublicId));
+  await env.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.firestore();
+    assert.equal((await sdk.getDoc(ref(db, invalidPublicId))).exists(), false);
+    assert.equal((await sdk.getDoc(sdk.doc(db, 'public_table_orders', invalidPublicId))).exists(), false);
+  });
   // Mesa inválida: la regla del espejo falla y revierte también el pedido.
   as(ownerA);
   const invalidId = 'web_' + 'f'.repeat(32);
