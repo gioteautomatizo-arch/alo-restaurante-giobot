@@ -9,14 +9,14 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
-import { buildAtomicOwnerAndPermanentHandleProposalRules, buildRegistrationFreezeProposalRules } from './owner-atomic-proposal-rules.mjs';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, writeBatch } from 'firebase/firestore';
+import { buildThreeDocumentRecoveryMarkerProposalRules, buildRegistrationFreezeProposalRules } from './owner-atomic-proposal-rules.mjs';
 
 const projectId = 'gioteautomatizo-registration-version-matrix-test';
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080',
   'Esta prueba requiere Firestore Emulator aislado; nunca usar Firestore real.');
 const staged = readFileSync('docs/firestore.launch-security.STAGED.rules', 'utf8');
-const proposed = buildAtomicOwnerAndPermanentHandleProposalRules(staged);
+const proposed = buildThreeDocumentRecoveryMarkerProposalRules(staged);
 const frozen = buildRegistrationFreezeProposalRules(staged);
 const phase = process.argv[2];
 assert(['staged', 'freeze-before', 'candidate', 'freeze-after', 'rollback'].includes(phase),
@@ -59,7 +59,9 @@ const staffMembership = (id, role) => ({
 
 function registration(db, id, uid, version) {
   const batch = writeBatch(db);
-  batch.set(doc(db, root(id)), business(id, uid));
+  batch.set(doc(db, root(id)), version === 3
+    ? { ...business(id, uid), registrationContractVersion: 3 }
+    : business(id, uid));
   batch.set(doc(db, owner(id, uid)), membership(id, uid));
   if (version === 3) batch.set(doc(db, handle(id)), reservation(id, uid));
   return batch.commit();
@@ -112,6 +114,11 @@ try {
   await assertSucceeds(updateDoc(doc(alice, root(legacyId)), {
     'branding.restaurantName': 'Legado activo durante congelación',
   }));
+  await assertFails(updateDoc(doc(alice, root(legacyId)), {
+    registrationContractVersion: 3,
+  }));
+  assert.equal((await getDoc(doc(alice, root(legacyId)))).data()?.registrationContractVersion,
+    undefined, 'freeze-before no permite convertir un legacy en 3-doc por update');
   await assertFails(deleteDoc(doc(alice, root(legacyId))));
   await assertSucceeds(getDoc(doc(alice, root(legacyId))));
   // Congelar el registro NO debe bloquear el catálogo privado de un negocio
@@ -177,7 +184,15 @@ try {
   ], 'propuesta rechaza cliente vigente sin escritura parcial');
 
   await assertSucceeds(registration(bob, proposedThreeId, 'matrix-bob', 3));
-  await assertSucceeds(getDoc(doc(bob, root(proposedThreeId))));
+  const candidateRoot = await assertSucceeds(getDoc(doc(bob, root(proposedThreeId))));
+  assert.equal(candidateRoot.data()?.registrationContractVersion, 3,
+    'el lote candidato debe guardar el marcador 3-doc');
+  await assertFails(updateDoc(doc(bob, root(proposedThreeId)), {
+    registrationContractVersion: 2,
+  }));
+  await assertFails(updateDoc(doc(bob, root(proposedThreeId)), {
+    registrationContractVersion: deleteField(),
+  }));
   await assertFails(getDoc(doc(alice, root(proposedThreeId))));
   await assertFails(getDoc(doc(bob, handle(proposedThreeId))));
   await assertSucceeds(setDoc(doc(bob, catalog(proposedThreeId)), {
@@ -219,6 +234,14 @@ try {
   await assertSucceeds(updateDoc(doc(bob, root(proposedThreeId)), {
     'branding.restaurantName': 'Candidato activo durante reversión',
   }));
+  await assertFails(updateDoc(doc(bob, root(proposedThreeId)), {
+    registrationContractVersion: deleteField(),
+  }));
+  await assertFails(updateDoc(doc(bob, root(proposedThreeId)), {
+    registrationContractVersion: 2,
+  }));
+  assert.equal((await getDoc(doc(bob, root(proposedThreeId)))).data()?.registrationContractVersion,
+    3, 'freeze-after debe preservar el marcador incluso tras actualizaciones legítimas');
   await assertFails(deleteDoc(doc(bob, root(proposedThreeId))));
   await assertSucceeds(getDoc(doc(bob, root(proposedThreeId))));
   await assertFails(getDoc(doc(bob, handle(proposedThreeId))));
