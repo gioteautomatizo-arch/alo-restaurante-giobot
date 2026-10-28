@@ -40,6 +40,7 @@ const attemptRef = (businessId: string, attemptId: string) =>
 
 try {
   for (const [businessId, published] of [['business-a', true], ['business-b', false]] as const) {
+    await db.doc('businesses/' + businessId).set({ restaurantId: businessId, active: true });
     await db.doc('publicBusinessProfiles/' + businessId).set({ businessId, restaurantId: businessId, published });
     await db.doc(`businesses/${businessId}/catalog/menu_catalog`).set(catalog(businessId, 75));
   }
@@ -51,6 +52,17 @@ try {
   assert.equal(firstSnap.data()?.total, 160);
   assert.equal(firstSnap.data()?.billingStatus, 'PENDIENTE');
   assert.equal((await mirrorRef('business-a', id(1)).get()).exists, false, 'pickup no crea espejo');
+
+  // El orden de claves JSON no puede convertir el mismo intento en conflicto.
+  const reordered = {
+    lines: [{ selections: { guiso: ['Res'] }, quantity: 2, productId: 'a-regular' }],
+    customerName: 'Cliente ficticio', paymentMethod: 'efectivo',
+    orderType: 'pickup', attemptId: id(1), businessId: 'business-a',
+  };
+  const reorderedRetry = await commitTrustedPublicOrder(db, reordered);
+  assert.equal(reorderedRetry.created, false);
+  assert.equal(reorderedRetry.orderId, first.orderId);
+  assert.equal(reorderedRetry.total, 160);
 
   // Un reintento no reescribe estados ni importes aunque el catálogo cambie.
   await orderRef('business-a', id(1)).update({ status: 'PREPARANDO' });
@@ -119,11 +131,29 @@ try {
     businessId: 'business-b', lines: [aLine],
   })), /PEDIDO_NO_VALIDO/);
 
+  // Perfil/catálogo huérfanos o un businessId discordante nunca crean un pedido nuevo.
+  await db.doc('businesses/business-a').update({ restaurantId: 'business-b' });
+  await assert.rejects(commitTrustedPublicOrder(db, draft(14)), /negocio o catálogo no disponible o discordante/);
+  assert.equal((await orderRef('business-a', id(14)).get()).exists, false);
+  assert.equal((await attemptRef('business-a', id(14)).get()).exists, false);
+  await db.doc('businesses/business-a').update({ restaurantId: 'business-a' });
+
+  await db.doc('businesses/business-b').delete();
+  await assert.rejects(commitTrustedPublicOrder(db, draft(15, {
+    businessId: 'business-b', lines: [{ productId: 'b-exclusive', quantity: 1 }],
+  })), /negocio o catálogo no disponible o discordante/);
+  assert.equal((await orderRef('business-b', id(15)).get()).exists, false);
+  assert.equal((await attemptRef('business-b', id(15)).get()).exists, false);
+  // La recuperación de un intento ya confirmado sigue siendo posible sin crear nada nuevo.
+  const bRetry = await commitTrustedPublicOrder(db, bDraft);
+  assert.equal(bRetry.created, false);
+  assert.equal(bRetry.orderId, b.orderId);
+
   // Si se pierde el resumen histórico, no fingir que el reintento reparó el pedido.
   await mirrorRef('business-a', id(11)).delete();
   await assert.rejects(commitTrustedPublicOrder(db, tableDraft), /INTEGRIDAD_PEDIDO/);
 
-  console.log('PASS: Firestore Admin Emulator A/B: cotización transaccional, publicación, precio vigente, reintentos, 4 solicitudes concurrentes, espejo atómico, colisión y aislamiento.');
+  console.log('PASS: Firestore Admin Emulator A/B: negocio vigente y tenant concordante, idempotencia canónica, reintentos, precio, 4 solicitudes concurrentes, espejo y rollback.');
   console.log('PENDIENTE CRÍTICO: sin endpoint, sin reglas que bloqueen escrituras directas, sin mitigación de abuso ni autorización para activación.');
 } finally {
   await deleteApp(app);
