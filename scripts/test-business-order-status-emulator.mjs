@@ -272,8 +272,21 @@ try {
   // La página pública A puede crear; B aún no publicada, no.
   as(anonymous);
   const publicId = 'web_' + 'd'.repeat(32);
-  await createOrder('business-a', tableInput('CLIENTE_QR'), publicId);
-  await expectDenied(() => createOrder('business-b', tableInput('CLIENTE_QR'), 'web_' + 'e'.repeat(32)));
+  // Misma forma que el checkout público real: QR con mesa, sin sesión ni cuenta
+  // de las mesas heredadas de Calientito. La prueba anterior pasaba datos de POS
+  // y no demostraba que la pantalla web pudiera crear su resumen.
+  const {tableSessionId: _session, accountId: _account, accountLabel: _label, ...publicTableInput} =
+    tableInput('CLIENTE_QR', {orderOrigin: 'MESA_QR', notes: 'Mesa 1 · 2 personas'});
+  const publicCreated = await createOrder('business-a', publicTableInput, publicId);
+  assert.equal(publicCreated.orderType, 'dine_in');
+  assert.equal((await read(ownerA, publicId)).orderOrigin, 'MESA_QR');
+  const publicMirror = await sdk.getDoc(sdk.doc(anonymous, 'public_table_orders', publicId));
+  assert.equal(publicMirror.exists(), true, 'El QR real debe producir resumen de mesa');
+  assert.equal(publicMirror.data().orderId, publicId);
+  assert.equal(publicMirror.data().code, publicCreated.code);
+  assert.equal(publicMirror.data().restaurantId, 'business-a');
+  assert.equal(publicMirror.data().tableNumber, 1);
+  await expectDenied(() => createOrder('business-b', publicTableInput, 'web_' + 'e'.repeat(32)));
   // Mesa inválida: la regla del espejo falla y revierte también el pedido.
   as(ownerA);
   const invalidId = 'web_' + 'f'.repeat(32);
