@@ -106,7 +106,10 @@ function itemOptions(item: BusinessCatalogItem, raw: unknown): {
       additionalCents += exact.priceCents;
       if (additionalCents > MAX_ORDER_CENTS) invalid('Importe de opciones excesivo.');
     }
-    if (chosen.length) parts.push(`${name}: ${chosen.join(', ')}`);
+    if (chosen.length) {
+      const canonical = group.choices.map((choice) => choice.name).filter((choiceName) => chosen.includes(choiceName));
+      parts.push(`${name}: ${canonical.join(', ')}`);
+    }
   }
   if (Object.keys(raw).some((id) => !groupIds.has(id))) invalid('Grupo de opciones inexistente.');
   return { additionalCents, summary: parts.join(' · ') };
