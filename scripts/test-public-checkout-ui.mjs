@@ -13,7 +13,20 @@ const mocks = {
       window.qa.reject = () => reject(new Error('simulated offline'));
     });
   }`,
-  'firebase/firestore': `export const doc = (_, collection, id) => ({id});
+  'firebase/firestore': `export const doc = (_, ...parts) => ({id: parts.at(-1), path: parts.join('/')});
+    export async function getDocFromServer(ref) {
+      window.qa.serverReads.push(ref.path);
+      if (window.qa.failPreflight) throw new Error('simulated server offline');
+      if (ref.path.startsWith('publicBusinessProfiles/')) {
+        return {exists: () => true, data: () => ({published: !window.qa.unpublished})};
+      }
+      return {exists: () => !window.qa.invalidCatalog, data: () => ({
+        businessId: window.qa.catalogTenantMismatch ? 'other-tenant' : ref.path.split('/')[1],
+        items: [{id: 'taco', name: 'Taco de prueba', description: 'Prueba',
+          category: 'Comida', price: window.qa.serverPrice ?? 25,
+          sortOrder: 1, available: window.qa.serverAvailable !== false}],
+      })};
+    }
     export async function getDoc(ref) {
       window.qa.reads++;
       if (window.qa.failProfile) throw new Error('simulated offline');
@@ -22,6 +35,7 @@ const mocks = {
     }`,
   '../../lib/firebase': `export const db = {};`,
   '../../lib/businessCatalogService': `export function subscribeToBusinessCatalog(id, callback) {
+    window.qa.catalogCallback = callback;
     callback({items: [{id: 'taco', name: 'Taco de prueba', description: 'Prueba',
       category: 'Comida', price: 25, sortOrder: 1, available: true}]});
     return () => {};
@@ -53,7 +67,7 @@ const bundle = await build({
 });
 const dom = new JSDOM('<div id="root"></div>', {url: 'http://localhost/', runScripts: 'outside-only', virtualConsole: new VirtualConsole()});
 const {window} = dom;
-window.qa = {calls: [], reads: 0, failProfile: true, missing: false, locks: []};
+window.qa = {calls: [], reads: 0, serverReads: [], failProfile: true, missing: false, locks: []};
 Object.defineProperty(window.navigator, 'locks', {configurable: true, value: {
   request: async (name, options, callback) => {
     window.qa.locks.push({name, mode: options.mode});
@@ -233,6 +247,58 @@ try {
   await waitFor(() => window.qa.calls.length === beforeConflict + 2, 'Reviewed conflict can send a new ID');
   window.qa.resolve();
   await waitFor(() => button('Seguir viendo el menú'), 'Reviewed conflict confirmed');
+  // Preflight con lectura real de servidor simulada: no confiar en el snapshot del listener.
+  window.history.replaceState(null, '', '/#negocio/demo-fresh-price');
+  window.qa.render('demo-fresh-price');
+  await waitFor(() => document.body.textContent.includes('Negocio demo-fresh-price'), 'Fresh-price tenant loaded');
+  button('Agregar').click();
+  await waitFor(() => button('Ver mi pedido (1)'), 'Fresh-price cart');
+  button('Ver mi pedido (1)').click();
+  await waitFor(() => button('Enviar pedido al negocio'), 'Fresh-price checkout');
+  const beforeFresh = window.qa.calls.length;
+  const beforeServerReads = window.qa.serverReads.length;
+  window.qa.serverPrice = 30;
+  button('Enviar pedido al negocio').click();
+  await waitFor(() => document.querySelector('[role="alert"]')?.textContent.includes('El menú cambió'), 'Fresh price mismatch blocks send');
+  assert.equal(window.qa.calls.length, beforeFresh, 'Old cached price must not reach Firestore');
+  assert.deepEqual(window.qa.serverReads.slice(beforeServerReads), [
+    'publicBusinessProfiles/demo-fresh-price',
+    'businesses/demo-fresh-price/catalog/menu_catalog',
+  ], 'Read only the current tenant profile and catalog from server');
+  assert.ok(document.body.textContent.includes('Conservamos tu carrito'), 'Stale price preserves cart');
+  assert.ok(button('Quitar los productos que cambiaron'), 'Latest catalog is reflected in cart validation');
+  window.qa.serverPrice = 25;
+  window.qa.catalogCallback({items: [{id: 'taco', name: 'Taco de prueba', description: 'Prueba', category: 'Comida', price: 25, sortOrder: 1, available: true}]});
+  await waitFor(() => button('Enviar pedido al negocio')?.disabled === false, 'Restored catalog allows retry');
+  button('Enviar pedido al negocio').click();
+  await waitFor(() => window.qa.calls.length === beforeFresh + 1, 'Recovered fresh catalog allows send');
+  assert.equal(window.qa.calls.at(-1).order.total, 25, 'No silent price substitution');
+  window.qa.resolve();
+  await waitFor(() => button('Seguir viendo el menú'), 'Recovered fresh order confirmed');
+
+  // Si el negocio se despublica, el catálogo no corresponde al tenant o no hay red,
+  // se conserva el carrito y NO se crea un intento de escritura.
+  for (const [tenant, flag, message] of [
+    ['demo-unpublished', 'unpublished', 'ya no está publicado'],
+    ['demo-catalog-cross', 'catalogTenantMismatch', 'catálogo válido'],
+    ['demo-preflight-offline', 'failPreflight', 'No pudimos comprobar'],
+    ['demo-out-of-stock', 'serverAvailable', 'El menú cambió'],
+  ]) {
+    window.history.replaceState(null, '', '/#negocio/' + tenant);
+    window.qa.render(tenant);
+    await waitFor(() => document.body.textContent.includes('Negocio ' + tenant), 'Preflight tenant ' + tenant);
+    button('Agregar').click();
+    await waitFor(() => button('Ver mi pedido (1)'), 'Preflight cart ' + tenant);
+    button('Ver mi pedido (1)').click();
+    await waitFor(() => button('Enviar pedido al negocio'), 'Preflight checkout ' + tenant);
+    const before = window.qa.calls.length;
+    window.qa[flag] = flag === 'serverAvailable' ? false : true;
+    button('Enviar pedido al negocio').click();
+    await waitFor(() => document.querySelector('[role="alert"]')?.textContent.includes(message), 'Preflight failure ' + tenant);
+    assert.equal(window.qa.calls.length, before, 'Preflight failure must never write: ' + tenant);
+    assert.ok(document.body.textContent.includes('Carrito · Por enviar'), 'Preflight failure keeps cart: ' + tenant);
+    window.qa[flag] = flag === 'serverAvailable' ? true : false;
+  }
   // WhatsApp no debe recibir un pedido sin folio si la escritura falló.
   window.history.replaceState(null, '', '/#negocio/demo-whatsapp');
   window.qa.whatsapp = true;
@@ -262,6 +328,23 @@ try {
   window.qa.resolve();
   await waitFor(() => window.qa.popups[1].location.href.startsWith('https://wa.me/'), 'Confirmed WhatsApp order');
   assert.ok(decodeURIComponent(window.qa.popups[1].location.href).includes('Pedido TEST-001'));
+  // WhatsApp tampoco debe navegar si el preflight del servidor falla antes de escribir.
+  window.history.replaceState(null, '', '/#negocio/demo-wa-preflight');
+  window.qa.render('demo-wa-preflight');
+  await waitFor(() => document.body.textContent.includes('Negocio demo-wa-preflight'), 'WA preflight tenant loaded');
+  button('Agregar').click();
+  await waitFor(() => button('Ver mi pedido (1)'), 'WA preflight cart');
+  button('Ver mi pedido (1)').click();
+  await waitFor(() => button('Enviar pedido (se registra y abre WhatsApp)'), 'WA preflight checkout');
+  const beforeWaPreflightCalls = window.qa.calls.length;
+  const beforeWaPreflightPopups = window.qa.popups.length;
+  window.qa.failPreflight = true;
+  button('Enviar pedido (se registra y abre WhatsApp)').click();
+  await waitFor(() => window.qa.popups.length === beforeWaPreflightPopups + 1, 'WA preflight opens blank popup on gesture');
+  await waitFor(() => window.qa.popups.at(-1).closed, 'WA preflight closes popup when no server check');
+  assert.equal(window.qa.calls.length, beforeWaPreflightCalls, 'WA preflight must never write');
+  assert.equal(window.qa.popups.at(-1).location.href, '', 'WA preflight must never navigate');
+  window.qa.failPreflight = false;
   // Web Locks disponible pero rechazado: no enviar nada a Firestore ni WhatsApp.
   const beforeDeniedCalls = window.qa.calls.length;
   const beforeDeniedPopups = window.qa.popups.length;
