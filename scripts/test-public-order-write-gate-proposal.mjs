@@ -90,6 +90,9 @@ try {
     order('business-a', 'MESERO')));
   await assertSucceeds(setDoc(orderRef(cashierA, 'cashier-pos'),
     order('business-a', 'CAJA')));
+  await assertSucceeds(setDoc(orderRef(ownerB, 'owner-b-pos'),
+    order('business-b', 'CAJA', 110, { items: [{ productId: 'b-exclusive', name: 'Producto B', quantity: 1, unitPrice: 110, totalPrice: 110 }] })));
+  await assertFails(getDoc(orderRef(ownerA, 'owner-b-pos')));
   await assertFails(setDoc(orderRef(ownerB, 'cross-tenant-pos'),
     order('business-a', 'CAJA')));
   await assertFails(setDoc(orderRef(revokedA, 'revoked-pos'),
@@ -107,8 +110,21 @@ try {
   await assertSucceeds(staffBatch.commit());
   await assertFails(setDoc(mirrorRef(ownerA, 'orphan-mirror'),
     mirror('business-a', 'orphan-mirror')));
-  await assertFails(setDoc(mirrorRef(ownerA, 'mismatch-mirror'),
-    mirror('business-a', 'staff-table', 1, { orderId: 'mismatch-mirror' })));
+  // Una escritura de dos documentos falla entera si el resumen discrepa.
+  const badBatch = writeBatch(ownerA);
+  badBatch.set(orderRef(ownerA, 'staff-bad-batch'), order('business-a', 'MESERO', 75, {
+    orderType: 'dine_in', tableNumber: 2,
+  }));
+  badBatch.set(mirrorRef(ownerA, 'staff-bad-batch'), mirror('business-a', 'staff-bad-batch', 1));
+  await assertFails(badBatch.commit());
+  await env.withSecurityRulesDisabled(async context => {
+    assert.equal((await getDoc(orderRef(context.firestore(), 'staff-bad-batch'))).exists(), false,
+      'El batch con resumen incorrecto no debe dejar pedido parcial');
+  });
+  await assertSucceeds(setDoc(orderRef(ownerA, 'staff-unmirrored'),
+    order('business-a', 'MESERO', 75, { orderType: 'dine_in', tableNumber: 2 })));
+  await assertFails(setDoc(mirrorRef(ownerA, 'staff-unmirrored'),
+    mirror('business-a', 'staff-unmirrored', 1)));
   await assertFails(setDoc(mirrorRef(ownerB, 'trusted-table'),
     mirror('business-a', 'trusted-table')));
   await assertFails(getDoc(orderRef(ownerB, 'owner-pos')));
