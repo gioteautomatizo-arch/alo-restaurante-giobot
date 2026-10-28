@@ -106,6 +106,7 @@ async function runScenario(rules, diagnostic) {
       const idB = collection + '/' + b + '-record';
       const idA = collection + '/' + a + '-record';
       await assertFails(updateDoc(doc(alice, idB), { restaurantId: a, ...patch }));
+      await assertFails(updateDoc(doc(bob, idB), { restaurantId: a, ...patch }));
       await assertSucceeds(updateDoc(doc(bob, idB), patch));
       await assertSucceeds(updateDoc(doc(alice, idA), patch));
       if (collection !== 'daily_menu') await assertFails(getDoc(doc(alice, idB)));
