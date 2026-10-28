@@ -98,6 +98,8 @@ jobs:
         run: node --import tsx scripts/test-public-order-receipts.mts
       - name: Test persistent public checkout attempt IDs (local tab storage, no Firebase writes)
         run: node --import tsx scripts/test-public-order-attempt.mts
+      - name: Test public order stable document write path (mocked Firestore, no writes)
+        run: node scripts/test-public-order-write-path.mjs
       - name: Test public checkout interactions (mocked backend, no Firebase writes)
         run: node scripts/test-public-checkout-ui.mjs
       - name: Test safe public catalog checkout (no Firebase writes)
