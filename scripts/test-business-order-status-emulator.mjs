@@ -41,7 +41,7 @@ const mocks = {
   'firebase/firestore': firestoreProxy,
   './firebase': 'export const db = {};',
   './firestoreService': 'export const sanitizeFirestorePayload = value => value;',
-  './restaurantContext': "export const getActiveRestaurantId = () => 'alo-restaurante'; export const isCalientitoTenant = () => true;",
+  './restaurantContext': "export const getActiveRestaurantId = () => globalThis.orderStatusTenant || 'alo-restaurante'; export const isCalientitoTenant = () => getActiveRestaurantId() === 'alo-restaurante';",
   './adminStorage': "export const getRestaurantInfo = () => ({orderFolioPrefix: 'CAL'});",
 };
 const bundle = await build({
@@ -62,7 +62,7 @@ const bundle = await build({
     },
   }],
 });
-const { updateBusinessRestaurantOrderStatus: transition } = await import(
+const { updateBusinessRestaurantOrderStatus: transition, updateOffTableOrderDetails: editOffTable, chargeOffTableOrder: chargeOffTable } = await import(
   'data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64')
 );
 
@@ -105,6 +105,10 @@ try {
       restaurantId: 'business-a', userId: 'revoked-a', role: 'MANAGER', active: false,
     });
     await sdk.setDoc(ref(db, 'a-normal'), order('business-a'));
+    await sdk.setDoc(ref(db, 'a-edit-staged'), order('business-a'));
+    await sdk.setDoc(ref(db, 'legacy-edit'), order('alo-restaurante'));
+    await sdk.setDoc(ref(db, 'legacy-pay'), order('alo-restaurante'));
+
     await sdk.setDoc(ref(db, 'b-normal'), order('business-b'));
     await sdk.setDoc(ref(db, 'a-paid'), order('business-a', { status: 'LISTO', billingStatus: 'PAGADO' }));
     await sdk.setDoc(ref(db, 'a-cancel'), order('business-a', { status: 'LISTO' }));
@@ -167,7 +171,29 @@ try {
   assert.equal((await read(ownerA, 'a-table')).status, 'PREPARANDO');
   assert.equal((await sdk.getDoc(sdk.doc(ownerA, 'public_table_orders/a-table'))).data().status, 'PREPARANDO');
 
-  console.log('PASS: servicio real + Firestore Emulator, dos tenants, roles, transacciones, reintentos, carrera, cobro y mesa.');
+  // La regla STAGED de tenants nuevos solo admite cambios de estado.
+  // No presentar edición de importes/productos como habilitada hasta revisar reglas.
+  as(ownerA);
+  globalThis.orderStatusTenant = 'business-a';
+  const newTenantSnapshot = { ...(await read(ownerA, 'a-edit-staged')), id: 'a-edit-staged' };
+  await expectDenied(() => editOffTable(newTenantSnapshot, { total: 70 }, { id: 'owner-a', name: 'Propietario A' }));
+  assert.equal((await read(ownerA, 'a-edit-staged')).total, 55);
+
+  // En Calientito heredado, comprobar edición real, cobro y rechazo posterior.
+  as(managerA);
+  globalThis.orderStatusTenant = 'alo-restaurante';
+  const legacySnapshot = { ...(await read(managerA, 'legacy-edit')), id: 'legacy-edit' };
+  await editOffTable(legacySnapshot, { notes: 'Sin cebolla' }, user);
+  assert.equal((await read(managerA, 'legacy-edit')).notes, 'Sin cebolla');
+  await assert.rejects(editOffTable(legacySnapshot, { total: 1 }, user), /cambió/);
+  const beforeCharge = { ...(await read(managerA, 'legacy-pay')), id: 'legacy-pay' };
+  await chargeOffTable(beforeCharge, 'tarjeta', user);
+  await assert.rejects(editOffTable(beforeCharge, { total: 1 }, user), /Revisa Caja/);
+  const charged = await read(managerA, 'legacy-pay');
+  assert.equal(charged.total, 55);
+  assert.equal(charged.billingStatus, 'PAGADO');
+
+  console.log('PASS: servicio real + Firestore Emulator, dos tenants, roles, transacciones, reintentos, carrera, cobro y mesa y edición/cobro en emulador.');
 } finally {
   globalThis.orderStatusDb = null;
   await env.cleanup();
