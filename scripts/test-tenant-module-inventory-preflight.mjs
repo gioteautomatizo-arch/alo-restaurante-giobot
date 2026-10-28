@@ -56,7 +56,7 @@ result = run([{ ...valid[0], businessId: null }, { ...valid[1], businessId: 7 }]
 assert.equal(result.counts.missingIdentity, 1);
 assert.equal(result.counts.foreignIdentity, 1);
 assert.equal(result.safeToProceed, false);
-assert(!JSON.stringify(result).includes('valid'), 'No devolver datos del documento');
+assert(!JSON.stringify(result).includes('"docId"'), 'No devolver identificadores ni datos del documento');
 
 const snapshot = JSON.stringify(valid);
 run(valid);
