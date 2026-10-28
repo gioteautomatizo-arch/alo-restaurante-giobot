@@ -197,6 +197,33 @@ try {
   assert.notEqual(window.qa.calls.at(-1).attemptId, uncertainId, 'New ID only after customer review');
   window.qa.resolve();
   await waitFor(() => button('Seguir viendo el menú'), 'Reviewed order confirmed');
+  // Un intento compartido diferente en otra pestaña requiere revisión explícita.
+  window.history.replaceState(null, '', '/#negocio/demo-conflict');
+  window.qa.render('demo-conflict');
+  await waitFor(() => document.body.textContent.includes('Negocio demo-conflict'), 'Conflict tenant opened');
+  button('Agregar').click();
+  await waitFor(() => button('Ver mi pedido (1)'), 'Conflict cart');
+  button('Ver mi pedido (1)').click();
+  await waitFor(() => button('Enviar pedido al negocio'), 'Conflict checkout');
+  const beforeConflict = window.qa.calls.length;
+  button('Enviar pedido al negocio').click();
+  await waitFor(() => window.qa.calls.length === beforeConflict + 1, 'First pending write');
+  window.qa.reject();
+  await waitFor(() => document.querySelector('[role="alert"]')?.textContent.includes('Conservamos tu pedido'), 'Conflict base uncertain');
+  const conflictKey = 'gio_public_order_attempt_v1:demo-conflict:directo';
+  const storedAttempt = JSON.parse(window.localStorage.getItem(conflictKey));
+  window.localStorage.setItem(conflictKey, JSON.stringify({...storedAttempt, id: 'web_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}));
+  button('Enviar pedido al negocio').click();
+  await waitFor(() => button('Ya consulté al negocio; iniciar pedido nuevo'), 'Conflicting tabs blocked');
+  assert.equal(window.qa.calls.length, beforeConflict + 1, 'Conflicting tabs cannot create a new write');
+  assert.ok(document.querySelector('[role="alert"]').textContent.includes('dos pestañas'));
+  window.confirm = () => true;
+  button('Ya consulté al negocio; iniciar pedido nuevo').click();
+  await waitFor(() => !button('Ya consulté al negocio; iniciar pedido nuevo'), 'Review clears both conflicting IDs');
+  button('Enviar pedido al negocio').click();
+  await waitFor(() => window.qa.calls.length === beforeConflict + 2, 'Reviewed conflict can send a new ID');
+  window.qa.resolve();
+  await waitFor(() => button('Seguir viendo el menú'), 'Reviewed conflict confirmed');
   // WhatsApp no debe recibir un pedido sin folio si la escritura falló.
   window.history.replaceState(null, '', '/#negocio/demo-whatsapp');
   window.qa.whatsapp = true;
