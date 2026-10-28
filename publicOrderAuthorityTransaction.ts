@@ -99,15 +99,19 @@ export async function commitTrustedPublicOrder(
       }
       const savedOrder = await tx.get(orderRef);
       if (!savedOrder.exists || savedOrder.data()?.restaurantId !== businessId ||
-          savedOrder.data()?.total !== prior.total ||\n          savedOrder.data()?.code !== prior.code || typeof prior.code !== 'string') {
+          savedOrder.data()?.total !== prior.total ||
+          savedOrder.data()?.code !== prior.code || typeof prior.code !== 'string') {
         throw new Error('INTEGRIDAD_PEDIDO: pedido previo ausente o discordante.');
       }
-      if (mirrorRef) {
-        const mirror = await tx.get(mirrorRef);
+      const mirror = await tx.get(mirrorRef);
+      if (draft.orderType === 'dine_in') {
         if (!mirror.exists || mirror.data()?.restaurantId !== businessId ||
-            mirror.data()?.orderId !== orderId) {
+            mirror.data()?.orderId !== orderId ||
+            mirror.data()?.tableNumber !== draft.tableNumber) {
           throw new Error('INTEGRIDAD_PEDIDO: resumen de mesa ausente o discordante.');
         }
+      } else if (mirror.exists) {
+        throw new Error('INTEGRIDAD_PEDIDO: pickup no puede tener espejo de mesa.');
       }
       return { orderId, code: prior.code as string, total: prior.total as number, created: false };
     }
@@ -149,7 +153,7 @@ export async function commitTrustedPublicOrder(
       updatedAt: now,
     };
     tx.create(orderRef, payload);
-    if (mirrorRef) {
+    if (draft.orderType === 'dine_in') {
       tx.create(mirrorRef, {
         orderId, code, restaurantId: businessId, tableNumber: draft.tableNumber,
         orderSource: 'CLIENTE_QR', orderOrigin: 'MESA_QR',
