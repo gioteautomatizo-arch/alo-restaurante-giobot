@@ -124,6 +124,12 @@ async function runScenario(rules, diagnostic) {
       await assertSucceeds(updateDoc(publicOrderB, { restaurantId: a }));
       await assertSucceeds(updateDoc(legacyOrder, { restaurantId: b }));
       for (const moduleCol of nestedModules) {
+        const wrong = nestedRef(alice, a, moduleCol, 'misrouted-update');
+        const missing = nestedRef(alice, a, moduleCol, 'missing-id');
+        await assertSucceeds(getDoc(wrong));
+        await assertSucceeds(getDoc(missing));
+        const unfiltered = await assertSucceeds(getDocs(collection(alice, 'businesses', a, moduleCol)));
+        assert.equal(unfiltered.size, 4, 'STAGED expone documentos mal asociados: ' + moduleCol);
         if (moduleCol !== 'auditLog') {
           await assertSucceeds(updateDoc(nestedRef(alice, a, moduleCol, 'misrouted-update'),
             { businessId: a, amount: 99 }));
@@ -134,6 +140,7 @@ async function runScenario(rules, diagnostic) {
       }
       console.warn('PENDIENTE SEGURIDAD STAGED: traslados entre tenants permitidos en gasto, mesa, sesión, solicitud, orden de mesa y pedido legado (solo emulador).');
       console.warn('PENDIENTE SEGURIDAD STAGED: módulos anidados mal asociados permiten reclamo y borrado por el tenant de la ruta (solo emulador).');
+      console.warn('PENDIENTE LECTURA STAGED: A puede leer documentos anidados que declaran B o carecen de businessId (solo emulador).');
       return;
     }
     for (const [collection, , patch] of fixtures) {
@@ -160,6 +167,16 @@ async function runScenario(rules, diagnostic) {
     assert.equal((await getDoc(doc(bob, 'tables', b + '-table'))).data()?.restaurantId, b);
     assert.equal((await getDoc(doc(bob, 'table_sessions', b + '-session'))).data()?.restaurantId, b);
     for (const moduleCol of nestedModules) {
+      // La consulta debe probar que solo puede devolver businessId=A.
+      await assertFails(getDoc(nestedRef(alice, a, moduleCol, 'misrouted-update')));
+      await assertFails(getDoc(nestedRef(alice, a, moduleCol, 'missing-id')));
+      await assertFails(getDoc(nestedRef(bob, a, moduleCol, 'valid')));
+      await assertFails(getDocs(collection(alice, 'businesses', a, moduleCol)));
+      const onlyA = await assertSucceeds(getDocs(nestedQuery(alice, a, moduleCol)));
+      assert.deepEqual(onlyA.docs.map(d => d.id), ['valid'], 'Filtro A: ' + moduleCol);
+      const onlyB = await assertSucceeds(getDocs(nestedQuery(bob, b, moduleCol)));
+      assert.deepEqual(onlyB.docs.map(d => d.id), ['valid'], 'Filtro B: ' + moduleCol);
+      await assertFails(getDocs(nestedQuery(alice, b, moduleCol)));
       const misroutedUpdate = nestedRef(alice, a, moduleCol, 'misrouted-update');
       const misroutedDelete = nestedRef(alice, a, moduleCol, 'misrouted-delete');
       const validA = nestedRef(alice, a, moduleCol, 'valid');
@@ -183,6 +200,7 @@ async function runScenario(rules, diagnostic) {
       }
     }
     console.log('PASS propuesta aislada: 12 rutas raíz y 6 módulos anidados protegidos; reclamo/borrado cruzado negados y operaciones legítimas A/B conservadas.');
+    console.log('PASS lectura propuesta aislada: get de documentos mal asociados negado, listas sin filtro negadas y consultas businessId A/B autorizadas.');
   } finally {
     await env.clearFirestore();
     await env.cleanup();
