@@ -190,7 +190,8 @@ export function buildRegistrationFreezeProposalRules(staged) {
   assert.equal(root.split(updateAnchor).length, 3,
     'ALTO: freeze debe proteger ambas rutas de actualización raíz.');
   const guarded = root.replaceAll(updateAnchor,
-    `      allow update: if request.resource.data.get('registrationContractVersion', null) == resource.data.get('registrationContractVersion', null)
+    `      allow update: if request.resource.data.keys().hasAny(['registrationContractVersion']) == resource.data.keys().hasAny(['registrationContractVersion'])
+        && request.resource.data.get('registrationContractVersion', null) == resource.data.get('registrationContractVersion', null)
         && isSignedIn()`);
   return frozen.slice(0, startIndex) + guarded + frozen.slice(endIndex);
 }
@@ -223,7 +224,8 @@ export function buildThreeDocumentRecoveryMarkerProposalRules(staged) {
   const guardedRoot = root.replace(createAnchor,
     createAnchor + '\n        && request.resource.data.registrationContractVersion == 3')
     .replaceAll(updateAnchor,
-      `      allow update: if request.resource.data.get('registrationContractVersion', null) == resource.data.get('registrationContractVersion', null)
+      `      allow update: if request.resource.data.keys().hasAny(['registrationContractVersion']) == resource.data.keys().hasAny(['registrationContractVersion'])
+        && request.resource.data.get('registrationContractVersion', null) == resource.data.get('registrationContractVersion', null)
         && isSignedIn()`);
   return prefix + guardedRoot + suffix;
 }
