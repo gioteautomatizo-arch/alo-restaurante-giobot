@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, setDoc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, deleteDoc, where } from 'firebase/firestore';
 import { buildTenantUpdateIsolationProposalRules } from './tenant-update-isolation-proposal.mjs';
 
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080',
@@ -34,6 +34,8 @@ const nestedModules = ['shifts', 'expenses', 'vault', 'receivables', 'payables',
 const nestedDeletable = ['expenses', 'vault', 'receivables', 'payables'];
 const nestedRef = (db, tenant, moduleCol, name) =>
   doc(db, 'businesses', tenant, moduleCol, name);
+const nestedQuery = (db, tenant, moduleCol) =>
+  query(collection(db, 'businesses', tenant, moduleCol), where('businessId', '==', tenant));
 const table = id => ({
   restaurantId: id, tableId: 'table-' + id, tableNumber: 1, status: 'LIBRE',
 });
@@ -74,6 +76,10 @@ async function runScenario(rules, diagnostic) {
             businessId: id, amount: 10, actorId: uid, action: 'CREATED',
           });
           if (id === a) {
+            // Un histórico sin businessId queda fuera de consultas filtradas.
+            await setDoc(nestedRef(db, a, moduleCol, 'missing-id'), {
+              amount: 10, actorId: uid, action: 'CREATED',
+            });
             // Datos mal asociados sembrados por el emulador administrador:
             // el dueño A no debe apropiarse de una ficha que declara B.
             for (const name of ['misrouted-update', 'misrouted-delete']) {
