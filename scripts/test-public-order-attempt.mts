@@ -94,6 +94,8 @@ try {
   }});
   const fallbackId = getOrCreatePublicOrderAttempt('fallback-tab', undefined, fp, now);
   assert.equal(JSON.parse(storage.get(publicOrderAttemptKey('fallback-tab'))!).id, fallbackId);
+  discardPublicOrderAttemptAfterReview('fallback-tab');
+  assert.equal(storage.has(publicOrderAttemptKey('fallback-tab')), false, 'Review works without shared storage');
   Object.defineProperty(globalThis, 'localStorage', workingLocal);
   // Si solo sessionStorage falla, la referencia compartida permite continuar.
   Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: {
@@ -101,6 +103,8 @@ try {
   }});
   const sharedOnlyId = getOrCreatePublicOrderAttempt('shared-only', undefined, fp, now);
   assert.equal(JSON.parse(sharedStorage.get(publicOrderAttemptKey('shared-only'))!).id, sharedOnlyId);
+  discardPublicOrderAttemptAfterReview('shared-only');
+  assert.equal(sharedStorage.has(publicOrderAttemptKey('shared-only')), false, 'Review works without tab storage');
   Object.defineProperty(globalThis, 'sessionStorage', workingSession);
   // Una escritura silenciosamente ignorada en localStorage no autoriza un nuevo pedido.
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
