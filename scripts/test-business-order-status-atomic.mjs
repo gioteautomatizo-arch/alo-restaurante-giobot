@@ -112,7 +112,10 @@ await assert.rejects(updateBusinessRestaurantOrderStatus('demo-a', 'order-a', 'P
 put('paid', sample('demo-a', 'LISTO', 'PAGADO'));
 await assert.rejects(updateBusinessRestaurantOrderStatus('demo-a', 'paid', 'CANCELADO', user), /Revisa Caja/);
 assert.equal(read('paid').status, 'LISTO');
-put('unknown-billing', sample('demo-a', 'NUEVO', undefined));
+put('cancel-from-ready', sample('demo-a', 'LISTO'));
+await updateBusinessRestaurantOrderStatus('demo-a', 'cancel-from-ready', 'CANCELADO', user);
+assert.equal(read('cancel-from-ready').status, 'CANCELADO');
+put('unknown-billing', { ...sample('demo-a'), billingStatus: undefined });
 await assert.rejects(updateBusinessRestaurantOrderStatus('demo-a', 'unknown-billing', 'CANCELADO', user), /Revisa Caja/);
 put('delivered', sample('demo-a', 'ENTREGADO'));
 await assert.rejects(updateBusinessRestaurantOrderStatus('demo-a', 'delivered', 'CANCELADO', user), /ya fue entregado/);
