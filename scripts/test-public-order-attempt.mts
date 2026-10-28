@@ -86,6 +86,31 @@ try {
   storage.set(key, '{corrupt');
   assert.throws(() => getOrCreatePublicOrderAttempt('business-a', undefined, fp, now), /No se pudo conservar/);
   storage.delete(key);
+  const workingLocal = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')!;
+  const workingSession = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage')!;
+  // Si localStorage está bloqueado, se mantiene la compatibilidad por pestaña.
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    getItem: () => { throw new Error('shared denied'); },
+  }});
+  const fallbackId = getOrCreatePublicOrderAttempt('fallback-tab', undefined, fp, now);
+  assert.equal(JSON.parse(storage.get(publicOrderAttemptKey('fallback-tab'))!).id, fallbackId);
+  Object.defineProperty(globalThis, 'localStorage', workingLocal);
+  // Si solo sessionStorage falla, la referencia compartida permite continuar.
+  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: {
+    getItem: () => { throw new Error('tab denied'); },
+  }});
+  const sharedOnlyId = getOrCreatePublicOrderAttempt('shared-only', undefined, fp, now);
+  assert.equal(JSON.parse(sharedStorage.get(publicOrderAttemptKey('shared-only'))!).id, sharedOnlyId);
+  Object.defineProperty(globalThis, 'sessionStorage', workingSession);
+  // Una escritura silenciosamente ignorada en localStorage no autoriza un nuevo pedido.
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    getItem: (key: string) => sharedStorage.get(key) ?? null,
+    setItem: () => {},
+    removeItem: () => {},
+  }});
+  assert.throws(() => getOrCreatePublicOrderAttempt('silent-storage', undefined, fp, now),
+    /No se pudo conservar/, 'Silently dropped shared write must fail closed');
+  Object.defineProperty(globalThis, 'localStorage', workingLocal);
   for (const storageName of ['sessionStorage', 'localStorage']) {
     Object.defineProperty(globalThis, storageName, { configurable: true, value: {
       getItem: () => { throw new Error('storage disabled'); },
