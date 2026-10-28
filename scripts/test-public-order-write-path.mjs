@@ -63,4 +63,8 @@ globalThis.orderWrites = [];
 const legacy = await createBusinessRestaurantOrder('business-a', order);
 assert.equal(legacy.id, 'auto-id');
 assert.deepEqual(globalThis.orderWrites.map(x => x.type), ['add'], 'POS/other callers retain addDoc behavior');
+globalThis.orderWrites = [];
+const calientito = await createBusinessRestaurantOrder('alo-restaurante', order, stableId);
+assert.equal(calientito.id, 'auto-id');
+assert.deepEqual(globalThis.orderWrites.map(x => x.type), ['add'], 'Legacy Calientito must not overwrite an existing order with setDoc');
 console.log('PASS: servicio real usa setDoc con ID web estable, no crea un segundo ID tras fallo y conserva addDoc para Caja.');
