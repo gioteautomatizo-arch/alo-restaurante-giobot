@@ -218,7 +218,9 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
       );
       attemptedWrite = true;
       const saved = await createBusinessRestaurantOrder(businessId, {
-        orderType: 'pickup',
+        // Un QR de mesa es una comanda de mesa: activa la creación atómica
+        // del pedido y su resumen público; el enlace externo sigue siendo pickup.
+        orderType: tableNumber ? 'dine_in' : 'pickup',
         orderSource: 'CLIENTE_QR',
         ...publicOrderOrigin(tableNumber),
         customerName: customerName.trim() || 'Cliente web',
