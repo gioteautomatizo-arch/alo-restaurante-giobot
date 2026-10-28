@@ -8,12 +8,14 @@ const VALID_FINGERPRINT = /^[0-9a-f]{16}$/;
 
 /** No crear otro folio mientras el resultado del anterior siga sin confirmarse. */
 export class PublicOrderAttemptReviewRequiredError extends Error {
-  constructor(reason: 'changed' | 'expired' | 'clock') {
+  constructor(reason: 'changed' | 'expired' | 'clock' | 'conflict') {
     super(reason === 'changed'
       ? 'Este carrito cambió desde un envío sin confirmar. Consulta al negocio antes de iniciar otro pedido para evitar duplicados.'
       : reason === 'expired'
         ? 'El intento anterior tiene más de 12 horas y no está confirmado. Consulta al negocio antes de iniciar otro pedido.'
-        : 'La fecha del intento anterior no coincide con este dispositivo. Consulta al negocio antes de iniciar otro pedido.');
+        : reason === 'clock'
+          ? 'La fecha del intento anterior no coincide con este dispositivo. Consulta al negocio antes de iniciar otro pedido.'
+          : 'Hay intentos diferentes del mismo pedido en dos pestañas. Consulta al negocio antes de iniciar otro pedido.');
     this.name = 'PublicOrderAttemptReviewRequiredError';
   }
 }
@@ -35,9 +37,35 @@ export function publicCartAttemptFingerprint(lines: PublicCartLine[], guestCount
 }
 
 /**
- * El mismo carrito conserva el mismo ID tras un error incierto, incluso tras recargar esta pestaña.
- * Un intento incierto nunca se reemplaza automáticamente por cambios de carrito o caducidad.
- * Si no se puede persistir el intento, se bloquea el envío para no crear un reintento inseguro.
+ * Comparte únicamente una referencia técnica entre pestañas del mismo navegador.
+ * sessionStorage mantiene compatibilidad con intentos existentes y con navegadores
+ * que bloquean localStorage. No es un bloqueo atómico entre pestañas simultáneas.
+ */
+function attemptStores(key: string): { tab: Storage | null; shared: Storage | null } {
+  let tab: Storage | null = null;
+  let shared: Storage | null = null;
+  try { sessionStorage.getItem(key); tab = sessionStorage; } catch { /* storage de pestaña bloqueado */ }
+  try { localStorage.getItem(key); shared = localStorage; } catch { /* modo privado/restricción */ }
+  if (!tab && !shared) throw new Error('Almacenamiento no disponible.');
+  return { tab, shared };
+}
+
+function parseAttempt(raw: string): { id: string; fingerprint: string; createdAt: number } {
+  const parsed: unknown = JSON.parse(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Intento corrupto.');
+  const attempt = parsed as { id?: unknown; fingerprint?: unknown; createdAt?: unknown };
+  if (typeof attempt.id !== 'string' || !VALID_ID.test(attempt.id)
+    || typeof attempt.fingerprint !== 'string' || !VALID_FINGERPRINT.test(attempt.fingerprint)
+    || typeof attempt.createdAt !== 'number' || !Number.isFinite(attempt.createdAt)) {
+    throw new Error('Intento corrupto.');
+  }
+  return { id: attempt.id, fingerprint: attempt.fingerprint, createdAt: attempt.createdAt };
+}
+
+/**
+ * El mismo carrito conserva el mismo ID tras un error incierto, incluso en otra
+ * pestaña que comparta localStorage. Si hay referencias incompatibles, se bloquea.
+ * Un intento incierto nunca se reemplaza automáticamente por cambios o caducidad.
  */
 export function getOrCreatePublicOrderAttempt(
   businessId: string,
@@ -50,24 +78,43 @@ export function getOrCreatePublicOrderAttempt(
   }
   const key = publicOrderAttemptKey(businessId, tableNumber);
   try {
-    const raw = sessionStorage.getItem(key);
-    if (raw !== null) {
-      const existing: unknown = JSON.parse(raw);
-      if (!existing || typeof existing !== 'object') throw new Error('Intento corrupto.');
-      const attempt = existing as { id?: unknown; fingerprint?: unknown; createdAt?: unknown };
-      if (!VALID_ID.test(String(attempt.id || '')) || !VALID_FINGERPRINT.test(String(attempt.fingerprint || ''))
-        || typeof attempt.createdAt !== 'number' || !Number.isFinite(attempt.createdAt)) {
-        throw new Error('Intento corrupto.');
+    const { tab, shared } = attemptStores(key);
+    const tabRaw = tab?.getItem(key) ?? null;
+    const sharedRaw = shared?.getItem(key) ?? null;
+    // Un cambio de pestaña, restauración de sesión o corrupción no debe escoger
+    // arbitrariamente uno de dos folios potencialmente confirmados.
+    if (tabRaw !== null && sharedRaw !== null) {
+      const a = parseAttempt(tabRaw);
+      const b = parseAttempt(sharedRaw);
+      if (a.id !== b.id || a.fingerprint !== b.fingerprint || a.createdAt !== b.createdAt) {
+        throw new PublicOrderAttemptReviewRequiredError('conflict');
       }
+    }
+    const raw = sharedRaw ?? tabRaw;
+    if (raw !== null) {
+      const attempt = parseAttempt(raw);
       if (attempt.fingerprint !== fingerprint) throw new PublicOrderAttemptReviewRequiredError('changed');
       if (now < attempt.createdAt) throw new PublicOrderAttemptReviewRequiredError('clock');
       if (now - attempt.createdAt > TTL_MS) throw new PublicOrderAttemptReviewRequiredError('expired');
-      return attempt.id as string;
+      // Migración de intentos de la pestaña y sincronización con otras pestañas.
+      if (shared && sharedRaw === null) shared.setItem(key, raw);
+      if (tab && tabRaw === null) {
+        try { tab.setItem(key, raw); } catch { /* la referencia compartida basta */ }
+      }
+      return attempt.id;
     }
     const bytes = new Uint8Array(16);
     globalThis.crypto.getRandomValues(bytes);
     const id = 'web_' + Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
-    sessionStorage.setItem(key, JSON.stringify({ id, fingerprint, createdAt: now }));
+    const encoded = JSON.stringify({ id, fingerprint, createdAt: now });
+    // Escribir primero la referencia compartida; sin ella se conserva el
+    // comportamiento previo de una sola pestaña.
+    if (shared) shared.setItem(key, encoded);
+    if (tab) {
+      try { tab.setItem(key, encoded); } catch (error) {
+        if (!shared) throw error;
+      }
+    }
     return id;
   } catch (error) {
     if (error instanceof PublicOrderAttemptReviewRequiredError) throw error;
@@ -75,23 +122,29 @@ export function getOrCreatePublicOrderAttempt(
   }
 }
 
-/** Solo invocar después de una confirmación explícita del cliente de que consultó al negocio. */
+/** Solo invocar después de confirmar explícitamente que se consultó al negocio. */
 export function discardPublicOrderAttemptAfterReview(businessId: string, tableNumber?: number): void {
   if (!businessId.trim()) throw new Error('Identidad de negocio inválida.');
   try {
     const key = publicOrderAttemptKey(businessId, tableNumber);
-    sessionStorage.removeItem(key);
-    if (sessionStorage.getItem(key) !== null) throw new Error('No se pudo eliminar el intento.');
+    const { tab, shared } = attemptStores(key);
+    if (shared) shared.removeItem(key);
+    if (tab) tab.removeItem(key);
+    if (shared?.getItem(key) !== null || tab?.getItem(key) !== null) throw new Error('No se pudo eliminar el intento.');
   } catch {
     throw new Error('No se pudo iniciar otro intento seguro. Revisa el almacenamiento del navegador.');
   }
 }
 
-/** Solo borra el intento que recibió confirmación; no elimina uno más reciente. */
+/** Solo borra el ID confirmado; nunca elimina una referencia diferente. */
 export function clearPublicOrderAttempt(businessId: string, tableNumber: number | undefined, id: string): void {
   try {
     const key = publicOrderAttemptKey(businessId, tableNumber);
-    const raw = sessionStorage.getItem(key);
-    if (raw && (JSON.parse(raw) as { id?: string }).id === id) sessionStorage.removeItem(key);
+    const { tab, shared } = attemptStores(key);
+    for (const store of [shared, tab]) {
+      if (!store) continue;
+      const raw = store.getItem(key);
+      if (raw && parseAttempt(raw).id === id) store.removeItem(key);
+    }
   } catch { /* No borrar otros intentos ni convertir un pedido confirmado en error. */ }
 }
