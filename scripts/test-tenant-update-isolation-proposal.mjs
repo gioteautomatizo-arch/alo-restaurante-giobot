@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
 import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, deleteDoc, where } from 'firebase/firestore';
 import { buildTenantUpdateIsolationProposalRules } from './tenant-update-isolation-proposal.mjs';
+import { auditTenantModuleInventory } from './tenant-module-inventory-preflight.mjs';
 
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080',
   'ALTO: requiere Firestore Emulator local, nunca Firebase real.');
@@ -106,6 +107,33 @@ async function runScenario(rules, diagnostic) {
         restaurantId: 'alo-restaurante', code: 'legacy-order', status: 'NUEVO',
         items: [{ name: 'Prueba', quantity: 1 }], total: 10,
       });
+      // Preflight de compatibilidad sobre datos sintéticos efectivamente
+      // leídos del emulador con privilegios de ensayo, nunca Firebase real.
+      const scannedPartitions = [];
+      const inventoryDocuments = [];
+      for (const tenant of [a, b]) {
+        for (const moduleCol of nestedModules) {
+          scannedPartitions.push({ businessId: tenant, module: moduleCol });
+          const rows = await getDocs(collection(db, 'businesses', tenant, moduleCol));
+          for (const row of rows.docs) {
+            inventoryDocuments.push({
+              pathBusinessId: tenant, module: moduleCol,
+              docId: row.id, businessId: row.data().businessId,
+            });
+          }
+        }
+      }
+      const audit = auditTenantModuleInventory({
+        expectedBusinessIds: [a, b], scannedPartitions,
+        documents: inventoryDocuments,
+      });
+      assert.equal(audit.safeToProceed, false, 'No autorizar migración con históricos inválidos');
+      assert.equal(audit.counts.healthy, 12);
+      assert.equal(audit.counts.missingIdentity, 6);
+      assert.equal(audit.counts.foreignIdentity, 12);
+      assert.equal(audit.counts.incompletePartitions, 0);
+      assert.equal(audit.counts.documents, 30);
+      console.warn('PENDIENTE INVENTARIO SINTÉTICO: 6 documentos sin businessId y 12 mal asociados; preflight bloquea migración.');
     });
     const alice = env.authenticatedContext('alice').firestore();
     const bob = env.authenticatedContext('bob').firestore();
