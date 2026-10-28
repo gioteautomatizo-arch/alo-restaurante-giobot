@@ -117,6 +117,9 @@ try {
   await assertFails(updateDoc(doc(alice, root(legacyId)), {
     registrationContractVersion: 3,
   }));
+  await assertFails(updateDoc(doc(alice, root(legacyId)), {
+    registrationContractVersion: null,
+  }));
   assert.equal((await getDoc(doc(alice, root(legacyId)))).data()?.registrationContractVersion,
     undefined, 'freeze-before no permite convertir un legacy en 3-doc por update');
   await assertFails(deleteDoc(doc(alice, root(legacyId))));
@@ -171,6 +174,9 @@ try {
   // Se cargan reglas candidatas SOLO para este proceso de prueba.
   // Un negocio histórico sin reserva no se protege automáticamente.
   await assertSucceeds(getDoc(doc(alice, root(legacyId))));
+  await assertFails(updateDoc(doc(alice, root(legacyId)), {
+    registrationContractVersion: null,
+  }));
   await assertFails(getDoc(doc(bob, root(legacyId))));
   await assertFails(setDoc(doc(alice, handle(legacyId)),
     reservation(legacyId, 'matrix-alice')));
@@ -239,6 +245,9 @@ try {
   }));
   await assertFails(updateDoc(doc(bob, root(proposedThreeId)), {
     registrationContractVersion: 2,
+  }));
+  await assertFails(updateDoc(doc(alice, root(legacyId)), {
+    registrationContractVersion: null,
   }));
   assert.equal((await getDoc(doc(bob, root(proposedThreeId)))).data()?.registrationContractVersion,
     3, 'freeze-after debe preservar el marcador incluso tras actualizaciones legítimas');
