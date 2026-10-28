@@ -211,9 +211,14 @@ function buildBusinessOrderCode(businessId: string): string {
 /** Crea un pedido para el tenant indicado; evita depender del contexto global de Calientito. */
 export async function createBusinessRestaurantOrder(
   businessId: string,
-  order: Omit<RestaurantOrder, 'id' | 'code' | 'restaurantId' | 'status' | 'createdAt' | 'updatedAt'>
+  order: Omit<RestaurantOrder, 'id' | 'code' | 'restaurantId' | 'status' | 'createdAt' | 'updatedAt'>,
+  orderDocumentId?: string,
 ): Promise<RestaurantOrder> {
   if (!businessId.trim()) throw new Error('No se indicó el negocio del pedido.');
+  // IDs estables únicamente para intentos web; no cambiar el flujo de Caja/POS.
+  if (orderDocumentId !== undefined && !/^web_[0-9a-f]{32}$/.test(orderDocumentId)) {
+    throw new Error('Identificador de intento web inválido.');
+  }
 
   const now = new Date().toISOString();
   const payload = sanitizeFirestorePayload({
@@ -226,7 +231,12 @@ export async function createBusinessRestaurantOrder(
     updatedAt: now,
   }) as Omit<RestaurantOrder, 'id'>;
 
-  const ref = await addDoc(collection(db, ORDERS_COLLECTION), payload);
+  const ref = orderDocumentId === undefined
+    ? await addDoc(collection(db, ORDERS_COLLECTION), payload)
+    : doc(db, ORDERS_COLLECTION, orderDocumentId);
+  // Reintentar el mismo ID nunca crea un segundo documento. Las reglas de
+  // actualización de pedidos públicos deben denegar sobrescrituras anónimas.
+  if (orderDocumentId !== undefined) await setDoc(ref, payload);
 
   if (payload.orderType === 'dine_in' && payload.tableNumber) {
     const publicPayload: Omit<PublicTableOrder, 'id'> = {
