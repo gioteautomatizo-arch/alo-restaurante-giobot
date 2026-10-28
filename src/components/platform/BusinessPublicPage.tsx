@@ -27,7 +27,7 @@ import { hasPriceFrom, selectionKey, selectionSummary } from '../../lib/catalogO
 import type { OptionSelection } from '../../lib/catalogOptions';
 import { PublicOrderReceipts } from './PublicOrderReceipts';
 import { addPublicReceipt, readPublicReceipts } from '../../lib/publicOrderReceipts';
-import { publicCartAttemptFingerprint, getOrCreatePublicOrderAttempt, clearPublicOrderAttempt } from '../../lib/publicOrderAttempt';
+import { publicCartAttemptFingerprint, getOrCreatePublicOrderAttempt, clearPublicOrderAttempt, discardPublicOrderAttemptAfterReview, PublicOrderAttemptReviewRequiredError } from '../../lib/publicOrderAttempt';
 import { BusinessTableWelcome } from './BusinessTableWelcome';
 import { BusinessProductModal } from './BusinessProductModal';
 import { VipCardModal } from '../VipCardModal';
@@ -62,6 +62,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
   const [sending, setSending] = useState(false);
   const [sentCode, setSentCode] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [attemptNeedsReview, setAttemptNeedsReview] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -202,6 +203,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
     sendInFlight.current = true;
     setSending(true);
     setSendError(null);
+    setAttemptNeedsReview(false);
     let popup: Window | null = null;
     let code: string | undefined;
     let attemptedWrite = false;
@@ -238,13 +240,19 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
       setSentCode(saved.code);
       setCart([]);
       clearPublicOrderAttempt(businessId, tableNumber, attemptId);
+      setAttemptNeedsReview(false);
     } catch (err) {
       console.warn('No se pudo registrar el pedido en el negocio:', err);
-      setSendError(!attemptedWrite
-        ? 'No pudimos preparar el envío seguro en este navegador. Conservamos tu pedido; revisa el almacenamiento antes de intentarlo de nuevo.'
-        : whatsappNumber
-          ? 'No pudimos confirmar el registro. Conservamos tu pedido; antes de reenviarlo, consulta al negocio por WhatsApp para evitar duplicados.'
-          : 'No pudimos confirmar el registro. Conservamos tu pedido; antes de reenviarlo, consulta al negocio para evitar duplicados.');
+      if (err instanceof PublicOrderAttemptReviewRequiredError) {
+        setAttemptNeedsReview(true);
+        setSendError(err.message);
+      } else {
+        setSendError(!attemptedWrite
+          ? 'No pudimos preparar el envío seguro en este navegador. Conservamos tu pedido; revisa el almacenamiento antes de intentarlo de nuevo.'
+          : whatsappNumber
+            ? 'No pudimos confirmar el registro. Conservamos tu pedido; antes de reenviarlo, consulta al negocio por WhatsApp para evitar duplicados.'
+            : 'No pudimos confirmar el registro. Conservamos tu pedido; antes de reenviarlo, consulta al negocio para evitar duplicados.');
+      }
     } finally {
       sendInFlight.current = false;
       setSending(false);
@@ -254,6 +262,18 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
       if (popup) popup.location.href = url;
       else window.open(url, '_blank');
     } else if (popup) popup.close();
+  };
+
+  const startNewAttemptAfterReview = () => {
+    if (sendInFlight.current) return;
+    if (!window.confirm('Confirma que ya consultaste al negocio sobre el pedido anterior. Si ya fue recibido, enviar uno nuevo puede duplicarlo. ¿Iniciar otro intento?')) return;
+    try {
+      discardPublicOrderAttemptAfterReview(businessId, tableNumber);
+      setAttemptNeedsReview(false);
+      setSendError('Se descartó el intento anterior después de tu confirmación. Revisa tu carrito antes de enviar un pedido nuevo.');
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : 'No se pudo iniciar un nuevo intento seguro.');
+    }
   };
 
   const add = (item: BusinessCatalogItem, selection: OptionSelection = {}, quantity = 1) =>
@@ -468,6 +488,11 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
               <p role="alert" className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm" style={{ color: text }}>
                 {sendError}
               </p>
+            )}
+            {attemptNeedsReview && (
+              <button type="button" disabled={sending} onClick={startNewAttemptAfterReview} className="mt-3 w-full rounded-xl border border-amber-500/50 px-3 py-3 text-sm font-bold disabled:opacity-60">
+                Ya consulté al negocio; iniciar pedido nuevo
+              </button>
             )}
             {!catalogReady && (
               <p role="alert" className="mt-4 rounded-xl border border-amber-500/40 p-3 text-sm" style={{ color: text }}>
