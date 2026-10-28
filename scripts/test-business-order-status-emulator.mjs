@@ -41,7 +41,7 @@ const firestoreProxy = [
     return `export const ${name} = (_db, ...args) => globalThis.orderStatusSdk.${name}(globalThis.orderStatusDb, ...args);`;
   }
   return `export const ${name} = (...args) => globalThis.orderStatusSdk.${name}(...args);`;
-}).join('\\n');
+}).join('\n');
 
 const mocks = {
   'firebase/firestore': firestoreProxy,
