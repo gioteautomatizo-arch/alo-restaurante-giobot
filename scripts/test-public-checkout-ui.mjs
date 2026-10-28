@@ -53,7 +53,13 @@ const bundle = await build({
 });
 const dom = new JSDOM('<div id="root"></div>', {url: 'http://localhost/', runScripts: 'outside-only', virtualConsole: new VirtualConsole()});
 const {window} = dom;
-window.qa = {calls: [], reads: 0, failProfile: true, missing: false};
+window.qa = {calls: [], reads: 0, failProfile: true, missing: false, locks: []};
+Object.defineProperty(window.navigator, 'locks', {configurable: true, value: {
+  request: async (name, options, callback) => {
+    window.qa.locks.push({name, mode: options.mode});
+    return callback();
+  },
+}});
 const errors = [];
 window.addEventListener('error', event => errors.push(event.error));
 const document = window.document;
@@ -80,7 +86,7 @@ try {
   // Same JS turn: React has not yet rendered disabled=true.
   send.click();
   send.click();
-  assert.equal(window.qa.calls.length, 1, 'Two immediate clicks must create only one request');
+  await waitFor(() => window.qa.calls.length === 1, 'Two immediate clicks must create only one request');
   await waitFor(() => button('Enviando…'), 'Pending state visible');
   for (const selector of ['[aria-label="Quitar uno"]', '[aria-label="Agregar uno"]', 'input[placeholder="Tu nombre (opcional)"]', 'textarea']) {
     assert.equal(document.querySelector(selector).disabled, true, `${selector} must freeze while saving`);
@@ -97,7 +103,7 @@ try {
   assert.equal(button('Enviar pedido al negocio').disabled, false);
   assert.equal(document.querySelector('[aria-label="Agregar uno"]').disabled, false);
   button('Enviar pedido al negocio').click();
-  assert.equal(window.qa.calls.length, 2, 'Explicit retry after failure allowed');
+  await waitFor(() => window.qa.calls.length === 2, 'Explicit retry after failure allowed');
   assert.equal(window.qa.calls[1].attemptId, originalAttemptId, 'Retry must reuse the same Firestore document ID');
   window.qa.resolve();
   await waitFor(() => button('Seguir viendo el menú'), 'Success confirmation');
@@ -145,6 +151,7 @@ try {
   await waitFor(() => button('Enviar pedido al negocio'), 'Table checkout');
   button('Enviar pedido al negocio').click();
   await waitFor(() => button('Enviando…'), 'Table sending');
+  await waitFor(() => window.qa.calls.at(-1)?.id === 'demo-table', 'Table write reached backend');
   const tableOrder = window.qa.calls.at(-1);
   assert.equal(tableOrder.id, 'demo-table');
   assert.equal(tableOrder.order.tableNumber, 3);
@@ -241,16 +248,20 @@ try {
   await waitFor(() => button('Enviar pedido (se registra y abre WhatsApp)'), 'WhatsApp checkout');
   button('Enviar pedido (se registra y abre WhatsApp)').click();
   await waitFor(() => window.qa.popups.length === 1, 'Preopened WhatsApp tab');
+  await waitFor(() => window.qa.calls.at(-1)?.id === 'demo-whatsapp', 'WhatsApp first write reached backend');
   window.qa.reject();
   await waitFor(() => window.qa.popups[0].closed, 'Failed save closes empty WhatsApp tab');
   assert.equal(window.qa.popups[0].location.href, '', 'No unconfirmed order is sent to WhatsApp');
   button('Enviar pedido (se registra y abre WhatsApp)').click();
   await waitFor(() => window.qa.popups.length === 2, 'Retry preopens new tab');
+  await waitFor(() => window.qa.calls.filter(call => call.id === 'demo-whatsapp').length === 2, 'WhatsApp retry reached backend');
   const lastTwo = window.qa.calls.slice(-2);
   assert.equal(lastTwo[0].attemptId, lastTwo[1].attemptId, 'WhatsApp retry preserves ID');
   window.qa.resolve();
   await waitFor(() => window.qa.popups[1].location.href.startsWith('https://wa.me/'), 'Confirmed WhatsApp order');
   assert.ok(decodeURIComponent(window.qa.popups[1].location.href).includes('Pedido TEST-001'));
+  assert.ok(window.qa.locks.length >= window.qa.calls.length, 'Checkout acquires Web Lock before each backend write');
+  assert.ok(window.qa.locks.every(lock => lock.mode === 'exclusive' && lock.name.startsWith('gio-public-order:')), 'Locks are exclusive and scoped to order identity');
   assert.deepEqual(errors, [], 'No React errors');
   console.log('PASS: retry profile, same-turn double submit, frozen cart, failure recovery, success, tenant switch and table QR guest selection (React + DOM; mocked backend).');
 } finally {
