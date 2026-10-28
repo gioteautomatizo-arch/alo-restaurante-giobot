@@ -2,7 +2,8 @@
  * Paso 2 — inventario histórico de módulos anidados. Solo datos de entrada:
  * NO lee Firestore, NO migra, NO escribe, NO imprime documentos.
  * El llamador debe proporcionar todas las particiones escaneadas con
- * credenciales autorizadas; sin cobertura completa el resultado bloquea.
+ * credenciales autorizadas; cada partición debe certificar lectura completa
+ * y el número de documentos entregados. No verifica la honestidad del llamador.
  */
 export const TENANT_MODULES = Object.freeze([
   'shifts', 'expenses', 'vault', 'receivables', 'payables', 'auditLog',
@@ -16,7 +17,7 @@ const docKey = (businessId, module, docId) =>
 export function auditTenantModuleInventory({ expectedBusinessIds, scannedPartitions, documents } = {}) {
   const counts = {
     documents: 0, healthy: 0, missingIdentity: 0, foreignIdentity: 0,
-    duplicate: 0, invalid: 0, incompletePartitions: 0,
+    duplicate: 0, invalid: 0, incompletePartitions: 0, countMismatchPartitions: 0,
   };
   const issues = [];
   const expected = Array.isArray(expectedBusinessIds) ? expectedBusinessIds : [];
@@ -28,6 +29,7 @@ export function auditTenantModuleInventory({ expectedBusinessIds, scannedPartiti
     ? expected.flatMap(id => TENANT_MODULES.map(module => partitionKey(id, module)))
     : []);
   const seenPartitions = new Set();
+  const declaredCounts = new Map();
   if (!Array.isArray(scannedPartitions)) {
     issues.push({ code: 'MISSING_PARTITION_COVERAGE' });
   } else {
@@ -35,8 +37,14 @@ export function auditTenantModuleInventory({ expectedBusinessIds, scannedPartiti
       const key = partition && partitionKey(partition.businessId, partition.module);
       if (!partition || !wanted.has(key) || seenPartitions.has(key)) {
         issues.push({ code: 'INVALID_OR_DUPLICATE_PARTITION', index });
+      } else if (partition.complete !== true
+          || !Number.isSafeInteger(partition.documentCount) || partition.documentCount < 0) {
+        // Declarar una partición no prueba que todas sus páginas se leyeron.
+        // Un escaneo fallido o sin recuento verificable nunca habilita el corte.
+        issues.push({ code: 'INCOMPLETE_OR_INVALID_PARTITION_SCAN', index });
       } else {
         seenPartitions.add(key);
+        declaredCounts.set(key, partition.documentCount);
       }
     }
   }
@@ -48,6 +56,7 @@ export function auditTenantModuleInventory({ expectedBusinessIds, scannedPartiti
   counts.incompletePartitions = pendingPartitions.length;
 
   const seenDocuments = new Set();
+  const observedCounts = new Map();
   if (!Array.isArray(documents)) {
     issues.push({ code: 'MISSING_DOCUMENT_INVENTORY' });
   } else {
@@ -63,6 +72,8 @@ export function auditTenantModuleInventory({ expectedBusinessIds, scannedPartiti
         issues.push({ code: 'INVALID_DOCUMENT', index });
         continue;
       }
+      const partition = partitionKey(document.pathBusinessId, document.module);
+      observedCounts.set(partition, (observedCounts.get(partition) ?? 0) + 1);
       const key = docKey(document.pathBusinessId, document.module, document.docId);
       if (seenDocuments.has(key)) {
         counts.duplicate++;
@@ -80,6 +91,13 @@ export function auditTenantModuleInventory({ expectedBusinessIds, scannedPartiti
       } else {
         counts.healthy++;
       }
+    }
+  }
+  for (const [partition, declaredCount] of declaredCounts) {
+    if ((observedCounts.get(partition) ?? 0) !== declaredCount) {
+      counts.countMismatchPartitions++;
+      // No incluir IDs de documentos ni detalles privados en el resultado.
+      issues.push({ code: 'PARTITION_DOCUMENT_COUNT_MISMATCH' });
     }
   }
   return {
