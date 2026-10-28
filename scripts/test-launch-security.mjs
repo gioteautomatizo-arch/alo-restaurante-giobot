@@ -41,6 +41,7 @@ await assertSucceeds(setDoc(doc(guest(),'restaurant_orders/public'),order('busin
 const webId = 'web_0123456789abcdef0123456789abcdef';
 await assertSucceeds(setDoc(doc(guest(),'restaurant_orders',webId),order('business-a')));
 await assertFails(setDoc(doc(guest(),'restaurant_orders',webId),{...order('business-a'),code:'RETRY-002'}));
+await assertFails(setDoc(doc(db('manager'),'restaurant_orders',webId),{...order('business-a'),code:'RETRY-MANAGER'}));
 await env.withSecurityRulesDisabled(async ctx=>{
   const saved = await getDoc(doc(ctx.firestore(),'restaurant_orders',webId));
   assert.equal(saved.data().code,'AAA-123','Retry must not overwrite original order');
