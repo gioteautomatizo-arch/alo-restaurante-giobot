@@ -63,6 +63,15 @@ try {
   assert.equal(JSON.parse(secondTab.get(sharedKey)!).id, sharedId, 'Second tab keeps its own mirror');
   assert.throws(() => getOrCreatePublicOrderAttempt('cross-tab', undefined, changedFingerprint, now + 100),
     PublicOrderAttemptReviewRequiredError, 'Changed cart in second tab must not create a new ID');
+  // Si la primera pestaña recibe confirmación, la segunda conserva su ID
+  // anterior: no crea un folio diferente al reenviar desde una vista obsoleta.
+  activeTab = storage;
+  clearPublicOrderAttempt('cross-tab', undefined, sharedId);
+  assert.equal(sharedStorage.has(sharedKey), false);
+  activeTab = secondTab;
+  assert.equal(getOrCreatePublicOrderAttempt('cross-tab', undefined, fp, now + 200), sharedId,
+    'Stale second tab must not silently create another ID after first tab confirmed');
+  assert.equal(JSON.parse(sharedStorage.get(sharedKey)!).id, sharedId);
   // Referencias distintas (por una carrera o restauración) se bloquean sin escoger una.
   sharedStorage.set(sharedKey, JSON.stringify({id: 'web_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', fingerprint: fp, createdAt: now}));
   assert.throws(() => getOrCreatePublicOrderAttempt('cross-tab', undefined, fp, now + 100),
