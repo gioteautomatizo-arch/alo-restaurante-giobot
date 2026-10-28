@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const mocks = {
   'firebase/firestore': `export const collection = (_db, path) => ({path});
-    export const doc = (_db, path, id) => ({path, id});
+    export const doc = (dbOrCollection, path, id) => path === undefined\n      ? ({path: dbOrCollection.path, id: 'auto-table-id'}) : ({path, id});
     export async function addDoc(ref, payload) { globalThis.orderWrites.push({type: 'add', ref, payload}); return {id: 'auto-id'}; }
     export async function setDoc(ref, payload) {
       globalThis.orderWrites.push({type: 'set', ref, payload});
@@ -16,7 +16,7 @@ const mocks = {
     export const onSnapshot = () => () => {};
     export const query = (...args) => args;
     export const updateDoc = async () => {};
-    export const runTransaction = async () => {};
+    export const runTransaction = async () => {};\n    export const writeBatch = () => {\n      const pending = [];\n      return {\n        set(ref, payload) { pending.push({type: 'batch-set', ref, payload}); },\n        async commit() {\n          if (globalThis.rejectBatch) throw new Error('simulated mirror permission-denied');\n          globalThis.orderWrites.push(...pending);\n        },\n      };\n    };
     export const where = () => {}; `,
   './firebase': 'export const db = {};',
   './firestoreService': 'export const sanitizeFirestorePayload = payload => payload;',
@@ -67,4 +67,31 @@ globalThis.orderWrites = [];
 const calientito = await createBusinessRestaurantOrder('alo-restaurante', order, stableId);
 assert.equal(calientito.id, 'auto-id');
 assert.deepEqual(globalThis.orderWrites.map(x => x.type), ['add'], 'Legacy Calientito must not overwrite an existing order with setDoc');
-console.log('PASS: servicio real usa setDoc con ID web estable, no crea un segundo ID tras fallo y conserva addDoc para Caja.');
+// En negocios nuevos, la comanda de mesa y su resumen deben ser inseparables.
+const tableOrder = {...order, orderType: 'dine_in', tableNumber: 1};
+globalThis.orderWrites = [];
+const table = await createBusinessRestaurantOrder('business-a', tableOrder, stableId);
+assert.equal(table.id, stableId);
+assert.deepEqual(globalThis.orderWrites.map(x => x.type), ['batch-set', 'batch-set']);
+assert.deepEqual(globalThis.orderWrites.map(x => x.ref.path), ['restaurant_orders', 'public_table_orders']);
+assert(globalThis.orderWrites.every(x => x.ref.id === stableId));
+assert.equal(globalThis.orderWrites[1].payload.orderId, stableId);
+assert.equal(globalThis.orderWrites[1].payload.restaurantId, 'business-a');
+assert.equal(globalThis.orderWrites[1].payload.code, globalThis.orderWrites[0].payload.code);
+assert.equal(globalThis.orderWrites[1].payload.updatedAt, globalThis.orderWrites[0].payload.updatedAt);
+globalThis.orderWrites = [];
+const posTable = await createBusinessRestaurantOrder('business-b', tableOrder);
+assert.equal(posTable.id, 'auto-table-id');
+assert.deepEqual(globalThis.orderWrites.map(x => x.type), ['batch-set', 'batch-set'],
+  'POS de mesa usa batch y conserva un ID automático');
+assert.equal(globalThis.orderWrites[1].payload.restaurantId, 'business-b');
+globalThis.orderWrites = [];
+globalThis.rejectBatch = true;
+await assert.rejects(createBusinessRestaurantOrder('business-a', tableOrder, stableId), /permission-denied/);
+assert.equal(globalThis.orderWrites.length, 0, 'Un fallo del espejo no debe confirmar el pedido principal');
+globalThis.rejectBatch = false;
+globalThis.orderWrites = [];
+await createBusinessRestaurantOrder('alo-restaurante', tableOrder);
+assert.deepEqual(globalThis.orderWrites.map(x => x.type), ['add', 'set'],
+  'Calientito conserva su ruta heredada fuera del batch');
+console.log('PASS: IDs web, POS y Calientito; pedido y espejo de mesa atómicos en tenants nuevos con rollback simulado.');
