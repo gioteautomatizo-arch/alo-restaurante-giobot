@@ -1,0 +1,104 @@
+/**
+ * Paso 2: reproducción aislada de traslado entre tenants y propuesta de cierre.
+ * SOLO Firestore Emulator, dos negocios ficticios, sin reglas desplegadas.
+ * El diagnóstico STAGED que permite el traslado es un BLOQUEO, no un PASS de seguridad.
+ */
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
+import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { buildTenantUpdateIsolationProposalRules } from './tenant-update-isolation-proposal.mjs';
+
+assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080',
+  'ALTO: requiere Firestore Emulator local, nunca Firebase real.');
+const staged = readFileSync('docs/firestore.launch-security.STAGED.rules', 'utf8');
+const proposed = buildTenantUpdateIsolationProposalRules(staged);
+assert.notEqual(proposed, staged);
+for (const path of ['staff_users', 'shifts', 'expenses', 'cxc_records',
+  'inventory_items', 'sobre_movements', 'daily_menu', 'tables',
+  'table_sessions', 'table_service_requests', 'public_table_orders', 'restaurant_orders']) {
+  assert(proposed.includes('match /' + path + '/{'), 'Falta ruta ' + path);
+}
+const a = 'beta-tenant-a';
+const b = 'beta-tenant-b';
+const fixtures = [
+  ['staff_users', { name: 'Persona ficticia', role: 'MESERO' }, { name: 'Actualizado' }],
+  ['shifts', { status: 'abierto', initialCashFund: 0 }, { status: 'cerrado' }],
+  ['expenses', { concept: 'Insumo ficticio', amount: 10 }, { amount: 11 }],
+  ['cxc_records', { person: 'Cliente ficticio', amount: 10, status: 'Pendiente' }, { amount: 11 }],
+  ['inventory_items', { name: 'Ingrediente ficticio' }, { name: 'Ingrediente actualizado' }],
+  ['sobre_movements', { amount: 10 }, { amount: 11 }],
+  ['daily_menu', { name: 'Platillo ficticio' }, { name: 'Platillo actualizado' }],
+];
+const table = id => ({
+  restaurantId: id, tableId: 'table-' + id, tableNumber: 1, status: 'LIBRE',
+});
+const session = id => ({
+  restaurantId: id, tableNumber: 1, guestCount: 1,
+  accountMode: 'GENERAL', accounts: [{ id: 'general', label: 'General' }],
+  status: 'CERRADA', openedBy: 'QR', openedAt: '2026-10-27T00:00:00.000Z',
+  updatedAt: '2026-10-27T00:00:00.000Z',
+});
+const sessionReopen = id => ({
+  restaurantId: id, tableNumber: 1, guestCount: 2,
+  accountMode: 'GENERAL', accounts: [{ id: 'general', label: 'General' }],
+  status: 'ACTIVA', openedBy: 'QR', openedAt: '2026-10-27T00:01:00.000Z',
+  updatedAt: '2026-10-27T00:01:00.000Z',
+});
+
+async function runScenario(projectId, rules, diagnostic) {
+  const env = await initializeTestEnvironment({
+    projectId, firestore: { rules, host: '127.0.0.1', port: 8080 },
+  });
+  try {
+    await env.withSecurityRulesDisabled(async ctx => {
+      const db = ctx.firestore();
+      for (const [id, uid] of [[a, 'alice'], [b, 'bob']]) {
+        await setDoc(doc(db, 'businesses', id), { restaurantId: id, ownerUserId: uid });
+        await setDoc(doc(db, 'businessMemberships', id + '_' + uid),
+          { restaurantId: id, userId: uid, role: 'OWNER', active: true });
+        for (const [collection, fields] of fixtures) {
+          await setDoc(doc(db, collection, id + '-record'), { restaurantId: id, ...fields });
+        }
+        await setDoc(doc(db, 'tables', id + '-table'), table(id));
+        await setDoc(doc(db, 'table_sessions', id + '-session'), session(id));
+      }
+    });
+    const alice = env.authenticatedContext('alice').firestore();
+    const bob = env.authenticatedContext('bob').firestore();
+    const visitor = env.unauthenticatedContext().firestore();
+    const expenseB = doc(alice, 'expenses', b + '-record');
+    const tableB = doc(visitor, 'tables', b + '-table');
+    const sessionB = doc(visitor, 'table_sessions', b + '-session');
+    if (diagnostic) {
+      await assertSucceeds(updateDoc(expenseB, { restaurantId: a, amount: 999 }));
+      await assertSucceeds(updateDoc(tableB, { restaurantId: a, status: 'OCUPADA' }));
+      await assertSucceeds(updateDoc(sessionB, sessionReopen(a)));
+      console.warn('PENDIENTE SEGURIDAD STAGED: miembro de A trasladó gasto de B; visitante trasladó mesa y sesión de B a A (solo emulador).');
+      return;
+    }
+    for (const [collection, , patch] of fixtures) {
+      const idB = collection + '/' + b + '-record';
+      const idA = collection + '/' + a + '-record';
+      await assertFails(updateDoc(doc(alice, idB), { restaurantId: a, ...patch }));
+      await assertSucceeds(updateDoc(doc(bob, idB), patch));
+      await assertSucceeds(updateDoc(doc(alice, idA), patch));
+      if (collection !== 'daily_menu') await assertFails(getDoc(doc(alice, idB)));
+      const snap = await assertSucceeds(getDoc(doc(bob, idB)));
+      assert.equal(snap.data()?.restaurantId, b, collection + ' conserva tenant B');
+    }
+    await assertFails(updateDoc(tableB, { restaurantId: a, status: 'OCUPADA' }));
+    await assertSucceeds(updateDoc(tableB, { restaurantId: b, status: 'OCUPADA' }));
+    await assertFails(updateDoc(sessionB, sessionReopen(a)));
+    await assertSucceeds(updateDoc(sessionB, sessionReopen(b)));
+    assert.equal((await getDoc(doc(bob, 'tables', b + '-table'))).data()?.restaurantId, b);
+    assert.equal((await getDoc(doc(bob, 'table_sessions', b + '-session'))).data()?.restaurantId, b);
+    console.log('PASS propuesta aislada: 7 módulos operativos + mesas/sesiones sin traslado; ediciones legítimas A/B continúan.');
+  } finally {
+    await env.cleanup();
+  }
+}
+
+await runScenario('gioteautomatizo-tenant-reassignment-staged-diagnostic', staged, true);
+await runScenario('gioteautomatizo-tenant-reassignment-proposal-test', proposed, false);
+console.warn('PENDIENTE: reglas STAGED/desplegadas NO corregidas; falta revisión independiente y autorización de migración. No publicar.');
