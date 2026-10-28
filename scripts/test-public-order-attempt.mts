@@ -97,7 +97,20 @@ try {
   storage.delete(key);
   const workingLocal = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')!;
   const workingSession = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage')!;
-  // Si localStorage está bloqueado, se mantiene la compatibilidad por pestaña.
+  // Una limpieza fallida de la pestaña no debe borrar el folio compartido.
+  const cleanupId = getOrCreatePublicOrderAttempt('cleanup-fail', undefined, fp, now);
+  const cleanupKey = publicOrderAttemptKey('cleanup-fail');
+  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: {
+    getItem: (key: string) => storage.get(key) ?? null,
+    removeItem: () => { throw new Error('tab remove denied'); },
+  }});
+  assert.throws(() => discardPublicOrderAttemptAfterReview('cleanup-fail'), /No se pudo iniciar otro intento seguro/);
+  assert.equal(JSON.parse(sharedStorage.get(cleanupKey)!).id, cleanupId,
+    'Failed tab cleanup must leave shared pending ID untouched');
+  Object.defineProperty(globalThis, 'sessionStorage', workingSession);
+  discardPublicOrderAttemptAfterReview('cleanup-fail');
+  assert.equal(sharedStorage.has(cleanupKey), false);
+    // Si localStorage está bloqueado, se mantiene la compatibilidad por pestaña.
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
     getItem: () => { throw new Error('shared denied'); },
   }});
