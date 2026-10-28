@@ -88,22 +88,22 @@ function itemOptions(item: BusinessCatalogItem, raw: unknown): {
         chosen.length > 100) {
       invalid('Selección de opciones inválida.');
     }
-    const choices = new Map<string, number>();
+    const choices = new Map<string, { name: string; priceCents: number }>();
     for (const choice of group.choices) {
       if (!record(choice)) invalid('Opción del catálogo inválida.');
       const choiceName = nonEmptyString(choice.name, 'Nombre de opción');
       if (choices.has(choiceName.toLowerCase())) invalid('Opciones duplicadas en el catálogo.');
-      choices.set(choiceName.toLowerCase(), cents(choice.price, 'Precio de opción'));
+      choices.set(choiceName.toLowerCase(), { name: choiceName, priceCents: cents(choice.price, 'Precio de opción') });
     }
     if (group.required && chosen.length === 0) invalid('Falta una opción obligatoria.');
     if (!group.multiple && chosen.length > 1) invalid('Se eligieron demasiadas opciones.');
     if (new Set(chosen).size !== chosen.length) invalid('Hay opciones repetidas.');
     for (const choiceName of chosen) {
-      if (!choices.has(choiceName.toLowerCase())) invalid('Opción inexistente.');
+      const exact = choices.get(choiceName.toLowerCase());
+      if (!exact) invalid('Opción inexistente.');
       // No aceptar mayúsculas o variantes distintas a la opción exacta del catálogo.
-      const exact = group.choices.find((choice) => choice.name === choiceName);
-      if (!exact) invalid('Opción no coincide con el catálogo.');
-      additionalCents += choices.get(choiceName.toLowerCase())!;
+      if (exact.name !== choiceName) invalid('Opción no coincide con el catálogo.');
+      additionalCents += exact.priceCents;
       if (additionalCents > MAX_ORDER_CENTS) invalid('Importe de opciones excesivo.');
     }
     if (chosen.length) parts.push(`${name}: ${chosen.join(', ')}`);
