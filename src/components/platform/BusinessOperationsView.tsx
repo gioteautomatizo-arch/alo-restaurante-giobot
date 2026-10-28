@@ -203,6 +203,10 @@ export const BusinessOperationsView: React.FC<{
 
   const cancelOrder = async (order: RestaurantOrder) => {
     if (!ordersReady || !order.id || order.status === 'CANCELADO') return;
+    if (businessId !== 'alo-restaurante' && order.billingStatus !== 'PENDIENTE') {
+      setMessage('Este pedido tiene un cobro registrado o desconocido. Revisa Caja antes de cancelarlo.');
+      return;
+    }
     const authUser = getCurrentAuthUser();
     if (!authUser) return;
 
@@ -357,7 +361,7 @@ export const BusinessOperationsView: React.FC<{
                       <div className="flex items-center gap-3">
                         <strong className="text-lg text-[#2B1B13]">{money(Number(order.total || 0))}</strong>
                         {nextStatus && <button onClick={() => advanceStatus(order)} className="rounded-xl bg-[#3A2418] px-3 py-2 text-xs font-black text-white">{STATUS_LABELS[nextStatus]}</button>}
-                        <button onClick={() => cancelOrder(order)} className="rounded-xl border border-red-200 p-2 text-red-700" title="Cancelar"><XCircle className="w-4 h-4" /></button>
+                        {(businessId === 'alo-restaurante' || order.billingStatus === 'PENDIENTE') ? <button onClick={() => cancelOrder(order)} className="rounded-xl border border-red-200 p-2 text-red-700" title="Cancelar"><XCircle className="w-4 h-4" /></button> : <span className="text-xs font-bold text-amber-800" title="No cancelar pagos sin conciliar">Revisar Caja</span>}
                       </div>
                     </div>
                   );
@@ -380,7 +384,7 @@ export const BusinessOperationsView: React.FC<{
                   <p className="mt-1 text-sm text-[#6B4028]">{order.customerName || 'Cliente'} · {order.createdAt ? new Date(order.createdAt).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Mexico_City' }) : 'Fecha no disponible'} · Atendió: {order.capturedByName || order.claimedByName || (order.orderSource === 'CAJA' ? 'Caja' : 'Pedido en línea')}</p>
                   <div className="mt-2 flex flex-wrap gap-1.5">{order.items.map((item, index) => <span key={item.productId + '-' + index} className="rounded-lg bg-[#FFFDF9] border border-[#E8D8C4] px-2 py-1 text-[11px] text-[#2B1B13]">{item.quantity}× {item.name}</span>)}</div>
                   {order.notes && <p className="mt-2 text-xs text-[#7A5A45]">Nota: {order.notes}</p>}</div>
-                  <div className="flex items-center gap-3"><strong className="text-lg text-[#2B1B13]">{money(Number(order.total || 0))}</strong>{['NUEVO','PREPARANDO','LISTO'].includes(order.status) && <button onClick={() => advanceStatus(order)} className="rounded-xl bg-[#3A2418] px-3 py-2 text-xs font-black text-white">Avanzar</button>}{order.status !== 'CANCELADO' && order.status !== 'ENTREGADO' && <button onClick={() => cancelOrder(order)} className="rounded-xl border border-red-200 p-2 text-red-700" title="Cancelar comanda"><XCircle className="w-4 h-4" /></button>}</div>
+                  <div className="flex items-center gap-3"><strong className="text-lg text-[#2B1B13]">{money(Number(order.total || 0))}</strong>{['NUEVO','PREPARANDO','LISTO'].includes(order.status) && <button onClick={() => advanceStatus(order)} className="rounded-xl bg-[#3A2418] px-3 py-2 text-xs font-black text-white">Avanzar</button>}{order.status !== 'CANCELADO' && order.status !== 'ENTREGADO' && (businessId === 'alo-restaurante' || order.billingStatus === 'PENDIENTE') && <button onClick={() => cancelOrder(order)} className="rounded-xl border border-red-200 p-2 text-red-700" title="Cancelar comanda"><XCircle className="w-4 h-4" /></button>}</div>
                 </article>
               ))}</div>
             )}
