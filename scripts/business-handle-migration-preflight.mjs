@@ -166,6 +166,20 @@ export function auditHistoricalHandles(inventory) {
       globalProblems.push('UNKNOWN_REGISTRATION_CONTRACT_VERSION');
       continue;
     }
+    // El contrato 3-doc crea raíz, OWNER activo y reserva en el mismo batch.
+    // Si falta cualquiera de los tres o su identidad no coincide, el
+    // inventario completo es inconsistente; no liberar otros backfills.
+    if (root.restaurantId !== entry.id || !validId(root.ownerUserId)) {
+      globalProblems.push('THREE_DOC_ROOT_IDENTITY_INVALID');
+    }
+    const ownerMemberships = entry.memberships.filter(record => record.data.role === 'OWNER');
+    if (ownerMemberships.length !== 1
+        || ownerMemberships[0].path !== 'businessMemberships/' + entry.id + '_' + root.ownerUserId
+        || ownerMemberships[0].data.restaurantId !== entry.id
+        || ownerMemberships[0].data.userId !== root.ownerUserId
+        || ownerMemberships[0].data.active !== true) {
+      globalProblems.push('THREE_DOC_OWNER_MEMBERSHIP_INVALID');
+    }
     if (entry.reservations.length !== 1) {
       globalProblems.push('THREE_DOC_ROOT_WITHOUT_UNIQUE_RESERVATION');
       continue;
