@@ -215,8 +215,27 @@ export function registerBusinessInviteApi(app: Express): void {
       if (!invite || invite.status !== 'PENDING' || Number(invite.expiresAt) <= Date.now()) {
         return fail(res, 410, 'Esta invitación venció o ya fue utilizada.');
       }
-      const business = await db.collection('businesses').doc(String(invite.businessId)).get();
-      if (!business.exists) return fail(res, 404, 'El negocio ya no está disponible.');
+      // La vista previa no debe prometer una invitación que el backend
+      // rechazaría al aceptarla. Comprobar el tenant y el rol ACTUAL del
+      // invitador; un token pendiente no conserva permisos revocados.
+      if (!safeId(invite.businessId) || !safeEmail(invite.email) ||
+          !ROLES.includes(invite.role as InviteRole) ||
+          typeof invite.createdBy !== 'string' || !/^[^/]{1,128}$/.test(invite.createdBy)) {
+        return fail(res, 410, 'Esta invitación ya no está disponible.');
+      }
+      const businessId: string = invite.businessId;
+      const [business, inviter] = await Promise.all([
+        db.collection('businesses').doc(businessId).get(),
+        db.collection('businessMemberships').doc(businessId + '_' + invite.createdBy).get(),
+      ]);
+      if (!business.exists || !matchesTenant(business.data(), businessId)) {
+        return fail(res, 410, 'Esta invitación ya no está disponible.');
+      }
+      const inviterRole = inviter.data()?.role as ActorRole | undefined;
+      if (!inviter.exists || !activeTenantMember(inviter.data(), businessId, invite.createdBy) ||
+          !canInvite(inviterRole, invite.role)) {
+        return fail(res, 410, 'Esta invitación ya no está disponible.');
+      }
       const businessName = String(business.data()?.branding?.restaurantName || 'Negocio');
       const email = String(invite.email || '');
       const [local, domain] = email.split('@');
