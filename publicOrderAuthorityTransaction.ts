@@ -86,7 +86,8 @@ export async function commitTrustedPublicOrder(
   const profileRef = db.doc(`publicBusinessProfiles/${businessId}`);
   const catalogRef = db.doc(`businesses/${businessId}/catalog/menu_catalog`);
   const orderRef = db.doc(`restaurant_orders/${orderId}`);
-  // Revisar colisiones de espejo incluso para pickup: un ID no puede reciclarse.\n  const mirrorRef = db.doc(`public_table_orders/${orderId}`);
+  // Revisar colisiones de espejo incluso para pickup: un ID no puede reciclarse.
+  const mirrorRef = db.doc(`public_table_orders/${orderId}`);
   const now = new Date().toISOString();
 
   return db.runTransaction(async tx => {
