@@ -1,4 +1,4 @@
-import { doc, getDoc, onSnapshot, runTransaction, setDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, runTransaction } from 'firebase/firestore';
 import { auth } from './firebase';
 import { db } from './firebase';
 import { BusinessRole } from './restaurantCore';
@@ -244,9 +244,23 @@ export async function saveBusinessCatalog(
       return payload;
     });
   }
-  // Compatibilidad: importadores y rutas históricas no pasan versión.
-  await setDoc(ref, payload, { merge: false });
-  return payload;
+  // Compatibilidad con consumidores heredados que aún no envían revisión.
+  // No proporciona CAS: una edición válida posterior puede sobrescribir otra.
+  // Sin embargo, nunca debe reemplazar un documento corrupto o de otro tenant.
+  return runTransaction(db, async (transaction) => {
+    if (auth.currentUser?.uid !== managerUid) {
+      throw new Error('La sesión cambió antes del guardado heredado del catálogo.');
+    }
+    const current = await transaction.get(ref);
+    if (current.exists() && (current.data().businessId !== businessId || !Array.isArray(current.data().items))) {
+      throw new Error('El catálogo contiene datos inconsistentes del negocio. No se guardó ningún cambio.');
+    }
+    if (auth.currentUser?.uid !== managerUid) {
+      throw new Error('La sesión cambió durante el guardado heredado del catálogo.');
+    }
+    transaction.set(ref, payload);
+    return payload;
+  });
 }
 
 export async function upsertBusinessCatalogItem(
