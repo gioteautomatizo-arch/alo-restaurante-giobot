@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Activity,
   ArrowLeft,
@@ -11,52 +11,75 @@ import {
   Users,
 } from 'lucide-react';
 import { getAllBusinesses, isPlatformAdmin } from '../../lib/businessAuthService';
-import { subscribeToAuth } from '../../lib/firebase';
+import { auth, subscribeToAuth } from '../../lib/firebase';
 import type { RestaurantTenant } from '../../lib/restaurantCore';
 import type { User as FirebaseUser } from 'firebase/auth';
 
 export const PlatformAdminPanel: React.FC = () => {
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
-  const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [access, setAccess] = useState<'loading' | 'allowed' | 'denied' | 'error'>('loading');
+  const [resolvedFor, setResolvedFor] = useState<string | null>(null);
   const [businesses, setBusinesses] = useState<RestaurantTenant[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [reloadVersion, setReloadVersion] = useState(0);
+  const generationRef = useRef(0);
 
-  const loadBusinesses = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const current = authUser;
-      if (!current || !(await isPlatformAdmin(current.uid))) {
-        setAuthorized(false);
+  useEffect(() => subscribeToAuth((user) => {
+    setAuthUser(user);
+    setAuthChecked(true);
+  }), []);
+
+  useEffect(() => {
+    const userId = authUser?.uid;
+    const generation = ++generationRef.current;
+    let cancelled = false;
+    setAccess('loading');
+    setResolvedFor(null);
+    setBusinesses([]);
+    if (!userId) return () => { cancelled = true; };
+
+    const stillCurrent = () => !cancelled
+      && generationRef.current === generation
+      && auth.currentUser?.uid === userId;
+
+    void (async () => {
+      try {
+        const admin = await isPlatformAdmin(userId);
+        if (!stillCurrent()) return;
+        if (!admin) {
+          setAccess('denied');
+          setResolvedFor(userId);
+          return;
+        }
+        const tenants = await getAllBusinesses(userId);
+        if (!stillCurrent()) return;
+        setBusinesses(tenants);
+        setAccess('allowed');
+        setResolvedFor(userId);
+      } catch (err) {
+        if (!stillCurrent()) return;
+        console.error('No se pudo cargar el panel Super Admin:', err);
+        // Nunca conservar un listado anterior ante errores o revocación.
         setBusinesses([]);
-        return;
+        setAccess('error');
+        setResolvedFor(userId);
       }
-      setAuthorized(true);
-      setBusinesses(await getAllBusinesses());
-    } catch (err) {
-      console.error('No se pudo cargar el panel Super Admin:', err);
-      setError('No pudimos cargar los negocios de la plataforma.');
-    } finally {
-      setLoading(false);
-    }
+    })();
+    return () => { cancelled = true; };
+  }, [authUser?.uid, reloadVersion]);
+
+  const retry = () => {
+    // Invalidar sin esperar al cleanup de React: también cubre dos clics
+    // consecutivos en Actualizar y respuestas de red fuera de orden.
+    generationRef.current += 1;
+    setAccess('loading');
+    setResolvedFor(null);
+    setBusinesses([]);
+    setReloadVersion((value) => value + 1);
   };
 
-  useEffect(() => {
-    return subscribeToAuth((user) => setAuthUser(user));
-  }, []);
-
-  useEffect(() => {
-    if (!authUser) {
-      setAuthorized(false);
-      setBusinesses([]);
-      setLoading(false);
-      return;
-    }
-    void loadBusinesses();
-  }, [authUser]);
-
-  if (authorized === null || loading) {
+  const currentUid = authUser?.uid;
+  if (!authChecked || (currentUid && (resolvedFor !== currentUid || access === 'loading'))) {
     return (
       <div className="min-h-screen bg-[#0B1020] text-white flex items-center justify-center">
         <div className="flex items-center gap-3 text-sm font-bold">
@@ -67,7 +90,7 @@ export const PlatformAdminPanel: React.FC = () => {
     );
   }
 
-  if (!authorized) {
+  if (!currentUid || access === 'denied') {
     return (
       <div className="min-h-screen bg-[#0B1020] text-white flex items-center justify-center px-4">
         <div className="max-w-md rounded-[2rem] border border-white/10 bg-white/5 p-7 text-center">
@@ -76,12 +99,31 @@ export const PlatformAdminPanel: React.FC = () => {
           <p className="mt-2 text-sm text-slate-300">
             Esta cuenta no está registrada como administrador de la plataforma.
           </p>
+          {currentUid && (
+            <button type="button" onClick={retry} className="mt-5 rounded-xl border border-white/20 px-4 py-3 text-xs font-black text-white">
+              Reintentar verificación
+            </button>
+          )}
           <button
             type="button"
             onClick={() => { window.location.hash = '#business'; }}
             className="mt-6 rounded-xl bg-white px-4 py-3 text-xs font-black text-[#111827]"
           >
             Volver a mis negocios
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (access === 'error') {
+    return (
+      <div className="min-h-screen bg-[#0B1020] text-white flex items-center justify-center px-4">
+        <div role="alert" className="max-w-md rounded-[2rem] border border-white/10 bg-white/5 p-7 text-center">
+          <h1 className="font-serif text-2xl font-black">No se pudieron cargar los negocios</h1>
+          <p className="mt-2 text-sm text-slate-300">Revisa tu conexión o permisos y vuelve a intentarlo.</p>
+          <button type="button" onClick={retry} className="mt-5 rounded-xl bg-white px-4 py-3 text-xs font-black text-[#111827]">
+            Reintentar carga de plataforma
           </button>
         </div>
       </div>
@@ -132,20 +174,13 @@ export const PlatformAdminPanel: React.FC = () => {
             </div>
             <button
               type="button"
-              onClick={() => void loadBusinesses()}
-              disabled={loading}
+              onClick={retry}
               className="rounded-xl bg-white px-4 py-3 text-xs font-black text-[#111827] flex items-center justify-center gap-2 disabled:opacity-60"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Actualizar
+              <RefreshCw className="w-4 h-4" /> Actualizar
             </button>
           </div>
         </div>
-
-        {error && (
-          <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-800">
-            {error}
-          </div>
-        )}
 
         <section className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {stats.map(({ label, value, icon: Icon }) => (
