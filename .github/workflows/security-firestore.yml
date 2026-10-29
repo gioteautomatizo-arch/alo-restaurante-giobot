@@ -42,6 +42,8 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-owner-security-test --config firebase.launch-security-emulator.json "node scripts/test-owner-registration.mjs"
       - name: Test isolated atomic OWNER rule proposal (no rule deployment)
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-atomic-owner-proposal-test --config firebase.launch-security-emulator.json "node scripts/test-owner-atomic-proposal.mjs"
+      - name: Diagnose malformed tenant memberships and test isolated identity gate (no rule deployment)
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-membership-identity-test --config firebase.launch-security-emulator.json "node scripts/test-membership-identity-proposal.mjs"
       - name: Diagnose business handle reuse and test isolated no-client-delete proposal
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-handle-reuse-proposal-test --config firebase.launch-security-emulator.json "node scripts/test-business-handle-reuse-proposal.mjs"
       - name: Test isolated permanent business handle reservations (no rule deployment)
