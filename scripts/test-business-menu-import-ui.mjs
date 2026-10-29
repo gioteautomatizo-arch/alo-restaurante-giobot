@@ -25,8 +25,8 @@ const mocks={
   ].join('\n'),
   '../../lib/businessMenuImportService':[
     'export const getMenuImportDraft=businessId=>new Promise((resolve,reject)=>window.qa.draftReads.push({businessId,resolve,reject}));',
-    'export const saveMenuImportDraft=async(businessId,input)=>{window.qa.draftWrites.push({businessId,input});return {businessId,...input};};',
-    'export const clearMenuImportDraft=async businessId=>{window.qa.clears.push(businessId);};',
+    'export const saveMenuImportDraft=async(businessId,input,_actor,revision)=>{window.qa.draftWrites.push({businessId,input,revision});if(window.qa.draftConflict)throw Error("CONFLICTO_BORRADOR: Otra pestaña modificó tu borrador.");return {businessId,...input,revision:"saved-"+window.qa.draftWrites.length};};',
+    'export const clearMenuImportDraft=async(businessId,revision)=>{window.qa.clears.push(businessId);window.qa.clearVersions.push(revision);};',
   ].join('\n'),
 };
 const bundle=await build({
@@ -53,7 +53,7 @@ const dom=new JSDOM('<div id="root"></div>',{
   url:'https://example.test/',runScripts:'outside-only',virtualConsole:new VirtualConsole(),
 });
 const {window}=dom,document=window.document;
-window.qa={draftReads:[],draftWrites:[],catalogWrites:[],clears:[],subscriptions:[],conflict:false};
+window.qa={draftReads:[],draftWrites:[],catalogWrites:[],clears:[],subscriptions:[],conflict:false,draftConflict:false,clearVersions:[]};
 const errors=[];
 window.addEventListener('error',event=>errors.push(event.error));
 const waitFor=async(predicate,label)=>{
@@ -62,7 +62,7 @@ const waitFor=async(predicate,label)=>{
 };
 const button=label=>[...document.querySelectorAll('button')].find(el=>el.textContent.trim()===label);
 const visible=label=>document.body.textContent.includes(label)||[...document.querySelectorAll('input')].some(el=>el.value===label);
-const draft=(businessId,name)=>({businessId,sourceImageUrl:'',updatedAt:'',updatedBy:'Prueba',items:[{
+const draft=(businessId,name)=>({businessId,sourceImageUrl:'',updatedAt:'',updatedBy:'Prueba',revision:'original-'+businessId,items:[{
   id:'draft-1',name,category:'Comida',price:'45',description:'',
 }]});
 const catalog=(id,revision)=>({businessId:id,revision,items:[],updatedAt:'2026-10-29T00:00:00.000Z'});
@@ -98,6 +98,7 @@ try{
   await waitFor(()=>window.qa.catalogWrites.length===2,'Falta reintento de publicación');
   await waitFor(()=>window.qa.clears.length===1,'Falta limpiar borrador tras publicación');
   assert.deepEqual(window.qa.clears,['tenant-a']);
+  assert.deepEqual(window.qa.clearVersions,['original-tenant-a']);
   assert.equal(window.qa.catalogWrites[1].revision,'rev-a');
 
   window.qa.render('tenant-b','owner-b');
@@ -113,8 +114,24 @@ try{
   assert.equal(window.qa.catalogWrites[2].businessId,'tenant-b');
   assert.equal(window.qa.catalogWrites[2].revision,'rev-b');
   assert.equal(window.qa.catalogWrites[2].items[0].name,'Taco B');
+  // Una versión obsoleta no debe publicar ni borrar el borrador remoto.
+  window.qa.render('tenant-c','owner-c');
+  await waitFor(()=>window.qa.draftReads.length===4,'Falta lectura C');
+  await waitFor(()=>window.qa.subscriptions.length===3,'Falta catálogo C');
+  window.qa.subscriptions[2].callback(catalog('tenant-c','rev-c'));
+  window.qa.draftReads[3].resolve(draft('tenant-c','Tamal C'));
+  await waitFor(()=>visible('Tamal C'),'Falta borrador C');
+  window.qa.draftConflict=true;
+  button('Agregar producto').click();
+  const beforeConflict=window.qa.catalogWrites.length;
+  button('Publicar en mi catálogo').click();
+  await waitFor(()=>visible('CONFLICTO_BORRADOR'),'Debe mostrar conflicto de borrador');
+  assert.equal(window.qa.catalogWrites.length,beforeConflict,'No publicar con borrador en conflicto');
+  assert.equal(window.qa.clears.includes('tenant-c'),false,'No borrar borrador en conflicto');
+  assert.equal(visible('Tamal C'),true,'Conservar datos locales para recuperación');
+  window.qa.draftConflict=false;
   assert.deepEqual(errors,[],'Sin errores de React');
-  console.log('PASS: fallo de borrador bloquea editor, reintento recupera, conflicto conserva borrador, revisión transaccional y cambio de tenant aislado (React/jsdom).');
+  console.log('PASS: fallo de borrador bloquea editor, reintento recupera, conflicto de borrador bloquea publicación, conflicto de catálogo conserva borrador, revisión transaccional y cambio de tenant aislado (React/jsdom).');
 }finally{
   window.qa.unmount?.();
   window.close();
