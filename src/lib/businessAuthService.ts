@@ -66,6 +66,12 @@ export interface RegisterBusinessResult {
   membership: RestaurantMembership;
 }
 
+// Contrato mínimo del selector: nunca tratar la tarjeta de un endpoint privado
+// como si fuera la raíz completa del negocio.
+export type BusinessDirectoryCard = Pick<RestaurantTenant, 'restaurantId'> & {
+  branding: Pick<RestaurantTenant['branding'], 'restaurantName' | 'publicSlug' | 'logoUrl'>;
+};
+
 function businessRef(businessId: string) {
   return doc(db, BUSINESSES_COLLECTION, businessId);
 }
@@ -235,7 +241,7 @@ export async function logoutBusinessOwner(): Promise<void> {
 // Firestore si la ruta protegida falla: eso reabriría la exposición.
 const SECURE_BUSINESS_LIST_ENABLED = import.meta.env?.VITE_SECURE_BUSINESS_LIST === 'true';
 
-async function getBusinessesFromVerifiedApi(userId: string): Promise<RestaurantTenant[]> {
+async function getBusinessesFromVerifiedApi(userId: string): Promise<BusinessDirectoryCard[]> {
   assertCurrentBusinessSession(userId);
   const user = auth.currentUser!;
   const token = await user.getIdToken();
@@ -255,24 +261,29 @@ async function getBusinessesFromVerifiedApi(userId: string): Promise<RestaurantT
     throw new Error('El servicio protegido devolvió una respuesta inválida.');
   }
   const seen = new Set<string>();
-  const businesses: RestaurantTenant[] = [];
+  const businesses: BusinessDirectoryCard[] = [];
   for (const value of payload.businesses) {
-    if (!value || typeof value !== 'object' ||
+    const branding = value?.branding;
+    if (!value || typeof value !== 'object' || Array.isArray(value) ||
+        Object.keys(value).some(key => key !== 'restaurantId' && key !== 'branding') ||
         typeof value.restaurantId !== 'string' ||
         !/^[a-z0-9][a-z0-9-]{1,63}$/.test(value.restaurantId) ||
         seen.has(value.restaurantId) ||
-        !value.branding || typeof value.branding.restaurantName !== 'string' ||
-        typeof value.branding.publicSlug !== 'string') {
+        !branding || typeof branding !== 'object' || Array.isArray(branding) ||
+        Object.keys(branding).some(key => !['restaurantName', 'publicSlug', 'logoUrl'].includes(key)) ||
+        typeof branding.restaurantName !== 'string' ||
+        typeof branding.publicSlug !== 'string' ||
+        (branding.logoUrl !== undefined && typeof branding.logoUrl !== 'string')) {
       throw new Error('El servicio protegido devolvió datos de negocios inconsistentes.');
     }
     seen.add(value.restaurantId);
-    businesses.push(value as RestaurantTenant);
+    businesses.push(value as BusinessDirectoryCard);
   }
   assertCurrentBusinessSession(userId);
   return businesses;
 }
 
-export async function getBusinessesForUser(userId: string): Promise<RestaurantTenant[]> {
+export async function getBusinessesForUser(userId: string): Promise<BusinessDirectoryCard[]> {
   assertCurrentBusinessSession(userId);
   if (SECURE_BUSINESS_LIST_ENABLED) return getBusinessesFromVerifiedApi(userId);
   const membershipsQuery = query(
