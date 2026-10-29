@@ -171,7 +171,7 @@ try{
   await assert.rejects(window.qa.save('tenant/a',input,'Prueba',null),/identidad del negocio/);
   assert.equal(window.qa.pending.length,0);
   reset(null);
-  await assert.rejects(window.qa.clear('tenant-a'),/Debes iniciar sesión/);
+  await assert.rejects(window.qa.clear('tenant-a','__legacy_no_version__'),/Debes iniciar sesión/);
   assert.equal(window.qa.writes.length,0);
 
   console.log('PASS: borradores A/B con OWNER/MANAGER, raíz histórica, revocación, lectura inconsistente, cambio de sesión y transacciones de dos pestañas (mock Auth/Firestore).');
