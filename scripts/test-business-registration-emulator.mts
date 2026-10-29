@@ -165,6 +165,7 @@ try {
   await addCatalogProductThroughUI({
     businessId: idA, businessName: a.tenant.branding.restaurantName,
     user: auth.currentUser!, bridge: managementBridge, productName: 'Producto UI A', price: 43,
+    expectedExistingItemName: afterParallel.items.find((item: {id:string}) => item.id === 'editor-one' || item.id === 'editor-two')?.name,
   });
   assert((await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data()?.items.some((item: {name:string}) => item.name === 'Producto UI A'));
   await publishBusinessThroughUI({businessId:idA,user:auth.currentUser!,bridge:publicationBridge});
@@ -193,6 +194,7 @@ try {
   await addCatalogProductThroughUI({
     businessId: idB, businessName: b.tenant.branding.restaurantName,
     user: auth.currentUser!, bridge: managementBridge, productName: 'Producto UI B', price: 26,
+    expectedExistingItemName: 'Solo B',
   });
   assert((await getDoc(doc(db, 'businesses', idB, 'catalog', 'menu_catalog'))).data()?.items.some((item: {name:string}) => item.name === 'Producto UI B'));
   assert(!(await getDoc(doc(db, 'businesses', idB, 'catalog', 'menu_catalog'))).data()?.items.some(item => item.id === 'extra-a'));
