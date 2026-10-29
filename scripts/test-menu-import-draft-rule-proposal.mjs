@@ -47,6 +47,7 @@ const proposed=staged.replace(catalogMatch,membershipHelper+'\n\n'+publicCatalog
   "      // Borradores requieren identidad y rol; otros IDs fallan cerrados.",
   "      allow read: if isPlatformSuperAdmin()",
   "        || (catalogDoc == 'menu_catalog'",
+  "          && resource.data.get('businessId', null) == businessId",
   "          && (isIdentifiedPublishedCatalog(businessId) || hasIdentifiedCatalogMembership(businessId)))",
   "        || (catalogDoc == 'menu_import_draft'",
   "          && hasIdentifiedCatalogMembership(businessId)",
@@ -74,6 +75,20 @@ const seed=async env=>{
         published:true,
       });
     }
+    // Raíz y perfil correctos no bastan si el documento menu_catalog está
+    // cruzado, incompleto o mal tipado. STAGED lo sigue exponiendo.
+    for(const [id,catalogBusinessId] of [['tenant-h','tenant-b'],['tenant-i',undefined],['tenant-j',42]]){
+      await setDoc(doc(db,'businesses',id),{restaurantId:id,ownerUserId:'owner-'+id});
+      await setDoc(doc(db,'publicBusinessProfiles',id),{businessId:id,restaurantId:id,published:true});
+      await setDoc(doc(db,'businesses',id,'catalog','menu_catalog'),{
+        ...(catalogBusinessId === undefined ? {} : {businessId:catalogBusinessId}),
+        items:[{name:'No debe exponerse'}],
+      });
+    }
+    await setDoc(doc(db,'businesses','tenant-k'),{restaurantId:'tenant-k',ownerUserId:'carol'});
+    await setDoc(doc(db,'publicBusinessProfiles','tenant-k'),{businessId:'tenant-k',restaurantId:'tenant-k',published:false});
+    await setDoc(doc(db,'businesses','tenant-k','catalog','menu_catalog'),{businessId:'tenant-a',items:[{name:'Cruzado privado'}]});
+    await setDoc(doc(db,'businessMemberships','tenant-k_carol'),{restaurantId:'tenant-k',userId:'carol',role:'OWNER',active:true});
     for(const [uid,role,active] of [['alice','OWNER',true],['manager','MANAGER',true],['cashier','CASHIER',true],['revoked','MANAGER',false]]){
       await setDoc(doc(db,'businessMemberships','tenant-a_'+uid),{
         restaurantId:'tenant-a',userId:uid,role,active,
@@ -100,10 +115,12 @@ try{
   await seed(stagedEnv);
   await assertSucceeds(getDoc(draft(stagedEnv.unauthenticatedContext().firestore())));
   await assertSucceeds(getDoc(otherCatalog(stagedEnv.unauthenticatedContext().firestore())));
-  for(const id of ['tenant-c','tenant-d','tenant-e','tenant-f','tenant-g']){
+  for(const id of ['tenant-c','tenant-d','tenant-e','tenant-f','tenant-g','tenant-h','tenant-i','tenant-j']){
     await assertSucceeds(getDoc(doc(stagedEnv.unauthenticatedContext().firestore(),'businesses',id,'catalog','menu_catalog')));
   }
+  await assertSucceeds(getDoc(doc(stagedEnv.authenticatedContext('carol').firestore(),'businesses/tenant-k/catalog/menu_catalog')));
   console.log('PENDIENTE: STAGED expone catálogos con perfil huérfano o identidad de raíz/perfil inconsistente.');
+  console.log('PENDIENTE: STAGED permite leer menu_catalog cruzado, sin businessId o mal tipado, incluso para el miembro legítimo de un tenant privado.');
   console.log('PENDIENTE: STAGED permite lectura pública de menu_import_draft en negocios publicados; NO corregido.');
 }finally{await stagedEnv.cleanup();}
 const proposalEnv=await initializeTestEnvironment({
@@ -121,14 +138,19 @@ try{
   const mismatch=proposalEnv.authenticatedContext('mismatch').firestore();
   const wrong=proposalEnv.authenticatedContext('wrong').firestore();
   const legacy=proposalEnv.authenticatedContext('legacy').firestore();
+  const carol=proposalEnv.authenticatedContext('carol').firestore();
   await assertSucceeds(getDoc(catalog(guest)));
   await assertFails(getDoc(otherCatalog(guest)));
   await assertFails(getDoc(unpublishedCatalog(guest)));
   await assertFails(getDoc(unpublishedDraft(guest)));
   await assertFails(getDoc(draft(guest)));
-  for(const id of ['tenant-c','tenant-d','tenant-e','tenant-f','tenant-g']){
+  for(const id of ['tenant-c','tenant-d','tenant-e','tenant-f','tenant-g','tenant-h','tenant-i','tenant-j']){
     await assertFails(getDoc(doc(guest,'businesses',id,'catalog','menu_catalog')));
   }
+  for(const id of ['tenant-h','tenant-i','tenant-j']){
+    await assertFails(getDoc(doc(proposalEnv.authenticatedContext('owner-'+id).firestore(),'businesses',id,'catalog','menu_catalog')));
+  }
+  await assertFails(getDoc(doc(carol,'businesses/tenant-k/catalog/menu_catalog')));
   await assertFails(getDoc(doc(guest,'businesses/tenant-b/catalog/menu_catalog')));
   await assertFails(getDoc(doc(guest,'businesses/tenant-b/catalog/menu_import_draft')));
   await assertSucceeds(getDoc(draft(alice)));
@@ -152,7 +174,7 @@ try{
   await assertSucceeds(setDoc(draft(alice),{businessId:'tenant-a',items:[]}));
   await assertFails(setDoc(draft(cashier),{businessId:'tenant-a',items:[]}));
   await assertFails(setDoc(draft(guest),{businessId:'tenant-a',items:[]}));
-  console.log('PASS (propuesta aislada): raíz/perfil identificados para publicación, catálogos huérfanos o cruzados bloqueados, catálogo público publicado, lectura interna legítima de no publicado, borrador solo editores, IDs desconocidos denegados y membresías discordantes/incompletas bloqueadas.');
+  console.log('PASS (propuesta aislada): raíz, perfil y documento menu_catalog identificados; rechaza documento cruzado/sin ID/tipo inválido en público y privado; preserva catálogos A/B válidos, borradores privados, roles e aislamiento.');
   console.log('HOLD compatibilidad: miembros históricos sin userId/restaurantId necesitarían auditoría y migración autorizada antes de activar esta propuesta.');
   console.log('PENDIENTE: revisión independiente de reglas, compatibilidad y autorización antes de cualquier cambio staged/despliegue.');
 }finally{await proposalEnv.cleanup();}
