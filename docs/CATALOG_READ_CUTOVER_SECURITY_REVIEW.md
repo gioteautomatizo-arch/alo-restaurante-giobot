@@ -36,3 +36,10 @@ Comprobar en el log: lectura pública del `menu_catalog` publicado, denegación 
 ## Estado de pasos
 
 Paso 1: visual Android/iPad pendiente. **Paso 2: ABIERTO / HOLD** hasta compatibilidad histórica, seguridad OWNER atómico y recorrido completo A/B. Paso 3: validación autoritativa de pedidos públicos PENDIENTE CRÍTICO. Paso 4: Caja histórica/MIXTO **PENDIENTE** aunque CI esté verde. Pasos 5 y 6 no autorizados.
+
+## Comprobación adicional de raíz y perfil publicados (29 de octubre de 2026)
+
+- La propuesta de lectura de `menu_catalog` público ahora exige que exista `businesses/{id}` con `restaurantId == id` y `publicBusinessProfiles/{id}` con `published == true`, `businessId == id` y `restaurantId == id`. No basta con un perfil publicado huérfano. Se conserva el acceso interno identificado a un catálogo no publicado; esto no certifica permisos de escrituras.
+- El test del emulador incluye cinco casos sintéticos: perfil publicado sin raíz, raíz con `restaurantId` cruzado, perfil con `businessId` cruzado, perfil histórico sin campos de identidad y raíz sin `restaurantId`. STAGED los considera públicos; el candidato debe rechazarlos. Son casos ficticios, no se han detectado estos registros en producción.
+- **HOLD adicional de compatibilidad:** un perfil publicado histórico sin ambos campos de identidad o una raíz sin `restaurantId` dejará de exponer su menú bajo el candidato. Auditar únicamente con autorización y datos de solo lectura, validar migración y respaldo antes de cualquier corte. No completar campos automáticamente ni volver a reglas inseguras ante un error.
+- **Costo/seguridad:** el candidato añade consultas de documentos raíz y perfil en la evaluación de reglas; revisar presupuestos de lecturas y límites de acceso del motor de Firestore con el conjunto completo de reglas, además de la latencia y el comportamiento de clientes antiguos. Un `success` de emulador no certifica despliegue ni rendimiento real.
