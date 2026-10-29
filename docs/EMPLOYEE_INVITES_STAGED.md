@@ -19,3 +19,9 @@ El servicio `businessInviteApi.ts` ofrece:
 6. No incluir tokens de invitación en registros o analíticas. No subir secretos.
 
 **No desplegar reglas ni activar la función en producción sin validar todos los pasos.**
+
+## Protección adicional del flujo heredado de Empleados (29 de octubre de 2026)
+
+- `src/lib/businessEmployeeService.ts` verifica la membresía activa, identidad del tenant, rol del responsable y raíz OWNER **antes** de crear o autenticar una cuenta secundaria de Firebase. Vuelve a comprobar estos permisos tras Auth y antes de vincular al empleado mediante el batch. En edición y retiro, verifica también la identidad/rol del empleado objetivo, la jerarquía de roles y la sesión antes de escribir.
+- El preflight reduce intentos que antes creaban una cuenta Auth sin autorización para vincularla; **no es una transacción entre Firebase Auth y Firestore**. Si Auth se crea y la revocación ocurre después, o el batch falla, la cuenta Auth puede quedar sin membresía. No borrar automáticamente esas cuentas ni afirmar que el alta fue revertida; el responsable debe revisar la vinculación por el procedimiento autorizado.
+- Prueba: `scripts/test-business-employee-lifecycle.mjs`, Auth/Firestore completamente simulados con negocios A/B; incluida en Quality CI. No prueba proveedores de identidad reales, reglas desplegadas ni dispositivos. La vía de invitaciones segura sigue opt-in y apagada; no se habilitó.
