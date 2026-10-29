@@ -66,6 +66,8 @@ jobs:
         run: node --import tsx scripts/test-tenant-module-sort.mts
       - name: Preflight nested tenant historical identity and full inventory coverage (synthetic, no Firebase)
         run: node scripts/test-tenant-module-inventory-preflight.mjs
+      - name: Preflight historical business roots and memberships (synthetic A/B, no Firebase)
+        run: node scripts/test-business-membership-inventory-preflight.mjs
       - name: Test historical business handle migration preflight (synthetic inventory, no Firebase)
         run: node scripts/test-business-handle-migration-preflight.mjs
       - name: Diagnose registration cutover and fail-closed rollback (read-only, no Firebase)
