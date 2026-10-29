@@ -1,4 +1,4 @@
-import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, runTransaction } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { assertCatalogManager } from './businessCatalogService';
 
@@ -27,9 +27,22 @@ export interface MenuImportDraft {
   items: MenuImportDraftItem[];
   updatedAt: string;
   updatedBy: string;
+  /** Versión opaca para evitar sobrescrituras de otra pestaña. */
+  revision: string;
 }
 
 const DRAFT_DOC_ID = 'menu_import_draft';
+const LEGACY_NO_VERSION = '__legacy_no_version__';
+
+function storedVersion(data: Record<string, unknown>): string {
+  return (typeof data.revision === 'string' && data.revision)
+    || (typeof data.updatedAt === 'string' && data.updatedAt)
+    || LEGACY_NO_VERSION;
+}
+
+function conflict(): Error {
+  return new Error('CONFLICTO_BORRADOR: Otra pestaña modificó tu borrador. Copia tus cambios antes de recargar para no perderlos.');
+}
 
 function draftRef(businessId: string) {
   if (!businessId || businessId.trim() !== businessId || businessId.includes('/')) {
@@ -74,6 +87,7 @@ export async function getMenuImportDraft(businessId: string): Promise<MenuImport
     })),
     updatedAt: text(data.updatedAt),
     updatedBy: text(data.updatedBy),
+    revision: storedVersion(data as Record<string, unknown>),
   };
 }
 
@@ -81,8 +95,10 @@ export async function saveMenuImportDraft(
   businessId: string,
   input: { sourceImageUrl: string; items: MenuImportDraftItem[] },
   actorName: string,
+  expectedRevision: string | null,
 ): Promise<MenuImportDraft> {
   const ref = draftRef(businessId);
+  if (expectedRevision === undefined) throw new Error('Se requiere la versión del borrador para guardarlo.');
   const uid = await assertCatalogManager(businessId);
   assertDraftSession(uid);
 
@@ -98,16 +114,31 @@ export async function saveMenuImportDraft(
     })),
     updatedAt: new Date().toISOString(),
     updatedBy: actorName,
+    revision: new Date().toISOString() + '-' + Math.random().toString(36).slice(2),
   };
 
-  assertDraftSession(uid);
-  await setDoc(ref, payload);
+  await runTransaction(db, async transaction => {
+    assertDraftSession(uid);
+    const existing = await transaction.get(ref);
+    assertDraftSession(uid);
+    const current = existing.exists() ? storedVersion(existing.data() as Record<string, unknown>) : null;
+    if (current !== expectedRevision) throw conflict();
+    transaction.set(ref, payload);
+  });
   return payload;
 }
 
-export async function clearMenuImportDraft(businessId: string): Promise<void> {
+export async function clearMenuImportDraft(businessId: string, expectedRevision: string | null): Promise<void> {
   const ref = draftRef(businessId);
+  if (expectedRevision === undefined) throw new Error('Se requiere la versión del borrador para borrarlo.');
   const uid = await assertCatalogManager(businessId);
   assertDraftSession(uid);
-  await deleteDoc(ref);
+  await runTransaction(db, async transaction => {
+    assertDraftSession(uid);
+    const existing = await transaction.get(ref);
+    assertDraftSession(uid);
+    const current = existing.exists() ? storedVersion(existing.data() as Record<string, unknown>) : null;
+    if (current !== expectedRevision) throw conflict();
+    if (existing.exists()) transaction.delete(ref);
+  });
 }
