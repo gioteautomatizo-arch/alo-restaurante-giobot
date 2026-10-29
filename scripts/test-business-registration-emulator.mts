@@ -207,7 +207,9 @@ try {
   await deny(setDoc(doc(db, 'publicBusinessProfiles', idA), {
     businessId: idA, restaurantId: idA, published: false, branding: { restaurantName: 'Cruce' }, updatedAt: '',
   }), 'B no despublica A');
-  await deny(setBusinessPublication(idA, a.tenant, false), 'B no publica A');
+  // La comprobación de OWNER puede rechazar antes de llegar a las reglas.
+  await assert.rejects(setBusinessPublication(idA, a.tenant, false),
+    /Solo el propietario|permission-denied/i, 'B no publica A');
   await deny(getBusinessForUser(uidB, idA), 'B no puede resolver el tenant privado A');
   await assertForeignWorkspaceDeniedThroughUI({businessId:idA,user:auth.currentUser!,bridge:publicationBridge});
   await publishAndHideBusinessThroughUI({businessId:idB,user:auth.currentUser!,bridge:publicationBridge});
