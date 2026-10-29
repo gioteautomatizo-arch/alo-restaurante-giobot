@@ -95,7 +95,9 @@ try {
   as('revoked-a',revoked);
   await assert.rejects(clear('tenant-a',managed.revision),/No tienes permiso/);
   as('owner-b',ownerB);
-  await assert.rejects(read('tenant-a'),/No tienes permiso/);
+  // STAGED deniega la lectura de la membresía ajena antes de que el preflight
+  // pueda devolver su mensaje de dominio. Ambas rutas deben fallar cerradas.
+  await assert.rejects(read('tenant-a'),/No tienes permiso|permission-denied/);
   const b=await save('tenant-b',input('Solo B'),'Dueño B',null);
   assert.equal((await read('tenant-b')).revision,b.revision);
   assert.equal((await sdk.getDoc(ref(ownerB,'tenant-b'))).data().items[0].name,'Solo B');
