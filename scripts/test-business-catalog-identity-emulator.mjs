@@ -49,12 +49,12 @@ const ownerB=env.authenticatedContext('owner-b').firestore();
 const as=(uid,db)=>{globalThis.catalogAuth.currentUser={uid};globalThis.catalogDb=db;};
 const ref=(db,id)=>sdk.doc(db,'businesses',id,'catalog','menu_catalog');
 const item=(name)=>({id:'product-1',name,description:'',category:'General',price:40,available:true,sortOrder:10});
-async function firstSnapshot(businessId){
+async function firstSnapshot(businessId,acceptData=()=>true){
   return new Promise((resolve,reject)=>{
     let unsubscribe=()=>{};
     const timer=setTimeout(()=>{unsubscribe();reject(new Error('Tiempo agotado esperando catálogo '+businessId));},10000);
     const finish=(kind,value)=>{clearTimeout(timer);unsubscribe();resolve({kind,value});};
-    unsubscribe=subscribe(businessId,value=>finish('data',value),error=>finish('error',error));
+    unsubscribe=subscribe(businessId,value=>{if(acceptData(value)) finish('data',value);},error=>finish('error',error));
   });
 }
 try {
@@ -74,7 +74,7 @@ try {
   assert.equal(event.kind,'data');
   assert.equal(event.value,null,'Catálogo ausente se distingue de error');
   const created=await save('tenant-a',[item('Solo A')],'Dueño A',null);
-  event=await firstSnapshot('tenant-a');
+  event=await firstSnapshot('tenant-a',value=>value?.items?.[0]?.name==='Solo A');
   assert.equal(event.kind,'data');
   assert.equal(event.value.businessId,'tenant-a');
   assert.equal(event.value.items[0].name,'Solo A');
@@ -94,7 +94,7 @@ try {
     });
   });
   as('owner-a',ownerA);
-  event=await firstSnapshot('tenant-a');
+  event=await firstSnapshot('tenant-a',()=>false);
   assert.equal(event.kind,'error','La lectura de A no puede presentar un catálogo con identidad B');
   assert.match(String(event.value),/identidad o lista de productos inconsistente/);
   await assert.rejects(save('tenant-a',[item('No sobrescribir')],'Dueño A','cross-v1'),/datos inconsistentes/);
@@ -107,7 +107,7 @@ try {
   await env.withSecurityRulesDisabled(async ctx=>{
     await sdk.setDoc(ref(ctx.firestore(),'tenant-a'),{businessId:'tenant-a',revision:'bad-items'});
   });
-  event=await firstSnapshot('tenant-a');
+  event=await firstSnapshot('tenant-a',()=>false);
   assert.equal(event.kind,'error','No interpretar catálogo sin items como menú vacío');
   await assert.rejects(save('tenant-a',[item('No sobrescribir')],'Dueño A','bad-items'),/datos inconsistentes/);
 
@@ -116,7 +116,7 @@ try {
       businessId:'tenant-a',revision:created.revision,items:[item('Restaurado A')],
     });
   });
-  event=await firstSnapshot('tenant-a');
+  event=await firstSnapshot('tenant-a',value=>value?.items?.[0]?.name==='Restaurado A');
   assert.equal(event.kind,'data');
   assert.equal(event.value.items[0].name,'Restaurado A');
   const updated=await save('tenant-a',[item('Actualizado A')],'Dueño A',created.revision);
