@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, query, where, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { buildMembershipIdentityProposalRules } from './membership-identity-proposal-rules.mjs';
 
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080',
@@ -55,6 +55,14 @@ async function scenario(rules, diagnostic) {
       { businessId: b, items: [] }));
     await assertSucceeds(getDoc(doc(env.authenticatedContext('platform-admin').firestore(),
       'businesses', b)));
+
+    // Contrato real de getBusinessesForUser: consulta por UID + active.
+    // No bloquear todos los listados válidos con una condición sobre doc.id
+    // que Firestore no puede demostrar para una consulta de colección.
+    const ownList = query(collection(alice, 'businessMemberships'),
+      where('userId', '==', 'alice'), where('active', '==', true));
+    const ownDocs = await assertSucceeds(getDocs(ownList));
+    assert(ownDocs.docs.some(snap => snap.id === a + '_alice'));
 
     // Cada ficha anómala fue sembrada SOLO con privilegios del emulador.
     const anomalies = [
@@ -126,6 +134,15 @@ async function scenario(rules, diagnostic) {
       await env.withSecurityRulesDisabled(async ctx => {
         await setDoc(doc(ctx.firestore(), 'businessMemberships', b + '_target'), anomaly.data);
       });
+      // LIMITACIÓN de Firestore: la consulta por campos puede devolver
+      // una ficha corrupta; el selector cliente debe detectarla y fallar
+      // cerrado, y el inventario histórico debe depurarla antes del corte.
+      const malformedList = query(collection(
+        env.authenticatedContext(anomaly.data.userId).firestore(), 'businessMemberships'),
+        where('userId', '==', anomaly.data.userId), where('active', '==', true));
+      const listed = await assertSucceeds(getDocs(malformedList));
+      assert(listed.docs.some(snap => snap.id === b + '_target'),
+        'La consulta de colección expone el bloqueo histórico que exige preflight');
       const read = getDoc(anomaly.selfRef);
       if (diagnostic) await assertSucceeds(read);
       else await assertFails(read);
@@ -183,7 +200,8 @@ async function scenario(rules, diagnostic) {
     if (diagnostic) {
       console.warn('PENDIENTE SEGURIDAD STAGED: membresías con ruta correcta y tenant/UID interno falso permiten leer negocio ajeno, editar catálogo, gestionar empleados y leer/editar/borrar fichas objetivo mal asociadas; solo datos sintéticos.');
     } else {
-      console.log('PASS (candidato NO desplegado): fichas objetivo con clave/identidad discordante no se leen, editan ni borran; membresías legítimas, lectura propia revocada, A/B y Super Admin conservados.');
+      console.log('PASS (candidato NO desplegado): get/update/delete de fichas objetivo discordantes rechazados; consulta legítima por UID, lectura propia revocada, A/B y Super Admin conservados.');
+      console.warn('PENDIENTE: list de membresías aún puede devolver fichas históricas con ID interno discordante; requiere inventario, validación cliente y diseño de lectura seguro antes del corte.');
     }
   } finally {
     await env.cleanup();
