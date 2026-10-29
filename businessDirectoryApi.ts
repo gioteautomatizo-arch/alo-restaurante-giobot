@@ -64,6 +64,9 @@ export function registerBusinessDirectoryApi(app: Express): void {
       }
       const businessIds: string[] = [];
       const ownerBusinessIds = new Set<string>();
+      // Conservar el rol observado para detectar revocaciones o cambios de rol
+      // durante la lectura de las raíces (Admin SDK ignora las reglas).
+      const membershipsToRecheck: Array<{ id: string; businessId: string; role: string }> = [];
       const seen = new Set<string>();
       for (const snap of memberships.docs) {
         const data = snap.data();
@@ -77,6 +80,7 @@ export function registerBusinessDirectoryApi(app: Express): void {
         }
         seen.add(businessId);
         businessIds.push(businessId);
+        membershipsToRecheck.push({ id: snap.id, businessId, role: data.role });
         if (data.role === 'OWNER') ownerBusinessIds.add(businessId);
       }
       if (!businessIds.length) return res.status(200).json({ businesses: [] });
@@ -105,6 +109,28 @@ export function registerBusinessDirectoryApi(app: Express): void {
             ...(data.branding.logoUrl !== undefined ? { logoUrl: data.branding.logoUrl } : {}),
           },
         });
+      }
+      // Una revocación puede ocurrir después de la consulta inicial. Leer de
+      // nuevo las fichas exactas antes de responder y fallar cerrado si alguna
+      // desapareció, cambió de rol/tenant/UID o dejó de estar activa.
+      // Esto reduce la ventana, pero NO es una transacción/snapshot atómico:
+      // otra revocación posterior a esta lectura aún requiere reglas seguras.
+      const currentMemberships = await db.getAll(...membershipsToRecheck.map(
+        ({ id }) => db.collection('businessMemberships').doc(id)
+      ));
+      if (currentMemberships.length !== membershipsToRecheck.length) {
+        return fail(res, 409, 'Los permisos cambiaron durante la consulta. Reintenta.');
+      }
+      for (let index = 0; index < currentMemberships.length; index++) {
+        const current = currentMemberships[index];
+        const expected = membershipsToRecheck[index];
+        const data = current.data();
+        if (!current.exists || current.id !== expected.id || !data ||
+            data.userId !== uid || data.restaurantId !== expected.businessId ||
+            data.active !== true || data.role !== expected.role ||
+            !ROLES.has(data.role)) {
+          return fail(res, 409, 'Los permisos cambiaron durante la consulta. Reintenta.');
+        }
       }
       return res.status(200).json({ businesses });
     } catch (error) {
