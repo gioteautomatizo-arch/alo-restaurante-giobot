@@ -95,6 +95,9 @@ export const BusinessMenuImport: React.FC<{
   const latest = useRef({ items, sourceImageUrl });
   latest.current = { items, sourceImageUrl };
   const dirty = useRef(false);
+  const draftVersion = useRef<string | null>(null);
+  const changeSeq = useRef(0);
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const [revision, setRevision] = useState(0);
 
   // 1) Cargar el borrador guardado (si el dueño ya empezó antes).
@@ -105,7 +108,9 @@ export const BusinessMenuImport: React.FC<{
     setError('');
     getMenuImportDraft(businessId)
       .then((draft) => {
-        if (cancelled || !draft) return;
+        if (cancelled) return;
+        draftVersion.current = draft?.revision ?? null;
+        if (!draft) return;
         setSourceImageUrl(draft.sourceImageUrl);
         setItems(draft.items);
       })
@@ -141,27 +146,39 @@ export const BusinessMenuImport: React.FC<{
     [businessId],
   );
 
-  const persist = async (override?: { sourceImageUrl?: string }): Promise<boolean> => {
-    if (loading || draftReadFailed) return false;
-    setSaveState('saving');
-    try {
-      await saveMenuImportDraft(
-        businessId,
-        {
-          items: latest.current.items,
-          sourceImageUrl: override?.sourceImageUrl ?? latest.current.sourceImageUrl,
-        },
-        actorName(),
-      );
-      dirty.current = false;
-      setSaveState('saved');
-      return true;
-    } catch (err) {
-      console.error('[BusinessMenuImport] no se pudo guardar el borrador:', err);
-      setSaveState('error');
-      setError('No se pudo guardar el borrador. Revisa tu conexión e inténtalo de nuevo.');
-      return false;
-    }
+  // Las escrituras de esta pestaña se serializan y usan la última versión confirmada.
+  // Una segunda pestaña no puede sobrescribir ni borrar un borrador más reciente.
+  const persist = (override?: { sourceImageUrl?: string }): Promise<boolean> => {
+    const task = saveQueue.current.then(async (): Promise<boolean> => {
+      if (loading || draftReadFailed) return false;
+      if (!dirty.current && !override) return true;
+      const seq = changeSeq.current;
+      setSaveState('saving');
+      try {
+        const saved = await saveMenuImportDraft(
+          businessId,
+          {
+            items: latest.current.items,
+            sourceImageUrl: override?.sourceImageUrl ?? latest.current.sourceImageUrl,
+          },
+          actorName(),
+          draftVersion.current,
+        );
+        draftVersion.current = saved.revision;
+        dirty.current = seq !== changeSeq.current;
+        setSaveState(dirty.current ? 'dirty' : 'saved');
+        return true;
+      } catch (err) {
+        console.error('[BusinessMenuImport] no se pudo guardar el borrador:', err);
+        setSaveState('error');
+        setError(err instanceof Error && err.message.startsWith('CONFLICTO_BORRADOR')
+          ? err.message
+          : 'No se pudo guardar el borrador. Revisa tu conexión e inténtalo de nuevo.');
+        return false;
+      }
+    });
+    saveQueue.current = task.catch(() => undefined);
+    return task;
   };
 
   // 3) Guardado automático poco después de cada cambio.
@@ -177,7 +194,7 @@ export const BusinessMenuImport: React.FC<{
   useEffect(
     () => () => {
       if (dirty.current) {
-        void saveMenuImportDraft(businessId, latest.current, actorName()).catch((err) =>
+        void saveMenuImportDraft(businessId, latest.current, actorName(), draftVersion.current).catch((err) =>
           console.error('[BusinessMenuImport] no se pudo guardar al salir:', err),
         );
       }
@@ -193,8 +210,10 @@ export const BusinessMenuImport: React.FC<{
   );
 
   const edit = (updater: (current: MenuImportDraftItem[]) => MenuImportDraftItem[]) => {
+    if (publishing) return;
     setItems(updater);
     dirty.current = true;
+    changeSeq.current += 1;
     setSaveState('dirty');
     setError('');
     setPublished(null);
@@ -209,6 +228,7 @@ export const BusinessMenuImport: React.FC<{
   const removeItem = (id: string) => edit((current) => current.filter((item) => item.id !== id));
 
   const handleBack = async () => {
+    if (dirty.current && !await persist()) return;
     if (dirty.current && !await persist()) return;
     onBack();
   };
@@ -229,6 +249,8 @@ export const BusinessMenuImport: React.FC<{
       const url = await uploadBusinessMenuImage(businessId, file);
       setSourceImageUrl(url);
       latest.current = { ...latest.current, sourceImageUrl: url };
+      dirty.current = true;
+      changeSeq.current += 1;
       await persist({ sourceImageUrl: url });
     } catch (err) {
       console.error('[BusinessMenuImport] no se pudo subir la foto:', err);
@@ -373,15 +395,20 @@ export const BusinessMenuImport: React.FC<{
 
     setPublishing(true);
     try {
+      // Esperar el guardado en curso y proteger también la limpieza posterior.
+      if (dirty.current && !await persist()) return;
+      if (dirty.current && !await persist()) return;
       // El importador no debe reemplazar cambios que llegaron de otra pestaña.
       // El servicio compara esta revisión en una transacción Firestore.
       await saveBusinessCatalog(
         businessId, [...existing, ...toAdd], actorName(), catalog?.revision || catalog?.updatedAt || null,
       );
       try {
-        await clearMenuImportDraft(businessId);
+        await clearMenuImportDraft(businessId, draftVersion.current);
+        draftVersion.current = null;
       } catch (err) {
         console.warn('[BusinessMenuImport] el catálogo se guardó, pero no se pudo limpiar el borrador:', err);
+        setError('El catálogo se publicó, pero el borrador cambió en otra pestaña o no se pudo borrar. Revísalo antes de volver a publicar.');
       }
       dirty.current = false;
       setItems([]);
