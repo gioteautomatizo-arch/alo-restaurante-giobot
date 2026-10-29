@@ -307,7 +307,15 @@ export async function getBusinessesForUser(userId: string): Promise<BusinessDire
   // Una lectura parcial NO significa que el usuario tenga menos negocios.
   // Propagar el fallo permite al Portal mostrar Reintentar en vez de una lista
   // incompleta o el mensaje engañoso de que no hay negocios registrados.
-  const businesses = await Promise.all(businessIds.map(async (businessId) => {
+  // El selector heredado conserva la lectura Firestore directa hasta el corte
+  // coordinado. Aun así, su salida y validación deben coincidir con el contrato
+  // mínimo del candidato privado: no propagar la raíz completa al Portal.
+  // IMPORTANTE: proyectar aquí NO evita que Firestore haya enviado la raíz al
+  // navegador; la exposición en red solo se cerrará con reglas/corte aprobados.
+  const ownerBusinessIds = new Set(membershipsSnap.docs
+    .filter(docSnap => (docSnap.data() as RestaurantMembership).role === 'OWNER')
+    .map(docSnap => (docSnap.data() as RestaurantMembership).restaurantId));
+  const businesses = await Promise.all(businessIds.map(async (businessId): Promise<BusinessDirectoryCard> => {
     if (typeof businessId !== 'string' || !businessId) {
       throw new Error('Una membresía contiene un identificador de negocio inválido.');
     }
@@ -316,8 +324,23 @@ export async function getBusinessesForUser(userId: string): Promise<BusinessDire
       assertCurrentBusinessSession(userId);
       if (!snap.exists()) throw new Error('La membresía apunta a un negocio inexistente.');
       const tenant = snap.data() as RestaurantTenant;
-      if (tenant.restaurantId !== businessId) throw new Error('El identificador del negocio no coincide con su membresía.');
-      return tenant;
+      const branding = tenant.branding;
+      if (tenant.restaurantId !== businessId ||
+          !branding || typeof branding.restaurantName !== 'string' ||
+          typeof branding.publicSlug !== 'string' ||
+          (branding.logoUrl !== undefined && typeof branding.logoUrl !== 'string') ||
+          (ownerBusinessIds.has(businessId) &&
+            tenant.ownerUserId !== undefined && tenant.ownerUserId !== userId)) {
+        throw new Error('La raíz del negocio o su propietario tiene datos inconsistentes.');
+      }
+      return {
+        restaurantId: businessId,
+        branding: {
+          restaurantName: branding.restaurantName,
+          publicSlug: branding.publicSlug,
+          ...(branding.logoUrl !== undefined ? { logoUrl: branding.logoUrl } : {}),
+        },
+      };
     } catch (err) {
       console.warn('No se pudo leer el negocio asociado a una membresía', businessId, err);
       throw new Error('No pudimos cargar todos tus negocios. Revisa tu conexión o permisos y reintenta.');
