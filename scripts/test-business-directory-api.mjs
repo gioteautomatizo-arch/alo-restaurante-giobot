@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { registerBusinessDirectoryApi } from '../businessDirectoryApi.ts';
 
 process.env.FIREBASE_PROJECT_ID = 'gioteautomatizo-secure-business-list-test';
@@ -20,7 +20,8 @@ const a = 'dir-test-a', b = 'dir-test-b';
 const root = (id, name) => ({
   restaurantId: id, ownerUserId: id === a ? alice.uid : bob.uid,
   branding: { restaurantName: name, publicSlug: id },
-  assistant: { name: 'Giobot' }, features: {},
+  assistant: { name: 'Giobot', customInstructions: 'PRIVADO-NO-DEVOLVER' },
+  privateSettings: { apiToken: 'PRIVADO-NO-DEVOLVER' }, features: {},
 });
 const member = (id, uid, role = 'OWNER', active = true) =>
   ({ restaurantId: id, userId: uid, role, active });
@@ -64,13 +65,31 @@ try {
   const ownA = await call(aliceToken);
   assert.equal(ownA.status, 200, JSON.stringify(ownA));
   assert.deepEqual(ids(ownA), [a]);
+  assert.deepEqual(Object.keys(ownA.data.businesses[0]).sort(), ['branding', 'restaurantId']);
+  assert.deepEqual(Object.keys(ownA.data.businesses[0].branding).sort(), ['publicSlug', 'restaurantName']);
+  assert.equal(JSON.stringify(ownA.data).includes('PRIVADO-NO-DEVOLVER'), false,
+    'El selector no debe filtrar instrucciones IA ni campos privados de la raíz');
   assert.equal(ownA.cache, 'no-store', 'Sin cachear datos privados');
   assert.deepEqual(ids(await call(bobToken)), [b], 'B no debe ver A');
   assert.deepEqual(ids(await call(visitorToken)), [], 'Sin membresías no hay negocios');
 
   // Una membresía real en dos negocios permite listar ambos, sin mezclar cuentas.
   await ref(b, alice.uid).set(member(b, alice.uid, 'WAITER'));
-  assert.deepEqual(ids(await call(aliceToken)), [a, b]);
+  const employeeList = await call(aliceToken);
+  assert.deepEqual(ids(employeeList), [a, b]);
+  assert.equal(JSON.stringify(employeeList.data).includes('PRIVADO-NO-DEVOLVER'), false,
+    'Un empleado de B tampoco recibe configuración interna');
+
+  // OWNER de A no puede presentar una raíz cuyo propietario explícito sea B.
+  await db.collection('businesses').doc(a).update({ ownerUserId: bob.uid });
+  assert.equal((await call(aliceToken)).status, 409, 'OWNER y raíz discordantes');
+  await db.collection('businesses').doc(a).update({ ownerUserId: alice.uid });
+  assert.deepEqual(ids(await call(aliceToken)), [a, b], 'Recuperación del OWNER');
+
+  // El campo OWNER es opcional en raíces históricas; no bloquear su lectura.
+  await db.collection('businesses').doc(a).update({ ownerUserId: FieldValue.delete() });
+  assert.deepEqual(ids(await call(aliceToken)), [a, b], 'Raíz histórica sin ownerUserId');
+  await db.collection('businesses').doc(a).update({ ownerUserId: alice.uid });
 
   // Una ficha mal asociada nunca sale en JSON, ni se devuelve lista parcial.
   await ref(b, alice.uid).set({ ...member(b, alice.uid), restaurantId: a });
@@ -93,6 +112,16 @@ try {
   await db.collection('businesses').doc(b).set(root(b, 'Negocio B'));
   assert.deepEqual(ids(await call(aliceToken)), [a, b], 'Recuperación de raíz válida');
 
+  await db.collection('businesses').doc(b).update({ 'branding.logoUrl': 123 });
+  assert.equal((await call(aliceToken)).status, 409, 'Logo inválido no debe pasar al cliente');
+  await db.collection('businesses').doc(b).set({ ...root(b, 'Negocio B'), branding: {
+    restaurantName: 'Negocio B', publicSlug: b, logoUrl: 'https://example.test/logo.png',
+  }});
+  const withLogo = await call(aliceToken);
+  assert.equal(withLogo.status, 200);
+  assert.equal(withLogo.data.businesses.find(item => item.restaurantId === b).branding.logoUrl,
+    'https://example.test/logo.png', 'Logo opcional válido conservado');
+
   await ref(b, alice.uid).update({ active: false });
   assert.deepEqual(ids(await call(aliceToken)), [a], 'Revocación sin datos del tenant B');
   assert.deepEqual(ids(await call(bobToken)), [b]);
@@ -108,7 +137,7 @@ try {
   assert.equal(overflow.status, 409);
   assert.equal('businesses' in overflow.data, false);
 
-  console.log('PASS (API opt-in NO activada): Auth verificado, A/B, membresías corruptas filtradas antes de responder, revocación, raíces inválidas, no parcialidad y límite 100 en Auth+Firestore Emulator.');
+  console.log('PASS (API opt-in NO activada): Auth, A/B, salida mínima sin campos privados, OWNER/raíz, compatibilidad histórica, roles, revocación, errores y límite 100 en emuladores.');
 } finally {
   delete process.env.ENABLE_SECURE_BUSINESS_LIST;
   await new Promise((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
