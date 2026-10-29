@@ -28,6 +28,8 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-security-test --config firebase.security-emulator.json "node scripts/test-firestore-vip.mjs"
       - name: Test staged order and catalog permissions
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-launch-security-test --config firebase.launch-security-emulator.json "node scripts/test-launch-security.mjs"
+      - name: Test real menu draft CAS and two-business isolation (Firestore Emulator only)
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-draft-cas-emulator-test --config firebase.launch-security-emulator.json "node scripts/test-business-menu-draft-emulator.mjs"
       - name: Diagnose public menu draft exposure and test isolated private-read proposal
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-menu-draft-proposal --config firebase.launch-security-emulator.json "node scripts/test-menu-import-draft-rule-proposal.mjs"
       - name: Diagnose public order price authority gap (expected PENDIENTE, emulator only)
