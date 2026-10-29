@@ -49,12 +49,12 @@ const ownerB=env.authenticatedContext('owner-b').firestore();
 const as=(uid,db)=>{globalThis.catalogAuth.currentUser={uid};globalThis.catalogDb=db;};
 const ref=(db,id)=>sdk.doc(db,'businesses',id,'catalog','menu_catalog');
 const item=(name)=>({id:'product-1',name,description:'',category:'General',price:40,available:true,sortOrder:10});
-async function firstSnapshot(businessId,acceptData=()=>true){
+async function firstSnapshot(businessId,acceptData=()=>true,acceptError=()=>true){
   return new Promise((resolve,reject)=>{
     let unsubscribe=()=>{};
     const timer=setTimeout(()=>{unsubscribe();reject(new Error('Tiempo agotado esperando catálogo '+businessId));},10000);
     const finish=(kind,value)=>{clearTimeout(timer);unsubscribe();resolve({kind,value});};
-    unsubscribe=subscribe(businessId,value=>{if(acceptData(value)) finish('data',value);},error=>finish('error',error));
+    unsubscribe=subscribe(businessId,value=>{if(acceptData(value)) finish('data',value);},error=>{if(acceptError(error)) finish('error',error);});
   });
 }
 try {
@@ -116,7 +116,7 @@ try {
       businessId:'tenant-a',revision:created.revision,items:[item('Restaurado A')],
     });
   });
-  event=await firstSnapshot('tenant-a',value=>value?.items?.[0]?.name==='Restaurado A');
+  event=await firstSnapshot('tenant-a',value=>value?.items?.[0]?.name==='Restaurado A',()=>false);
   assert.equal(event.kind,'data');
   assert.equal(event.value.items[0].name,'Restaurado A');
   const updated=await save('tenant-a',[item('Actualizado A')],'Dueño A',created.revision);
