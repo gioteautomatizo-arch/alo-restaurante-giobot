@@ -63,6 +63,7 @@ export function registerBusinessDirectoryApi(app: Express): void {
         return fail(res, 409, 'No pudimos validar todas las membresías de tu cuenta.');
       }
       const businessIds: string[] = [];
+      const ownerBusinessIds = new Set<string>();
       const seen = new Set<string>();
       for (const snap of memberships.docs) {
         const data = snap.data();
@@ -76,6 +77,7 @@ export function registerBusinessDirectoryApi(app: Express): void {
         }
         seen.add(businessId);
         businessIds.push(businessId);
+        if (data.role === 'OWNER') ownerBusinessIds.add(businessId);
       }
       if (!businessIds.length) return res.status(200).json({ businesses: [] });
 
@@ -86,10 +88,23 @@ export function registerBusinessDirectoryApi(app: Express): void {
         const data = snap.data();
         if (!snap.exists || !data || data.restaurantId !== businessIds[index] ||
             !data.branding || typeof data.branding.restaurantName !== 'string' ||
-            typeof data.branding.publicSlug !== 'string') {
+            typeof data.branding.publicSlug !== 'string' ||
+            (data.branding.logoUrl !== undefined && typeof data.branding.logoUrl !== 'string') ||
+            (ownerBusinessIds.has(businessIds[index]) &&
+              data.ownerUserId !== undefined && data.ownerUserId !== uid)) {
           return fail(res, 409, 'No pudimos validar todos los negocios de tu cuenta.');
         }
-        businesses.push(data);
+        // El selector solo necesita ID, nombre, slug y logo. Nunca devolver la
+        // raíz completa (instrucciones privadas de IA, configuración u otros
+        // campos añadidos en el futuro), incluso a miembros de rol CLIENT.
+        businesses.push({
+          restaurantId: businessIds[index],
+          branding: {
+            restaurantName: data.branding.restaurantName,
+            publicSlug: data.branding.publicSlug,
+            ...(data.branding.logoUrl !== undefined ? { logoUrl: data.branding.logoUrl } : {}),
+          },
+        });
       }
       return res.status(200).json({ businesses });
     } catch (error) {
