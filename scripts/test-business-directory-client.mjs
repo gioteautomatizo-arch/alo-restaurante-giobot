@@ -98,8 +98,36 @@ try {
   respond(4, 200, {businesses: [business('tenant-b')]});
   assert.equal((await bob).map(item => item.restaurantId).join(','), 'tenant-b');
 
+  const extraRoot = window.qa.load('bob');
+  await waitFor(() => window.qa.pending.length === 6, 'Falta respuesta con campos privados');
+  respond(5, 200, {businesses: [{...business('tenant-b'), assistant: {
+    customInstructions: 'NO-DEVOLVER',
+  }}]});
+  await assert.rejects(extraRoot, /inconsistentes/, 'Rechazar raíz completa en vez de tarjeta');
+
+  const extraBranding = window.qa.load('bob');
+  await waitFor(() => window.qa.pending.length === 7, 'Falta respuesta con branding extra');
+  respond(6, 200, {businesses: [{...business('tenant-b'), branding: {
+    ...business('tenant-b').branding, internalNote: 'NO-DEVOLVER',
+  }}]});
+  await assert.rejects(extraBranding, /inconsistentes/, 'No aceptar campos de branding ajenos al contrato');
+
+  const invalidLogo = window.qa.load('bob');
+  await waitFor(() => window.qa.pending.length === 8, 'Falta respuesta con logo inválido');
+  respond(7, 200, {businesses: [{...business('tenant-b'), branding: {
+    ...business('tenant-b').branding, logoUrl: 123,
+  }}]});
+  await assert.rejects(invalidLogo, /inconsistentes/, 'Logo debe ser string');
+
+  const validLogo = window.qa.load('bob');
+  await waitFor(() => window.qa.pending.length === 9, 'Falta respuesta con logo válido');
+  respond(8, 200, {businesses: [{...business('tenant-b'), branding: {
+    ...business('tenant-b').branding, logoUrl: 'https://example.test/logo.png',
+  }}]});
+  assert.equal((await validLogo)[0].branding.logoUrl, 'https://example.test/logo.png');
+
   assert.equal(window.qa.unsafeReads, 0, 'Nunca caer en consulta Firestore directa');
-  console.log('PASS (cliente opt-in NO activado): bearer por UID, no fallback Firestore, respuestas inválidas, retry y cambio de cuenta (jsdom).');
+  console.log('PASS (cliente opt-in NO activado): bearer/UID, tarjetas mínimas, campos privados rechazados, no fallback, retry y cambio de cuenta (jsdom).');
 } finally {
   window.close();
 }
