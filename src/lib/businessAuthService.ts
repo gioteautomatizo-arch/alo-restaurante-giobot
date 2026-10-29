@@ -230,8 +230,51 @@ export async function logoutBusinessOwner(): Promise<void> {
   await firebaseSignOut(auth);
 }
 
+// Corte coordinado futuro: ambos flags deben habilitarse tras revisar
+// históricos y cerrar la consulta directa en reglas. No hay fallback a
+// Firestore si la ruta protegida falla: eso reabriría la exposición.
+const SECURE_BUSINESS_LIST_ENABLED = import.meta.env?.VITE_SECURE_BUSINESS_LIST === 'true';
+
+async function getBusinessesFromVerifiedApi(userId: string): Promise<RestaurantTenant[]> {
+  assertCurrentBusinessSession(userId);
+  const user = auth.currentUser!;
+  const token = await user.getIdToken();
+  assertCurrentBusinessSession(userId);
+  const response = await fetch('/api/businesses/mine', {
+    cache: 'no-store',
+    headers: { Authorization: 'Bearer ' + token },
+  });
+  assertCurrentBusinessSession(userId);
+  if (!response.ok) {
+    throw new Error('No pudimos cargar tus negocios desde el servicio protegido. Reintenta o consulta al administrador.');
+  }
+  const payload: unknown = await response.json();
+  assertCurrentBusinessSession(userId);
+  if (!payload || typeof payload !== 'object' || !('businesses' in payload) ||
+      !Array.isArray(payload.businesses)) {
+    throw new Error('El servicio protegido devolvió una respuesta inválida.');
+  }
+  const seen = new Set<string>();
+  const businesses: RestaurantTenant[] = [];
+  for (const value of payload.businesses) {
+    if (!value || typeof value !== 'object' ||
+        typeof value.restaurantId !== 'string' ||
+        !/^[a-z0-9][a-z0-9-]{1,63}$/.test(value.restaurantId) ||
+        seen.has(value.restaurantId) ||
+        !value.branding || typeof value.branding.restaurantName !== 'string' ||
+        typeof value.branding.publicSlug !== 'string') {
+      throw new Error('El servicio protegido devolvió datos de negocios inconsistentes.');
+    }
+    seen.add(value.restaurantId);
+    businesses.push(value as RestaurantTenant);
+  }
+  assertCurrentBusinessSession(userId);
+  return businesses;
+}
+
 export async function getBusinessesForUser(userId: string): Promise<RestaurantTenant[]> {
   assertCurrentBusinessSession(userId);
+  if (SECURE_BUSINESS_LIST_ENABLED) return getBusinessesFromVerifiedApi(userId);
   const membershipsQuery = query(
     collection(db, MEMBERSHIPS_COLLECTION),
     where('userId', '==', userId),
