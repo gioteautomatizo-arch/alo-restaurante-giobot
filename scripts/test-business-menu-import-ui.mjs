@@ -26,7 +26,7 @@ const mocks={
   '../../lib/businessMenuImportService':[
     'export const getMenuImportDraft=businessId=>new Promise((resolve,reject)=>window.qa.draftReads.push({businessId,resolve,reject}));',
     'export const saveMenuImportDraft=async(businessId,input,_actor,revision)=>{window.qa.draftWrites.push({businessId,input,revision});if(window.qa.draftConflict)throw Error("CONFLICTO_BORRADOR: Otra pestaña modificó tu borrador.");return {businessId,...input,revision:"saved-"+window.qa.draftWrites.length};};',
-    'export const clearMenuImportDraft=async(businessId,revision)=>{window.qa.clears.push(businessId);window.qa.clearVersions.push(revision);};',
+    'export const clearMenuImportDraft=async(businessId,revision)=>{window.qa.clears.push(businessId);window.qa.clearVersions.push(revision);if(window.qa.clearConflict)throw Error("CONFLICTO_BORRADOR: borrador cambiado");};',
   ].join('\n'),
 };
 const bundle=await build({
@@ -53,7 +53,7 @@ const dom=new JSDOM('<div id="root"></div>',{
   url:'https://example.test/',runScripts:'outside-only',virtualConsole:new VirtualConsole(),
 });
 const {window}=dom,document=window.document;
-window.qa={draftReads:[],draftWrites:[],catalogWrites:[],clears:[],subscriptions:[],conflict:false,draftConflict:false,clearVersions:[]};
+window.qa={draftReads:[],draftWrites:[],catalogWrites:[],clears:[],subscriptions:[],conflict:false,draftConflict:false,clearConflict:false,clearVersions:[]};
 const errors=[];
 window.addEventListener('error',event=>errors.push(event.error));
 const waitFor=async(predicate,label)=>{
@@ -130,8 +130,22 @@ try{
   assert.equal(window.qa.clears.includes('tenant-c'),false,'No borrar borrador en conflicto');
   assert.equal(visible('Tamal C'),true,'Conservar datos locales para recuperación');
   window.qa.draftConflict=false;
+  // El catálogo ya se publicó: si el borrado falla, no destruir la edición local.
+  window.qa.render('tenant-d','owner-d');
+  await waitFor(()=>window.qa.draftReads.length===5,'Falta lectura D');
+  await waitFor(()=>window.qa.subscriptions.length===4,'Falta catálogo D');
+  window.qa.subscriptions[3].callback(catalog('tenant-d','rev-d'));
+  window.qa.draftReads[4].resolve(draft('tenant-d','Pozole D'));
+  await waitFor(()=>visible('Pozole D'),'Falta borrador D');
+  window.qa.clearConflict=true;
+  button('Publicar en mi catálogo').click();
+  await waitFor(()=>window.qa.clears.includes('tenant-d'),'Falta intento de limpieza D');
+  await waitFor(()=>visible('Se conserva tu borrador'),'Aviso de limpieza fallida');
+  assert.equal(visible('Pozole D'),true,'No vaciar el editor si la limpieza falla');
+  assert.equal(window.qa.clearVersions.at(-1),'original-tenant-d');
+  window.qa.clearConflict=false;
   assert.deepEqual(errors,[],'Sin errores de React');
-  console.log('PASS: fallo de borrador bloquea editor, reintento recupera, conflicto de borrador bloquea publicación, conflicto de catálogo conserva borrador, revisión transaccional y cambio de tenant aislado (React/jsdom).');
+  console.log('PASS: fallo de borrador bloquea editor, reintento recupera, conflicto de borrador bloquea publicación, limpieza fallida conserva edición, conflicto de catálogo conserva borrador, revisión transaccional y cambio de tenant aislado (React/jsdom).');
 }finally{
   window.qa.unmount?.();
   window.close();
