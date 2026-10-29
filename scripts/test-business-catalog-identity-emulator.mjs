@@ -98,6 +98,7 @@ try {
   assert.equal(event.kind,'error','La lectura de A no puede presentar un catálogo con identidad B');
   assert.match(String(event.value),/identidad o lista de productos inconsistente/);
   await assert.rejects(save('tenant-a',[item('No sobrescribir')],'Dueño A','cross-v1'),/datos inconsistentes/);
+  await assert.rejects(save('tenant-a',[item('Heredado cruzado')],'Dueño A'),/datos inconsistentes/);
   await env.withSecurityRulesDisabled(async ctx=>{
     const snap=await sdk.getDoc(ref(ctx.firestore(),'tenant-a'));
     assert.equal(snap.data().businessId,'tenant-b');
@@ -110,6 +111,7 @@ try {
   event=await firstSnapshot('tenant-a',()=>false);
   assert.equal(event.kind,'error','No interpretar catálogo sin items como menú vacío');
   await assert.rejects(save('tenant-a',[item('No sobrescribir')],'Dueño A','bad-items'),/datos inconsistentes/);
+  await assert.rejects(save('tenant-a',[item('Heredado sin lista')],'Dueño A'),/datos inconsistentes/);
 
   await env.withSecurityRulesDisabled(async ctx=>{
     await sdk.setDoc(ref(ctx.firestore(),'tenant-a'),{
@@ -122,12 +124,19 @@ try {
   const updated=await save('tenant-a',[item('Actualizado A')],'Dueño A',created.revision);
   assert.equal(updated.items[0].name,'Actualizado A');
   await assert.rejects(save('tenant-a',[item('Obsoleto A')],'Dueño A',created.revision),/CONFLICTO_CATALOGO/);
+  // Escritura heredada sin revisión: válida para el tenant correcto, pero
+  // no puede borrar un documento corrupto ni cambiar el catálogo de B.
+  const legacySaved=await save('tenant-a',[item('Actualizado heredado A')],'Dueño A');
+  assert.equal(legacySaved.items[0].name,'Actualizado heredado A');
+  const legacyRead=await sdk.getDoc(ref(ownerA,'tenant-a'));
+  assert.equal(legacyRead.data().items[0].name,'Actualizado heredado A');
+
   as('owner-b',ownerB);
   event=await firstSnapshot('tenant-b');
   assert.equal(event.kind,'data');
   assert.equal(event.value.items[0].name,'Solo B','A no modificó catálogo B');
 
-  console.log('PASS: catálogo SDK real en emulador, lectura A/B, ausente, corrupto, CAS sin mutación y revisión concurrente.');
+  console.log('PASS: catálogo SDK real en emulador, lectura A/B, ausente, corrupto, CAS y guardado heredado sin mutación cruzada.');
   console.log('PENDIENTE: lectura pública STAGED de borradores y permisos desplegados; este test no los corrige.');
 } finally {
   globalThis.catalogDb=null;
