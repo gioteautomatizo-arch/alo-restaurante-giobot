@@ -47,6 +47,9 @@ const seed=async env=>{
 };
 const draft=db=>doc(db,'businesses/tenant-a/catalog/menu_import_draft');
 const catalog=db=>doc(db,'businesses/tenant-a/catalog/menu_catalog');
+const otherCatalog=db=>doc(db,'businesses/tenant-a/catalog/internal_future_draft');
+const unpublishedCatalog=db=>doc(db,'businesses/tenant-b/catalog/menu_catalog');
+const unpublishedDraft=db=>doc(db,'businesses/tenant-b/catalog/menu_import_draft');
 const stagedEnv=await initializeTestEnvironment({
   projectId:'gioteautomatizo-menu-draft-staged-diagnostic',
   firestore:{rules:staged,host:'127.0.0.1',port:8080},
@@ -69,6 +72,9 @@ try{
   const revoked=proposalEnv.authenticatedContext('revoked').firestore();
   const bob=proposalEnv.authenticatedContext('bob').firestore();
   await assertSucceeds(getDoc(catalog(guest)));
+  await assertFails(getDoc(otherCatalog(guest)));
+  await assertFails(getDoc(unpublishedCatalog(guest)));
+  await assertFails(getDoc(unpublishedDraft(guest)));
   await assertFails(getDoc(draft(guest)));
   await assertFails(getDoc(doc(guest,'businesses/tenant-b/catalog/menu_catalog')));
   await assertFails(getDoc(doc(guest,'businesses/tenant-b/catalog/menu_import_draft')));
@@ -77,9 +83,13 @@ try{
   await assertFails(getDoc(draft(cashier)));
   await assertFails(getDoc(draft(revoked)));
   await assertFails(getDoc(draft(bob)));
+  await assertFails(getDoc(otherCatalog(bob)));
+  await assertSucceeds(getDoc(unpublishedCatalog(bob)));
+  await assertSucceeds(getDoc(unpublishedDraft(bob)));
+  await assertFails(getDoc(draft(proposalEnv.authenticatedContext('stranger').firestore())));
   await assertSucceeds(setDoc(draft(alice),{businessId:'tenant-a',items:[]}));
   await assertFails(setDoc(draft(cashier),{businessId:'tenant-a',items:[]}));
   await assertFails(setDoc(draft(guest),{businessId:'tenant-a',items:[]}));
-  console.log('PASS (propuesta aislada): catálogo publicado visible, borrador privado por rol y aislamiento A/B en emulador.');
+  console.log('PASS (propuesta aislada): catálogo publicado visible; borrador y documentos desconocidos privados para anónimos; aislamiento A/B, roles y negocio no publicado en emulador.');
   console.log('PENDIENTE: revisión independiente de reglas, compatibilidad y autorización antes de cualquier cambio staged/despliegue.');
 }finally{await proposalEnv.cleanup();}
