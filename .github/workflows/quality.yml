@@ -92,6 +92,10 @@ jobs:
         run: node scripts/test-business-catalog-publication-session.mjs
       - name: Test catalog editor read failure and tenant switch (React/jsdom, no Firebase writes)
         run: node scripts/test-business-catalog-editor-read-ui.mjs
+      - name: Test menu import draft permissions and tenant isolation (mocked Auth/Firestore, no writes)
+        run: node scripts/test-business-menu-import-safety.mjs
+      - name: Test menu import retry, conflict and account switch (React/jsdom, mocked backend)
+        run: node scripts/test-business-menu-import-ui.mjs
       - name: Test employee roster and invitations tenant isolation (React/jsdom, mocked services)
         run: node scripts/test-business-employees-isolation-ui.mjs
       - name: Test employee roster identity and session integrity (mocked Firestore/Auth, no writes)
