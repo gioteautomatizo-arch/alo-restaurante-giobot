@@ -263,17 +263,54 @@ export async function saveBusinessCatalog(
   });
 }
 
+/**
+ * Compatibilidad para consumidores antiguos que envían currentItems.
+ * No confiar en esa lista: puede ser un snapshot anterior al de otra pestaña.
+ * Aplicamos solo la mutación del producto solicitado sobre el documento leído
+ * en la misma transacción. Para editar simultáneamente el MISMO producto sin
+ * pérdida de cambios se necesita una revisión del llamador (editor actual: CAS).
+ */
+async function mutateBusinessCatalogItem(
+  businessId: string,
+  actorName: string,
+  mutation: (items: BusinessCatalogItem[]) => BusinessCatalogItem[]
+): Promise<BusinessCatalogDocument> {
+  const managerUid = await assertCatalogManager(businessId);
+  const ref = catalogRef(businessId);
+  return runTransaction(db, async (transaction) => {
+    if (auth.currentUser?.uid !== managerUid) {
+      throw new Error('La sesión cambió antes de modificar el producto del catálogo.');
+    }
+    const current = await transaction.get(ref);
+    if (current.exists() && (current.data().businessId !== businessId || !Array.isArray(current.data().items))) {
+      throw new Error('El catálogo contiene datos inconsistentes del negocio. No se guardó ningún cambio.');
+    }
+    if (auth.currentUser?.uid !== managerUid) {
+      throw new Error('La sesión cambió durante la modificación del producto.');
+    }
+    const items = current.exists() ? current.data().items as BusinessCatalogItem[] : [];
+    const payload = buildCatalogPayload(businessId, mutation(items), actorName);
+    transaction.set(ref, payload);
+    return payload;
+  });
+}
+
 export async function upsertBusinessCatalogItem(
   businessId: string,
   currentItems: BusinessCatalogItem[],
   item: BusinessCatalogItem,
   actorName: string
 ): Promise<BusinessCatalogDocument> {
-  const items = [...currentItems];
-  const index = items.findIndex((candidate) => candidate.id === item.id);
-  if (index >= 0) items[index] = item;
-  else items.push(item);
-  return saveBusinessCatalog(businessId, items, actorName);
+  // Se conserva currentItems por compatibilidad de firma; NO se usa para
+  // reemplazar el catálogo completo con datos posiblemente obsoletos.
+  void currentItems;
+  return mutateBusinessCatalogItem(businessId, actorName, (items) => {
+    const updated = [...items];
+    const index = updated.findIndex((candidate) => candidate.id === item.id);
+    if (index >= 0) updated[index] = item;
+    else updated.push(item);
+    return updated;
+  });
 }
 
 export async function deleteBusinessCatalogItem(
@@ -282,6 +319,13 @@ export async function deleteBusinessCatalogItem(
   itemId: string,
   actorName: string
 ): Promise<BusinessCatalogDocument> {
-  const items = currentItems.filter((item) => item.id !== itemId);
-  return saveBusinessCatalog(businessId, items, actorName);
+  void currentItems;
+  return mutateBusinessCatalogItem(businessId, actorName, (items) => {
+    // No crear un catálogo vacío ni alterar una versión nueva cuando el
+    // producto solicitado ya no existe. Pedir recarga al consumidor antiguo.
+    if (!items.some((item) => item.id === itemId)) {
+      throw new Error('CONFLICTO_CATALOGO: El producto ya no existe. Recarga antes de borrar.');
+    }
+    return items.filter((item) => item.id !== itemId);
+  });
 }
