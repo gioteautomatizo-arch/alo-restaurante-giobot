@@ -1,5 +1,6 @@
 import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { assertCatalogManager } from './businessCatalogService';
 
 /**
  * Borrador de "Sube tu menú".
@@ -31,7 +32,16 @@ export interface MenuImportDraft {
 const DRAFT_DOC_ID = 'menu_import_draft';
 
 function draftRef(businessId: string) {
+  if (!businessId || businessId.trim() !== businessId || businessId.includes('/')) {
+    throw new Error('La identidad del negocio es inválida para el borrador.');
+  }
   return doc(db, 'businesses', businessId, 'catalog', DRAFT_DOC_ID);
+}
+
+function assertDraftSession(uid: string): void {
+  if (auth.currentUser?.uid !== uid) {
+    throw new Error('La sesión cambió durante la operación del borrador. Vuelve a iniciar sesión.');
+  }
 }
 
 function text(value: unknown): string {
@@ -39,11 +49,18 @@ function text(value: unknown): string {
 }
 
 export async function getMenuImportDraft(businessId: string): Promise<MenuImportDraft | null> {
-  const snap = await getDoc(draftRef(businessId));
+  const ref = draftRef(businessId);
+  const uid = await assertCatalogManager(businessId);
+  assertDraftSession(uid);
+  const snap = await getDoc(ref);
+  assertDraftSession(uid);
   if (!snap.exists()) return null;
 
   const data = snap.data() as Partial<MenuImportDraft>;
-  const rawItems = Array.isArray(data.items) ? data.items : [];
+  if (data.businessId !== businessId || !Array.isArray(data.items)) {
+    throw new Error('El borrador del negocio contiene datos inconsistentes. No se puede editar sin revisarlo.');
+  }
+  const rawItems = data.items;
 
   return {
     businessId,
@@ -65,7 +82,9 @@ export async function saveMenuImportDraft(
   input: { sourceImageUrl: string; items: MenuImportDraftItem[] },
   actorName: string,
 ): Promise<MenuImportDraft> {
-  if (!auth.currentUser) throw new Error('Debes iniciar sesión para guardar el borrador.');
+  const ref = draftRef(businessId);
+  const uid = await assertCatalogManager(businessId);
+  assertDraftSession(uid);
 
   const payload: MenuImportDraft = {
     businessId,
@@ -81,10 +100,14 @@ export async function saveMenuImportDraft(
     updatedBy: actorName,
   };
 
-  await setDoc(draftRef(businessId), payload);
+  assertDraftSession(uid);
+  await setDoc(ref, payload);
   return payload;
 }
 
 export async function clearMenuImportDraft(businessId: string): Promise<void> {
-  await deleteDoc(draftRef(businessId));
+  const ref = draftRef(businessId);
+  const uid = await assertCatalogManager(businessId);
+  assertDraftSession(uid);
+  await deleteDoc(ref);
 }
