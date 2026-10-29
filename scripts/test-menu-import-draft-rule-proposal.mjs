@@ -15,14 +15,29 @@ const original=[
   '        || isPlatformSuperAdmin();',
 ].join('\n');
 assert.equal(staged.split(original).length,2,'El bloque staged de catálogo cambió: revisar manualmente, no aplicar sustitución silenciosa');
-const proposed=staged.replace(original,[
-  "      // Solo menu_catalog se expone al público cuando el negocio está publicado.",
-  "      // menu_import_draft contiene trabajo privado y requiere rol de editor.",
-  "      allow read: if (catalogDoc == 'menu_catalog' && isPublishedBusiness(businessId))",
+// Contrato fail-closed SOLO en memoria. El acceso privado exige que los campos
+// internos de la membresía coincidan con su ruta. Los históricos incompletos
+// requieren auditoría y migración explícita antes de cualquier corte.
+const membershipHelper=[
+  "    function hasIdentifiedCatalogMembership(businessId) {",
+  "      return isSignedIn()",
+  "        && exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))",
+  "        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true",
+  "        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.get('restaurantId', null) == businessId",
+  "        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.get('userId', null) == request.auth.uid;",
+  "    }",
+].join('\n');
+const catalogMatch='    match /businesses/{businessId}/catalog/{catalogDoc} {';
+assert.equal(staged.split(catalogMatch).length,2,'La ubicación de reglas del catálogo cambió; revisar propuesta manualmente');
+const proposed=staged.replace(catalogMatch,membershipHelper+'\n\n'+catalogMatch).replace(original,[
+  "      // Únicamente menu_catalog es público si la página está publicada.",
+  "      // Borradores requieren identidad y rol; otros IDs fallan cerrados.",
+  "      allow read: if isPlatformSuperAdmin()",
+  "        || (catalogDoc == 'menu_catalog'",
+  "          && (isPublishedBusiness(businessId) || hasIdentifiedCatalogMembership(businessId)))",
   "        || (catalogDoc == 'menu_import_draft'",
-  "          ? getCallerMembershipRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER', 'SUPER_ADMIN']",
-  "          : hasActiveMembership(businessId))",
-  "        || isPlatformSuperAdmin();",
+  "          && hasIdentifiedCatalogMembership(businessId)",
+  "          && getCallerMembershipRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER', 'SUPER_ADMIN']);",
 ].join('\n'));
 const seed=async env=>{
   await env.withSecurityRulesDisabled(async context=>{
@@ -31,6 +46,7 @@ const seed=async env=>{
       await setDoc(doc(db,'businesses',id),{restaurantId:id,ownerUserId:owner});
       await setDoc(doc(db,'publicBusinessProfiles',id),{businessId:id,restaurantId:id,published});
       await setDoc(doc(db,'businesses',id,'catalog','menu_catalog'),{businessId:id,items:[{name:'Visible'}]});
+      await setDoc(doc(db,'businesses',id,'catalog','internal_future_draft'),{businessId:id,secret:'INTERNAL'});
       await setDoc(doc(db,'businesses',id,'catalog','menu_import_draft'),{
         businessId:id,sourceImageUrl:'https://example.test/private.jpg',items:[{name:'No publicado'}],
       });
@@ -40,6 +56,9 @@ const seed=async env=>{
         restaurantId:'tenant-a',userId:uid,role,active,
       });
     }
+    await setDoc(doc(db,'businessMemberships','tenant-a_mismatch'),{restaurantId:'tenant-b',userId:'mismatch',role:'MANAGER',active:true});
+    await setDoc(doc(db,'businessMemberships','tenant-b_wrong'),{restaurantId:'tenant-a',userId:'wrong',role:'MANAGER',active:true});
+    await setDoc(doc(db,'businessMemberships','tenant-b_legacy'),{restaurantId:'tenant-b',role:'OWNER',active:true});
     await setDoc(doc(db,'businessMemberships','tenant-b_bob'),{
       restaurantId:'tenant-b',userId:'bob',role:'OWNER',active:true,
     });
@@ -57,6 +76,7 @@ const stagedEnv=await initializeTestEnvironment({
 try{
   await seed(stagedEnv);
   await assertSucceeds(getDoc(draft(stagedEnv.unauthenticatedContext().firestore())));
+  await assertSucceeds(getDoc(otherCatalog(stagedEnv.unauthenticatedContext().firestore())));
   console.log('PENDIENTE: STAGED permite lectura pública de menu_import_draft en negocios publicados; NO corregido.');
 }finally{await stagedEnv.cleanup();}
 const proposalEnv=await initializeTestEnvironment({
@@ -71,6 +91,9 @@ try{
   const cashier=proposalEnv.authenticatedContext('cashier').firestore();
   const revoked=proposalEnv.authenticatedContext('revoked').firestore();
   const bob=proposalEnv.authenticatedContext('bob').firestore();
+  const mismatch=proposalEnv.authenticatedContext('mismatch').firestore();
+  const wrong=proposalEnv.authenticatedContext('wrong').firestore();
+  const legacy=proposalEnv.authenticatedContext('legacy').firestore();
   await assertSucceeds(getDoc(catalog(guest)));
   await assertFails(getDoc(otherCatalog(guest)));
   await assertFails(getDoc(unpublishedCatalog(guest)));
@@ -80,16 +103,26 @@ try{
   await assertFails(getDoc(doc(guest,'businesses/tenant-b/catalog/menu_import_draft')));
   await assertSucceeds(getDoc(draft(alice)));
   await assertSucceeds(getDoc(draft(manager)));
+  await assertSucceeds(getDoc(catalog(cashier)));
+  await assertFails(getDoc(otherCatalog(cashier)));
+  await assertFails(getDoc(otherCatalog(alice)));
+  await assertFails(getDoc(otherCatalog(manager)));
+  await assertFails(getDoc(draft(mismatch)));
   await assertFails(getDoc(draft(cashier)));
   await assertFails(getDoc(draft(revoked)));
   await assertFails(getDoc(draft(bob)));
   await assertFails(getDoc(otherCatalog(bob)));
   await assertSucceeds(getDoc(unpublishedCatalog(bob)));
+  await assertFails(getDoc(unpublishedCatalog(wrong)));
+  await assertFails(getDoc(unpublishedCatalog(legacy)));
+  await assertFails(getDoc(unpublishedDraft(wrong)));
+  await assertFails(getDoc(unpublishedDraft(legacy)));
   await assertSucceeds(getDoc(unpublishedDraft(bob)));
   await assertFails(getDoc(draft(proposalEnv.authenticatedContext('stranger').firestore())));
   await assertSucceeds(setDoc(draft(alice),{businessId:'tenant-a',items:[]}));
   await assertFails(setDoc(draft(cashier),{businessId:'tenant-a',items:[]}));
   await assertFails(setDoc(draft(guest),{businessId:'tenant-a',items:[]}));
-  console.log('PASS (propuesta aislada): catálogo publicado visible; borrador y documentos desconocidos privados para anónimos; aislamiento A/B, roles y negocio no publicado en emulador.');
+  console.log('PASS (propuesta aislada): catálogo público publicado, lectura interna legítima de no publicado, borrador solo editores, IDs desconocidos denegados y membresías discordantes/incompletas bloqueadas.');
+  console.log('HOLD compatibilidad: miembros históricos sin userId/restaurantId necesitarían auditoría y migración autorizada antes de activar esta propuesta.');
   console.log('PENDIENTE: revisión independiente de reglas, compatibilidad y autorización antes de cualquier cambio staged/despliegue.');
 }finally{await proposalEnv.cleanup();}
