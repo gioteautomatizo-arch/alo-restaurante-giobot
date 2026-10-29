@@ -82,6 +82,22 @@ async function scenario(rules, diagnostic) {
         await assertFails(setDoc(menu, { businessId: b, items: [] }));
         await assertFails(updateDoc(staffB, { role: 'KITCHEN' }));
       }
+      // Rutas que consultaban directamente el documento de membresía, sin
+      // pasar por los helpers: el candidato anterior NO las protegía.
+      const newEmployee = 'candidate-' + name;
+      const profile = doc(alice, 'publicBusinessProfiles', b);
+      const employee = doc(alice, 'businesses', b, 'employees', newEmployee);
+      const employeeMembership = doc(alice, 'businessMemberships', b + '_' + newEmployee);
+      const directWrites = [
+        () => setDoc(profile, { businessId: b, restaurantId: b, published: false }),
+        () => setDoc(employee, { restaurantId: b, userId: newEmployee,
+          role: 'CASHIER', active: true }),
+        () => setDoc(employeeMembership, membership(b, newEmployee, 'CASHIER')),
+      ];
+      for (const write of directWrites) {
+        if (diagnostic && stagedCanWrite) await assertSucceeds(write());
+        else await assertFails(write());
+      }
       // Ni siquiera una membresía corrupta debe afectar el tenant A legítimo.
       await assertSucceeds(getDoc(rootA));
     }
@@ -94,12 +110,19 @@ async function scenario(rules, diagnostic) {
     await assertSucceeds(getDoc(rootB));
     await assertSucceeds(setDoc(catalogB('valid-manager'), { businessId: b, items: [] }));
     await assertSucceeds(updateDoc(staffB, { role: 'WAITER' }));
+    // Compatibilidad: los responsables auténticos conservan las tres rutas.
+    await assertSucceeds(setDoc(doc(alice, 'businesses', b, 'employees', 'valid-new'),
+      { restaurantId: b, userId: 'valid-new', role: 'CASHIER', active: true }));
+    await assertSucceeds(setDoc(doc(alice, 'businessMemberships', b + '_valid-new'),
+      membership(b, 'valid-new', 'CASHIER')));
+    await assertSucceeds(setDoc(doc(bob, 'publicBusinessProfiles', b),
+      { businessId: b, restaurantId: b, published: false }));
     await assertFails(getDoc(doc(visitor, 'businesses', b)));
 
     if (diagnostic) {
       console.warn('PENDIENTE SEGURIDAD STAGED: membresías con ruta correcta y tenant/UID interno falso permiten leer negocio ajeno, editar catálogo y gestionar empleados; solo datos sintéticos.');
     } else {
-      console.log('PASS (candidato NO desplegado): membresías mal asociadas, incompletas, con rol inválido o revocadas no autorizan accesos; A/B, roles legítimos y Super Admin conservados.');
+      console.log('PASS (candidato NO desplegado): membresías mal asociadas, incompletas, con rol inválido o revocadas no autorizan raíz, catálogo, empleados, perfil ni altas de membresía; A/B, roles legítimos y Super Admin conservados.');
     }
   } finally {
     await env.cleanup();
