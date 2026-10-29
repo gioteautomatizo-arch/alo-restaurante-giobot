@@ -12,7 +12,7 @@ const mocks = {
     'export const setDoc = async (ref,data) => {window.qa.writes.push({type:"set",ref,data});};',
     'export const deleteDoc = async ref => {window.qa.writes.push({type:"delete",ref});};',
     'export const onSnapshot = () => {throw Error("No listeners");};',
-    'export const runTransaction = () => {throw Error("No transactions");};',
+    'export const runTransaction = async (_db,fn) => fn({get:ref=>new Promise((resolve,reject)=>window.qa.pending.push({ref,resolve,reject})),set:(ref,data)=>window.qa.writes.push({type:"set",ref,data}),delete:ref=>window.qa.writes.push({type:"delete",ref})});',
   ].join('\n'),
   './firebase': 'export const auth = {currentUser:null}; export const db = {}; window.qa.auth = auth;',
   './catalogOptions': 'export const cleanOptionGroups = groups => groups || [];',
@@ -86,7 +86,7 @@ try{
   assert.equal(window.qa.pending.length,1,'No leer raíz de tenant ajeno');
 
   reset();
-  const revoked=window.qa.save('tenant-a',input,'Prueba');
+  const revoked=window.qa.save('tenant-a',input,'Prueba',null);
   await resolveRead(0,membership('tenant-a','owner-a'),'businessMemberships/tenant-a_owner-a');
   await resolveRead(1,rootSnap('tenant-a','owner-a'),'businesses/tenant-a');
   await resolveRead(2,membership('tenant-a','owner-a','OWNER',false),'businessMemberships/tenant-a_owner-a');
@@ -94,7 +94,7 @@ try{
   assert.equal(window.qa.writes.length,0);
 
   reset();
-  const wrongOwner=window.qa.clear('tenant-a');
+  const wrongOwner=window.qa.clear('tenant-a','__legacy_no_version__');
   await resolveRead(0,membership('tenant-a','owner-a'),'businessMemberships/tenant-a_owner-a');
   await resolveRead(1,rootSnap('tenant-a','owner-b'),'businesses/tenant-a');
   await assert.rejects(wrongOwner,/identidad del negocio o propietario/);
@@ -107,8 +107,9 @@ try{
   assert.equal(window.qa.pending.length,1);
 
   reset('manager-a');
-  const manager=window.qa.save('tenant-a',input,'Prueba');
+  const manager=window.qa.save('tenant-a',input,'Prueba',null);
   await allow('tenant-a','manager-a','MANAGER','owner-a');
+  await resolveRead(3,{exists:()=>false},'businesses/tenant-a/catalog/menu_import_draft');
   assert.equal((await manager).businessId,'tenant-a');
   assert.equal(window.qa.writes.length,1);
   assert.equal(window.qa.writes[0].ref.path,'businesses/tenant-a/catalog/menu_import_draft');
@@ -116,8 +117,39 @@ try{
   reset();
   const historical=window.qa.clear('tenant-a');
   await allow('tenant-a','owner-a','OWNER','owner-a',true);
+  await resolveRead(3,draft('tenant-a'),'businesses/tenant-a/catalog/menu_import_draft');
   await historical;
   assert.deepEqual(window.qa.writes.map(w=>w.type),['delete']);
+
+  // Dos pestañas parten de la misma versión: solo la primera escritura gana.
+  reset();
+  const firstTab=window.qa.save('tenant-a',input,'Tab A','v1');
+  await allow();
+  await resolveRead(3,draft('tenant-a',{revision:'v1'}),'businesses/tenant-a/catalog/menu_import_draft');
+  const firstSaved=await firstTab;
+  assert.ok(firstSaved.revision && firstSaved.revision!=='v1');
+  assert.equal(window.qa.writes.length,1);
+
+  reset();
+  const staleTab=window.qa.save('tenant-a',input,'Tab B','v1');
+  await allow();
+  await resolveRead(3,draft('tenant-a',{revision:firstSaved.revision}),'businesses/tenant-a/catalog/menu_import_draft');
+  await assert.rejects(staleTab,/CONFLICTO_BORRADOR/);
+  assert.equal(window.qa.writes.length,0,'La segunda pestaña no sobrescribe');
+
+  reset();
+  const staleDelete=window.qa.clear('tenant-a','v1');
+  await allow();
+  await resolveRead(3,draft('tenant-a',{revision:firstSaved.revision}),'businesses/tenant-a/catalog/menu_import_draft');
+  await assert.rejects(staleDelete,/CONFLICTO_BORRADOR/);
+  assert.equal(window.qa.writes.length,0,'Publicar no borra borrador modificado en otra pestaña');
+
+  reset();
+  const staleCreate=window.qa.save('tenant-a',input,'Tab A',null);
+  await allow();
+  await resolveRead(3,draft('tenant-a',{revision:'already-exists'}),'businesses/tenant-a/catalog/menu_import_draft');
+  await assert.rejects(staleCreate,/CONFLICTO_BORRADOR/);
+  assert.equal(window.qa.writes.length,0,'Crear desde vacío no pisa borrador nuevo');
 
   reset();
   const invalidDraft=window.qa.read('tenant-a');
@@ -136,11 +168,11 @@ try{
   assert.equal(window.qa.writes.length,0);
 
   reset();
-  await assert.rejects(window.qa.save('tenant/a',input,'Prueba'),/identidad del negocio/);
+  await assert.rejects(window.qa.save('tenant/a',input,'Prueba',null),/identidad del negocio/);
   assert.equal(window.qa.pending.length,0);
   reset(null);
   await assert.rejects(window.qa.clear('tenant-a'),/Debes iniciar sesión/);
   assert.equal(window.qa.writes.length,0);
 
-  console.log('PASS: borradores A/B con OWNER/MANAGER, raíz histórica, roles, revocación, lectura inconsistente, cambio de sesión y no escrituras indebidas (mock Auth/Firestore).');
+  console.log('PASS: borradores A/B con OWNER/MANAGER, raíz histórica, revocación, lectura inconsistente, cambio de sesión y transacciones de dos pestañas (mock Auth/Firestore).');
 }finally{window.close();}
