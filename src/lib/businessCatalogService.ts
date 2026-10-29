@@ -137,7 +137,16 @@ export function subscribeToBusinessCatalog(
         callback(null);
         return;
       }
-      callback(snapshot.data() as BusinessCatalogDocument);
+      const catalog = snapshot.data() as Partial<BusinessCatalogDocument>;
+      // Un documento bajo la ruta A no puede convertirse en el menú de B por
+      // contener un businessId ajeno. No tratar registros corruptos como menú vacío.
+      if (catalog.businessId !== businessId || !Array.isArray(catalog.items)) {
+        const error = new Error('El catálogo tiene una identidad o lista de productos inconsistente. Revisa el negocio antes de editar.');
+        console.error('Catálogo inconsistente:', error);
+        onError?.(error);
+        return;
+      }
+      callback(catalog as BusinessCatalogDocument);
     },
     (error) => {
       console.error('Error leyendo catálogo del negocio:', error);
@@ -219,6 +228,9 @@ export async function saveBusinessCatalog(
         throw new Error('La sesión cambió antes de guardar el catálogo.');
       }
       const current = await transaction.get(ref);
+      if (current.exists() && (current.data().businessId !== businessId || !Array.isArray(current.data().items))) {
+        throw new Error('El catálogo contiene datos inconsistentes del negocio. No se guardó ningún cambio.');
+      }
       const currentRevision = current.exists()
         ? (current.data().revision || current.data().updatedAt || null)
         : null;
