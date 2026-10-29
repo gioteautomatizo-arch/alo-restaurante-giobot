@@ -54,6 +54,10 @@ jobs:
         run: node scripts/test-business-portal-isolation-ui.mjs
       - name: Test business account list fail-closed on partial reads (mocked Firestore, no writes)
         run: node scripts/test-business-account-list.mjs
+      - name: Test platform Super Admin service session and tenant integrity (mocked Firebase, no writes)
+        run: node scripts/test-platform-admin-service-session.mjs
+      - name: Test platform Super Admin panel account switch and retry (React/jsdom, no Firebase writes)
+        run: node scripts/test-platform-admin-session-ui.mjs
       - name: Guard tenant reassignment proposal against rule drift (read-only, no Firebase)
         run: node scripts/test-tenant-update-isolation-static.mjs
       - name: Test tenant module sorting after tenant-only query (synthetic, no Firebase)
