@@ -12,7 +12,8 @@ import {
   Store,
 } from 'lucide-react';
 import { loginStaff } from '../../lib/adminStorage';
-import { CALIENTITO_TENANT, RestaurantTenant } from '../../lib/restaurantCore';
+import { CALIENTITO_TENANT } from '../../lib/restaurantCore';
+import type { BusinessDirectoryCard } from '../../lib/businessAuthService';
 import { auth, subscribeToAuth } from '../../lib/firebase';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import {
@@ -55,7 +56,7 @@ export const BusinessPortal: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  const [myBusinesses, setMyBusinesses] = useState<RestaurantTenant[]>([]);
+  const [myBusinesses, setMyBusinesses] = useState<BusinessDirectoryCard[]>([]);
   const [loadingBusinesses, setLoadingBusinesses] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
@@ -162,7 +163,7 @@ export const BusinessPortal: React.FC = () => {
     window.location.hash = '#negocio/alo-restaurante';
   };
 
-  const openBusiness = (tenant: RestaurantTenant) => {
+  const openBusiness = (tenant: BusinessDirectoryCard) => {
     setError(null);
     setNotice(null);
     window.location.hash = `#business/${encodeURIComponent(tenant.restaurantId)}`;
