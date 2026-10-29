@@ -20,9 +20,10 @@ const mocks = {
 const bundle = await build({
   absWorkingDir: root, bundle: true, write: false, format: 'iife', platform: 'browser',
   stdin: {resolveDir: root, loader: 'js', contents: [
-    "import {saveBusinessCatalog, seedBusinessCatalogIfMissing} from './src/lib/businessCatalogService';",
+    "import {saveBusinessCatalog, seedBusinessCatalogIfMissing, upsertBusinessCatalogItem, deleteBusinessCatalogItem} from './src/lib/businessCatalogService';",
     "import {setBusinessPublication} from './src/lib/businessPublicProfileService';",
     'window.qa.saveCatalog = saveBusinessCatalog; window.qa.seedCatalog = seedBusinessCatalogIfMissing;',
+    'window.qa.upsertItem = upsertBusinessCatalogItem; window.qa.deleteItem = deleteBusinessCatalogItem;',
     'window.qa.publish = setBusinessPublication;',
   ].join('\n')},
   plugins: [{name:'mock-tenant-auth', setup(build) {
@@ -228,6 +229,52 @@ try {
   await legacyValid;
   assert.equal(window.qa.writes.length,1,'Guardado heredado válido conserva compatibilidad');
   assert.equal(window.qa.writes[0].transaction,true);
+
+  // Los helpers heredados no deben reescribir otros productos desde un
+  // currentItems obsoleto: la mutación se aplica al snapshot transaccional.
+  const other = {...item,id:'product-b',name:'Producto B'};
+  reset();
+  const upsertStale = window.qa.upsertItem('tenant-a',[item],{...item,name:'Editado A'},'Prueba');
+  await passCatalogReads();
+  await resolveRead(3,{exists:()=>true,data:()=>({businessId:'tenant-a',items:[item,other],revision:'v2'})},'businesses/tenant-a/catalog/menu_catalog');
+  const merged = await upsertStale;
+  assert.deepEqual(Array.from(merged.items, product => product.name),['Editado A','Producto B']);
+  assert.equal(window.qa.writes.length,1);
+  assert.equal(window.qa.writes[0].transaction,true);
+
+  reset();
+  const deleteStale = window.qa.deleteItem('tenant-a',[item],'product-a','Prueba');
+  await passCatalogReads();
+  await resolveRead(3,{exists:()=>true,data:()=>({businessId:'tenant-a',items:[item,other],revision:'v3'})},'businesses/tenant-a/catalog/menu_catalog');
+  const deleted = await deleteStale;
+  assert.deepEqual(Array.from(deleted.items, product => product.name),['Producto B']);
+  assert.equal(window.qa.writes.length,1);
+
+  for (const operation of [
+    () => window.qa.upsertItem('tenant-a',[item],other,'Prueba'),
+    () => window.qa.deleteItem('tenant-a',[item],'product-a','Prueba'),
+  ]) {
+    reset();
+    const blocked = operation();
+    await passCatalogReads();
+    await resolveRead(3,{exists:()=>true,data:()=>({businessId:'tenant-b',items:[item]})},'businesses/tenant-a/catalog/menu_catalog');
+    await assert.rejects(blocked,/datos inconsistentes/);
+    assert.equal(window.qa.writes.length,0,'Helper heredado no modifica catálogo cruzado');
+  }
+
+  reset();
+  const missingDelete = window.qa.deleteItem('tenant-a',[item],'product-a','Prueba');
+  await passCatalogReads();
+  await resolveRead(3,{exists:()=>false,data:()=>null},'businesses/tenant-a/catalog/menu_catalog');
+  await assert.rejects(missingDelete,/CONFLICTO_CATALOGO/);
+  assert.equal(window.qa.writes.length,0,'Borrar producto ausente no crea catálogo vacío');
+
+  reset();
+  const staleDelete = window.qa.deleteItem('tenant-a',[item],'product-a','Prueba');
+  await passCatalogReads();
+  await resolveRead(3,{exists:()=>true,data:()=>({businessId:'tenant-a',items:[other]})},'businesses/tenant-a/catalog/menu_catalog');
+  await assert.rejects(staleDelete,/CONFLICTO_CATALOGO/);
+  assert.equal(window.qa.writes.length,0,'Borrar producto ya eliminado no altera otros productos');
 
   // Publicación legítima: membresía OWNER, raíz y relectura de permisos.
   reset();
