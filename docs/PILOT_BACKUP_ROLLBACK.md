@@ -28,3 +28,14 @@
 
 ## Bloqueantes actuales
 La regla versionada `firestore.rules` permite `allow get: if true` para perfiles VIP. La propuesta aislada resuelve la lectura pública, pero todavía requiere compatibilidad completa con clientes y administradores antiguos. **No hay autorización para sustituir automáticamente esa regla ni para publicar el MVP masivamente.**
+
+
+## Ensayo automatizado aislado de restauración A/B (29 de octubre de 2026)
+
+`scripts/test-business-restore-rehearsal.mjs` utiliza **únicamente Firestore Emulator** y las reglas STAGED versionadas. Siembra nueve documentos sintéticos de dos negocios ficticios: raíces, membresías OWNER/WAITER, catálogos y perfiles públicos. Captura una copia en memoria, comprueba el preflight de identidades, rechaza una copia con membresía cruzada o sin OWNER, borra los documentos **del emulador**, simula una restauración interrumpida (raíces sin membresías), completa la restauración y verifica igualdad de documentos, aislamiento A/B, visibilidad pública y revocación del empleado. Está integrado en Security CI; ejecución manual:
+
+```sh
+npx firebase emulators:exec --only firestore --project gioteautomatizo-restore-rehearsal-test --config firebase.launch-security-emulator.json "node scripts/test-business-restore-rehearsal.mjs"
+```
+
+**No es un backup de producción ni un ensayo de export/import administrado de Firestore.** No valida restauración de Auth, Cloudinary, VIP, pagos, pedidos, reglas desplegadas, almacenamiento local o recursos externos. No escanea históricos reales ni certifica que una exportación real pueda importarse. La salida de la prueba nunca debe confundirse con autorización para publicar. El procedimiento real de respaldo/restauración, compatibilidad de clientes antiguos y revisión visual Android/iPad siguen pendientes; el paso 2 permanece ABIERTO.
