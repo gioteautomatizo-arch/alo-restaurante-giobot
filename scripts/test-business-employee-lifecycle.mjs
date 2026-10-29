@@ -21,7 +21,7 @@ const mocks = {
   'firebase/firestore': [
     'export const doc = (_db,...parts) => ({path:parts.join("/")});',
     'export const getDoc = async ref => {window.qa.reads.push(ref.path); window.qa.onRead?.(ref); const data=window.qa.docs[ref.path]; return {id:ref.path.split("/").at(-1),exists:()=>!!data,data:()=>data};};',
-    'export const writeBatch = () => {const actions=[]; return {set:(ref,data)=>actions.push({op:"set",path:ref.path,data}),update:(ref,data)=>actions.push({op:"update",path:ref.path,data}),delete:ref=>actions.push({op:"delete",path:ref.path}),commit:async()=>window.qa.writes.push(...actions)};};',
+    'export const writeBatch = () => {const actions=[]; return {set:(ref,data)=>actions.push({op:"set",path:ref.path,data}),update:(ref,data)=>actions.push({op:"update",path:ref.path,data}),delete:ref=>actions.push({op:"delete",path:ref.path}),commit:async()=>{if(window.qa.batchError)throw window.qa.batchError; window.qa.writes.push(...actions);}};};',
     'export const updateDoc = async (ref,data) => {window.qa.writes.push({op:"updateDoc",path:ref.path,data});};',
     'export const arrayUnion = value => ({arrayUnion:value});',
     'export const arrayRemove = value => ({arrayRemove:value});',
@@ -64,7 +64,7 @@ const input=(tenant='tenant-a',role='WAITER',accountMode='new')=>({
 const reset=(role='OWNER')=>{
   window.qa.auth.currentUser=user('owner-a');
   window.qa.reads=[];window.qa.writes=[];window.qa.created=0;
-  window.qa.onRead=null;window.qa.onCreated=null;
+  window.qa.onRead=null;window.qa.onCreated=null;window.qa.batchError=null;
   window.qa.docs={
     'businessMemberships/tenant-a_owner-a':member('tenant-a','owner-a',role),
     'businesses/tenant-a':{restaurantId:'tenant-a',ownerUserId:'owner-a'},
@@ -110,6 +110,13 @@ try {
   ]);
   assert.equal(window.qa.writes[0].data.restaurantId,'tenant-a');
   assert.equal(window.qa.writes[1].data.employeeUserIds.arrayUnion,'employee-new');
+
+  // El batch puede fallar después de crear Auth: no afirmar que se borró la cuenta.
+  reset();
+  window.qa.batchError=Object.assign(new Error('permission-denied'),{code:'permission-denied'});
+  await assert.rejects(window.qa.create(input()),/No pudimos vincular/);
+  assert.equal(window.qa.created,1);
+  assert.equal(window.qa.writes.length,0);
 
   // Revocación entre creación Auth y batch: no se vincula al empleado.
   reset();
