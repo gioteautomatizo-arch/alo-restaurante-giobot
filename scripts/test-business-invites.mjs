@@ -125,14 +125,54 @@ try{
  assert.equal((await db.collection('businessMemberships').doc(otherBusiness+'_'+secondEmployee.uid).get()).exists,false);
  assert.equal((await call('/api/business-invites?businessId='+otherBusiness,undefined,otherToken,'GET')).status,200);
 
- const expired=await create('late-'+unique+'@example.test');
+ // El listado del OWNER debe coincidir con la vista previa y la aceptación:
+ // no ofrecer invitaciones vencidas, de creadores revocados ni de otro tenant.
+ const manager=await auth.createUser({email:'manager-'+unique+'@example.test',emailVerified:true});
+ const managerToken=await getToken(manager);
+ const managerMembership=db.collection('businessMemberships').doc(businessId+'_'+manager.uid);
+ await managerMembership.set({restaurantId:businessId,userId:manager.uid,role:'MANAGER',active:true});
+ const managerInvite=await call('/api/business-invites',{
+   businessId,email:'managed-'+unique+'@example.test',name:'Personal de prueba',role:'WAITER',
+ },managerToken);
+ assert.equal(managerInvite.status,201,JSON.stringify(managerInvite));
  const {createHash}=await import('node:crypto');
+ const managerHash=createHash('sha256').update(managerInvite.data.token).digest('hex');
+ const managerRef=db.collection('business_invites').doc(managerHash);
+ const listA=()=>call('/api/business-invites?businessId='+businessId,undefined,ownerToken,'GET');
+ const listed=async()=> (await listA()).data.invites.some(x=>x.id===managerHash);
+ assert.equal(await listed(),true,'El OWNER ve invitación válida de su MANAGER');
+ const managerList=await call('/api/business-invites?businessId='+businessId,undefined,managerToken,'GET');
+ assert.equal(managerList.status,200);
+ assert.equal(managerList.data.invites.some(x=>x.id===managerHash),true);
+ assert.equal(managerList.data.invites.every(x=>x.role==='WAITER'),true,
+   'MANAGER solo puede listar sus invitaciones operativas');
+ await managerMembership.update({role:'KITCHEN'});
+ assert.equal(await listed(),false,'No mostrar invitación si el creador pierde permisos');
+ assert.equal((await call('/api/business-invites/preview',{token:managerInvite.data.token})).status,410);
+ assert.equal((await call('/api/business-invites?businessId='+businessId,undefined,managerToken,'GET')).status,403);
+ await managerMembership.update({role:'MANAGER',restaurantId:otherBusiness});
+ assert.equal(await listed(),false,'No mostrar invitación creada por miembro de otro tenant');
+ await managerMembership.update({restaurantId:businessId,active:false});
+ assert.equal(await listed(),false,'No mostrar invitación de creador inactivo');
+ await managerMembership.update({active:true});
+ assert.equal(await listed(),true,'La restauración válida recupera la invitación pendiente');
+ await managerRef.update({createdBy:other.uid});
+ assert.equal(await listed(),false,'No mostrar invitación atribuida a propietario de B');
+ await managerRef.update({createdBy:manager.uid,role:'OWNER'});
+ assert.equal(await listed(),false,'No mostrar invitación con rol inválido');
+ await managerRef.update({role:'WAITER',expiresAt:Date.now()-1});
+ assert.equal(await listed(),false,'No mostrar invitación vencida');
+ assert.equal((await call('/api/business-invites/preview',{token:managerInvite.data.token})).status,410);
+
+ const expired=await create('late-'+unique+'@example.test');
  const hash=createHash('sha256').update(expired).digest('hex');
  await db.collection('business_invites').doc(hash).update({expiresAt:Date.now()-1});
  assert.equal((await call('/api/business-invites/preview',{token:expired})).status,410);
+ assert.equal((await listA()).data.invites.some(x=>x.id===hash),false,
+   'La lista no debe presentar invitaciones caducadas');
  const simultaneous=await Promise.all(Array.from({length:12},(_,i)=>call('/api/business-invites',{businessId,email:'new'+i+'-'+unique+'@example.test',name:'Invitado',role:'EMPLOYEE'},ownerToken)));
  assert(simultaneous.some(x=>x.status===429),'hourly rate limit');
  const attempted=simultaneous.filter(x=>x.status===201).length;
  assert(attempted<=7,'hourly rate cap');
- console.log('PASS: two-tenant invite isolation, fail-closed preview on revoked inviter/role/root, recovery, token lifecycle and concurrent rate limiting.');
+ console.log('PASS: two-tenant invite isolation, stale/expired list filtering, fail-closed preview, recovery, token lifecycle and concurrent rate limiting.');
 }finally{await new Promise(resolve=>server.close(resolve));}
