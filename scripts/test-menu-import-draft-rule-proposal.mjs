@@ -27,14 +27,27 @@ const membershipHelper=[
   "        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.get('userId', null) == request.auth.uid;",
   "    }",
 ].join('\n');
+// Un perfil publicado no debe hacer público el menú de una raíz ausente o
+// discordante. Contrato candidato: requiere identidad explícita en ambos docs.
+const publicCatalogHelper=[
+  "    function isIdentifiedPublishedCatalog(businessId) {",
+  "      return exists(/databases/$(database)/documents/businesses/$(businessId))",
+  "        && get(/databases/$(database)/documents/businesses/$(businessId)).data.get('restaurantId', null) == businessId",
+  "        && exists(/databases/$(database)/documents/publicBusinessProfiles/$(businessId))",
+  "        && get(/databases/$(database)/documents/publicBusinessProfiles/$(businessId)).data.published == true",
+  "        && get(/databases/$(database)/documents/publicBusinessProfiles/$(businessId)).data.get('businessId', null) == businessId",
+  "        && get(/databases/$(database)/documents/publicBusinessProfiles/$(businessId)).data.get('restaurantId', null) == businessId;",
+  "    }",
+].join('\n');
+
 const catalogMatch='    match /businesses/{businessId}/catalog/{catalogDoc} {';
 assert.equal(staged.split(catalogMatch).length,2,'La ubicación de reglas del catálogo cambió; revisar propuesta manualmente');
-const proposed=staged.replace(catalogMatch,membershipHelper+'\n\n'+catalogMatch).replace(original,[
+const proposed=staged.replace(catalogMatch,membershipHelper+'\n\n'+publicCatalogHelper+'\n\n'+catalogMatch).replace(original,[
   "      // Únicamente menu_catalog es público si la página está publicada.",
   "      // Borradores requieren identidad y rol; otros IDs fallan cerrados.",
   "      allow read: if isPlatformSuperAdmin()",
   "        || (catalogDoc == 'menu_catalog'",
-  "          && (isPublishedBusiness(businessId) || hasIdentifiedCatalogMembership(businessId)))",
+  "          && (isIdentifiedPublishedCatalog(businessId) || hasIdentifiedCatalogMembership(businessId)))",
   "        || (catalogDoc == 'menu_import_draft'",
   "          && hasIdentifiedCatalogMembership(businessId)",
   "          && getCallerMembershipRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER', 'SUPER_ADMIN']);",
@@ -49,6 +62,16 @@ const seed=async env=>{
       await setDoc(doc(db,'businesses',id,'catalog','internal_future_draft'),{businessId:id,secret:'INTERNAL'});
       await setDoc(doc(db,'businesses',id,'catalog','menu_import_draft'),{
         businessId:id,sourceImageUrl:'https://example.test/private.jpg',items:[{name:'No publicado'}],
+      });
+    }
+    // STAGED considera públicos estos perfiles aunque la identidad sea inválida.
+    for(const id of ['tenant-c','tenant-d','tenant-e','tenant-f','tenant-g']){
+      await setDoc(doc(db,'businesses',id,'catalog','menu_catalog'),{businessId:id,items:[{name:'Privado por identidad inválida'}]});
+      if(id !== 'tenant-c') await setDoc(doc(db,'businesses',id),{restaurantId:id === 'tenant-d' ? 'tenant-a' : id,ownerUserId:'owner-'+id});
+      if(id === 'tenant-g') await setDoc(doc(db,'businesses',id),{ownerUserId:'owner-'+id});
+      await setDoc(doc(db,'publicBusinessProfiles',id),{
+        ...(id === 'tenant-f' ? {} : {businessId:id === 'tenant-e' ? 'tenant-a' : id,restaurantId:id}),
+        published:true,
       });
     }
     for(const [uid,role,active] of [['alice','OWNER',true],['manager','MANAGER',true],['cashier','CASHIER',true],['revoked','MANAGER',false]]){
@@ -77,6 +100,10 @@ try{
   await seed(stagedEnv);
   await assertSucceeds(getDoc(draft(stagedEnv.unauthenticatedContext().firestore())));
   await assertSucceeds(getDoc(otherCatalog(stagedEnv.unauthenticatedContext().firestore())));
+  for(const id of ['tenant-c','tenant-d','tenant-e','tenant-f','tenant-g']){
+    await assertSucceeds(getDoc(doc(stagedEnv.unauthenticatedContext().firestore(),'businesses',id,'catalog','menu_catalog')));
+  }
+  console.log('PENDIENTE: STAGED expone catálogos con perfil huérfano o identidad de raíz/perfil inconsistente.');
   console.log('PENDIENTE: STAGED permite lectura pública de menu_import_draft en negocios publicados; NO corregido.');
 }finally{await stagedEnv.cleanup();}
 const proposalEnv=await initializeTestEnvironment({
@@ -99,6 +126,9 @@ try{
   await assertFails(getDoc(unpublishedCatalog(guest)));
   await assertFails(getDoc(unpublishedDraft(guest)));
   await assertFails(getDoc(draft(guest)));
+  for(const id of ['tenant-c','tenant-d','tenant-e','tenant-f','tenant-g']){
+    await assertFails(getDoc(doc(guest,'businesses',id,'catalog','menu_catalog')));
+  }
   await assertFails(getDoc(doc(guest,'businesses/tenant-b/catalog/menu_catalog')));
   await assertFails(getDoc(doc(guest,'businesses/tenant-b/catalog/menu_import_draft')));
   await assertSucceeds(getDoc(draft(alice)));
@@ -122,7 +152,7 @@ try{
   await assertSucceeds(setDoc(draft(alice),{businessId:'tenant-a',items:[]}));
   await assertFails(setDoc(draft(cashier),{businessId:'tenant-a',items:[]}));
   await assertFails(setDoc(draft(guest),{businessId:'tenant-a',items:[]}));
-  console.log('PASS (propuesta aislada): catálogo público publicado, lectura interna legítima de no publicado, borrador solo editores, IDs desconocidos denegados y membresías discordantes/incompletas bloqueadas.');
+  console.log('PASS (propuesta aislada): raíz/perfil identificados para publicación, catálogos huérfanos o cruzados bloqueados, catálogo público publicado, lectura interna legítima de no publicado, borrador solo editores, IDs desconocidos denegados y membresías discordantes/incompletas bloqueadas.');
   console.log('HOLD compatibilidad: miembros históricos sin userId/restaurantId necesitarían auditoría y migración autorizada antes de activar esta propuesta.');
   console.log('PENDIENTE: revisión independiente de reglas, compatibilidad y autorización antes de cualquier cambio staged/despliegue.');
 }finally{await proposalEnv.cleanup();}
