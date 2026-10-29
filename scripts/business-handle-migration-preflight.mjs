@@ -85,6 +85,12 @@ function inspectEntry(entry, globallyBlocked) {
       problems.push('MALFORMED_MEMBERSHIP');
       continue;
     }
+    // Las reglas candidatas niegan membresías con roles desconocidos o estado
+    // no booleano; bloquear su compatibilidad histórica ANTES del corte.
+    if (!['OWNER', 'ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE', 'CLIENT'].includes(data.role)
+        || typeof data.active !== 'boolean') {
+      problems.push('MEMBERSHIP_ROLE_OR_ACTIVE_INVALID');
+    }
     if (data.role === 'OWNER' && data.active === true) ownerMembers.push(data.userId);
     if (data.role === 'OWNER' && data.userId !== owner)
       problems.push('FOREIGN_OWNER_MEMBERSHIP');
