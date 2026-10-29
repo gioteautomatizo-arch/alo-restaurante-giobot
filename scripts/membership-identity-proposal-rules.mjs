@@ -85,6 +85,38 @@ export function buildMembershipIdentityProposalRules(staged) {
     `          get(${employeePath}).data.role in ['OWNER', 'ADMIN']`,
     `          getCallerMembershipRole(${target}) in ['OWNER', 'ADMIN']`,
     1, 'restricción de rol en alta de membresía');
+  // Una membresía objetivo con ruta y datos internos discordantes tampoco
+  // puede leerse, revocarse ni editarse, aunque el actor sea legítimo en A.
+  // Esta puerta se aplica SOLO al candidato de emulador, no a STAGED.
+  const membershipStart = '    match /businessMemberships/{membershipId} {';
+  const membershipEnd = '    match /platformAdmins/{userId} {';
+  assert.equal(result.split(membershipStart).length, 2,
+    'ALTO: cambió el bloque objetivo de membresías.');
+  assert.equal(result.split(membershipEnd).length, 2,
+    'ALTO: cambió el límite del bloque de membresías.');
+  const from = result.indexOf(membershipStart);
+  const to = result.indexOf(membershipEnd);
+  assert(from >= 0 && to > from, 'ALTO: bloque objetivo ambiguo.');
+  let membershipBlock = result.slice(from, to);
+  const replaceMembershipExact = (before, after, label) => {
+    assert.equal(membershipBlock.split(before).length, 2,
+      'ALTO: cambió la operación ' + label + ' de membresías.');
+    membershipBlock = membershipBlock.replace(before, after);
+  };
+  replaceMembershipExact(membershipStart, `    match /businessMemberships/{membershipId} {
+      // Identidad del DOCUMENTO OBJETIVO, distinta de la del actor.
+      function membershipTargetMatchesPath() {
+        return resource.data.restaurantId is string
+          && resource.data.userId is string
+          && membershipId == resource.data.restaurantId + '_' + resource.data.userId;
+      }`, 'helper de identidad del objetivo');
+  replaceMembershipExact('      allow read: if isSignedIn()',
+    '      allow read: if membershipTargetMatchesPath()\\n        && isSignedIn()'.replace('\\n', '\n'), 'lectura');
+  replaceMembershipExact('      allow update: if isSignedIn()',
+    '      allow update: if membershipTargetMatchesPath()\\n        && isSignedIn()'.replace('\\n', '\n'), 'actualización');
+  replaceMembershipExact('      allow delete: if (',
+    '      allow delete: if membershipTargetMatchesPath()\\n        && ('.replace('\\n', '\n'), 'eliminación');
+  result = result.slice(0, from) + membershipBlock + result.slice(to);
   assert.notEqual(result, staged);
   return result;
 }
