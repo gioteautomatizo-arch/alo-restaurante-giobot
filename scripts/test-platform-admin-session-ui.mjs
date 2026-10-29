@@ -111,8 +111,10 @@ try {
 
   // Una cuenta distinta no debe ver el listado ni un fotograma mientras carga.
   window.qa.emit('outsider-b');
-  assert.equal(visible('Solo Negocio A'), false, 'No mostrar datos A durante cambio B');
+  // React procesa el callback de Auth en el siguiente render; comprobar la
+  // puerta por UID tras ese render, no contra el DOM previo al callback.
   await waitFor(() => !!admin('outsider-b', 1), 'Second B check missing');
+  assert.equal(visible('Solo Negocio A'), false, 'No mostrar datos A durante cambio B');
   admin('outsider-b', 1).resolve(false);
   await waitFor(() => visible('Acceso restringido'), 'B denied again');
 
