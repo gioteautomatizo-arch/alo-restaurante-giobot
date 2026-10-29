@@ -289,7 +289,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     }
 
     if (view === 'menuImport') {
-      return <BusinessMenuImport businessId={businessId} businessName={business.branding.restaurantName} onBack={() => setView('catalog')} onOpenCatalog={() => setView('catalog')} />;
+      return <BusinessMenuImport key={`${businessId}:${authUser?.uid ?? ''}`} businessId={businessId} businessName={business.branding.restaurantName} onBack={() => setView('catalog')} onOpenCatalog={() => setView('catalog')} />;
     }
 
     if (view === 'operations') {
