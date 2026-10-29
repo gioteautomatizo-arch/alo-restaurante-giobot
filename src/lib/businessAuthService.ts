@@ -316,11 +316,14 @@ export const PLATFORM_ADMINS_COLLECTION = 'platformAdmins';
  * Determina si el usuario autenticado está registrado como Super Admin en la plataforma.
  */
 export async function isPlatformAdmin(userId: string): Promise<boolean> {
-  if (!userId) return false;
+  // No aceptar una respuesta de permisos iniciada por una cuenta anterior.
+  if (!userId || auth.currentUser?.uid !== userId) return false;
   try {
     const snap = await getDoc(doc(db, PLATFORM_ADMINS_COLLECTION, userId));
+    assertCurrentBusinessSession(userId);
     if (!snap.exists()) return false;
     const data = snap.data();
+    // Mantener compatibilidad con los documentos históricos sin campo active.
     return data?.active !== false;
   } catch (err) {
     console.warn('Error verificando platform admin:', err);
@@ -329,19 +332,27 @@ export async function isPlatformAdmin(userId: string): Promise<boolean> {
 }
 
 /**
- * Obtiene todos los negocios registrados en la plataforma para el panel Super Admin.
- * Excluye Calientito ya que es el tenant histórico predeterminado.
+ * Obtiene todos los negocios para un Super Admin de la sesión actual.
+ * Excluye Calientito (tenant histórico). No devolver lecturas parciales,
+ * datos discordantes ni resultados de una cuenta que ya cerró sesión.
  */
-export async function getAllBusinesses(): Promise<RestaurantTenant[]> {
+export async function getAllBusinesses(userId: string): Promise<RestaurantTenant[]> {
+  assertCurrentBusinessSession(userId);
+  if (!(await isPlatformAdmin(userId))) {
+    throw new Error('La cuenta actual no tiene permisos de Super Admin.');
+  }
+  assertCurrentBusinessSession(userId);
   try {
     const snap = await getDocs(collection(db, BUSINESSES_COLLECTION));
+    assertCurrentBusinessSession(userId);
     const tenants: RestaurantTenant[] = [];
     snap.forEach((docSnap) => {
       const data = docSnap.data() as RestaurantTenant;
-      // Mantener Calientito fuera de la lista de tenants nuevos porque es el tenant histórico
-      if (data.restaurantId && data.restaurantId !== 'alo-restaurante') {
-        tenants.push(data);
+      if (!data.restaurantId || data.restaurantId !== docSnap.id) {
+        throw new Error('Un negocio de la plataforma tiene un identificador inconsistente.');
       }
+      // Mantener Calientito fuera de la lista de tenants nuevos.
+      if (data.restaurantId !== 'alo-restaurante') tenants.push(data);
     });
     return tenants;
   } catch (err) {
