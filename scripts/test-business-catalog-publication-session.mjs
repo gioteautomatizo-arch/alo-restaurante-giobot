@@ -161,12 +161,12 @@ try {
   }
 
   reset();
-  const switchedAfterRoot = window.qa.saveCatalog('tenant-a',[item],'Prueba');
+  const switchedCatalogAfterRoot = window.qa.saveCatalog('tenant-a',[item],'Prueba');
   await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
   await waitFor(()=>window.qa.pending.length===2,'Falta raíz de catálogo');
   window.qa.auth.currentUser={uid:'owner-b'};
   window.qa.pending[1].resolve(businessRoot('tenant-a','owner-a'));
-  await assert.rejects(switchedAfterRoot,/La sesión cambió/);
+  await assert.rejects(switchedCatalogAfterRoot,/La sesión cambió/);
   assert.equal(window.qa.writes.length,0);
 
   // Tanto la siembra como el guardado con revisión deben pasar el preflight.
