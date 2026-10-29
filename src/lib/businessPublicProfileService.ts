@@ -70,13 +70,44 @@ export async function setBusinessPublication(businessId: string, tenant: Restaur
   }
   const user = auth.currentUser;
   if (!user) throw new Error('Inicia sesión para publicar tu negocio.');
-  const membershipSnap = await getDoc(doc(db, 'businessMemberships', businessId + '_' + user.uid));
-  const membership = membershipSnap.exists() ? membershipSnap.data() : null;
-  if (!await isPlatformAdmin(user.uid) &&
-      (!membership || membership.restaurantId !== businessId || membership.userId !== user.uid || membership.active !== true || membership.role !== 'OWNER')) {
+  const membershipRef = doc(db, 'businessMemberships', businessId + '_' + user.uid);
+  const isValidOwner = (data: Record<string, unknown> | null): boolean =>
+    !!data && data.restaurantId === businessId && data.userId === user.uid
+    && data.active === true && data.role === 'OWNER';
+
+  const membershipSnap = await getDoc(membershipRef);
+  const ownerAccess = isValidOwner(membershipSnap.exists() ? membershipSnap.data() : null);
+  // Conservar la ruta de Super Admin sin concederle implícitamente un OWNER ajeno.
+  const adminAccess = !ownerAccess && await isPlatformAdmin(user.uid);
+  if (!ownerAccess && !adminAccess) {
     throw new Error('Solo el propietario del negocio puede publicar su página.');
   }
-  // No publicar con la sesión de otra cuenta tras las lecturas asíncronas.
+  if (auth.currentUser?.uid !== user.uid) {
+    throw new Error('La sesión cambió antes de publicar el negocio. Vuelve a iniciar sesión.');
+  }
+
+  // El documento pasado por la vista puede estar obsoleto o pertenecer a otra
+  // raíz. No basta con una membresía OWNER si el propietario explícito difiere.
+  const businessSnap = await getDoc(doc(db, 'businesses', businessId));
+  const business = businessSnap.exists() ? businessSnap.data() : null;
+  if (!business || business.restaurantId !== businessId
+      || (ownerAccess && business.ownerUserId !== undefined && business.ownerUserId !== user.uid)) {
+    throw new Error('La identidad del negocio o propietario es inconsistente.');
+  }
+  if (auth.currentUser?.uid !== user.uid) {
+    throw new Error('La sesión cambió antes de publicar el negocio. Vuelve a iniciar sesión.');
+  }
+
+  // Una revocación entre la primera lectura y la raíz no debe confirmar una
+  // publicación basada en permisos ya obsoletos. Firestore sigue siendo autoridad.
+  if (ownerAccess) {
+    const latestSnap = await getDoc(membershipRef);
+    if (!isValidOwner(latestSnap.exists() ? latestSnap.data() : null)) {
+      throw new Error('Los permisos de publicación cambiaron. Vuelve a entrar y reintenta.');
+    }
+  } else if (!await isPlatformAdmin(user.uid)) {
+    throw new Error('Los permisos de publicación cambiaron. Vuelve a entrar y reintenta.');
+  }
   if (auth.currentUser?.uid !== user.uid) {
     throw new Error('La sesión cambió antes de publicar el negocio. Vuelve a iniciar sesión.');
   }
