@@ -53,7 +53,7 @@ const membership = (uid,role='OWNER',restaurantId='tenant-a',active=true) => ({
 });
 const item = {id:'product-a',name:'Producto A',description:'',category:'General',price:25,available:true,sortOrder:10};
 const tenant = id => ({restaurantId:id,branding:{restaurantName:id,publicSlug:id}});
-const root = (id, ownerId, legacy=false) => ({
+const businessRoot = (id, ownerId, legacy=false) => ({
   exists: () => true,
   data: () => legacy ? {restaurantId:id} : {restaurantId:id,ownerUserId:ownerId},
 });
@@ -64,7 +64,7 @@ const resolveRead = async (index, snapshot, expectedPath) => {
 };
 const passOwner = async (promise, id='tenant-a', uid='owner-a', legacy=false) => {
   await resolveRead(0,membership(uid,'OWNER',id),'businessMemberships/'+id+'_'+uid);
-  await resolveRead(1,root(id,uid,legacy),'businesses/'+id);
+  await resolveRead(1,businessRoot(id,uid,legacy),'businesses/'+id);
   await resolveRead(2,membership(uid,'OWNER',id),'businessMemberships/'+id+'_'+uid);
   await promise;
 };
@@ -161,7 +161,7 @@ try {
     reset();
     const wrongOwner = window.qa.publish('tenant-a',tenant('tenant-a'),published);
     await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
-    await resolveRead(1,root('tenant-a','owner-b'),'businesses/tenant-a');
+    await resolveRead(1,businessRoot('tenant-a','owner-b'),'businesses/tenant-a');
     await assert.rejects(wrongOwner,/propietario es inconsistente/);
     assert.equal(window.qa.pending.length,2,'No revalidar permisos de raíz ajena');
     assert.equal(window.qa.writes.length,0);
@@ -170,7 +170,7 @@ try {
   reset();
   const wrongRoot = window.qa.publish('tenant-a',tenant('tenant-a'),true);
   await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
-  await resolveRead(1,root('tenant-b','owner-a'),'businesses/tenant-a');
+  await resolveRead(1,businessRoot('tenant-b','owner-a'),'businesses/tenant-a');
   await assert.rejects(wrongRoot,/identidad del negocio/);
   assert.equal(window.qa.writes.length,0);
 
@@ -190,7 +190,7 @@ try {
     reset();
     const revoked = window.qa.publish('tenant-a',tenant('tenant-a'),true);
     await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
-    await resolveRead(1,root('tenant-a','owner-a'),'businesses/tenant-a');
+    await resolveRead(1,businessRoot('tenant-a','owner-a'),'businesses/tenant-a');
     await resolveRead(2,latest,'businessMemberships/tenant-a_owner-a');
     await assert.rejects(revoked,/permisos de publicación cambiaron/);
     assert.equal(window.qa.writes.length,0,'No escribir tras revocación/cambio de identidad');
@@ -201,7 +201,7 @@ try {
   await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
   await waitFor(()=>window.qa.pending.length===2,'Falta lectura de raíz previa a cambio de sesión');
   window.qa.auth.currentUser={uid:'owner-b'};
-  window.qa.pending[1].resolve(root('tenant-a','owner-a'));
+  window.qa.pending[1].resolve(businessRoot('tenant-a','owner-a'));
   await assert.rejects(switchedAfterRoot,/La sesión cambió/);
   assert.equal(window.qa.writes.length,0);
 
@@ -215,7 +215,7 @@ try {
   window.qa.admin=true;
   const adminPublication=window.qa.publish('tenant-b',tenant('tenant-b'),true);
   await resolveRead(0,{exists:()=>false,data:()=>null},'businessMemberships/tenant-b_admin-user');
-  await resolveRead(1,root('tenant-b','owner-b'),'businesses/tenant-b');
+  await resolveRead(1,businessRoot('tenant-b','owner-b'),'businesses/tenant-b');
   await adminPublication;
   assert.equal(window.qa.writes.length,1);
   assert.equal(window.qa.writes[0].ref.path,'publicBusinessProfiles/tenant-b');
@@ -226,7 +226,7 @@ try {
   await resolveRead(0,{exists:()=>false,data:()=>null},'businessMemberships/tenant-b_admin-user');
   await waitFor(()=>window.qa.pending.length===2,'Falta raíz para admin');
   window.qa.admin=false;
-  window.qa.pending[1].resolve(root('tenant-b','owner-b'));
+  window.qa.pending[1].resolve(businessRoot('tenant-b','owner-b'));
   await assert.rejects(revokedAdmin,/permisos de publicación cambiaron/);
   assert.equal(window.qa.writes.length,0);
 
