@@ -80,34 +80,6 @@ try {
   assert.equal(event.value.businessId,'tenant-a');
   assert.equal(event.value.items[0].name,'Solo A');
 
-  // Dos consumidores heredados editan distintos productos desde el mismo
-  // snapshot antiguo. La transacción debe conservar ambas altas, incluso
-  // cuando Firestore reintenta por concurrencia.
-  const staleItems=legacyRead.data().items;
-  const extraA={...item('Extra A'),id:'extra-a'};
-  const extraC={...item('Extra C'),id:'extra-c'};
-  await Promise.all([
-    upsertItem('tenant-a',staleItems,extraA,'Dueño A'),
-    upsertItem('tenant-a',staleItems,extraC,'Dueño A'),
-  ]);
-  let after=await sdk.getDoc(ref(ownerA,'tenant-a'));
-  assert.deepEqual(after.data().items.map(product=>product.id).sort(),
-    ['product-1','extra-a','extra-c'].sort(),'Dos altas concurrentes no se pisan');
-
-  await upsertItem('tenant-a',staleItems,{...item('Editado A'),id:'product-1'},'Dueño A');
-  after=await sdk.getDoc(ref(ownerA,'tenant-a'));
-  assert.equal(after.data().items.find(product=>product.id==='product-1').name,'Editado A');
-  assert.equal(after.data().items.length,3,'Editar producto no borra altas recientes');
-
-  await deleteItem('tenant-a',staleItems,'product-1','Dueño A');
-  after=await sdk.getDoc(ref(ownerA,'tenant-a'));
-  assert.deepEqual(after.data().items.map(product=>product.id).sort(),['extra-a','extra-c']);
-  const revisionBeforeRejectedDelete=after.data().revision;
-  await assert.rejects(deleteItem('tenant-a',staleItems,'product-1','Dueño A'),/CONFLICTO_CATALOGO/);
-  after=await sdk.getDoc(ref(ownerA,'tenant-a'));
-  assert.equal(after.data().revision,revisionBeforeRejectedDelete,
-    'Borrado obsoleto no cambia revisión ni otros productos');
-
   as('owner-b',ownerB);
   event=await firstSnapshot('tenant-b');
   assert.equal(event.kind,'data');
@@ -161,6 +133,35 @@ try {
   assert.equal(legacySaved.items[0].name,'Actualizado heredado A');
   const legacyRead=await sdk.getDoc(ref(ownerA,'tenant-a'));
   assert.equal(legacyRead.data().items[0].name,'Actualizado heredado A');
+
+  // Dos consumidores heredados editan distintos productos desde el mismo
+  // snapshot antiguo. La transacción debe conservar ambas altas, incluso
+  // cuando Firestore reintenta por concurrencia.
+  const staleItems=legacyRead.data().items;
+  const extraA={...item('Extra A'),id:'extra-a'};
+  const extraC={...item('Extra C'),id:'extra-c'};
+  await Promise.all([
+    upsertItem('tenant-a',staleItems,extraA,'Dueño A'),
+    upsertItem('tenant-a',staleItems,extraC,'Dueño A'),
+  ]);
+  let after=await sdk.getDoc(ref(ownerA,'tenant-a'));
+  assert.deepEqual(after.data().items.map(product=>product.id).sort(),
+    ['product-1','extra-a','extra-c'].sort(),'Dos altas concurrentes no se pisan');
+
+  await upsertItem('tenant-a',staleItems,{...item('Editado A'),id:'product-1'},'Dueño A');
+  after=await sdk.getDoc(ref(ownerA,'tenant-a'));
+  assert.equal(after.data().items.find(product=>product.id==='product-1').name,'Editado A');
+  assert.equal(after.data().items.length,3,'Editar producto no borra altas recientes');
+
+  await deleteItem('tenant-a',staleItems,'product-1','Dueño A');
+  after=await sdk.getDoc(ref(ownerA,'tenant-a'));
+  assert.deepEqual(after.data().items.map(product=>product.id).sort(),['extra-a','extra-c']);
+  const revisionBeforeRejectedDelete=after.data().revision;
+  await assert.rejects(deleteItem('tenant-a',staleItems,'product-1','Dueño A'),/CONFLICTO_CATALOGO/);
+  after=await sdk.getDoc(ref(ownerA,'tenant-a'));
+  assert.equal(after.data().revision,revisionBeforeRejectedDelete,
+    'Borrado obsoleto no cambia revisión ni otros productos');
+
 
   as('owner-b',ownerB);
   event=await firstSnapshot('tenant-b');
