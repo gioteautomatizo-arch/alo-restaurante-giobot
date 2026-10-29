@@ -41,15 +41,18 @@ const documents = [
 const signed = uid => env.authenticatedContext(uid).firestore();
 const anonymous = () => env.unauthenticatedContext().firestore();
 const adminOperation = async callback => env.withSecurityRulesDisabled(async context => callback(context.firestore()));
-const snapshot = () => adminOperation(async db => {
+const snapshot = async () => {
+  // withSecurityRulesDisabled resuelve void: conservar el resultado fuera del callback.
   const records = [];
-  for (const { path } of documents) {
-    const snap = await getDoc(doc(db, path));
-    assert(snap.exists(), 'Falta documento en snapshot sintético');
-    records.push({ path, data: snap.data() });
-  }
+  await adminOperation(async db => {
+    for (const { path } of documents) {
+      const snap = await getDoc(doc(db, path));
+      assert(snap.exists(), 'Falta documento en snapshot sintético');
+      records.push({ path, data: snap.data() });
+    }
+  });
   return records;
-});
+};
 const auditSnapshot = records => {
   const roots = records.filter(record => /^businesses\/[^/]+$/.test(record.path));
   const members = records.filter(record => /^businessMemberships\/[^/]+$/.test(record.path));
