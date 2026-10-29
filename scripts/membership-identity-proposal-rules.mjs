@@ -110,12 +110,24 @@ export function buildMembershipIdentityProposalRules(staged) {
           && resource.data.userId is string
           && membershipId == resource.data.restaurantId + '_' + resource.data.userId;
       }`, 'helper de identidad del objetivo');
+  // Firestore no puede demostrar la igualdad entre ID y campos internos en
+  // una consulta de colección. Conservar list para el selector por userId,
+  // y exigir la identidad completa en get; el listado requiere preflight
+  // histórico y validación estricta del cliente antes de habilitar beta.
   replaceMembershipExact('      allow read: if isSignedIn()',
-    '      allow read: if membershipTargetMatchesPath()\\n        && isSignedIn()'.replace('\\n', '\n'), 'lectura');
+    `      allow get: if membershipTargetMatchesPath()
+        && isSignedIn()
+        && (
+          resource.data.userId == request.auth.uid
+          || canManageMembership(resource.data.restaurantId)
+        );
+      allow list: if isSignedIn()`, 'lectura directa y listado');
   replaceMembershipExact('      allow update: if isSignedIn()',
-    '      allow update: if membershipTargetMatchesPath()\\n        && isSignedIn()'.replace('\\n', '\n'), 'actualización');
+    `      allow update: if membershipTargetMatchesPath()
+        && isSignedIn()`, 'actualización');
   replaceMembershipExact('      allow delete: if (',
-    '      allow delete: if membershipTargetMatchesPath()\\n        && ('.replace('\\n', '\n'), 'eliminación');
+    `      allow delete: if membershipTargetMatchesPath()
+        && (`, 'eliminación');
   result = result.slice(0, from) + membershipBlock + result.slice(to);
   assert.notEqual(result, staged);
   return result;
