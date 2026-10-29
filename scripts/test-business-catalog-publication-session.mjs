@@ -189,9 +189,22 @@ try {
   reset();
   const conflict = window.qa.saveCatalog('tenant-a',[item],'Prueba',null);
   await passCatalogReads();
-  await resolveRead(3,{exists:()=>true,data:()=>({revision:'newer'})},'businesses/tenant-a/catalog/menu_catalog');
+  await resolveRead(3,{exists:()=>true,data:()=>({businessId:'tenant-a',items:[],revision:'newer'})},'businesses/tenant-a/catalog/menu_catalog');
   await assert.rejects(conflict,/CONFLICTO_CATALOGO/);
   assert.equal(window.qa.writes.length,0);
+
+  // Documento existente corrupto: aunque la revisión coincida, no se sobrescribe.
+  for (const invalid of [
+    {businessId:'tenant-b',items:[],revision:'cross-v1'},
+    {businessId:'tenant-a',revision:'no-items'},
+  ]) {
+    reset();
+    const blocked = window.qa.saveCatalog('tenant-a',[item],'Prueba',invalid.revision);
+    await passCatalogReads();
+    await resolveRead(3,{exists:()=>true,data:()=>invalid},'businesses/tenant-a/catalog/menu_catalog');
+    await assert.rejects(blocked,/datos inconsistentes/);
+    assert.equal(window.qa.writes.length,0,'Catálogo corrupto no se sobrescribe');
+  }
 
   // Publicación legítima: membresía OWNER, raíz y relectura de permisos.
   reset();
