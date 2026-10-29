@@ -403,17 +403,21 @@ export const BusinessMenuImport: React.FC<{
       await saveBusinessCatalog(
         businessId, [...existing, ...toAdd], actorName(), catalog?.revision || catalog?.updatedAt || null,
       );
+      let draftCleared = false;
       try {
         await clearMenuImportDraft(businessId, draftVersion.current);
         draftVersion.current = null;
+        draftCleared = true;
       } catch (err) {
         console.warn('[BusinessMenuImport] el catálogo se guardó, pero no se pudo limpiar el borrador:', err);
-        setError('El catálogo se publicó, pero el borrador cambió en otra pestaña o no se pudo borrar. Revísalo antes de volver a publicar.');
+        setError('El catálogo se publicó, pero el borrador cambió en otra pestaña o no se pudo borrar. Se conserva tu borrador para revisarlo.');
       }
-      dirty.current = false;
-      setItems([]);
-      setSourceImageUrl('');
-      setSaveState('idle');
+      if (draftCleared) {
+        dirty.current = false;
+        setItems([]);
+        setSourceImageUrl('');
+        setSaveState('idle');
+      }
       setPublished({ added: toAdd.length, skipped });
     } catch (err) {
       console.error('[BusinessMenuImport] no se pudo publicar:', err);
