@@ -96,7 +96,7 @@ try {
   await waitFor(() => window.qa.pending.length === 5, 'Falta request B');
   assert.equal(window.qa.requests[4].options.headers.Authorization, 'Bearer token-bob');
   respond(4, 200, {businesses: [business('tenant-b')]});
-  assert.deepEqual((await bob).map(item => item.restaurantId), ['tenant-b']);
+  assert.equal((await bob).map(item => item.restaurantId).join(','), 'tenant-b');
 
   assert.equal(window.qa.unsafeReads, 0, 'Nunca caer en consulta Firestore directa');
   console.log('PASS (cliente opt-in NO activado): bearer por UID, no fallback Firestore, respuestas inválidas, retry y cambio de cuenta (jsdom).');
