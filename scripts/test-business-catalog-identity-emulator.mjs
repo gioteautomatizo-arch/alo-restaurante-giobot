@@ -42,7 +42,8 @@ const bundle=await build({
     builder.onLoad({filter:/.*/,namespace:'mock'},args=>({contents:mocks[args.path],loader:'js'}));
   }}],
 });
-const {subscribeToBusinessCatalog:subscribe,saveBusinessCatalog:save}=await import(
+const {subscribeToBusinessCatalog:subscribe,saveBusinessCatalog:save,
+  upsertBusinessCatalogItem:upsertItem,deleteBusinessCatalogItem:deleteItem}=await import(
   'data:text/javascript;base64,'+Buffer.from(bundle.outputFiles[0].text).toString('base64'));
 const ownerA=env.authenticatedContext('owner-a').firestore();
 const ownerB=env.authenticatedContext('owner-b').firestore();
@@ -79,6 +80,34 @@ try {
   assert.equal(event.value.businessId,'tenant-a');
   assert.equal(event.value.items[0].name,'Solo A');
 
+  // Dos consumidores heredados editan distintos productos desde el mismo
+  // snapshot antiguo. La transacción debe conservar ambas altas, incluso
+  // cuando Firestore reintenta por concurrencia.
+  const staleItems=legacyRead.data().items;
+  const extraA={...item('Extra A'),id:'extra-a'};
+  const extraC={...item('Extra C'),id:'extra-c'};
+  await Promise.all([
+    upsertItem('tenant-a',staleItems,extraA,'Dueño A'),
+    upsertItem('tenant-a',staleItems,extraC,'Dueño A'),
+  ]);
+  let after=await sdk.getDoc(ref(ownerA,'tenant-a'));
+  assert.deepEqual(after.data().items.map(product=>product.id).sort(),
+    ['product-1','extra-a','extra-c'].sort(),'Dos altas concurrentes no se pisan');
+
+  await upsertItem('tenant-a',staleItems,{...item('Editado A'),id:'product-1'},'Dueño A');
+  after=await sdk.getDoc(ref(ownerA,'tenant-a'));
+  assert.equal(after.data().items.find(product=>product.id==='product-1').name,'Editado A');
+  assert.equal(after.data().items.length,3,'Editar producto no borra altas recientes');
+
+  await deleteItem('tenant-a',staleItems,'product-1','Dueño A');
+  after=await sdk.getDoc(ref(ownerA,'tenant-a'));
+  assert.deepEqual(after.data().items.map(product=>product.id).sort(),['extra-a','extra-c']);
+  const revisionBeforeRejectedDelete=after.data().revision;
+  await assert.rejects(deleteItem('tenant-a',staleItems,'product-1','Dueño A'),/CONFLICTO_CATALOGO/);
+  after=await sdk.getDoc(ref(ownerA,'tenant-a'));
+  assert.equal(after.data().revision,revisionBeforeRejectedDelete,
+    'Borrado obsoleto no cambia revisión ni otros productos');
+
   as('owner-b',ownerB);
   event=await firstSnapshot('tenant-b');
   assert.equal(event.kind,'data');
@@ -99,6 +128,8 @@ try {
   assert.match(String(event.value),/identidad o lista de productos inconsistente/);
   await assert.rejects(save('tenant-a',[item('No sobrescribir')],'Dueño A','cross-v1'),/datos inconsistentes/);
   await assert.rejects(save('tenant-a',[item('Heredado cruzado')],'Dueño A'),/datos inconsistentes/);
+  await assert.rejects(upsertItem('tenant-a',[item('Obsoleto')],item('No tocar'),'Dueño A'),/datos inconsistentes/);
+  await assert.rejects(deleteItem('tenant-a',[item('Obsoleto')],'product-1','Dueño A'),/datos inconsistentes/);
   await env.withSecurityRulesDisabled(async ctx=>{
     const snap=await sdk.getDoc(ref(ctx.firestore(),'tenant-a'));
     assert.equal(snap.data().businessId,'tenant-b');
@@ -136,7 +167,7 @@ try {
   assert.equal(event.kind,'data');
   assert.equal(event.value.items[0].name,'Solo B','A no modificó catálogo B');
 
-  console.log('PASS: catálogo SDK real en emulador, lectura A/B, ausente, corrupto, CAS y guardado heredado sin mutación cruzada.');
+  console.log('PASS: catálogo SDK real en emulador, A/B, CAS, helpers heredados por producto, altas concurrentes, borrado obsoleto y rechazo cruzado.');
   console.log('PENDIENTE: lectura pública STAGED de borradores y permisos desplegados; este test no los corrige.');
 } finally {
   globalThis.catalogDb=null;
