@@ -13,6 +13,19 @@ delete process.env.ENABLE_SECURE_BUSINESS_LIST;
 if (!getApps().length) initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID });
 const auth = getAuth();
 const db = getFirestore();
+// Interceptar exclusivamente el punto entre lectura de raíces y revalidación.
+// La mutación ocurre realmente en Firestore Emulator, no en un mock de datos.
+const originalGetAll = db.getAll.bind(db);
+let afterRootsRead = null;
+db.getAll = async (...refs) => {
+  const snapshots = await originalGetAll(...refs);
+  if (afterRootsRead && refs.length && refs.every(ref => ref.parent.id === 'businesses')) {
+    const action = afterRootsRead;
+    afterRootsRead = null;
+    await action();
+  }
+  return snapshots;
+};
 const unique = Date.now().toString(36);
 const [alice, bob, visitor] = await Promise.all(['alice', 'bob', 'visitor'].map(name =>
   auth.createUser({ email: name + '-' + unique + '@example.test', emailVerified: true })));
@@ -122,6 +135,24 @@ try {
   assert.equal(withLogo.data.businesses.find(item => item.restaurantId === b).branding.logoUrl,
     'https://example.test/logo.png', 'Logo opcional válido conservado');
 
+  // La consulta inicial puede leer WAITER activo antes de una revocación,
+  // borrado o cambio de rol. Ninguno debe producir lista parcial ni exponer B.
+  for (const [label, mutation] of [
+    ['revocación en vuelo', () => ref(b, alice.uid).update({ active: false })],
+    ['cambio de rol en vuelo', () => ref(b, alice.uid).update({ role: 'MANAGER' })],
+    ['borrado en vuelo', () => ref(b, alice.uid).delete()],
+  ]) {
+    await ref(b, alice.uid).set(member(b, alice.uid, 'WAITER'));
+    afterRootsRead = mutation;
+    const stale = await call(aliceToken);
+    assert.equal(stale.status, 409, label + ': rechazar snapshot obsoleto');
+    assert.equal('businesses' in stale.data, false, label + ': nunca devolver lista parcial');
+    assert.equal(JSON.stringify(stale.data).includes('Negocio B'), false, label + ': sin datos de B');
+    assert.deepEqual(ids(await call(bobToken)), [b], label + ': B conserva su acceso');
+    await ref(b, alice.uid).set(member(b, alice.uid, 'WAITER'));
+    assert.deepEqual(ids(await call(aliceToken)), [a, b], label + ': recuperación tras restaurar permisos');
+  }
+
   await ref(b, alice.uid).update({ active: false });
   assert.deepEqual(ids(await call(aliceToken)), [a], 'Revocación sin datos del tenant B');
   assert.deepEqual(ids(await call(bobToken)), [b]);
@@ -137,8 +168,10 @@ try {
   assert.equal(overflow.status, 409);
   assert.equal('businesses' in overflow.data, false);
 
-  console.log('PASS (API opt-in NO activada): Auth, A/B, salida mínima sin campos privados, OWNER/raíz, compatibilidad histórica, roles, revocación, errores y límite 100 en emuladores.');
+  console.log('PASS (API opt-in NO activada): Auth, A/B, salida mínima, OWNER/raíz, revocación/borrado/rol durante consulta, recuperación, errores y límite 100 en emuladores.');
 } finally {
+  afterRootsRead = null;
+  db.getAll = originalGetAll;
   delete process.env.ENABLE_SECURE_BUSINESS_LIST;
   await new Promise((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
 }
