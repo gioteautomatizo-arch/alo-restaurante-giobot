@@ -48,7 +48,43 @@ export function buildMembershipIdentityProposalRules(staged) {
     }
 
 `;
-  const result = staged.slice(0, begin) + replacement + staged.slice(finish);
+  // STAGED contiene otras autorizaciones que consultan directamente el
+  // documento de membresía. Cambiar solo los helpers dejaría esas rutas abiertas
+  // ante una membresía histórica mal asociada. Reemplazar patrones exactos:
+  // cualquier cambio inesperado en STAGED detiene el candidato.
+  let result = staged.slice(0, begin) + replacement + staged.slice(finish);
+  const replaceExact = (before, after, expected, label) => {
+    assert.equal(result.split(before).length - 1, expected,
+      'ALTO: cambió el permiso directo de ' + label + '; revisar manualmente.');
+    result = result.split(before).join(after);
+  };
+  const directPath = "/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)";
+  replaceExact(
+    `        && get(${directPath}).data.active == true
+        && get(${directPath}).data.role in ['OWNER', 'ADMIN', 'MANAGER']`,
+    `        && hasVerifiedTenantMembership(businessId)
+        && getCallerMembershipRole(businessId) in ['OWNER', 'ADMIN', 'MANAGER']`,
+    1, 'alta de empleados');
+  replaceExact(
+    `            exists(${directPath})
+            && get(${directPath}).data.active == true
+            && get(${directPath}).data.role == 'OWNER'`,
+    `            hasVerifiedTenantMembership(businessId)
+            && getCallerMembershipRole(businessId) == 'OWNER'`,
+    2, 'perfil público');
+  const target = 'request.resource.data.restaurantId';
+  const employeePath = "/databases/$(database)/documents/businessMemberships/$(request.resource.data.restaurantId + '_' + request.auth.uid)";
+  replaceExact(
+    `        && exists(${employeePath})
+        && get(${employeePath}).data.active == true
+        && get(${employeePath}).data.role in ['OWNER', 'ADMIN', 'MANAGER']`,
+    `        && hasVerifiedTenantMembership(${target})
+        && getCallerMembershipRole(${target}) in ['OWNER', 'ADMIN', 'MANAGER']`,
+    1, 'alta de membresía de empleado');
+  replaceExact(
+    `          get(${employeePath}).data.role in ['OWNER', 'ADMIN']`,
+    `          getCallerMembershipRole(${target}) in ['OWNER', 'ADMIN']`,
+    1, 'restricción de rol en alta de membresía');
   assert.notEqual(result, staged);
   return result;
 }
