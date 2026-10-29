@@ -69,6 +69,7 @@ const passCatalogReads = async (id='tenant-a', uid='owner-a', role='OWNER', lega
 };
 const passCatalog = async (promise, id='tenant-a', uid='owner-a', role='OWNER', legacy=false) => {
   await passCatalogReads(id,uid,role,legacy);
+  await resolveRead(3,{exists:()=>false,data:()=>null},'businesses/'+id+'/catalog/menu_catalog');
   await promise;
 };
 const passOwner = async (promise, id='tenant-a', uid='owner-a', legacy=false) => {
@@ -205,6 +206,28 @@ try {
     await assert.rejects(blocked,/datos inconsistentes/);
     assert.equal(window.qa.writes.length,0,'Catálogo corrupto no se sobrescribe');
   }
+
+  // El guardado heredado sin revisión mantiene compatibilidad, pero rechaza
+  // documentos corruptos sin sobrescribirlos y también comprueba sesión.
+  for (const invalid of [
+    {businessId:'tenant-b',items:[],revision:'cross-legacy'},
+    {businessId:'tenant-a',revision:'bad-legacy'},
+  ]) {
+    reset();
+    const blocked = window.qa.saveCatalog('tenant-a',[item],'Prueba');
+    await passCatalogReads();
+    await resolveRead(3,{exists:()=>true,data:()=>invalid},'businesses/tenant-a/catalog/menu_catalog');
+    await assert.rejects(blocked,/datos inconsistentes/);
+    assert.equal(window.qa.writes.length,0,'Guardado heredado no modifica catálogo corrupto');
+  }
+
+  reset();
+  const legacyValid = window.qa.saveCatalog('tenant-a',[item],'Prueba');
+  await passCatalogReads();
+  await resolveRead(3,{exists:()=>true,data:()=>({businessId:'tenant-a',items:[],revision:'old'})},'businesses/tenant-a/catalog/menu_catalog');
+  await legacyValid;
+  assert.equal(window.qa.writes.length,1,'Guardado heredado válido conserva compatibilidad');
+  assert.equal(window.qa.writes[0].transaction,true);
 
   // Publicación legítima: membresía OWNER, raíz y relectura de permisos.
   reset();
