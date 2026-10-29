@@ -121,11 +121,13 @@ export async function saveBrandingThroughUI({tenant,user,bridge,name}) {
   });
 }
 
-export async function addCatalogProductThroughUI({businessId,businessName,user,bridge,productName,price}) {
+export async function addCatalogProductThroughUI({businessId,businessName,user,bridge,productName,price,expectedExistingItemName}) {
   return withView({bridge,user},async(window,document)=>{
     window.qa.mountCatalog(businessId,businessName);
-    await waitFor(()=>!!button(document,'Producto') && !!document.querySelector('input[placeholder="Nombre del producto"]'),
-      'Catálogo real cargado desde Firestore emulado');
+    await waitFor(()=>!!button(document,'Producto') && !!document.querySelector('input[placeholder="Nombre del producto"]')
+      && (!expectedExistingItemName || [...document.querySelectorAll('input[placeholder="Nombre del producto"]')]
+        .some(input=>input.value===expectedExistingItemName)),
+      'Esperar el catálogo más reciente antes de editar en React');
     button(document,'Producto').click();
     await waitFor(()=>document.querySelectorAll('input[placeholder="Nombre del producto"]').length>=2,
       'Nuevo producto editable');
