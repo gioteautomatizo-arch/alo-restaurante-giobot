@@ -121,7 +121,7 @@ export async function saveBrandingThroughUI({tenant,user,bridge,name}) {
   });
 }
 
-export async function addCatalogProductThroughUI({businessId,businessName,user,bridge,productName,price,expectedExistingItemName}) {
+export async function addCatalogProductThroughUI({businessId,businessName,user,bridge,productName,price,expectedExistingItemName = null}) {
   return withView({bridge,user},async(window,document)=>{
     window.qa.mountCatalog(businessId,businessName);
     await waitFor(()=>!!button(document,'Producto') && !!document.querySelector('input[placeholder="Nombre del producto"]')
