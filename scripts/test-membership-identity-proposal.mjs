@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { buildMembershipIdentityProposalRules } from './membership-identity-proposal-rules.mjs';
 
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080',
@@ -102,6 +102,67 @@ async function scenario(rules, diagnostic) {
       await assertSucceeds(getDoc(rootA));
     }
 
+    // El objetivo de una operación también debe coincidir con su clave.
+    // La identidad del actor puede ser legítima en A/B y aun así no debe
+    // permitir modificar una ficha con ID de B y datos internos de A.
+    const targetAsSelf = doc(env.authenticatedContext('target').firestore(),
+      'businessMemberships', b + '_target');
+    const targetAsAlice = doc(alice, 'businessMemberships', b + '_target');
+    const malformedTargets = [
+      {
+        label: 'tenant-interno-A-en-clave-B',
+        data: membership(a, 'target', 'CASHIER'),
+        managerRef: targetAsAlice,
+        selfRef: targetAsSelf,
+      },
+      {
+        label: 'uid-interno-alice-en-clave-target',
+        data: membership(b, 'alice', 'CASHIER'),
+        managerRef: doc(bob, 'businessMemberships', b + '_target'),
+        selfRef: targetAsAlice,
+      },
+    ];
+    for (const anomaly of malformedTargets) {
+      await env.withSecurityRulesDisabled(async ctx => {
+        await setDoc(doc(ctx.firestore(), 'businessMemberships', b + '_target'), anomaly.data);
+      });
+      const read = getDoc(anomaly.selfRef);
+      if (diagnostic) await assertSucceeds(read);
+      else await assertFails(read);
+      const edit = updateDoc(anomaly.managerRef, { role: 'KITCHEN' });
+      if (diagnostic) await assertSucceeds(edit);
+      else await assertFails(edit);
+      const remove = deleteDoc(anomaly.selfRef);
+      if (diagnostic) await assertSucceeds(remove);
+      else await assertFails(remove);
+      if (!diagnostic) {
+        await env.withSecurityRulesDisabled(async ctx => {
+          const remaining = await getDoc(doc(ctx.firestore(), 'businessMemberships', b + '_target'));
+          assert.equal(remaining.exists(), true,
+            'El candidato no debe modificar una membresía objetivo discordante: ' + anomaly.label);
+          assert.equal(remaining.data().role, 'CASHIER');
+        });
+      }
+    }
+
+    // Compatibilidad: un empleado legítimo puede consultar su ficha revocada
+    // para saber por qué perdió acceso, y puede abandonarla. No exigir active
+    // al documento objetivo; solo integridad de ruta e identidad.
+    await env.withSecurityRulesDisabled(async ctx => {
+      await setDoc(doc(ctx.firestore(), 'businessMemberships', b + '_staff'),
+        membership(b, 'staff', 'CASHIER', false));
+    });
+    const staffSelf = doc(env.authenticatedContext('staff').firestore(),
+      'businessMemberships', b + '_staff');
+    await assertSucceeds(getDoc(staffSelf));
+    await assertSucceeds(updateDoc(doc(bob, 'businessMemberships', b + '_staff'),
+      { active: false, role: 'KITCHEN' }));
+    await assertSucceeds(deleteDoc(staffSelf));
+    await env.withSecurityRulesDisabled(async ctx => {
+      await setDoc(doc(ctx.firestore(), 'businessMemberships', b + '_staff'),
+        membership(b, 'staff', 'CASHIER'));
+    });
+
     // Un empleado con membresía auténtica en ambos negocios sigue trabajando.
     await env.withSecurityRulesDisabled(async ctx => {
       await setDoc(doc(ctx.firestore(), 'businessMemberships', b + '_alice'),
@@ -120,9 +181,9 @@ async function scenario(rules, diagnostic) {
     await assertFails(getDoc(doc(visitor, 'businesses', b)));
 
     if (diagnostic) {
-      console.warn('PENDIENTE SEGURIDAD STAGED: membresías con ruta correcta y tenant/UID interno falso permiten leer negocio ajeno, editar catálogo y gestionar empleados; solo datos sintéticos.');
+      console.warn('PENDIENTE SEGURIDAD STAGED: membresías con ruta correcta y tenant/UID interno falso permiten leer negocio ajeno, editar catálogo, gestionar empleados y leer/editar/borrar fichas objetivo mal asociadas; solo datos sintéticos.');
     } else {
-      console.log('PASS (candidato NO desplegado): membresías mal asociadas, incompletas, con rol inválido o revocadas no autorizan raíz, catálogo, empleados, perfil ni altas de membresía; A/B, roles legítimos y Super Admin conservados.');
+      console.log('PASS (candidato NO desplegado): fichas objetivo con clave/identidad discordante no se leen, editan ni borran; membresías legítimas, lectura propia revocada, A/B y Super Admin conservados.');
     }
   } finally {
     await env.cleanup();
