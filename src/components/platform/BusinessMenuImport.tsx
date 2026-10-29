@@ -76,6 +76,8 @@ export const BusinessMenuImport: React.FC<{
   onOpenCatalog?: () => void;
 }> = ({ businessId, businessName, onBack, onOpenCatalog }) => {
   const [loading, setLoading] = useState(true);
+  const [draftReadFailed, setDraftReadFailed] = useState(false);
+  const [draftReadAttempt, setDraftReadAttempt] = useState(0);
   const [sourceImageUrl, setSourceImageUrl] = useState('');
   const [localPreview, setLocalPreview] = useState('');
   const [items, setItems] = useState<MenuImportDraftItem[]>([]);
@@ -99,6 +101,8 @@ export const BusinessMenuImport: React.FC<{
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setDraftReadFailed(false);
+    setError('');
     getMenuImportDraft(businessId)
       .then((draft) => {
         if (cancelled || !draft) return;
@@ -107,7 +111,10 @@ export const BusinessMenuImport: React.FC<{
       })
       .catch((err) => {
         console.error('[BusinessMenuImport] no se pudo leer el borrador:', err);
-        if (!cancelled) setError('No pudimos cargar tu borrador guardado. Puedes empezar uno nuevo.');
+        if (!cancelled) {
+          setDraftReadFailed(true);
+          setError('No pudimos comprobar tu borrador guardado. Reintenta la lectura antes de editar para evitar perder productos.');
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -115,7 +122,7 @@ export const BusinessMenuImport: React.FC<{
     return () => {
       cancelled = true;
     };
-  }, [businessId]);
+  }, [businessId, draftReadAttempt]);
 
   // 2) Escuchar el catálogo actual para no duplicar productos al publicar.
   useEffect(
@@ -134,7 +141,8 @@ export const BusinessMenuImport: React.FC<{
     [businessId],
   );
 
-  const persist = async (override?: { sourceImageUrl?: string }) => {
+  const persist = async (override?: { sourceImageUrl?: string }): Promise<boolean> => {
+    if (loading || draftReadFailed) return false;
     setSaveState('saving');
     try {
       await saveMenuImportDraft(
@@ -147,10 +155,12 @@ export const BusinessMenuImport: React.FC<{
       );
       dirty.current = false;
       setSaveState('saved');
+      return true;
     } catch (err) {
       console.error('[BusinessMenuImport] no se pudo guardar el borrador:', err);
       setSaveState('error');
       setError('No se pudo guardar el borrador. Revisa tu conexión e inténtalo de nuevo.');
+      return false;
     }
   };
 
@@ -199,7 +209,7 @@ export const BusinessMenuImport: React.FC<{
   const removeItem = (id: string) => edit((current) => current.filter((item) => item.id !== id));
 
   const handleBack = async () => {
-    if (dirty.current) await persist();
+    if (dirty.current && !await persist()) return;
     onBack();
   };
 
@@ -363,7 +373,11 @@ export const BusinessMenuImport: React.FC<{
 
     setPublishing(true);
     try {
-      await saveBusinessCatalog(businessId, [...existing, ...toAdd], actorName());
+      // El importador no debe reemplazar cambios que llegaron de otra pestaña.
+      // El servicio compara esta revisión en una transacción Firestore.
+      await saveBusinessCatalog(
+        businessId, [...existing, ...toAdd], actorName(), catalog?.revision || catalog?.updatedAt || null,
+      );
       try {
         await clearMenuImportDraft(businessId);
       } catch (err) {
@@ -462,6 +476,13 @@ export const BusinessMenuImport: React.FC<{
           <div className="flex items-center justify-center gap-3 rounded-[1.75rem] border border-[#3A3022] bg-[#111111] p-10 text-sm text-[#C8C8C8]">
             <Loader2 className="h-5 w-5 animate-spin" /> Abriendo tu borrador…
           </div>
+        ) : draftReadFailed ? (
+          <section role="alert" className="rounded-[1.75rem] border border-red-400/40 bg-red-950/40 p-6 text-sm text-red-100">
+            <p>No se pudo verificar el borrador de este negocio. No permitiremos editar ni publicar hasta recuperarlo.</p>
+            <button type="button" className="mt-4 rounded-xl bg-[#D6A34A] px-4 py-3 font-black text-[#050505]" onClick={() => setDraftReadAttempt((value) => value + 1)}>
+              Reintentar borrador
+            </button>
+          </section>
         ) : (
           <>
             <section className="rounded-[1.75rem] border border-[#3A3022] bg-[#111111] p-5 sm:p-7">
