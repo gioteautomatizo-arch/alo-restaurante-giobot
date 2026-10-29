@@ -40,6 +40,8 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-tenant-update-isolation-test --config firebase.launch-security-emulator.json "node scripts/test-tenant-update-isolation-proposal.mjs"
       - name: Test atomic owner registration and employee access
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-owner-security-test --config firebase.launch-security-emulator.json "node scripts/test-owner-registration.mjs"
+      - name: Test synthetic two-business backup and restore rehearsal (Firestore Emulator only)
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-restore-rehearsal-test --config firebase.launch-security-emulator.json "node scripts/test-business-restore-rehearsal.mjs"
       - name: Test isolated atomic OWNER rule proposal (no rule deployment)
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-atomic-owner-proposal-test --config firebase.launch-security-emulator.json "node scripts/test-owner-atomic-proposal.mjs"
       - name: Diagnose malformed tenant memberships and test isolated identity gate (no rule deployment)
