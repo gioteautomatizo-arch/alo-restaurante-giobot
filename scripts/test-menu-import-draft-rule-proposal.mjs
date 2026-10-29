@@ -80,6 +80,7 @@ const seed=async env=>{
     for(const [id,catalogBusinessId] of [['tenant-h','tenant-b'],['tenant-i',undefined],['tenant-j',42]]){
       await setDoc(doc(db,'businesses',id),{restaurantId:id,ownerUserId:'owner-'+id});
       await setDoc(doc(db,'publicBusinessProfiles',id),{businessId:id,restaurantId:id,published:true});
+      await setDoc(doc(db,'businessMemberships',id+'_owner-'+id),{restaurantId:id,userId:'owner-'+id,role:'OWNER',active:true});
       await setDoc(doc(db,'businesses',id,'catalog','menu_catalog'),{
         ...(catalogBusinessId === undefined ? {} : {businessId:catalogBusinessId}),
         items:[{name:'No debe exponerse'}],
