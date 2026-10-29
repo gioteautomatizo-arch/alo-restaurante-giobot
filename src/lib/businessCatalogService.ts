@@ -47,7 +47,7 @@ function validCatalogManagerMembership(
     && membership.active === true && catalogManagerRoles.includes(membership.role as BusinessRole);
 }
 
-async function assertCatalogManager(businessId: string): Promise<string> {
+export async function assertCatalogManager(businessId: string): Promise<string> {
   const user = auth.currentUser;
   if (!user) throw new Error('Debes iniciar sesión para administrar el catálogo.');
   if (!businessId.trim()) throw new Error('La identidad del negocio es inválida.');
