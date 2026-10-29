@@ -55,6 +55,70 @@ function membershipRef(businessId: string, userId: string) {
   return doc(db, COLLECTION, `${businessId}_${userId}`);
 }
 
+type EmployeeManagerAccess = { uid: string; role: BusinessRole };
+
+function assertEmployeeSession(uid: string): void {
+  if (auth.currentUser?.uid !== uid) {
+    throw new Error('La sesión cambió durante la gestión de empleados. Vuelve a iniciar sesión.');
+  }
+}
+
+/**
+ * Preflight del responsable antes de abrir Auth secundaria o escribir.
+ * Las reglas Firestore siguen siendo la autoridad en el commit final.
+ */
+async function assertEmployeeManager(businessId: string, targetRole?: BusinessRole): Promise<EmployeeManagerAccess> {
+  if (!businessId.trim() || businessId.includes('/')) {
+    throw new Error('Identificador de negocio inválido.');
+  }
+  const user = auth.currentUser;
+  if (!user) throw new Error('Inicia sesión para administrar empleados.');
+  const snap = await getDoc(membershipRef(businessId, user.uid));
+  assertEmployeeSession(user.uid);
+  const membership = snap.exists() ? snap.data() as Partial<BusinessEmployee> : null;
+  if (!membership || snap.id !== `${businessId}_${user.uid}`
+      || membership.restaurantId !== businessId || membership.userId !== user.uid
+      || membership.active !== true
+      || !(['OWNER', 'ADMIN', 'MANAGER'] as BusinessRole[]).includes(membership.role as BusinessRole)) {
+    throw new Error('No tienes permiso para administrar empleados de este negocio.');
+  }
+  const role = membership.role as BusinessRole;
+  if (targetRole && !canManageEmployeeRole(role, targetRole)) {
+    throw new Error('Tu rol no permite administrar ese puesto.');
+  }
+  const businessSnap = await getDoc(doc(db, 'businesses', businessId));
+  assertEmployeeSession(user.uid);
+  const business = businessSnap.exists() ? businessSnap.data() : null;
+  if (!business || business.restaurantId !== businessId
+      || (role === 'OWNER' && business.ownerUserId !== undefined && business.ownerUserId !== user.uid)) {
+    throw new Error('La identidad del negocio o propietario es inconsistente.');
+  }
+  return { uid: user.uid, role };
+}
+
+async function assertEditableEmployee(businessId: string, userId: string, newRole?: BusinessRole): Promise<string> {
+  const manager = await assertEmployeeManager(businessId, newRole);
+  if (!userId.trim() || userId.includes('/') || userId === manager.uid) {
+    throw new Error('No puedes modificar tu propia membresía desde Empleados.');
+  }
+  const snap = await getDoc(membershipRef(businessId, userId));
+  assertEmployeeSession(manager.uid);
+  const target = snap.exists() ? snap.data() as Partial<BusinessEmployee> : null;
+  if (!target || snap.id !== `${businessId}_${userId}`
+      || target.restaurantId !== businessId || target.userId !== userId
+      || !MANAGEABLE_EMPLOYEE_ROLES.includes(target.role as BusinessRole)) {
+    throw new Error('La membresía del empleado es inexistente o inconsistente.');
+  }
+  if (!canManageEmployeeRole(manager.role, target.role as BusinessRole)) {
+    throw new Error('Tu rol no permite modificar a este empleado.');
+  }
+  const latest = await assertEmployeeManager(businessId, newRole);
+  if (latest.uid !== manager.uid || latest.role !== manager.role) {
+    throw new Error('Tus permisos cambiaron durante la gestión de empleados.');
+  }
+  return manager.uid;
+}
+
 function secondaryAuthName(businessId: string) {
   return `employee-creator-${businessId}`;
 }
@@ -222,6 +286,8 @@ export async function createBusinessEmployee(input: {
     );
   }
 
+  // No crear cuentas Auth antes de verificar el permiso y la raíz del tenant.
+  const manager = await assertEmployeeManager(input.businessId, input.role);
   const userId = input.accountMode === 'existing'
     ? await findExistingEmployeeAuth(email, input.password, input.businessId)
     : await createEmployeeAuth(email, input.password, input.businessId);
@@ -231,9 +297,9 @@ export async function createBusinessEmployee(input: {
   // sesión primaria siga siendo la del responsable antes de tocar Firestore.
   const primaryAuth = getAuth();
   const managerUser = primaryAuth.currentUser;
-  if (!managerUser) {
+  if (!managerUser || managerUser.uid !== manager.uid || auth.currentUser?.uid !== manager.uid) {
     throw new Error(
-      'La cuenta del empleado se validó, pero se perdió la sesión del responsable. Vuelve a iniciar sesión como propietario y repite la operación.'
+      'La cuenta del empleado se validó, pero cambió la sesión del responsable. Vuelve a iniciar sesión antes de vincularla.'
     );
   }
 
@@ -247,6 +313,13 @@ export async function createBusinessEmployee(input: {
     throw new Error(
       'Ese correo pertenece a la sesión del propietario. No necesitas agregarlo como empleado; usa el correo de la persona que tendrá acceso.'
     );
+  }
+
+  // Una cuenta Auth recién creada no concede permisos: volver a validar
+  // el responsable y el rol antes de enviar la escritura atómica a Firestore.
+  const latestManager = await assertEmployeeManager(input.businessId, input.role);
+  if (latestManager.uid !== manager.uid || latestManager.role !== manager.role) {
+    throw new Error('Tus permisos cambiaron durante el alta del empleado. No se vinculó la cuenta.');
   }
 
   const now = new Date().toISOString();
@@ -290,24 +363,38 @@ export async function updateBusinessEmployee(
   userId: string,
   changes: { role?: BusinessRole; active?: boolean; name?: string },
 ): Promise<void> {
-  if (changes.role && !MANAGEABLE_EMPLOYEE_ROLES.includes(changes.role)) {
+  if (changes.role !== undefined && !MANAGEABLE_EMPLOYEE_ROLES.includes(changes.role)) {
     throw new Error('No puedes asignar ese rol desde Empleados.');
   }
-
+  if (changes.active !== undefined && typeof changes.active !== 'boolean') {
+    throw new Error('El estado del empleado es inválido.');
+  }
+  if (changes.name !== undefined && (typeof changes.name !== 'string' || !changes.name.trim())) {
+    throw new Error('El nombre del empleado es inválido.');
+  }
+  if (changes.role === undefined && changes.active === undefined && changes.name === undefined) {
+    throw new Error('No hay cambios válidos para guardar.');
+  }
+  const managerUid = await assertEditableEmployee(businessId, userId, changes.role);
   const changesToApply = {
-    ...changes,
+    ...(changes.role !== undefined ? { role: changes.role } : {}),
+    ...(changes.active !== undefined ? { active: changes.active } : {}),
     ...(changes.name !== undefined ? { name: changes.name.trim() } : {}),
     updatedAt: new Date().toISOString(),
   };
+  assertEmployeeSession(managerUid);
   await updateDoc(membershipRef(businessId, userId), changesToApply);
 }
 
 export async function removeBusinessEmployee(businessId: string, userId: string): Promise<void> {
+  const managerUid = await assertEditableEmployee(businessId, userId);
+  assertEmployeeSession(managerUid);
   const batch = writeBatch(db);
   batch.delete(membershipRef(businessId, userId));
   batch.update(doc(db, 'businesses', businessId), {
     employeeUserIds: arrayRemove(userId),
   });
+  assertEmployeeSession(managerUid);
   await batch.commit();
 }
 
