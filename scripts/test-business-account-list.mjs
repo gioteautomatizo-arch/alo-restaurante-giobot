@@ -52,7 +52,9 @@ const waitFor = async (condition, message) => {
   }
   assert.fail(message);
 };
-const snap = id => ({exists: () => true, data: () => ({restaurantId: id, branding: {restaurantName: id}})});
+const snap = (id, extra = {}) => ({exists: () => true, data: () => ({
+  restaurantId: id, branding: {restaurantName: id, publicSlug: id}, ...extra,
+})});
 const member = (id, uid = 'owner-a', role = 'OWNER', active = true) => ({restaurantId:id, userId:uid, role, active});
 const memberSnap = data => ({exists: () => true, data: () => data});
 try {
@@ -69,11 +71,56 @@ try {
   window.qa.pending = [];
   const second = window.qa.load('owner-a');
   await waitFor(() => window.qa.pending.length === 2, 'Retry must read both tenants');
-  window.qa.pending[0].resolve(snap('tenant-a'));
+  window.qa.pending[0].resolve(snap('tenant-a', {
+    assistant: {customInstructions: 'PRIVADO-NO-DEVOLVER'},
+    privateSettings: {token: 'PRIVADO-NO-DEVOLVER'},
+  }));
   window.qa.pending[1].resolve(snap('tenant-b'));
-  assert.equal((await second).map(item => item.restaurantId).join(','), 'tenant-a,tenant-b');
+  const cards = await second;
+  assert.equal(cards.map(item => item.restaurantId).join(','), 'tenant-a,tenant-b');
+  assert.deepEqual(Object.keys(cards[0]).sort(), ['branding', 'restaurantId'],
+    'El Portal heredado solo recibe una tarjeta, nunca la raíz completa');
+  assert.deepEqual(Object.keys(cards[0].branding).sort(), ['publicSlug', 'restaurantName']);
+  assert.equal(JSON.stringify(cards).includes('PRIVADO-NO-DEVOLVER'), false);
+
+  // Una membresía OWNER mal asociada no puede presentar la raíz de otro
+  // propietario. Las raíces antiguas sin ownerUserId siguen siendo compatibles.
+  window.qa.memberships = [member('tenant-a')];
+  window.qa.pending = [];
+  const wrongOwner = window.qa.load('owner-a');
+  const wrongOwnerRejected = assert.rejects(wrongOwner, /No pudimos cargar todos tus negocios/);
+  await waitFor(() => window.qa.pending.length === 1, 'OWNER/raíz pendiente');
+  window.qa.pending[0].resolve(snap('tenant-a', {ownerUserId: 'owner-b'}));
+  await wrongOwnerRejected;
+
+  window.qa.pending = [];
+  const historicOwner = window.qa.load('owner-a');
+  await waitFor(() => window.qa.pending.length === 1, 'OWNER histórico pendiente');
+  window.qa.pending[0].resolve(snap('tenant-a'));
+  assert.equal((await historicOwner)[0].restaurantId, 'tenant-a',
+    'Una raíz histórica sin ownerUserId sigue disponible');
+
+  // Un empleado legítimo no tiene que ser el propietario de la raíz.
+  window.qa.memberships = [member('tenant-a', 'owner-a', 'WAITER')];
+  window.qa.pending = [];
+  const staff = window.qa.load('owner-a');
+  await waitFor(() => window.qa.pending.length === 1, 'Empleado pendiente');
+  window.qa.pending[0].resolve(snap('tenant-a', {ownerUserId: 'owner-b'}));
+  assert.equal((await staff)[0].restaurantId, 'tenant-a');
+
+  // La validación de branding debe coincidir con el candidato privado.
+  window.qa.memberships = [member('tenant-a')];
+  window.qa.pending = [];
+  const badBranding = window.qa.load('owner-a');
+  const brandingRejected = assert.rejects(badBranding, /No pudimos cargar todos tus negocios/);
+  await waitFor(() => window.qa.pending.length === 1, 'Branding inválido pendiente');
+  window.qa.pending[0].resolve(snap('tenant-a', {
+    branding: {restaurantName: 'A', publicSlug: 'tenant-a', logoUrl: 123},
+  }));
+  await brandingRejected;
 
   // No presentar una membresía rota como si el negocio no existiera en la cuenta.
+  window.qa.memberships = [member('tenant-a'), member('tenant-b')];
   window.qa.pending = [];
   const missing = window.qa.load('owner-a');
   const missingFailed = assert.rejects(missing, /No pudimos cargar todos tus negocios/);
