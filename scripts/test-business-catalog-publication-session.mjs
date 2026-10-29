@@ -11,7 +11,7 @@ const mocks = {
     'export function getDoc(ref) {return new Promise((resolve, reject) => window.qa.pending.push({ref,resolve,reject}));}',
     'export async function setDoc(ref, data, options) {window.qa.writes.push({ref,data,options});}',
     'export function onSnapshot() {throw new Error("No subscriptions in this test");}',
-    'export function runTransaction() {throw new Error("No se prueba siembra transaccional en este script");}',
+    'export async function runTransaction(_db, fn) { const transaction = {get: ref => getDoc(ref), set: (ref,data) => window.qa.writes.push({ref,data,transaction:true})}; return fn(transaction); }',
   ].join('\n'),
   './firebase': 'export const auth = {currentUser:null}; export const db = {}; window.qa.auth = auth;',
   './catalogOptions': 'export const cleanOptionGroups = groups => groups || [];',
@@ -20,9 +20,9 @@ const mocks = {
 const bundle = await build({
   absWorkingDir: root, bundle: true, write: false, format: 'iife', platform: 'browser',
   stdin: {resolveDir: root, loader: 'js', contents: [
-    "import {saveBusinessCatalog} from './src/lib/businessCatalogService';",
+    "import {saveBusinessCatalog, seedBusinessCatalogIfMissing} from './src/lib/businessCatalogService';",
     "import {setBusinessPublication} from './src/lib/businessPublicProfileService';",
-    'window.qa.saveCatalog = saveBusinessCatalog;',
+    'window.qa.saveCatalog = saveBusinessCatalog; window.qa.seedCatalog = seedBusinessCatalogIfMissing;',
     'window.qa.publish = setBusinessPublication;',
   ].join('\n')},
   plugins: [{name:'mock-tenant-auth', setup(build) {
@@ -62,6 +62,15 @@ const resolveRead = async (index, snapshot, expectedPath) => {
   assert.equal(window.qa.pending[index].ref.path,expectedPath);
   window.qa.pending[index].resolve(snapshot);
 };
+const passCatalogReads = async (id='tenant-a', uid='owner-a', role='OWNER', legacy=false) => {
+  await resolveRead(0,membership(uid,role,id),'businessMemberships/'+id+'_'+uid);
+  await resolveRead(1,businessRoot(id,uid,legacy),'businesses/'+id);
+  await resolveRead(2,membership(uid,role,id),'businessMemberships/'+id+'_'+uid);
+};
+const passCatalog = async (promise, id='tenant-a', uid='owner-a', role='OWNER', legacy=false) => {
+  await passCatalogReads(id,uid,role,legacy);
+  await promise;
+};
 const passOwner = async (promise, id='tenant-a', uid='owner-a', legacy=false) => {
   await resolveRead(0,membership(uid,'OWNER',id),'businessMemberships/'+id+'_'+uid);
   await resolveRead(1,businessRoot(id,uid,legacy),'businesses/'+id);
@@ -72,10 +81,7 @@ try {
   window.eval(bundle.outputFiles[0].text);
   reset();
   const good = window.qa.saveCatalog('tenant-a',[item],'Prueba');
-  await waitFor(() => window.qa.pending.length === 1,'Falta consulta de permisos catálogo A');
-  assert.equal(window.qa.pending[0].ref.path,'businessMemberships/tenant-a_owner-a');
-  window.qa.pending[0].resolve(membership('owner-a'));
-  await good;
+  await passCatalog(good);
   assert.equal(window.qa.writes.length,1);
   assert.equal(window.qa.writes[0].ref.path,'businesses/tenant-a/catalog/menu_catalog');
   assert.equal(window.qa.writes[0].data.businessId,'tenant-a');
@@ -112,11 +118,80 @@ try {
 
   reset('owner-b');
   const second = window.qa.saveCatalog('tenant-b',[{...item,id:'product-b'}],'Prueba B');
-  await waitFor(() => window.qa.pending.length === 1,'Falta consulta catálogo B');
-  assert.equal(window.qa.pending[0].ref.path,'businessMemberships/tenant-b_owner-b');
-  window.qa.pending[0].resolve(membership('owner-b','OWNER','tenant-b'));
-  await second;
+  await passCatalog(second,'tenant-b','owner-b');
   assert.equal(window.qa.writes[0].ref.path,'businesses/tenant-b/catalog/menu_catalog');
+
+  // El catálogo rechaza raíces ajenas, OWNER discordante y revocaciones
+  // sin intentar guardar; un MANAGER legítimo y OWNER histórico conservan acceso.
+  reset();
+  await passCatalog(window.qa.saveCatalog('tenant-a',[item],'Prueba'), 'tenant-a','owner-a','OWNER',true);
+  assert.equal(window.qa.writes.length,1,'OWNER histórico conserva acceso');
+
+  reset('manager-a');
+  await passCatalog(window.qa.saveCatalog('tenant-a',[item],'Prueba'), 'tenant-a','manager-a','MANAGER');
+  assert.equal(window.qa.writes.length,1,'MANAGER legítimo conserva acceso');
+
+  for (const root of [
+    businessRoot('tenant-a','owner-b'),
+    businessRoot('tenant-b','owner-a'),
+    {exists:()=>false,data:()=>null},
+  ]) {
+    reset();
+    const blocked = window.qa.saveCatalog('tenant-a',[item],'Prueba');
+    await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+    await resolveRead(1,root,'businesses/tenant-a');
+    await assert.rejects(blocked,/identidad del negocio o propietario/);
+    assert.equal(window.qa.writes.length,0,'Raíz inconsistente no modifica catálogo');
+  }
+
+  for (const latest of [
+    membership('owner-a','OWNER','tenant-a',false),
+    membership('owner-a','MANAGER'),
+    membership('owner-b'),
+    membership('owner-a','OWNER','tenant-b'),
+    {exists:()=>false,data:()=>null},
+  ]) {
+    reset();
+    const blocked = window.qa.saveCatalog('tenant-a',[item],'Prueba');
+    await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+    await resolveRead(1,businessRoot('tenant-a','owner-a'),'businesses/tenant-a');
+    await resolveRead(2,latest,'businessMemberships/tenant-a_owner-a');
+    await assert.rejects(blocked,/permisos del catálogo cambiaron/);
+    assert.equal(window.qa.writes.length,0,'Revocación no modifica catálogo');
+  }
+
+  reset();
+  const switchedAfterRoot = window.qa.saveCatalog('tenant-a',[item],'Prueba');
+  await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+  await waitFor(()=>window.qa.pending.length===2,'Falta raíz de catálogo');
+  window.qa.auth.currentUser={uid:'owner-b'};
+  window.qa.pending[1].resolve(businessRoot('tenant-a','owner-a'));
+  await assert.rejects(switchedAfterRoot,/La sesión cambió/);
+  assert.equal(window.qa.writes.length,0);
+
+  // Tanto la siembra como el guardado con revisión deben pasar el preflight.
+  reset();
+  const seed = window.qa.seedCatalog('tenant-a',[item],'Prueba');
+  await passCatalogReads();
+  await resolveRead(3,{exists:()=>false,data:()=>null},'businesses/tenant-a/catalog/menu_catalog');
+  assert.equal(await seed,true);
+  assert.equal(window.qa.writes.length,1);
+  assert.equal(window.qa.writes[0].transaction,true);
+
+  reset();
+  const versioned = window.qa.saveCatalog('tenant-a',[item],'Prueba',null);
+  await passCatalogReads();
+  await resolveRead(3,{exists:()=>false,data:()=>null},'businesses/tenant-a/catalog/menu_catalog');
+  await versioned;
+  assert.equal(window.qa.writes.length,1);
+  assert.equal(window.qa.writes[0].transaction,true);
+
+  reset();
+  const conflict = window.qa.saveCatalog('tenant-a',[item],'Prueba',null);
+  await passCatalogReads();
+  await resolveRead(3,{exists:()=>true,data:()=>({revision:'newer'})},'businesses/tenant-a/catalog/menu_catalog');
+  await assert.rejects(conflict,/CONFLICTO_CATALOGO/);
+  assert.equal(window.qa.writes.length,0);
 
   // Publicación legítima: membresía OWNER, raíz y relectura de permisos.
   reset();
@@ -230,7 +305,7 @@ try {
   await assert.rejects(revokedAdmin,/permisos de publicación cambiaron/);
   assert.equal(window.qa.writes.length,0);
 
-  console.log('PASS: catálogo y publicación A/B comprueban OWNER/raíz, rol, revocación entre lecturas, sesión, Super Admin y despublicación (Firebase simulado).');
+  console.log('PASS: catálogo (guardar, siembra, revisión) y publicación A/B comprueban OWNER/raíz, rol, revocación, sesión, Super Admin y despublicación (Firebase simulado).');
 } finally {
   window.close();
 }
