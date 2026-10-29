@@ -50,18 +50,26 @@ hasReason(inactive, 'OWNER_MEMBERSHIP_NOT_UNIQUE_AND_ACTIVE');
 
 // Compatibilidad del candidato de reglas: un registro histórico con rol
 // desconocido o active no booleano NO puede declararse limpio para el corte.
-for (const role of ['SUPER_ADMIN', 'ROOT', null, undefined]) {
+for (const role of ['SUPER_ADMIN', 'ROOT', null]) {
   const checked = single([root('alpha', 'alice'), member('alpha', 'alice'),
     member('alpha', 'staff', role)]);
   hasReason(checked, 'MEMBERSHIP_ROLE_OR_ACTIVE_INVALID');
   assert.equal(checked.status, 'HOLD_MANUAL_REVIEW');
 }
-for (const active of [null, 1, 'true', undefined]) {
+for (const active of [null, 1, 'true']) {
   const checked = single([root('alpha', 'alice'), member('alpha', 'alice'),
     member('alpha', 'staff', 'CASHIER', active)]);
   hasReason(checked, 'MEMBERSHIP_ROLE_OR_ACTIVE_INVALID');
   assert.equal(checked.status, 'HOLD_MANUAL_REVIEW');
 }
+const missingRole = member('alpha', 'staff', 'CASHIER');
+delete missingRole.data.role;
+hasReason(single([root('alpha', 'alice'), member('alpha', 'alice'), missingRole]),
+  'MEMBERSHIP_ROLE_OR_ACTIVE_INVALID');
+const missingActive = member('alpha', 'staff', 'CASHIER');
+delete missingActive.data.active;
+hasReason(single([root('alpha', 'alice'), member('alpha', 'alice'), missingActive]),
+  'MEMBERSHIP_ROLE_OR_ACTIVE_INVALID');
 const validInactiveStaff = single([root('alpha', 'alice'), member('alpha', 'alice'),
   member('alpha', 'staff', 'CASHIER', false)]);
 assert.equal(validInactiveStaff.status, 'CANDIDATE_FOR_MANUAL_BACKFILL_REVIEW');
