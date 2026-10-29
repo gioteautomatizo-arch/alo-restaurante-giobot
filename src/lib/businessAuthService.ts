@@ -370,7 +370,21 @@ export async function getBusinessForUser(
   assertCurrentBusinessSession(userId);
   if (!businessSnap.exists()) return null;
   const tenant = businessSnap.data() as RestaurantTenant;
-  return tenant.restaurantId === businessId ? tenant : null;
+  if (tenant.restaurantId !== businessId ||
+      (membership.role === 'OWNER' && tenant.ownerUserId !== undefined && tenant.ownerUserId !== userId)) {
+    return null;
+  }
+
+  // La membresía pudo revocarse mientras se leía la raíz. No entregar al
+  // Workspace una raíz privada usando permisos de una lectura obsoleta.
+  // Esta defensa de cliente no impide que Firestore ya haya enviado la raíz.
+  const latestMembershipSnap = await getDoc(membershipRef(businessId, userId));
+  assertCurrentBusinessSession(userId);
+  if (!latestMembershipSnap.exists()) return null;
+  const latestMembership = latestMembershipSnap.data() as RestaurantMembership;
+  if (!hasValidMembership(latestMembership, businessId, userId) ||
+      latestMembership.role !== membership.role) return null;
+  return tenant;
 }
 
 

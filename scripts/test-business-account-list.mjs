@@ -57,6 +57,25 @@ const snap = (id, extra = {}) => ({exists: () => true, data: () => ({
 })});
 const member = (id, uid = 'owner-a', role = 'OWNER', active = true) => ({restaurantId:id, userId:uid, role, active});
 const memberSnap = data => ({exists: () => true, data: () => data});
+
+// Simula la secuencia real: membresía -> raíz -> revalidación de membresía.
+// Ninguna lectura ni escritura sale de jsdom.
+const readIndividual = async ({first = member('tenant-a'), root = snap('tenant-a'),
+  last = first, expectedReads = 3} = {}) => {
+  window.qa.pending = [];
+  const request = window.qa.one('owner-a', 'tenant-a');
+  await waitFor(() => window.qa.pending.length === 1, 'Primera membresía pendiente');
+  window.qa.pending[0].resolve(memberSnap(first));
+  await waitFor(() => window.qa.pending.length === 2, 'Raíz privada pendiente');
+  window.qa.pending[1].resolve(root);
+  if (expectedReads === 3) {
+    await waitFor(() => window.qa.pending.length === 3, 'Revalidación pendiente');
+    window.qa.pending[2].resolve(last === null ? {exists: () => false} : memberSnap(last));
+  }
+  const result = await request;
+  assert.equal(window.qa.pending.length, expectedReads);
+  return result;
+};
 try {
   window.eval(bundle.outputFiles[0].text);
   window.qa.memberships = [member('tenant-a'), member('tenant-b')];
@@ -163,13 +182,41 @@ try {
   window.qa.auth.currentUser = {uid:'owner-a'};
 
   // Acceso individual: validar UID, tenant, estado y rol ANTES de leer negocio.
-  window.qa.pending = [];
-  const individual = window.qa.one('owner-a', 'tenant-a');
-  await waitFor(() => window.qa.pending.length === 1, 'Membresía individual pendiente');
-  window.qa.pending[0].resolve(memberSnap(member('tenant-a')));
-  await waitFor(() => window.qa.pending.length === 2, 'Negocio individual pendiente');
-  window.qa.pending[1].resolve(snap('tenant-a'));
-  assert.equal((await individual)?.restaurantId, 'tenant-a');
+  const individual = await readIndividual({root: snap('tenant-a', {ownerUserId: 'owner-a'})});
+  assert.equal(individual?.restaurantId, 'tenant-a');
+
+  // Una membresía OWNER no permite abrir una raíz con propietario explícito ajeno.
+  assert.equal(await readIndividual({
+    root: snap('tenant-a', {ownerUserId: 'owner-b'}), expectedReads: 2,
+  }), null, 'OWNER discordante no puede abrir Workspace de otro propietario');
+
+  // Mantener compatibilidad con OWNER histórico sin ownerUserId.
+  assert.equal((await readIndividual())?.restaurantId, 'tenant-a');
+
+  // Un empleado legítimo puede trabajar en una raíz de otro propietario.
+  assert.equal((await readIndividual({
+    first: member('tenant-a', 'owner-a', 'WAITER'),
+    root: snap('tenant-a', {ownerUserId: 'owner-b'}),
+    last: member('tenant-a', 'owner-a', 'WAITER'),
+  }))?.restaurantId, 'tenant-a');
+
+  // Revocación, borrado y cambio de rol entre la primera lectura y la raíz
+  // no deben entregar un tenant al Workspace con permisos caducados.
+  assert.equal(await readIndividual({
+    root: snap('tenant-a', {ownerUserId: 'owner-a'}),
+    last: member('tenant-a', 'owner-a', 'OWNER', false),
+  }), null, 'Revocación durante lectura debe bloquear el acceso');
+  assert.equal(await readIndividual({last: null}), null,
+    'Borrado de membresía durante lectura debe bloquear el acceso');
+  assert.equal(await readIndividual({
+    last: member('tenant-a', 'owner-a', 'WAITER'),
+  }), null, 'Cambio de rol durante lectura debe invalidar el permiso inicial');
+  assert.equal(await readIndividual({
+    last: member('tenant-b'),
+  }), null, 'Revalidación con tenant ajeno debe bloquear acceso');
+  assert.equal(await readIndividual({
+    last: member('tenant-a', 'owner-b'),
+  }), null, 'Revalidación con UID ajeno debe bloquear acceso');
 
   window.qa.pending = [];
   const wrongMember = window.qa.one('owner-a', 'tenant-a');
@@ -198,6 +245,20 @@ try {
   window.qa.pending[0].resolve(memberSnap(member('tenant-a', 'owner-a', 'OWNER', false)));
   assert.equal(await inactive, null, 'No aceptar membresía inactiva');
 
+  // Si la sesión cambia durante la segunda lectura de permisos, no se
+  // entrega el tenant aunque ambas membresías fueran válidas.
+  window.qa.pending = [];
+  const staleRecheck = window.qa.one('owner-a', 'tenant-a');
+  await waitFor(() => window.qa.pending.length === 1, 'Membresía antes de revalidar');
+  window.qa.pending[0].resolve(memberSnap(member('tenant-a')));
+  await waitFor(() => window.qa.pending.length === 2, 'Raíz antes de revalidar');
+  window.qa.pending[1].resolve(snap('tenant-a'));
+  await waitFor(() => window.qa.pending.length === 3, 'Segunda membresía pendiente');
+  window.qa.auth.currentUser = {uid:'owner-b'};
+  window.qa.pending[2].resolve(memberSnap(member('tenant-a')));
+  await assert.rejects(staleRecheck, /sesión cambió/);
+  window.qa.auth.currentUser = {uid:'owner-a'};
+
   window.qa.pending = [];
   const stale = window.qa.one('owner-a', 'tenant-a');
   await waitFor(() => window.qa.pending.length === 1, 'Membresía de A pendiente');
@@ -207,7 +268,7 @@ try {
   window.qa.pending[1].resolve(snap('tenant-a'));
   await assert.rejects(stale, /sesión cambió/, 'No devolver negocio privado tras cambiar cuenta');
   window.qa.auth.currentUser = {uid:'owner-a'};
-  console.log('PASS: lista, membresías y negocio individual aislados por UID/tenant/rol/sesión (Firestore simulado).');
+  console.log('PASS: lista, OWNER/raíz, revalidación tras revocación y negocio individual aislados por UID/tenant/rol/sesión (Firestore simulado).');
 } finally {
   window.close();
 }
