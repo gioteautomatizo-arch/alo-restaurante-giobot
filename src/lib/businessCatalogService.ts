@@ -35,20 +35,53 @@ export interface BusinessCatalogItem {
 }
 
 
+type CatalogMembership = { restaurantId?: string; userId?: string; role?: BusinessRole; active?: boolean };
+const catalogManagerRoles: BusinessRole[] = ['SUPER_ADMIN', 'OWNER', 'ADMIN', 'MANAGER'];
+
+function validCatalogManagerMembership(
+  membership: CatalogMembership | null,
+  businessId: string,
+  uid: string
+): membership is CatalogMembership & { role: BusinessRole } {
+  return !!membership && membership.restaurantId === businessId && membership.userId === uid
+    && membership.active === true && catalogManagerRoles.includes(membership.role as BusinessRole);
+}
+
 async function assertCatalogManager(businessId: string): Promise<string> {
   const user = auth.currentUser;
   if (!user) throw new Error('Debes iniciar sesión para administrar el catálogo.');
+  if (!businessId.trim()) throw new Error('La identidad del negocio es inválida.');
 
-  const membershipId = `${businessId}_${user.uid}`;
-  const membershipSnap = await getDoc(doc(db, 'businessMemberships', membershipId));
-  if (!membershipSnap.exists()) throw new Error('No tienes acceso a este negocio.');
-
-  const membership = membershipSnap.data() as { restaurantId?: string; userId?: string; role?: BusinessRole; active?: boolean };
-  const allowed: BusinessRole[] = ['SUPER_ADMIN', 'OWNER', 'ADMIN', 'MANAGER'];
-  if (membership.restaurantId !== businessId || membership.userId !== user.uid || membership.active !== true || !allowed.includes(membership.role as BusinessRole)) {
+  const membershipRef = doc(db, 'businessMemberships', `${businessId}_${user.uid}`);
+  const membershipSnap = await getDoc(membershipRef);
+  const membership = membershipSnap.exists() ? membershipSnap.data() as CatalogMembership : null;
+  if (!validCatalogManagerMembership(membership, businessId, user.uid)) {
     throw new Error('No tienes permiso para administrar el catálogo de este negocio.');
   }
-  // La lectura de permisos es asíncrona: Auth pudo cambiar durante getDoc.
+  if (auth.currentUser?.uid !== user.uid) {
+    throw new Error('La sesión cambió al comprobar permisos del catálogo. Vuelve a iniciar sesión.');
+  }
+
+  // La membresía no basta: comprobar la raíz y, para OWNER, el propietario
+  // explícito. Los negocios históricos sin ownerUserId siguen siendo válidos.
+  const rootSnap = await getDoc(doc(db, 'businesses', businessId));
+  const root = rootSnap.exists() ? rootSnap.data() : null;
+  if (!root || root.restaurantId !== businessId
+      || (membership.role === 'OWNER' && root.ownerUserId !== undefined && root.ownerUserId !== user.uid)) {
+    throw new Error('La identidad del negocio o propietario es inconsistente para el catálogo.');
+  }
+  if (auth.currentUser?.uid !== user.uid) {
+    throw new Error('La sesión cambió al comprobar permisos del catálogo. Vuelve a iniciar sesión.');
+  }
+
+  // Una revocación, cambio de rol o reasignación durante la lectura de la
+  // raíz debe bloquear la escritura. Las reglas Firestore siguen siendo la
+  // autoridad final; este preflight no es una transacción de permisos.
+  const latestSnap = await getDoc(membershipRef);
+  const latest = latestSnap.exists() ? latestSnap.data() as CatalogMembership : null;
+  if (!validCatalogManagerMembership(latest, businessId, user.uid) || latest.role !== membership.role) {
+    throw new Error('Los permisos del catálogo cambiaron. Vuelve a entrar y reintenta.');
+  }
   if (auth.currentUser?.uid !== user.uid) {
     throw new Error('La sesión cambió al comprobar permisos del catálogo. Vuelve a iniciar sesión.');
   }
