@@ -121,6 +121,9 @@ export async function saveMenuImportDraft(
     assertDraftSession(uid);
     const existing = await transaction.get(ref);
     assertDraftSession(uid);
+    if (existing.exists() && existing.data().businessId !== businessId) {
+      throw new Error('El borrador del negocio contiene datos inconsistentes. No se puede modificar sin revisarlo.');
+    }
     const current = existing.exists() ? storedVersion(existing.data() as Record<string, unknown>) : null;
     if (current !== expectedRevision) throw conflict();
     transaction.set(ref, payload);
@@ -137,6 +140,9 @@ export async function clearMenuImportDraft(businessId: string, expectedRevision:
     assertDraftSession(uid);
     const existing = await transaction.get(ref);
     assertDraftSession(uid);
+    if (existing.exists() && existing.data().businessId !== businessId) {
+      throw new Error('El borrador del negocio contiene datos inconsistentes. No se puede modificar sin revisarlo.');
+    }
     const current = existing.exists() ? storedVersion(existing.data() as Record<string, unknown>) : null;
     if (current !== expectedRevision) throw conflict();
     if (existing.exists()) transaction.delete(ref);
