@@ -115,7 +115,7 @@ try{
   assert.equal(window.qa.writes[0].ref.path,'businesses/tenant-a/catalog/menu_import_draft');
 
   reset();
-  const historical=window.qa.clear('tenant-a');
+  const historical=window.qa.clear('tenant-a','__legacy_no_version__');
   await allow('tenant-a','owner-a','OWNER','owner-a',true);
   await resolveRead(3,draft('tenant-a'),'businesses/tenant-a/catalog/menu_import_draft');
   await historical;
