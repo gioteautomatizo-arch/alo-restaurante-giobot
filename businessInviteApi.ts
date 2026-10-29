@@ -149,10 +149,39 @@ export function registerBusinessInviteApi(app: Express): void {
         return fail(res, 403, 'No tienes permiso para ver las invitaciones.');
       }
       const matches = await db.collection('business_invites').where('businessId', '==', businessId).limit(150).get();
-      const pending = matches.docs
-        .filter(snap => snap.data().status === 'PENDING')
-        .filter(snap => role !== 'MANAGER' || (snap.data().createdBy === actor.uid &&
-          OPERATIONAL_ROLES.includes(snap.data().role)))
+      const now = Date.now();
+      // La vista previa y la aceptación ya invalidan tokens vencidos o creados
+      // por empleados revocados. El listado debe aplicar el mismo contrato:
+      // nunca ofrecer una invitación que no podría aceptarse.
+      const candidates = matches.docs.filter(snap => {
+        const invite = snap.data();
+        return invite.status === 'PENDING'
+          && invite.businessId === businessId
+          && Number.isFinite(Number(invite.expiresAt))
+          && Number(invite.expiresAt) > now
+          && safeEmail(invite.email)
+          && ROLES.includes(invite.role as InviteRole)
+          && typeof invite.createdBy === 'string'
+          && /^[^/]{1,128}$/.test(invite.createdBy)
+          && (role !== 'MANAGER' || (invite.createdBy === actor.uid &&
+            OPERATIONAL_ROLES.includes(invite.role as InviteRole)));
+      });
+      const inviterUids = [...new Set(candidates.map(snap => snap.data().createdBy as string))];
+      // Una lectura agrupada evita N consultas independientes y no publica
+      // las membresías de otros empleados al cliente.
+      const inviterSnaps = inviterUids.length
+        ? await db.getAll(...inviterUids.map(uid =>
+          db.collection('businessMemberships').doc(businessId + '_' + uid)))
+        : [];
+      const inviters = new Map(inviterSnaps.map((snap, index) =>
+        [inviterUids[index], snap.data()]));
+      const pending = candidates
+        .filter(snap => {
+          const invite = snap.data();
+          const inviter = inviters.get(invite.createdBy);
+          return activeTenantMember(inviter, businessId, invite.createdBy)
+            && canInvite(inviter?.role, invite.role);
+        })
         .map(snap => exposedInvite(snap.id, snap.data()))
         .sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
       return res.json({ invites: pending });
