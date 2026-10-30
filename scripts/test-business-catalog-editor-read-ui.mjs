@@ -16,7 +16,7 @@ const mocks = {
     '  window.qa.subscriptions.push(entry);',
     '  return () => {entry.active=false;};',
     '}',
-    'export async function saveBusinessCatalog(businessId, items) {window.qa.writes.push({businessId,items});}',
+    'export async function saveBusinessCatalog(businessId, items, actorName, expectedRevision) {window.qa.writes.push({businessId,items,expectedRevision});}',
   ].join('\n'),
   '../../data/businessCatalogTemplates': 'export const getBusinessCatalogTemplate = () => null;',
   '../../lib/businessAuthService': 'export async function getBusinessForUser() {return {businessType:"restaurant"};}',
@@ -83,6 +83,7 @@ try {
   button('Guardar catálogo').click();
   await waitFor(()=>window.qa.writes.length===1,'Guardar debe funcionar después de recuperar');
   assert.equal(window.qa.writes[0].businessId,'tenant-a');
+  assert.equal(window.qa.writes[0].expectedRevision,'Producto A-revision');
   await waitFor(()=>visible('Catálogo guardado correctamente.'),'Falta confirmación del guardado A');
   // El usuario edita un borrador; un snapshot remoto NO puede borrarlo.
   const nameInput = document.querySelector('input[placeholder="Nombre del producto"]');
@@ -114,12 +115,50 @@ try {
   window.qa.subscriptions[3].callback(catalog('Producto B'));
   await waitFor(()=>visible('Producto B'),'B debe mostrar solo su catálogo');
   assert.equal(visible('Producto A'),false);
-  window.qa.subscriptions[3].onError({code:'unavailable'});
+
+  // Documento histórico EXISTENTE sin revisión: HOLD antes de permitir cualquier edición.
+  const historical = {businessId:'tenant-b',items:catalog('Histórico B').items};
+  window.qa.subscriptions[3].callback(historical);
+  await waitFor(()=>visible('Catálogo histórico en revisión (HOLD)'),'Falta HOLD histórico B');
+  assert(visible('Histórico B'),'Los productos históricos deben permanecer visibles en solo lectura');
+  assert.equal(button('Guardar catálogo'),undefined,'HOLD no debe permitir guardar');
+  assert.equal(button('Producto'),undefined,'HOLD no debe permitir agregar productos');
+  assert.equal(document.querySelector('input[placeholder="Nombre del producto"]'),null,'HOLD no debe montar inputs editables');
+  assert.equal(window.qa.writes.length,1,'HOLD no debe escribir');
+  button('Reintentar catálogo').click();
+  await waitFor(()=>window.qa.subscriptions.length===5,'HOLD debe permitir releer catálogo');
+  assert.equal(window.qa.subscriptions[3].active,false);
+  window.qa.subscriptions[3].callback(catalog('B obsoleto'));
+  await new Promise(resolve=>setTimeout(resolve,20));
+  assert.equal(visible('B obsoleto'),false,'No aceptar callback tardío después de HOLD');
+  window.qa.subscriptions[4].callback(catalog('Producto B recuperado'));
+  await waitFor(()=>visible('Producto B recuperado'),'Una revisión válida debe levantar HOLD');
+  assert(button('Guardar catálogo'),'Catálogo con revisión debe volver a ser editable');
+
+  // revision vacía y updatedAt de tipo incorrecto tampoco son una versión.
+  window.qa.subscriptions[4].callback({...historical,revision:' ',updatedAt:123});
+  await waitFor(()=>visible('Catálogo histórico en revisión (HOLD)'),'Revisión inválida debe activar HOLD');
+  assert.equal(button('Guardar catálogo'),undefined);
+  button('Reintentar catálogo').click();
+  await waitFor(()=>window.qa.subscriptions.length===6,'Falta reintento de revisión inválida');
+  // Un documento realmente AUSENTE es creación legítima, no HOLD.
+  window.qa.subscriptions[5].callback(null);
+  await waitFor(()=>!!button('Guardar catálogo'),'Catálogo ausente debe permitir crear');
+  assert.equal(visible('Catálogo histórico en revisión (HOLD)'),false);
+  // Un histórico con updatedAt válido puede usar CAS aunque no tenga revision.
+  window.qa.subscriptions[5].callback({...historical,updatedAt:'2026-10-26T00:00:00.000Z'});
+  await waitFor(()=>visible('Histórico B'),'Histórico con updatedAt válido debe abrir editor');
+  assert(button('Guardar catálogo'),'updatedAt válido debe permitir edición');
+  button('Guardar catálogo').click();
+  await waitFor(()=>window.qa.writes.length===2,'Debe guardar con revisión histórica válida');
+  assert.equal(window.qa.writes[1].businessId,'tenant-b');
+  assert.equal(window.qa.writes[1].expectedRevision,'2026-10-26T00:00:00.000Z');
+  window.qa.subscriptions[5].onError({code:'unavailable'});
   await waitFor(()=>!!button('Reintentar catálogo'),'Error posterior debe bloquear editor');
   assert.equal(button('Guardar catálogo'),undefined);
-  assert.equal(window.qa.writes.length,1,'Error B no debe escribir sobre ningún catálogo');
+  assert.equal(window.qa.writes.length,2,'Error B no debe escribir sobre ningún catálogo');
   assert.deepEqual(errors,[],'No deben aparecer errores de React');
-  console.log('PASS: lectura recuperable, borrador conservado ante snapshot remoto, conflicto bloquea guardado, descarte explícito y aislamiento de tenant (React + jsdom).');
+  console.log('PASS: editor React/jsdom, lectura recuperable, conflicto CAS, HOLD histórico sin escritura, recuperación, updatedAt válido y aislamiento A/B.');
 } finally {
   window.qa.unmount?.();
   window.close();
