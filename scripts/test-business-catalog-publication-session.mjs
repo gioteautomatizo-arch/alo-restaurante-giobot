@@ -208,27 +208,20 @@ try {
     assert.equal(window.qa.writes.length,0,'Catálogo corrupto no se sobrescribe');
   }
 
-  // El guardado heredado sin revisión mantiene compatibilidad, pero rechaza
-  // documentos corruptos sin sobrescribirlos y también comprueba sesión.
-  for (const invalid of [
-    {businessId:'tenant-b',items:[],revision:'cross-legacy'},
-    {businessId:'tenant-a',revision:'bad-legacy'},
+  // El guardado completo SIN revisión ya no puede sobrescribir cambios:
+  // rechaza antes de cualquier lectura o escritura, incluso para documentos
+  // válidos, cruzados o corruptos. Los consumidores actuales envían CAS.
+  for (const snapshot of [
+    {businessId:'tenant-a',items:[item],revision:'valid'},
+    {businessId:'tenant-b',items:[],revision:'cross'},
+    {businessId:'tenant-a',revision:'invalid'},
   ]) {
     reset();
     const blocked = window.qa.saveCatalog('tenant-a',[item],'Prueba');
-    await passCatalogReads();
-    await resolveRead(3,{exists:()=>true,data:()=>invalid},'businesses/tenant-a/catalog/menu_catalog');
-    await assert.rejects(blocked,/datos inconsistentes/);
-    assert.equal(window.qa.writes.length,0,'Guardado heredado no modifica catálogo corrupto');
+    await assert.rejects(blocked,/CONFLICTO_CATALOGO/);
+    assert.equal(window.qa.pending.length,0,'Sin versión no debe iniciar lecturas ni preflight');
+    assert.equal(window.qa.writes.length,0,'Sin versión no debe mutar '+snapshot.revision);
   }
-
-  reset();
-  const legacyValid = window.qa.saveCatalog('tenant-a',[item],'Prueba');
-  await passCatalogReads();
-  await resolveRead(3,{exists:()=>true,data:()=>({businessId:'tenant-a',items:[],revision:'old'})},'businesses/tenant-a/catalog/menu_catalog');
-  await legacyValid;
-  assert.equal(window.qa.writes.length,1,'Guardado heredado válido conserva compatibilidad');
-  assert.equal(window.qa.writes[0].transaction,true);
 
   // Los helpers heredados no deben reescribir otros productos desde un
   // currentItems obsoleto: la mutación se aplica al snapshot transaccional.
