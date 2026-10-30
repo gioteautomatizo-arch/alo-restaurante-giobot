@@ -95,7 +95,7 @@ export function registerBusinessDirectoryApi(app: Express): void {
             typeof data.branding.publicSlug !== 'string' ||
             (data.branding.logoUrl !== undefined && typeof data.branding.logoUrl !== 'string') ||
             (ownerBusinessIds.has(businessIds[index]) &&
-              data.ownerUserId !== undefined && data.ownerUserId !== uid)) {
+              data.ownerUserId !== uid)) {
           return fail(res, 409, 'No pudimos validar todos los negocios de tu cuenta.');
         }
         // El selector solo necesita ID, nombre, slug y logo. Nunca devolver la
@@ -130,6 +130,27 @@ export function registerBusinessDirectoryApi(app: Express): void {
             data.active !== true || data.role !== expected.role ||
             !ROLES.has(data.role)) {
           return fail(res, 409, 'Los permisos cambiaron durante la consulta. Reintenta.');
+        }
+      }
+      // El listado opt-in es una puerta de corte, no una ruta para legitimar
+      // OWNER históricos sin propietario comprobable. La segunda lectura de
+      // raíces OWNER reduce la ventana de cambios entre snapshot y respuesta.
+      // No es transaccional: requiere reglas y revisión de históricos aparte.
+      const ownerIds = businessIds.filter(id => ownerBusinessIds.has(id));
+      if (ownerIds.length) {
+        const currentOwnerRoots = await db.getAll(...ownerIds.map(
+          id => db.collection('businesses').doc(id)
+        ));
+        if (currentOwnerRoots.length !== ownerIds.length) {
+          return fail(res, 409, 'La propiedad de un negocio cambió durante la consulta. Reintenta.');
+        }
+        for (let index = 0; index < currentOwnerRoots.length; index++) {
+          const current = currentOwnerRoots[index];
+          const data = current.data();
+          if (!current.exists || current.id !== ownerIds[index] || !data ||
+              data.restaurantId !== ownerIds[index] || data.ownerUserId !== uid) {
+            return fail(res, 409, 'La propiedad de un negocio requiere revisión. Reintenta.');
+          }
         }
       }
       return res.status(200).json({ businesses });

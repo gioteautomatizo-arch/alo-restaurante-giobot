@@ -99,10 +99,32 @@ try {
   await db.collection('businesses').doc(a).update({ ownerUserId: alice.uid });
   assert.deepEqual(ids(await call(aliceToken)), [a, b], 'Recuperación del OWNER');
 
-  // El campo OWNER es opcional en raíces históricas; no bloquear su lectura.
+  // Un OWNER histórico sin propietario verificable no puede pasar la puerta
+  // opt-in. El cliente heredado sigue intacto hasta un corte autorizado.
   await db.collection('businesses').doc(a).update({ ownerUserId: FieldValue.delete() });
-  assert.deepEqual(ids(await call(aliceToken)), [a, b], 'Raíz histórica sin ownerUserId');
+  const historicalOwner = await call(aliceToken);
+  assert.equal(historicalOwner.status, 409, 'OWNER histórico sin ownerUserId exige revisión');
+  assert.equal('businesses' in historicalOwner.data, false, 'Sin lista parcial para OWNER histórico');
+  assert.deepEqual(ids(await call(bobToken)), [b], 'La raíz histórica de A no bloquea a B');
   await db.collection('businesses').doc(a).update({ ownerUserId: alice.uid });
+  assert.deepEqual(ids(await call(aliceToken)), [a, b], 'OWNER válido recupera el listado');
+
+  // Simular un cambio de propietario DESPUÉS de la primera lectura de raíces
+  // pero ANTES de responder. La revalidación final debe rechazar la lista.
+  for (const [label, mutate] of [
+    ['cambio de propietario en vuelo', () =>
+      db.collection('businesses').doc(a).update({ ownerUserId: bob.uid })],
+    ['propietario eliminado en vuelo', () =>
+      db.collection('businesses').doc(a).update({ ownerUserId: FieldValue.delete() })],
+  ]) {
+    afterRootsRead = mutate;
+    const staleOwner = await call(aliceToken);
+    assert.equal(staleOwner.status, 409, label + ': no autorizar snapshot OWNER obsoleto');
+    assert.equal('businesses' in staleOwner.data, false, label + ': no devolver tarjetas parciales');
+    await db.collection('businesses').doc(a).update({ ownerUserId: alice.uid });
+    assert.deepEqual(ids(await call(aliceToken)), [a, b], label + ': recuperación tras restaurar OWNER');
+    assert.deepEqual(ids(await call(bobToken)), [b], label + ': B permanece aislado');
+  }
 
   // Una ficha mal asociada nunca sale en JSON, ni se devuelve lista parcial.
   await ref(b, alice.uid).set({ ...member(b, alice.uid), restaurantId: a });
@@ -168,7 +190,8 @@ try {
   assert.equal(overflow.status, 409);
   assert.equal('businesses' in overflow.data, false);
 
-  console.log('PASS (API opt-in NO activada): Auth, A/B, salida mínima, OWNER/raíz, revocación/borrado/rol durante consulta, recuperación, errores y límite 100 en emuladores.');
+  console.log('PASS (API opt-in NO activada): Auth, A/B, salida mínima, OWNER/raíz estrictos, legado sin ownerUserId bloqueado, cambio de propietario durante consulta, revocación/rol/borrado, recuperación y límite 100 en emuladores.');
+  console.warn('PENDIENTE: revisión manual de OWNER históricos, costos de lecturas adicionales, reglas efectivas y corte compatible con clientes antiguos; la revalidación no es atómica.');
 } finally {
   afterRootsRead = null;
   db.getAll = originalGetAll;
