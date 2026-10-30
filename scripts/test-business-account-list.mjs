@@ -357,7 +357,7 @@ try {
   const recovered = window.qa.load('owner-a');
   await waitFor(() => window.qa.pending.length === 1, 'Raíz de B después de revocación A');
   window.qa.pending[0].resolve(snap('tenant-b', {ownerUserId:'owner-a'}));
-  assert.deepEqual((await recovered).map(item => item.restaurantId), ['tenant-b']);
+  assert.equal((await recovered).map(item => item.restaurantId).join(','), 'tenant-b');
   assert(window.qa.serverReads >= 6, 'El selector exige revalidación remota en cada lectura exitosa');
   console.log('PASS: selector A/B revalida membresías en servidor, bloquea revocación, cambio de rol, fallo de red y UID obsoleto (simulado).');
   console.log('PASS: lista, OWNER/raíz, revalidación tras revocación y negocio individual aislados por UID/tenant/rol/sesión (Firestore simulado).');
