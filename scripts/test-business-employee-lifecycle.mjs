@@ -32,6 +32,10 @@ const mocks = {
     '  update:(ref,data)=>actions.push({op:"update",path:ref.path,data}),',
     '  delete:ref=>actions.push({op:"delete",path:ref.path}),',
     '  commit:async()=>{',
+    '    if(window.qa.batchMode === "reject-cache") {',
+    '      window.qa.remoteDocs={};',
+    '      throw Object.assign(new Error("NETWORK_LOST_BEFORE_COMMIT"),{code:"unavailable"});',
+    '    }',
     '    if(window.qa.batchMode === "lost-after") {',
     '      window.qa.remoteDocs={...window.qa.docs};',
     '      for(const action of actions) {',
@@ -165,8 +169,7 @@ try {
 
   // El documento en caché puede parecer correcto, pero el servidor es autoridad.
   reset();
-  window.qa.batchError=Object.assign(new Error('network-lost'),{code:'unavailable'});
-  window.qa.remoteDocs={};
+  window.qa.batchMode='reject-cache';
   await assert.rejects(window.qa.create(input()),/No se pudo confirmar/);
   assert.equal(window.qa.created,1);
   assert.equal(window.qa.writes.length,0);
