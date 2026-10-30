@@ -31,3 +31,10 @@ Cobertura declarada de las cuatro colecciones, paginación y conteos; identidad 
 **Límites:** el preflight no verifica exhaustividad real, permisos efectivos, políticas de subcolecciones no inventariadas, todos los campos de producto, integridad de opciones de tipos no documentados, stock ni precios autoritativos del servidor. No verifica datos de producción ni la capacidad de restaurar respaldos. Una migración histórica, si llega a aprobarse, requiere revisión humana independiente, respaldo/restauración probados, control de versiones de clientes y pruebas A/B con Auth/Firestore aislados. No rellenar automáticamente identidades, fechas ni revisiones.
 
 **Orden beta:** paso 1 visual Android/iPad pendiente; paso 2 ABIERTO por OWNER atómico y borradores STAGED, reglas efectivas, inventario autorizado y recorrido integral A/B. Paso 3 checkout autoritativo/deduplicación PENDIENTE CRÍTICO. Paso 4 Caja/MIXTO histórico PENDIENTE aunque los diagnósticos impriman PASS o terminen con código 0. Pasos 5/6 no autorizados.
+
+
+## Prevención al guardar (30 de octubre de 2026)
+
+La auditoría offline anterior detecta catálogos históricos ambiguos. Además, la ruta real `buildCatalogPayload` del servicio de catálogo ahora ejecuta `assertUniqueOptionGroupIdentity` después de `cleanOptionGroups`: rechaza grupos con IDs o nombres repetidos, o IDs vacíos/con espacios, **antes** de iniciar una escritura. Los IDs de grupo son claves de selección del carrito: duplicarlos podría aplicar la misma selección a dos grupos y sumar extras más de una vez. El rechazo devuelve `OPCIONES_CATALOGO_INVALIDAS` para que el operador revise el producto; no migra ni repara datos históricos.
+
+Cobertura: `node --import tsx scripts/test-catalog-option-group-identity.mts` (puro) y `scripts/test-business-catalog-identity-emulator.mjs` (SDK real con dos tenants ficticios en Firebase Emulator), integrados en Quality/Security CI. No valida precios en servidor, no verifica catálogos reales ni cambia reglas desplegadas. El preflight histórico conserva `safeToDeploy: false`.
