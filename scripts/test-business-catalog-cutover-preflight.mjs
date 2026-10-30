@@ -63,5 +63,58 @@ blocked('inventario vacío',f=>{for(const key of ['businesses','businessMembersh
 const historical=run(f=>{delete f.businessCatalogs[0].revision;f.businessCatalogs[0].updatedAt='2026-01-01';});
 assert.equal(historical.status,'CANDIDATE_FOR_INDEPENDENT_REVIEW','updatedAt histórico válido sigue siendo compatible');
 assert.equal(auditBusinessCatalogCutover().status,'BLOCKED');
-console.log('PASS: preflight offline A/B de cobertura, OWNER, perfiles, publicación, identidad y revisión de catálogos; no autoriza despliegue.');
+// Opciones/extras son parte del contrato de precio y de la identidad de la
+// línea del carrito: no aprobar una migración que los normalizaría en silencio.
+const group = () => ({
+  id:'guiso', name:'Guiso', required:true, multiple:false,
+  choices:[{name:'Verde',price:0},{name:'Rojo',price:5}],
+});
+const withOptions = (label, mutate) => blocked(label, f => {
+  const item = f.businessCatalogs[0].items[0];
+  item.optionGroups = [group()];
+  mutate(item, f);
+}, 'CATALOG_OPTION_GROUP_INCOMPATIBLE');
+const validOptions = run(f => {
+  f.businessCatalogs[0].items[0].optionGroups = [group(), {
+    id:'extras',name:'Extras',required:false,multiple:true,
+    choices:[{name:'Queso',price:7.5},{name:'Salsa',price:0}],
+  }];
+});
+assert.equal(validOptions.status,'CANDIDATE_FOR_INDEPENDENT_REVIEW',
+  'Opciones válidas no deben bloquear catálogos existentes');
+assert.equal(run(f => {f.businessCatalogs[0].items[0].optionGroups=[];}).status,
+  'CANDIDATE_FOR_INDEPENDENT_REVIEW','Grupos opcionales vacíos son válidos');
+withOptions('grupos no array',item=>{item.optionGroups={};});
+withOptions('grupos null',item=>{item.optionGroups=null;});
+withOptions('grupo sin id',item=>{delete item.optionGroups[0].id;});
+withOptions('grupo sin nombre',item=>{item.optionGroups[0].name='';});
+withOptions('grupo repetido por id',item=>{
+  item.optionGroups.push({...group(),name:'Otro nombre'});
+});
+withOptions('grupo repetido por nombre',item=>{
+  item.optionGroups.push({...group(),id:'otro',name:'guiso'});
+});
+withOptions('obligatorio sin bandera booleana',item=>{item.optionGroups[0].required='true';});
+withOptions('múltiple sin bandera booleana',item=>{item.optionGroups[0].multiple=1;});
+withOptions('grupo sin opciones',item=>{item.optionGroups[0].choices=[];});
+withOptions('opciones no array',item=>{item.optionGroups[0].choices={};});
+withOptions('opción sin nombre',item=>{item.optionGroups[0].choices[0].name='';});
+withOptions('opción duplicada sin distinguir mayúsculas',item=>{
+  item.optionGroups[0].choices.push({name:'verde',price:4});
+});
+withOptions('precio extra negativo',item=>{item.optionGroups[0].choices[0].price=-2;});
+withOptions('precio extra NaN',item=>{item.optionGroups[0].choices[0].price=NaN;});
+withOptions('precio extra infinito',item=>{item.optionGroups[0].choices[0].price=Infinity;});
+withOptions('precio extra string',item=>{item.optionGroups[0].choices[0].price='5';});
+withOptions('precio extra ausente',item=>{delete item.optionGroups[0].choices[0].price;});
+const tenantBWithBadOptions = run(f => {
+  f.businessCatalogs[1].items[0].optionGroups=[{...group(),choices:[{name:'B',price:-3}]}];
+});
+assert.equal(tenantBWithBadOptions.status,'BLOCKED','Tenant B inválido bloquea el corte A/B');
+assert(tenantBWithBadOptions.issues.some(x=>x.code==='CATALOG_OPTION_GROUP_INCOMPATIBLE'
+  && x.source==='businessCatalogs' && x.index===1));
+assert(!JSON.stringify(tenantBWithBadOptions).includes('tenant-b'),
+  'No exponer identificadores de negocios en el diagnóstico');
+
+console.log('PASS: preflight offline A/B de cobertura, OWNER, perfiles, publicación, identidad, revisión y opciones/extras de catálogos; no autoriza despliegue.');
 console.warn('PENDIENTE: inventario real autorizado, reglas efectivas, OWNER atómico, respaldo/restauración y recorrido visual Android/iPad.');
