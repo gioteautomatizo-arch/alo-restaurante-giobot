@@ -21,8 +21,40 @@ const mocks = {
   'firebase/firestore': [
     'export const doc = (_db,...parts) => ({path:parts.join("/")});',
     'export const getDoc = async ref => {window.qa.reads.push(ref.path); window.qa.onRead?.(ref); const data=window.qa.docs[ref.path]; return {id:ref.path.split("/").at(-1),exists:()=>!!data,data:()=>data};};',
-    'export const getDocFromServer = async ref => {window.qa.serverReads++; if (window.qa.serverError) throw window.qa.serverError; return getDoc(ref);};',
-    'export const writeBatch = () => {const actions=[]; return {set:(ref,data)=>actions.push({op:"set",path:ref.path,data}),update:(ref,data)=>actions.push({op:"update",path:ref.path,data}),delete:ref=>actions.push({op:"delete",path:ref.path}),commit:async()=>{if(window.qa.batchError)throw window.qa.batchError; window.qa.writes.push(...actions);}};};',
+    'export const getDocFromServer = async ref => {',
+    '  window.qa.serverReads++; if (window.qa.serverError) throw window.qa.serverError;',
+    '  if (!window.qa.remoteDocs) return getDoc(ref);',
+    '  const data=window.qa.remoteDocs[ref.path];',
+    '  return {id:ref.path.split("/").at(-1),exists:()=>!!data,data:()=>data};',
+    '};',
+    'export const writeBatch = () => {const actions=[]; return {',
+    '  set:(ref,data)=>actions.push({op:"set",path:ref.path,data}),',
+    '  update:(ref,data)=>actions.push({op:"update",path:ref.path,data}),',
+    '  delete:ref=>actions.push({op:"delete",path:ref.path}),',
+    '  commit:async()=>{',
+    '    if(window.qa.batchMode === "lost-after") {',
+    '      window.qa.remoteDocs={...window.qa.docs};',
+    '      for(const action of actions) {',
+    '        if(action.op === "set") window.qa.remoteDocs[action.path]=action.data;',
+    '        if(action.op === "update") {',
+    '          const old=window.qa.remoteDocs[action.path] || {};',
+    '          window.qa.remoteDocs[action.path]={...old,employeeUserIds:[...new Set([...(old.employeeUserIds||[]),action.data.employeeUserIds.arrayUnion])]};',
+    '        }',
+    '      }',
+    '      const root=window.qa.remoteDocs["businesses/tenant-a"];',
+    '      const member=window.qa.remoteDocs["businessMemberships/tenant-a_employee-new"];',
+    '      if(window.qa.corruptAfterCommit === "missing-index") root.employeeUserIds=[];',
+    '      if(window.qa.corruptAfterCommit === "wrong-owner") root.ownerUserId="owner-b";',
+    '      if(window.qa.corruptAfterCommit === "wrong-tenant") member.restaurantId="tenant-b";',
+    '      if(window.qa.corruptAfterCommit === "wrong-attempt") member.createdAt="previous-attempt";',
+    '      if(window.qa.corruptAfterCommit === "switch-session") window.qa.auth.currentUser={uid:"owner-b"};',
+    '      if(window.qa.corruptAfterCommit === "offline") window.qa.serverError=new Error("offline");',
+    '      throw Object.assign(new Error("LOST_COMMIT_RESPONSE"),{code:"unavailable"});',
+    '    }',
+    '    if(window.qa.batchError)throw window.qa.batchError;',
+    '    window.qa.writes.push(...actions);',
+    '  },',
+    '};};',
     'export const updateDoc = async (ref,data) => {window.qa.writes.push({op:"updateDoc",path:ref.path,data});};',
     'export const arrayUnion = value => ({arrayUnion:value});',
     'export const arrayRemove = value => ({arrayRemove:value});',
@@ -54,7 +86,7 @@ const bundle = await build({
 });
 const dom=new JSDOM('',{url:'https://example.test/',runScripts:'outside-only'});
 const {window}=dom;
-window.qa={reads:[],writes:[],created:0,docs:{},serverReads:0,serverError:null};
+window.qa={reads:[],writes:[],created:0,docs:{},serverReads:0,serverError:null,remoteDocs:null,batchMode:null,corruptAfterCommit:null};
 const user=uid=>({uid,email:uid+'@example.test'});
 const member=(tenant,uid,role='OWNER',active=true)=>({
   restaurantId:tenant,userId:uid,role,active,name:uid,email:uid+'@example.test',
@@ -66,6 +98,7 @@ const reset=(role='OWNER')=>{
   window.qa.auth.currentUser=user('owner-a');
   window.qa.reads=[];window.qa.writes=[];window.qa.created=0;
   window.qa.onRead=null;window.qa.onCreated=null;window.qa.batchError=null;window.qa.serverError=null;
+  window.qa.remoteDocs=null;window.qa.batchMode=null;window.qa.corruptAfterCommit=null;
   window.qa.docs={
     'businessMemberships/tenant-a_owner-a':member('tenant-a','owner-a',role),
     'businesses/tenant-a':{restaurantId:'tenant-a',ownerUserId:'owner-a'},
@@ -115,9 +148,39 @@ try {
   // El batch puede fallar después de crear Auth: no afirmar que se borró la cuenta.
   reset();
   window.qa.batchError=Object.assign(new Error('permission-denied'),{code:'permission-denied'});
-  await assert.rejects(window.qa.create(input()),/No pudimos vincular/);
+  await assert.rejects(window.qa.create(input()),/No se pudo confirmar/);
   assert.equal(window.qa.created,1);
   assert.equal(window.qa.writes.length,0);
+
+  // Una respuesta perdida después de un batch confirmado no debe anunciar
+  // un fallo: verificar por servidor la membresía exacta y el índice del tenant.
+  reset();
+  window.qa.batchMode='lost-after';
+  const recovered=await window.qa.create(input());
+  assert.equal(recovered.userId,'employee-new');
+  assert.equal(window.qa.created,1);
+  assert.equal(window.qa.writes.length,0,'El mock perdió respuesta, no la escritura remota');
+  assert(window.qa.serverReads >= 6,'Confirmar ambos documentos y revalidar responsable desde servidor');
+  assert(window.qa.remoteDocs['businesses/tenant-a'].employeeUserIds.includes('employee-new'));
+
+  // El documento en caché puede parecer correcto, pero el servidor es autoridad.
+  reset();
+  window.qa.batchError=Object.assign(new Error('network-lost'),{code:'unavailable'});
+  window.qa.remoteDocs={};
+  await assert.rejects(window.qa.create(input()),/No se pudo confirmar/);
+  assert.equal(window.qa.created,1);
+  assert.equal(window.qa.writes.length,0);
+
+  // No recuperar ante índice ausente, membresía de otro tenant, marca de otro
+  // intento, propietario cambiado, desconexión o sesión de otra cuenta.
+  for (const corruption of ['missing-index','wrong-tenant','wrong-attempt','wrong-owner','offline','switch-session']) {
+    reset();
+    window.qa.batchMode='lost-after';
+    window.qa.corruptAfterCommit=corruption;
+    await assert.rejects(window.qa.create(input()),/No se pudo confirmar/,
+      'Sin confirmación remota completa no declarar éxito: '+corruption);
+    assert.equal(window.qa.created,1);
+  }
 
   // Revocación entre creación Auth y batch: no se vincula al empleado.
   reset();
@@ -202,6 +265,7 @@ try {
   await assert.rejects(window.qa.update('tenant-a','employee-existing',{active:false}), /offline/);
   assert.equal(window.qa.writes.length, 0);
   assert(window.qa.serverReads > 0, 'Preflight de empleados debe leer permisos del servidor');
+  console.log('PASS: alta de empleado recupera respuesta perdida solo con membresía e índice exactos del servidor; caché, offline y sesión ajena fallan cerrados (simulado).');
   console.log('PASS: alta/edición de empleados no inicia Auth ni escribe con permisos cacheados offline (simulado).');
   console.log('PASS: permisos y sesión del responsable antes/después de Auth, jerarquía de roles, edición y retiro aislados A/B (simulados).');
 } finally {
