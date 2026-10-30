@@ -1,6 +1,6 @@
 /**
  * Paso 2: composición de dos propuestas de reglas SOLO EN MEMORIA:
- * alta OWNER 3-doc + reserva permanente + lectura privada de borradores.
+ * alta OWNER 3-doc + reserva permanente + identidad de membresías + borradores privados.
  * Datos ficticios y Firebase Emulator. No toca reglas versionadas, usuarios
  * reales, cuentas de cobro ni activa el cliente candidato.
  */
@@ -10,12 +10,14 @@ import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebas
 import { doc, getDoc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { buildThreeDocumentRecoveryMarkerProposalRules } from './owner-atomic-proposal-rules.mjs';
 import { buildPrivateCatalogReadProposalRules } from './catalog-private-read-proposal-rules.mjs';
+import { buildMembershipIdentityProposalRules } from './membership-identity-proposal-rules.mjs';
 
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080',
   'Esta prueba exige Firestore Emulator, nunca una base real.');
 const staged = readFileSync('docs/firestore.launch-security.STAGED.rules', 'utf8');
-const composed = buildPrivateCatalogReadProposalRules(
-  buildThreeDocumentRecoveryMarkerProposalRules(staged));
+const composed = buildMembershipIdentityProposalRules(
+  buildPrivateCatalogReadProposalRules(
+    buildThreeDocumentRecoveryMarkerProposalRules(staged)));
 assert.notEqual(composed, staged, 'Las reglas compuestas no pueden ser staged sin cambios');
 const env = await initializeTestEnvironment({
   projectId: 'gioteautomatizo-owner-draft-composed-test',
@@ -93,6 +95,49 @@ try {
   await assertSucceeds(getDoc(doc(cashier, path(idA, 'menu_catalog'))));
   await assertFails(getDoc(doc(manager, path(idB, 'menu_import_draft'))));
 
+  
+  // Composición de tres propuestas: la protección del borrador NO debe
+  // ocultar accesos indebidos a raíz, publicación, personal o catálogo.
+  // Solo el administrador del emulador siembra membresías históricas corruptas.
+  const malformedMemberPath = ownerPath(idB, 'combined-alice');
+  const malformedCases = [
+    ['tenant-cruzado', member(idA, 'combined-alice')],
+    ['uid-cruzado', member(idB, 'combined-bob')],
+    ['rol-invalido', member(idB, 'combined-alice', 'ROOT')],
+    ['revocada', member(idB, 'combined-alice', 'OWNER', false)],
+  ];
+  for (const [label, data] of malformedCases) {
+    await env.withSecurityRulesDisabled(async context => {
+      await setDoc(doc(context.firestore(), malformedMemberPath), data);
+    });
+    await assertFails(getDoc(doc(alice, root(idB))));
+    await assertFails(updateDoc(doc(alice, root(idB)), {
+      branding: { restaurantName: 'intrusion-' + label },
+    }));
+    await assertFails(setDoc(doc(alice, 'publicBusinessProfiles', idB), publishedProfile(idB)));
+    await assertFails(setDoc(doc(alice, 'businesses', idB, 'employees', 'intrusion-' + label),
+      { restaurantId: idB, userId: 'intrusion-' + label, role: 'CASHIER', active: true }));
+    await assertFails(setDoc(doc(alice, path(idB, 'menu_catalog')),
+      { businessId: idB, items: [{ id: 'intrusion-' + label, price: 1 }] }));
+    // El negocio A del mismo usuario sigue accesible.
+    await assertSucceeds(getDoc(doc(alice, root(idA))));
+  }
+  // Un miembro legítimo de A y B debe conservar acceso interno a ambos,
+  // pero MANAGER no puede apropiarse de la raíz ni publicar como OWNER.
+  await env.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), malformedMemberPath),
+      member(idB, 'combined-alice', 'MANAGER'));
+  });
+  await assertSucceeds(getDoc(doc(alice, root(idB))));
+  await assertSucceeds(setDoc(doc(alice, path(idB, 'menu_catalog')),
+    { businessId: idB, items: [{ id: 'legitimate-manager', price: 12 }] }));
+  await assertFails(updateDoc(doc(alice, root(idB)), {
+    branding: { restaurantName: 'manager-not-owner' },
+  }));
+  await assertFails(setDoc(doc(alice, 'publicBusinessProfiles', idB), publishedProfile(idB)));
+  await assertSucceeds(getDoc(doc(bob, root(idB))));
+
+
   await assertSucceeds(setDoc(doc(alice, 'publicBusinessProfiles', idA), publishedProfile(idA)));
   await assertSucceeds(getDoc(doc(visitor, path(idA, 'menu_catalog'))));
   await assertFails(getDoc(doc(visitor, path(idA, 'menu_import_draft'))));
@@ -121,9 +166,9 @@ try {
   });
   await assertSucceeds(getDoc(doc(signed('combined-legacy-owner'), root('combined-legacy'))));
   await assertFails(getDoc(doc(bob, root('combined-legacy'))));
-  console.log('PASS (propuestas compuestas SOLO en emulador): alta 3-doc A/B, rechazo 2-doc, privacidad de borradores, publicación, roles, revocación, identidad del catálogo y legado.');
+  console.log('PASS (tres propuestas SOLO en emulador): alta 3-doc A/B, rechazo 2-doc, borradores privados, publicación, identidad de membresías, denegación de raíz/perfil/empleados/catalogo a fichas cruzadas, roles, revocación y legado.');
   console.warn('PENDIENTE: staged aún permite OWNER huérfano, borradores publicados y altas sin reserva; NO se desplegó la propuesta.');
-  console.warn('PENDIENTE: compatibilidad de clientes, inventario/backfill, revisión independiente y validación visual Android/iPad.');
+  console.warn('PENDIENTE: la consulta list de membresías aún puede devolver registros históricos mal asociados; revisar inventario/backfill, identidad OWNER/root, compatibilidad de clientes, reglas efectivas y validación visual Android/iPad.');
 } finally {
   await env.cleanup();
 }
