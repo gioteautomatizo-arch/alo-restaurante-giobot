@@ -12,6 +12,35 @@ const isId = x => typeof x === 'string' && ID.test(x);
 const isUid = x => typeof x === 'string' && x.trim() === x && x.length > 0 && !x.includes('/');
 const nonEmpty = x => typeof x === 'string' && x.trim() === x && x.length > 0;
 
+// El carrito identifica grupos por ID y opciones por nombre; no convertir
+// silenciosamente precios inválidos o grupos ambiguos durante un corte histórico.
+// Los catálogos sin grupos siguen siendo compatibles con versiones antiguas.
+function validOptionGroups(item) {
+  if (item.optionGroups === undefined) return true;
+  if (!Array.isArray(item.optionGroups)) return false;
+  const groupIds = new Set();
+  const groupNames = new Set();
+  for (const group of item.optionGroups) {
+    if (!isObject(group) || !nonEmpty(group.id) || !nonEmpty(group.name)
+        || typeof group.required !== 'boolean' || typeof group.multiple !== 'boolean'
+        || !Array.isArray(group.choices) || group.choices.length === 0) return false;
+    const groupName = group.name.toLowerCase();
+    if (groupIds.has(group.id) || groupNames.has(groupName)) return false;
+    groupIds.add(group.id);
+    groupNames.add(groupName);
+    const choiceNames = new Set();
+    for (const choice of group.choices) {
+      if (!isObject(choice) || !nonEmpty(choice.name)
+          || typeof choice.price !== 'number' || !Number.isFinite(choice.price)
+          || choice.price < 0) return false;
+      const choiceName = choice.name.toLowerCase();
+      if (choiceNames.has(choiceName)) return false;
+      choiceNames.add(choiceName);
+    }
+  }
+  return true;
+}
+
 export function auditBusinessCatalogCutover(input) {
   const issues = [];
   const counts = { roots: 0, memberships: 0, profiles: 0, catalogs: 0, published: 0, historicalHold: 0 };
@@ -108,6 +137,10 @@ export function auditBusinessCatalogCutover(input) {
             || (item.price !== null && !(typeof item.price === 'number' && Number.isFinite(item.price) && item.price >= 0))
             || typeof item.available !== 'boolean' || ids.has(item.id)) {
           issue('CATALOG_ITEM_INCOMPATIBLE', 'businessCatalogs', index);
+          break;
+        }
+        if (!validOptionGroups(item)) {
+          issue('CATALOG_OPTION_GROUP_INCOMPATIBLE', 'businessCatalogs', index);
           break;
         }
         ids.add(item.id);
