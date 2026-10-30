@@ -126,11 +126,11 @@ try {
   // El catálogo rechaza raíces ajenas, OWNER discordante y revocaciones
   // sin intentar guardar; un MANAGER legítimo y OWNER histórico conservan acceso.
   reset();
-  await passCatalog(window.qa.saveCatalog('tenant-a',[item],'Prueba'), 'tenant-a','owner-a','OWNER',true,null);
+  await passCatalog(window.qa.saveCatalog('tenant-a',[item],'Prueba',null), 'tenant-a','owner-a','OWNER',true);
   assert.equal(window.qa.writes.length,1,'OWNER histórico conserva acceso');
 
   reset('manager-a');
-  await passCatalog(window.qa.saveCatalog('tenant-a',[item],'Prueba'), 'tenant-a','manager-a','MANAGER',null);
+  await passCatalog(window.qa.saveCatalog('tenant-a',[item],'Prueba',null), 'tenant-a','manager-a','MANAGER');
   assert.equal(window.qa.writes.length,1,'MANAGER legítimo conserva acceso');
 
   for (const root of [
