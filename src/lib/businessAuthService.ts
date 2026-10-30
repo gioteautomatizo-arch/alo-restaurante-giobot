@@ -9,6 +9,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  getDocsFromServer,
   query,
   where,
   writeBatch,
@@ -312,6 +313,9 @@ export async function getBusinessesForUser(userId: string): Promise<BusinessDire
   // mínimo del candidato privado: no propagar la raíz completa al Portal.
   // IMPORTANTE: proyectar aquí NO evita que Firestore haya enviado la raíz al
   // navegador; la exposición en red solo se cerrará con reglas/corte aprobados.
+  const initialMembershipRoles = new Map(membershipsSnap.docs.map(docSnap => [
+    docSnap.id, (docSnap.data() as RestaurantMembership).role,
+  ]));
   const ownerBusinessIds = new Set(membershipsSnap.docs
     .filter(docSnap => (docSnap.data() as RestaurantMembership).role === 'OWNER')
     .map(docSnap => (docSnap.data() as RestaurantMembership).restaurantId));
@@ -346,6 +350,27 @@ export async function getBusinessesForUser(userId: string): Promise<BusinessDire
       throw new Error('No pudimos cargar todos tus negocios. Revisa tu conexión o permisos y reintenta.');
     }
   }));
+  // Las lecturas de raíces son asíncronas: una revocación o cambio de rol
+  // durante ellas no debe entregar tarjetas calculadas con permisos viejos.
+  // Exigir respuesta del servidor; una caché offline no certifica vigencia.
+  // El selector muestra Reintentar ante cualquier cambio, sin lista parcial.
+  const latestMembershipsSnap = await getDocsFromServer(membershipsQuery);
+  assertCurrentBusinessSession(userId);
+  const latestMembershipRoles = new Map<string, BusinessRole>();
+  for (const docSnap of latestMembershipsSnap.docs) {
+    const membership = docSnap.data() as RestaurantMembership;
+    const businessId = membership.restaurantId;
+    if (typeof businessId !== 'string' || !businessId ||
+        docSnap.id !== `${businessId}_${userId}` ||
+        !hasValidMembership(membership, businessId, userId)) {
+      throw new Error('Los permisos del selector tienen datos inconsistentes. Reintenta.');
+    }
+    latestMembershipRoles.set(docSnap.id, membership.role);
+  }
+  if (latestMembershipRoles.size !== initialMembershipRoles.size ||
+      [...initialMembershipRoles].some(([id, role]) => latestMembershipRoles.get(id) !== role)) {
+    throw new Error('Los permisos de tus negocios cambiaron durante la consulta. Actualiza el selector.');
+  }
   assertCurrentBusinessSession(userId);
   return businesses;
 }
@@ -467,6 +492,12 @@ export async function getAllBusinesses(userId: string): Promise<RestaurantTenant
       // Mantener Calientito fuera de la lista de tenants nuevos.
       if (data.restaurantId !== 'alo-restaurante') tenants.push(data);
     });
+    // La consulta global puede tardar; no entregar raíces si el permiso
+    // Super Admin fue revocado después de autorizar la primera lectura.
+    if (!(await isPlatformAdmin(userId))) {
+      throw new Error('La cuenta actual ya no tiene permisos de Super Admin.');
+    }
+    assertCurrentBusinessSession(userId);
     return tenants;
   } catch (err) {
     console.error('Error fetching all businesses for super admin:', err);
