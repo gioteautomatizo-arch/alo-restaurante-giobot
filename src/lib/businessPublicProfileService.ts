@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDocFromServer, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { isPlatformAdmin } from './businessAuthService';
 import type { RestaurantTenant } from './restaurantCore';
@@ -75,7 +75,8 @@ export async function setBusinessPublication(businessId: string, tenant: Restaur
     !!data && data.restaurantId === businessId && data.userId === user.uid
     && data.active === true && data.role === 'OWNER';
 
-  const membershipSnap = await getDoc(membershipRef);
+  // No autorizar publicación/ocultación con caché offline; fallar cerrado.
+  const membershipSnap = await getDocFromServer(membershipRef);
   const ownerAccess = isValidOwner(membershipSnap.exists() ? membershipSnap.data() : null);
   // Conservar la ruta de Super Admin sin concederle implícitamente un OWNER ajeno.
   const adminAccess = !ownerAccess && await isPlatformAdmin(user.uid);
@@ -88,7 +89,7 @@ export async function setBusinessPublication(businessId: string, tenant: Restaur
 
   // El documento pasado por la vista puede estar obsoleto o pertenecer a otra
   // raíz. No basta con una membresía OWNER si el propietario explícito difiere.
-  const businessSnap = await getDoc(doc(db, 'businesses', businessId));
+  const businessSnap = await getDocFromServer(doc(db, 'businesses', businessId));
   const business = businessSnap.exists() ? businessSnap.data() : null;
   if (!business || business.restaurantId !== businessId
       || (ownerAccess && business.ownerUserId !== undefined && business.ownerUserId !== user.uid)) {
@@ -101,7 +102,7 @@ export async function setBusinessPublication(businessId: string, tenant: Restaur
   // Una revocación entre la primera lectura y la raíz no debe confirmar una
   // publicación basada en permisos ya obsoletos. Firestore sigue siendo autoridad.
   if (ownerAccess) {
-    const latestSnap = await getDoc(membershipRef);
+    const latestSnap = await getDocFromServer(membershipRef);
     if (!isValidOwner(latestSnap.exists() ? latestSnap.data() : null)) {
       throw new Error('Los permisos de publicación cambiaron. Vuelve a entrar y reintenta.');
     }
@@ -120,7 +121,8 @@ export async function setBusinessPublication(businessId: string, tenant: Restaur
 }
 
 export async function getBusinessPublicationStatus(businessId: string): Promise<boolean> {
-  const snap = await getDoc(doc(db, 'publicBusinessProfiles', businessId));
+  // El estado de publicación también debe venir del servidor.
+  const snap = await getDocFromServer(doc(db, 'publicBusinessProfiles', businessId));
   return snap.exists() && snap.data().published === true;
 }
 
@@ -133,7 +135,7 @@ export async function syncPublicProfileIfNeeded(businessId: string, tenant: Rest
   if (!businessId.trim() || tenant.restaurantId !== businessId) return false;
   const user = auth.currentUser;
   if (!user) return false;
-  const snap = await getDoc(doc(db, 'publicBusinessProfiles', businessId));
+  const snap = await getDocFromServer(doc(db, 'publicBusinessProfiles', businessId));
   if (!snap.exists() || snap.data().published !== true) return false;
   const expected = makePublicBusinessProfile(businessId, tenant).branding;
   const sortedJson = (value: unknown) => JSON.stringify(value, (_k, v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v));

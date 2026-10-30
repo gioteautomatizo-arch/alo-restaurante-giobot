@@ -8,7 +8,8 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const mocks = {
   'firebase/firestore': [
     'export const doc = (_db, ...segments) => ({path: segments.join("/")});',
-    'export function getDoc(ref) {return new Promise((resolve, reject) => window.qa.pending.push({ref,resolve,reject}));}',
+    'export function getDoc(ref) {return new Promise((resolve, reject) => window.qa.pending.push({ref,resolve,reject,source:"cache"}));}',
+    'export function getDocFromServer(ref) {return new Promise((resolve, reject) => window.qa.pending.push({ref,resolve,reject,source:"server"}));}',
     'export async function setDoc(ref, data, options) {window.qa.writes.push({ref,data,options});}',
     'export function onSnapshot() {throw new Error("No subscriptions in this test");}',
     'export async function runTransaction(_db, fn) { const transaction = {get: ref => getDoc(ref), set: (ref,data) => window.qa.writes.push({ref,data,transaction:true})}; return fn(transaction); }',
@@ -21,10 +22,12 @@ const bundle = await build({
   absWorkingDir: root, bundle: true, write: false, format: 'iife', platform: 'browser',
   stdin: {resolveDir: root, loader: 'js', contents: [
     "import {saveBusinessCatalog, seedBusinessCatalogIfMissing, upsertBusinessCatalogItem, deleteBusinessCatalogItem} from './src/lib/businessCatalogService';",
-    "import {setBusinessPublication} from './src/lib/businessPublicProfileService';",
+    "import {setBusinessPublication, getBusinessPublicationStatus, syncPublicProfileIfNeeded} from './src/lib/businessPublicProfileService';",
     'window.qa.saveCatalog = saveBusinessCatalog; window.qa.seedCatalog = seedBusinessCatalogIfMissing;',
     'window.qa.upsertItem = upsertBusinessCatalogItem; window.qa.deleteItem = deleteBusinessCatalogItem;',
     'window.qa.publish = setBusinessPublication;',
+    'window.qa.publicationStatus = getBusinessPublicationStatus;',
+    'window.qa.syncPublication = syncPublicProfileIfNeeded;',
   ].join('\n')},
   plugins: [{name:'mock-tenant-auth', setup(build) {
     build.onResolve({filter:/.*/}, args => {
@@ -77,6 +80,8 @@ const passOwner = async (promise, id='tenant-a', uid='owner-a', legacy=false) =>
   await resolveRead(0,membership(uid,'OWNER',id),'businessMemberships/'+id+'_'+uid);
   await resolveRead(1,businessRoot(id,uid,legacy),'businesses/'+id);
   await resolveRead(2,membership(uid,'OWNER',id),'businessMemberships/'+id+'_'+uid);
+  assert.deepEqual(window.qa.pending.map(read => read.source), ['server','server','server'],
+    'Publicar/ocultar exige tres lecturas remotas de membresía/raíz/permisos');
   await promise;
 };
 try {
@@ -440,6 +445,41 @@ try {
   window.qa.pending[1].resolve(businessRoot('tenant-b','owner-b'));
   await assert.rejects(revokedAdmin,/permisos de publicación cambiaron/);
   assert.equal(window.qa.writes.length,0);
+
+  // Paso 2: la caché nunca certifica permisos ni estado de publicación.
+  for (const stage of ['membership', 'root', 'recheck']) {
+    reset();
+    const blocked = window.qa.publish('tenant-a', tenant('tenant-a'), true);
+    if (stage !== 'membership') await resolveRead(0, membership('owner-a'), 'businessMemberships/tenant-a_owner-a');
+    if (stage === 'recheck') await resolveRead(1, businessRoot('tenant-a', 'owner-a'), 'businesses/tenant-a');
+    const index = stage === 'membership' ? 0 : stage === 'root' ? 1 : 2;
+    await waitFor(() => window.qa.pending.length > index, 'Falta lectura remota ' + stage);
+    assert.equal(window.qa.pending[index].source, 'server', 'No aceptar caché: ' + stage);
+    window.qa.pending[index].reject(new Error('unavailable-' + stage));
+    await assert.rejects(blocked, new RegExp('unavailable-' + stage));
+    assert.equal(window.qa.writes.length, 0, 'Sin conexión no publicar: ' + stage);
+  }
+
+  reset();
+  const status = window.qa.publicationStatus('tenant-a');
+  await waitFor(() => window.qa.pending.length === 1, 'Estado público remoto');
+  assert.equal(window.qa.pending[0].source, 'server');
+  window.qa.pending[0].resolve({exists: () => true, data: () => ({published: true})});
+  assert.equal(await status, true);
+  reset();
+  const statusOffline = window.qa.publicationStatus('tenant-a');
+  await waitFor(() => window.qa.pending.length === 1, 'Estado público sin red');
+  assert.equal(window.qa.pending[0].source, 'server');
+  window.qa.pending[0].reject(new Error('unavailable-status'));
+  await assert.rejects(statusOffline, /unavailable-status/);
+
+  reset();
+  const syncOffline = window.qa.syncPublication('tenant-a', tenant('tenant-a'));
+  await waitFor(() => window.qa.pending.length === 1, 'Sincronización pública remota');
+  assert.equal(window.qa.pending[0].source, 'server');
+  window.qa.pending[0].reject(new Error('unavailable-sync'));
+  await assert.rejects(syncOffline, /unavailable-sync/);
+  assert.equal(window.qa.writes.length, 0, 'Sincronización offline no escribe perfil');
 
   console.log('PASS: catálogo (guardar, siembra, revisión) y publicación A/B comprueban OWNER/raíz, rol, revocación, sesión, Super Admin y despublicación (Firebase simulado).');
 } finally {
