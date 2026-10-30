@@ -43,6 +43,7 @@ export const BusinessCatalogEditor: React.FC<{
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [remoteConflict, setRemoteConflict] = useState(false);
+  const [historicalHold, setHistoricalHold] = useState(false);
   const loadedRevisionRef = useRef<string | null>(null);
   const dirtyRef = useRef(false);
   const savingRef = useRef(false);
@@ -68,6 +69,7 @@ export const BusinessCatalogEditor: React.FC<{
     setItems([]);
     setDirty(false);
     setRemoteConflict(false);
+    setHistoricalHold(false);
     dirtyRef.current = false;
     savingRef.current = false;
     loadedRevisionRef.current = null;
@@ -75,15 +77,25 @@ export const BusinessCatalogEditor: React.FC<{
       businessId,
       (catalog) => {
         if (!active) return;
-        const incomingRevision = catalog?.revision || catalog?.updatedAt || null;
+        // Un documento existente sin revisión verificable no es un catálogo nuevo.
+        // El servicio CAS ya rechaza su escritura: avisar antes de permitir editar.
+        const incomingRevision = catalog
+          ? (typeof catalog.revision === 'string' && catalog.revision.trim()
+              ? catalog.revision
+              : typeof catalog.updatedAt === 'string' && catalog.updatedAt.trim()
+                ? catalog.updatedAt
+                : null)
+          : null;
+        const hold = !!catalog && incomingRevision === null;
         // Nunca borrar un borrador local al recibir un snapshot de otra pestaña.
         // Si cambió la versión, bloquear Guardar hasta que el usuario decida recargar.
         if (savingRef.current) return;
         if (dirtyRef.current) {
-          if (incomingRevision !== loadedRevisionRef.current) setRemoteConflict(true);
+          if (hold || incomingRevision !== loadedRevisionRef.current) setRemoteConflict(true);
           return;
         }
         loadedRevisionRef.current = incomingRevision;
+        setHistoricalHold(hold);
         setRemoteConflict(false);
         setItems(ensureUniqueIds(catalog?.items || []));
         setLoadedBusinessId(businessId);
@@ -190,7 +202,7 @@ export const BusinessCatalogEditor: React.FC<{
   };
 
   const save = async () => {
-    if (!loaded || loadedBusinessId !== businessId || loadError || savingRef.current || remoteConflict) return;
+    if (!loaded || loadedBusinessId !== businessId || loadError || savingRef.current || remoteConflict || historicalHold) return;
     savingRef.current = true;
     const expectedRevision = loadedRevisionRef.current;
     const cleaned = items
@@ -244,6 +256,23 @@ export const BusinessCatalogEditor: React.FC<{
       <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-[#C8C8C8] p-4 text-center">
         <div>Cargando catálogo…</div>
         {message && <div className="mt-2 text-sm text-red-400">{message}</div>}
+      </div>
+    );
+  }
+
+  if (historicalHold) {
+    return (
+      <div className="min-h-screen bg-[#050505] p-6 text-[#F7F7F7]">
+        <main className="mx-auto max-w-3xl space-y-4">
+          <button type="button" onClick={onBack} className="rounded-xl border border-[#3A3022] px-4 py-2 text-sm">Volver al negocio</button>
+          <section role="alert" className="rounded-2xl border border-amber-500/60 bg-[#111111] p-5 text-amber-100">
+            <h2 className="text-xl font-bold">Catálogo histórico en revisión (HOLD)</h2>
+            <p className="mt-2 text-sm">Este negocio tiene un catálogo existente sin revisión verificable. Sus productos se conservan, pero no se permite editar, subir fotos ni guardar hasta revisar y autorizar su recuperación. No se modificó ningún producto.</p>
+            <button type="button" onClick={() => setReloadToken((value) => value + 1)} className="mt-4 rounded-xl border border-amber-400 px-4 py-2 text-sm font-bold">Reintentar catálogo</button>
+          </section>
+          <h3 className="text-sm font-bold">Productos existentes ({items.length}) — solo lectura</h3>
+          <ul className="space-y-2 text-sm">{items.map((item, index) => <li key={`${item.id}-${index}`} className="rounded-lg border border-[#3A3022] bg-[#111111] p-3">{item.name || 'Producto sin nombre'}</li>)}</ul>
+        </main>
       </div>
     );
   }
