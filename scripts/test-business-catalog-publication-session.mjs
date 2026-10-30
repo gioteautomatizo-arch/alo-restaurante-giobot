@@ -250,6 +250,38 @@ try {
   assert.deepEqual(Array.from(deleted.items, product => product.name),['Producto B']);
   assert.equal(window.qa.writes.length,1);
 
+  // El snapshot anterior solo puede editar/borrar el MISMO producto si sigue
+  // idéntico; otros productos nuevos no son motivo para bloquear.
+  for (const operation of [
+    () => window.qa.upsertItem('tenant-a',[item],{...item,name:'Mi cambio obsoleto'},'Prueba'),
+    () => window.qa.deleteItem('tenant-a',[item],'product-a','Prueba'),
+  ]) {
+    reset();
+    const blocked = operation();
+    await passCatalogReads();
+    await resolveRead(3,{exists:()=>true,data:()=>({
+      businessId:'tenant-a',items:[{...item,name:'Cambio más reciente'},other],revision:'v4',
+    })},'businesses/tenant-a/catalog/menu_catalog');
+    await assert.rejects(blocked,/CONFLICTO_CATALOGO/);
+    assert.equal(window.qa.writes.length,0,'Cambio obsoleto al mismo producto no muta el catálogo');
+  }
+
+  reset();
+  const concurrentCreate = window.qa.upsertItem('tenant-a',[item],other,'Prueba');
+  await passCatalogReads();
+  await resolveRead(3,{exists:()=>true,data:()=>({businessId:'tenant-a',items:[item,other],revision:'v5'})},'businesses/tenant-a/catalog/menu_catalog');
+  await assert.rejects(concurrentCreate,/CONFLICTO_CATALOGO/);
+  assert.equal(window.qa.writes.length,0,'Alta con ID ocupado en otra pestaña no sobrescribe');
+
+  // La comparación de campos no depende del orden de las claves JSON.
+  reset();
+  const reordered = window.qa.upsertItem('tenant-a',[item],{...item,name:'Editado con claves reordenadas'},'Prueba');
+  await passCatalogReads();
+  const reorderedCurrent = Object.fromEntries(Object.entries(item).reverse());
+  await resolveRead(3,{exists:()=>true,data:()=>({businessId:'tenant-a',items:[reorderedCurrent,other],revision:'v6'})},'businesses/tenant-a/catalog/menu_catalog');
+  await reordered;
+  assert.equal(window.qa.writes.length,1,'Orden de claves no provoca falso conflicto');
+
   for (const operation of [
     () => window.qa.upsertItem('tenant-a',[item],other,'Prueba'),
     () => window.qa.deleteItem('tenant-a',[item],'product-a','Prueba'),
