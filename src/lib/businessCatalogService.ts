@@ -236,9 +236,21 @@ export async function saveBusinessCatalog(
     if (current.exists() && (current.data().businessId !== businessId || !Array.isArray(current.data().items))) {
       throw new Error('El catálogo contiene datos inconsistentes del negocio. No se guardó ningún cambio.');
     }
-    const currentRevision = current.exists()
-      ? (current.data().revision || current.data().updatedAt || null)
+    // Un catálogo existente sin metadatos de revisión NO equivale a un
+    // documento ausente. Un editor histórico puede enviar null en ambos
+    // casos; permitirlo aquí borraría productos antiguos silenciosamente.
+    // Solo aceptar cadenas no vacías como revisiones observables.
+    const data = current.exists() ? current.data() : null;
+    const currentRevision = data
+      ? (typeof data.revision === 'string' && data.revision.trim()
+          ? data.revision
+          : typeof data.updatedAt === 'string' && data.updatedAt.trim()
+            ? data.updatedAt
+            : null)
       : null;
+    if (current.exists() && currentRevision === null) {
+      throw new Error('CONFLICTO_CATALOGO: Este catálogo histórico no tiene revisión verificable. No se sobrescribió; requiere revisión antes de editar.');
+    }
     if (currentRevision !== expectedRevision) {
       throw new Error('CONFLICTO_CATALOGO: Otra persona modificó el catálogo. Recarga antes de sobrescribir.');
     }
