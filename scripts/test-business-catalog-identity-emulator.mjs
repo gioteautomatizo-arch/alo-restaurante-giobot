@@ -116,6 +116,38 @@ try {
   await assert.rejects(save('tenant-a',[item('No sobrescribir')],'Dueño A','bad-items'),/datos inconsistentes/);
   await assert.rejects(save('tenant-a',[item('Heredado sin lista')],'Dueño A'),/CONFLICTO_CATALOGO/);
 
+  // Documento histórico válido por identidad pero sin metadatos de CAS:
+  // no debe tratarse como si no existiera, ni siquiera con expectedRevision=null.
+  await env.withSecurityRulesDisabled(async ctx=>{
+    await sdk.setDoc(ref(ctx.firestore(),'tenant-a'),{
+      businessId:'tenant-a',items:[item('Producto histórico sin versión')],
+    });
+  });
+  await assert.rejects(
+    save('tenant-a',[item('Sobrescritura histórica')],'Dueño A',null),
+    /CONFLICTO_CATALOGO.*histórico/,
+  );
+  await env.withSecurityRulesDisabled(async ctx=>{
+    const snap=await sdk.getDoc(ref(ctx.firestore(),'tenant-a'));
+    assert.equal(snap.data().items[0].name,'Producto histórico sin versión',
+      'CAS con null no debe sobrescribir un documento existente sin revisión');
+    assert.equal(snap.data().revision,undefined,'No mutar metadatos del histórico');
+  });
+
+  // La variante histórica con updatedAt sí tiene una revisión observable.
+  // Un OWNER puede guardarla con esa versión, generando una revision nueva.
+  const legacyUpdatedAt='2025-01-01T00:00:00.000Z';
+  await env.withSecurityRulesDisabled(async ctx=>{
+    await sdk.setDoc(ref(ctx.firestore(),'tenant-a'),{
+      businessId:'tenant-a',updatedAt:legacyUpdatedAt,items:[item('Legado con fecha')],
+    });
+  });
+  await assert.rejects(save('tenant-a',[item('Sin fecha observada')],'Dueño A',null),
+    /CONFLICTO_CATALOGO/);
+  const migrated=await save('tenant-a',[item('Legado actualizado')],'Dueño A',legacyUpdatedAt);
+  assert.equal(migrated.items[0].name,'Legado actualizado');
+  assert.ok(migrated.revision,'La edición CAS genera una revisión nueva');
+
   await env.withSecurityRulesDisabled(async ctx=>{
     await sdk.setDoc(ref(ctx.firestore(),'tenant-a'),{
       businessId:'tenant-a',revision:created.revision,items:[item('Restaurado A')],
