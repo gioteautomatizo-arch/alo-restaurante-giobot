@@ -175,6 +175,14 @@ try {
   await assert.rejects(window.qa.load('owner-a'), /membresía.*inconsistentes/);
   assert.equal(window.qa.pending.length, 0, 'No consultar tenants con índice de membresía discordante');
 
+  // Un documento de membresía con rol global forjado no es un permiso tenant:
+  // rechazar ANTES de solicitar la raíz, aunque UID y ruta sean coherentes.
+  window.qa.memberships = [member('tenant-a', 'owner-a', 'SUPER_ADMIN')];
+  window.qa.pending = [];
+  await assert.rejects(window.qa.load('owner-a'), /membresía.*inconsistentes/);
+  assert.equal(window.qa.pending.length, 0,
+    'El selector no debe leer raíces con rol SUPER_ADMIN de membresía');
+
   // Una sesión distinta durante una lectura no puede devolver tarjetas de A a B.
   window.qa.memberships = [member('tenant-a')];
   window.qa.pending = [];
@@ -242,6 +250,20 @@ try {
   await waitFor(() => window.qa.pending.length === 1, 'Rol pendiente');
   window.qa.pending[0].resolve(memberSnap(member('tenant-a', 'owner-a', 'ROL_DESCONOCIDO')));
   assert.equal(await badRole, null, 'No conceder permisos a un rol desconocido');
+
+  window.qa.pending = [];
+  const forgedBusiness = window.qa.one('owner-a', 'tenant-a');
+  await waitFor(() => window.qa.pending.length === 1, 'Lectura de rol global forjado');
+  window.qa.pending[0].resolve(memberSnap(member('tenant-a', 'owner-a', 'SUPER_ADMIN')));
+  assert.equal(await forgedBusiness, null, 'Rol global no abre Workspace por membresía');
+  assert.equal(window.qa.pending.length, 1, 'No leer raíz tras rol global forjado');
+
+  window.qa.pending = [];
+  const forgedMembership = window.qa.member('owner-a', 'tenant-a');
+  await waitFor(() => window.qa.pending.length === 1, 'Rol global forjado en permisos');
+  window.qa.pending[0].resolve(memberSnap(member('tenant-a', 'owner-a', 'SUPER_ADMIN')));
+  assert.equal(await forgedMembership, null, 'Rol global no concede permisos de tenant');
+  assert.equal(window.qa.pending.length, 1, 'No leer raíz tras rol global en permisos');
 
   window.qa.pending = [];
   const inactive = window.qa.member('owner-a', 'tenant-a');

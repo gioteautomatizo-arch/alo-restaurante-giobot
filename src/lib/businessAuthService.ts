@@ -32,8 +32,10 @@ const MEMBERSHIPS_COLLECTION = 'businessMemberships';
 
 // Las membresías son documentos externos: validar también su contenido y su
 // clave, no solo la ruta que se consultó o el tipo TypeScript.
+// SUPER_ADMIN es un permiso global de platformAdmins/{uid}, no una
+// membresía de tenant. No aceptar ese rol inyectado desde un documento legado.
 const BUSINESS_ROLES = new Set<BusinessRole>([
-  'SUPER_ADMIN', 'OWNER', 'ADMIN', 'MANAGER', 'CASHIER',
+  'OWNER', 'ADMIN', 'MANAGER', 'CASHIER',
   'WAITER', 'KITCHEN', 'EMPLOYEE', 'CLIENT',
 ]);
 

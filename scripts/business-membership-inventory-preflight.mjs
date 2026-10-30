@@ -6,8 +6,10 @@
  * No aceptar conteos sin confirmación explícita de todas las páginas.
  * La salida NO contiene IDs, UID, nombres ni datos de documentos.
  */
+// SUPER_ADMIN se acredita por platformAdmins/{uid}; una membresía tenant
+// con ese rol es anómala, aunque el tipo global BusinessRole lo contemple.
 const VALID_ROLES = new Set([
-  'SUPER_ADMIN', 'OWNER', 'ADMIN', 'MANAGER', 'CASHIER',
+  'OWNER', 'ADMIN', 'MANAGER', 'CASHIER',
   'WAITER', 'KITCHEN', 'EMPLOYEE', 'CLIENT',
 ]);
 const BUSINESS_ID = /^[a-z0-9][a-z0-9-]{1,63}$/;

@@ -67,6 +67,9 @@ blocked('Membresía duplicada', f => {
 }, 'DUPLICATE_MEMBERSHIP_DOCUMENT');
 blocked('Rol desconocido', f => { f.memberships[2].role = 'ROOT'; },
   'UNKNOWN_MEMBERSHIP_ROLE');
+blocked('SUPER_ADMIN no es rol de membresía tenant', f => {
+  f.memberships[2].role = 'SUPER_ADMIN';
+}, 'UNKNOWN_MEMBERSHIP_ROLE');
 blocked('Estado histórico inválido', f => { f.memberships[2].active = 'true'; },
   'INVALID_MEMBERSHIP_ACTIVE_STATE');
 blocked('Membresía huérfana', f => {

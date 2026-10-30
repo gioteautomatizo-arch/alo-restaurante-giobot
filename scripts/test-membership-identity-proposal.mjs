@@ -71,6 +71,7 @@ async function scenario(rules, diagnostic) {
       ['tenant-ausente', { userId: 'alice', role: 'OWNER', active: true }, true],
       ['uid-ausente', { restaurantId: b, role: 'OWNER', active: true }, true],
       ['rol-desconocido', membership(b, 'alice', 'ROOT'), false],
+      ['rol-global-super-admin', membership(b, 'alice', 'SUPER_ADMIN'), false],
       ['revocada', membership(b, 'alice', 'OWNER', false), false],
     ];
     for (const [name, data, stagedCanWrite] of anomalies) {
