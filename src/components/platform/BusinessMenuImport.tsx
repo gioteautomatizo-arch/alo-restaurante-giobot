@@ -83,8 +83,17 @@ export const BusinessMenuImport: React.FC<{
   const [items, setItems] = useState<MenuImportDraftItem[]>([]);
   const [uploading, setUploading] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>('idle');
-  const [catalog, setCatalog] = useState<BusinessCatalogDocument | null>(null);
-  const [catalogReady, setCatalogReady] = useState(false);
+  // La lectura del catálogo se asocia al tenant: una respuesta tardía de A
+  // nunca debe habilitar publicación ni mostrar productos en B.
+  const [catalogRead, setCatalogRead] = useState<{
+    businessId: string;
+    ready: boolean;
+    error: string;
+    catalog: BusinessCatalogDocument | null;
+  }>({ businessId, ready: false, error: '', catalog: null });
+  const [catalogReadAttempt, setCatalogReadAttempt] = useState(0);
+  const catalogReady = catalogRead.businessId === businessId && catalogRead.ready && !catalogRead.error;
+  const catalog = catalogReady ? catalogRead.catalog : null;
   const [publishing, setPublishing] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisNote, setAnalysisNote] = useState('');
@@ -129,22 +138,38 @@ export const BusinessMenuImport: React.FC<{
     };
   }, [businessId, draftReadAttempt]);
 
-  // 2) Escuchar el catálogo actual para no duplicar productos al publicar.
-  useEffect(
-    () =>
-      subscribeToBusinessCatalog(
-        businessId,
-        (doc) => {
-          setCatalog(doc);
-          setCatalogReady(true);
-        },
-        (err) => {
-          console.error('[BusinessMenuImport] no se pudo leer el catálogo:', err);
-          setCatalogReady(false);
-        },
-      ),
-    [businessId],
-  );
+  // 2) No publicar sin una lectura verificable del catálogo actual.
+  // Una suscripción con error debe poder reintentarse, conservando el borrador.
+  useEffect(() => {
+    let active = true;
+    setCatalogRead({ businessId, ready: false, error: '', catalog: null });
+    const unsubscribe = subscribeToBusinessCatalog(
+      businessId,
+      (doc) => {
+        if (!active) return;
+        // null es un catálogo ausente y permite crear con CAS null.
+        // Un documento histórico sin revisión no es equivalente a uno ausente.
+        const revision = doc?.revision || doc?.updatedAt;
+        if (doc && (typeof revision !== 'string' || !revision.trim())) {
+          setCatalogRead({
+            businessId, ready: false, catalog: null,
+            error: 'Este catálogo histórico no tiene una revisión verificable. Conserva el borrador y solicita una revisión autorizada antes de publicar; no se modificaron productos.',
+          });
+          return;
+        }
+        setCatalogRead({ businessId, ready: true, error: '', catalog: doc });
+      },
+      (err) => {
+        if (!active) return;
+        console.error('[BusinessMenuImport] no se pudo leer el catálogo:', err);
+        setCatalogRead({
+          businessId, ready: false, catalog: null,
+          error: 'No pudimos comprobar el catálogo actual. Reintenta la lectura antes de publicar para evitar duplicar o perder productos.',
+        });
+      },
+    );
+    return () => { active = false; unsubscribe(); };
+  }, [businessId, catalogReadAttempt]);
 
   // Las escrituras de esta pestaña se serializan y usan la última versión confirmada.
   // Una segunda pestaña no puede sobrescribir ni borrar un borrador más reciente.
@@ -338,7 +363,7 @@ export const BusinessMenuImport: React.FC<{
     setPublished(null);
 
     if (!catalogReady) {
-      setError('Todavía no podemos leer tu catálogo actual. Espera un momento e inténtalo otra vez.');
+      setError('No se verificó el catálogo actual. Usa Reintentar catálogo y espera la lectura antes de publicar.');
       return;
     }
 
@@ -479,6 +504,19 @@ export const BusinessMenuImport: React.FC<{
             <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
             <span>{error}</span>
           </div>
+        )}
+
+        {catalogRead.businessId === businessId && catalogRead.error && (
+          <section role="alert" className="rounded-2xl border border-red-400/40 bg-red-950/40 p-4 text-sm text-red-100">
+            <p>{catalogRead.error}</p>
+            <button
+              type="button"
+              onClick={() => setCatalogReadAttempt((value) => value + 1)}
+              className="mt-3 rounded-xl bg-[#D6A34A] px-4 py-3 font-black text-[#050505]"
+            >
+              Reintentar catálogo
+            </button>
+          </section>
         )}
 
         {published && (
@@ -677,7 +715,7 @@ export const BusinessMenuImport: React.FC<{
               <button
                 type="button"
                 onClick={() => void publish()}
-                disabled={publishing || uploading || filledCount === 0}
+                disabled={publishing || uploading || filledCount === 0 || !catalogReady}
                 className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#D6A34A] px-5 py-4 text-sm font-black text-[#050505] disabled:opacity-40"
               >
                 {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
