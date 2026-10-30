@@ -110,19 +110,65 @@ try {
     ['alo-restaurante', tenant('alo-restaurante')],
     ['tenant-b', tenant('tenant-b')],
   ));
+  await waitFor(() => window.qa.docs.length === 7, 'Revalidación Super Admin después del listado');
+  window.qa.docs[6].resolve(adminSnap());
   assert.equal((await successful).map(item => item.restaurantId).join(','), 'tenant-a,tenant-b');
 
   const failedRead = window.qa.list('admin-a');
   const failedReadRejected = assert.rejects(failedRead, /permission-denied/);
-  await waitFor(() => window.qa.docs.length === 7, 'Admin check for failed read missing');
-  window.qa.docs[6].resolve(adminSnap());
+  await waitFor(() => window.qa.docs.length === 8, 'Admin check for failed read missing');
+  window.qa.docs[7].resolve(adminSnap());
   await waitFor(() => window.qa.lists.length === 4, 'Failed list read missing');
   window.qa.lists[3].reject(new Error('permission-denied'));
   await failedReadRejected;
 
+  // Revocar Super Admin mientras se consulta el listado global debe bloquear
+  // el resultado, aunque la primera lectura de permisos fuera válida.
+  const revoked = window.qa.list('admin-a');
+  const revokedRejected = assert.rejects(revoked, /ya no tiene permisos/i);
+  await waitFor(() => window.qa.docs.length === 9, 'Permiso inicial antes de revocación');
+  window.qa.docs[8].resolve(adminSnap());
+  await waitFor(() => window.qa.lists.length === 5, 'Listado global antes de revocación');
+  window.qa.lists[4].resolve(listing(['tenant-a', tenant('tenant-a')]));
+  await waitFor(() => window.qa.docs.length === 10, 'Revalidación tras leer raíces');
+  window.qa.docs[9].resolve(adminSnap(false));
+  await revokedRejected;
+
+  const removed = window.qa.list('admin-a');
+  const removedRejected = assert.rejects(removed, /ya no tiene permisos/i);
+  await waitFor(() => window.qa.docs.length === 11, 'Permiso inicial antes de borrado');
+  window.qa.docs[10].resolve(adminSnap());
+  await waitFor(() => window.qa.lists.length === 6, 'Listado antes de borrar permiso');
+  window.qa.lists[5].resolve(listing(['tenant-b', tenant('tenant-b')]));
+  await waitFor(() => window.qa.docs.length === 12, 'Revalidación tras borrado');
+  window.qa.docs[11].resolve({exists:()=>false});
+  await removedRejected;
+
+  const switchedDuringRecheck = window.qa.list('admin-a');
+  const switchedRejected = assert.rejects(switchedDuringRecheck, /ya no tiene permisos|sesión cambió/i);
+  await waitFor(() => window.qa.docs.length === 13, 'Permiso inicial antes de cambiar UID');
+  window.qa.docs[12].resolve(adminSnap());
+  await waitFor(() => window.qa.lists.length === 7, 'Listado antes de cambiar UID');
+  window.qa.lists[6].resolve(listing(['tenant-b', tenant('tenant-b')]));
+  await waitFor(() => window.qa.docs.length === 14, 'Revalidación pendiente durante cambio de UID');
+  use('outsider-b');
+  window.qa.docs[13].resolve(adminSnap());
+  await switchedRejected;
+
+  // Un reintento con permiso vigente puede volver a listar normalmente.
+  use('admin-a');
+  const restored = window.qa.list('admin-a');
+  await waitFor(() => window.qa.docs.length === 15, 'Permiso inicial recuperado');
+  window.qa.docs[14].resolve(adminSnap());
+  await waitFor(() => window.qa.lists.length === 8, 'Listado recuperado');
+  window.qa.lists[7].resolve(listing(['tenant-b', tenant('tenant-b')]));
+  await waitFor(() => window.qa.docs.length === 16, 'Revalidación recuperada');
+  window.qa.docs[15].resolve(adminSnap());
+  assert.deepEqual((await restored).map(item => item.restaurantId), ['tenant-b']);
+
   use(null);
   assert.equal(await window.qa.check('admin-a'), false);
-  assert.equal(window.qa.docs.length, 7, 'No leer permisos tras cerrar sesión');
+  assert.equal(window.qa.docs.length, 16, 'No leer permisos tras cerrar sesión');
   console.log('PASS: Super Admin servicio verifica UID antes/después de lecturas, deniega cuentas ajenas y rechaza listas corruptas (Firebase simulado).');
 } finally {
   window.close();
