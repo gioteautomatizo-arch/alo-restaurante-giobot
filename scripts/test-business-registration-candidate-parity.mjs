@@ -8,6 +8,7 @@ import { buildThreeDocumentRecoveryMarkerProposalRules, buildRegistrationFreezeP
 const current = readFileSync('src/lib/businessAuthService.ts', 'utf8');
 const candidate = readFileSync('src/lib/businessRegistrationThreeDocumentCandidate.ts', 'utf8');
 const onboarding = readFileSync('src/components/platform/BusinessOnboardingDemo.tsx', 'utf8');
+const emulator = readFileSync('scripts/test-business-three-document-registration-emulator.mts', 'utf8');
 
 function functionSection(source, signature, nextExport) {
   const start = source.indexOf(signature);
@@ -40,6 +41,13 @@ assert.match(candidateFn, /batch\.set\(businessRef\(businessId\), registrationTe
 assert.match(candidateFn, /existingTenant as RestaurantTenant & \{ registrationContractVersion\?: number \}\)\.registrationContractVersion !== 3/,
   'Una raíz legacy sin marcador no puede recuperarse como alta 3-doc');
 
+
+
+const emulatorAdapter = functionSection(emulator, 'async function registerCandidate(', '\n// withSecurityRulesDisabled');
+assert.equal((emulatorAdapter.match(/\bgetDocFromServer\s*\(/g) || []).length, 2,
+  'El adaptador de fallos del emulador también debe recuperar OWNER y raíz desde servidor');
+assert.doesNotMatch(emulatorAdapter, /\bgetDoc\s*\(/,
+  'No simular recuperación insegura mediante caché en la matriz de 3 documentos');
 
 const normalizedCandidate = candidateFn
   .replace('export async function registerBusinessThreeDocumentCandidate(',

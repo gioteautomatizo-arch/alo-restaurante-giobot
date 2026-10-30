@@ -18,7 +18,7 @@ import {
   signOut,
 } from 'firebase/auth';
 import {
-  connectFirestoreEmulator, doc, getDoc, writeBatch, deleteDoc, updateDoc, terminate,
+  connectFirestoreEmulator, doc, getDoc, getDocFromServer, writeBatch, deleteDoc, updateDoc, terminate,
 } from 'firebase/firestore';
 import { buildThreeDocumentRecoveryMarkerProposalRules } from './owner-atomic-proposal-rules.mjs';
 import { registerThroughOnboardingUI } from './business-onboarding-emulator-ui.mjs';
@@ -117,16 +117,16 @@ async function registerCandidate(input, options: { simulatedCommitFailure?: 'bef
       throw new Error('SIMULATED_LOST_COMMIT_RESPONSE');
     }
   } catch (commitError) {
-    // Recuperar únicamente si ya existen negocio y OWNER del MISMO UID.
+    // Recuperar solo tras lecturas REMOTAS de negocio y OWNER del mismo UID; no confiar en caché.
     // No leer reservas: las reglas candidatas las mantienen privadas.
     try {
       if (auth.currentUser?.uid !== uid) throw commitError;
-      const member = await getDoc(doc(db, memberPath(id, uid)));
+      const member = await getDocFromServer(doc(db, memberPath(id, uid)));
       if (auth.currentUser?.uid !== uid) throw commitError;
       if (!member.exists() || member.data().userId !== uid
         || member.data().restaurantId !== id || member.data().role !== 'OWNER'
         || member.data().active !== true) throw commitError;
-      const business = await getDoc(doc(db, businessPath(id)));
+      const business = await getDocFromServer(doc(db, businessPath(id)));
       if (auth.currentUser?.uid !== uid) throw commitError;
       if (!business.exists() || business.data().ownerUserId !== uid
         || business.data().restaurantId !== id
