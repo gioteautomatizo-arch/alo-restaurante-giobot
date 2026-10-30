@@ -373,13 +373,49 @@ export async function createBusinessEmployee(input: {
   try {
     await batch.commit();
   } catch (error: any) {
-    console.error('No se pudo vincular al empleado con el negocio:', {
+    // Un timeout puede ocurrir DESPUÉS de que Firestore confirme el batch.
+    // Nunca deducir que no hubo escritura ni usar caché para confirmarla.
+    // La marca createdAt identifica este intento: una membresía anterior
+    // parecida no basta para declarar éxito.
+    try {
+      assertEmployeeSession(manager.uid);
+      const membershipSnap = await getDocFromServer(membershipRef(input.businessId, userId));
+      assertEmployeeSession(manager.uid);
+      const saved = membershipSnap.exists() ? membershipSnap.data() as Partial<BusinessEmployee> : null;
+      const exactMembership = membershipSnap.id === employee.id
+        && saved?.restaurantId === employee.restaurantId
+        && saved?.userId === employee.userId
+        && saved?.role === employee.role
+        && saved?.active === true
+        && saved?.name === employee.name
+        && saved?.email === employee.email
+        && saved?.createdAt === employee.createdAt
+        && saved?.updatedAt === employee.updatedAt;
+      if (exactMembership) {
+        const rootSnap = await getDocFromServer(doc(db, 'businesses', input.businessId));
+        assertEmployeeSession(manager.uid);
+        const root = rootSnap.exists() ? rootSnap.data() : null;
+        if (root?.restaurantId === input.businessId
+          && Array.isArray(root.employeeUserIds)
+          && root.employeeUserIds.includes(userId)
+          && (manager.role !== 'OWNER' || root.ownerUserId === undefined || root.ownerUserId === manager.uid)) {
+          const currentManager = await assertEmployeeManager(input.businessId, input.role);
+          if (currentManager.uid === manager.uid && currentManager.role === manager.role) {
+            return employee;
+          }
+        }
+      }
+    } catch {
+      // Sin servidor, sesión vigente o permisos no existe confirmación fiable.
+      // No ocultar el fallo original ni asumir que el batch fue revertido.
+    }
+    console.warn('No se pudo confirmar la vinculación del empleado:', {
       code: error?.code,
       businessId: input.businessId,
       operation: 'create-employee-atomic',
     });
     throw new Error(
-      `No pudimos vincular al empleado con el negocio (${error?.code || 'error'}). No se guardaron accesos parciales. La cuenta de acceso creada puede requerir vinculación posterior.`,
+      `No se pudo confirmar la vinculación del empleado (${error?.code || 'error'}). Comprueba el equipo antes de reintentar: el acceso podría haberse guardado. La cuenta de acceso también puede existir.`,
     );
   }
 
