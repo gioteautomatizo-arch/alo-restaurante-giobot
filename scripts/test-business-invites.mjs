@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import { initializeApp, getApps, deleteApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { registerBusinessInviteApi } from '../businessInviteApi.ts';
 
 process.env.ENABLE_BUSINESS_INVITES = 'true';
@@ -117,6 +117,33 @@ try{
  assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,410,
    'No aceptar una invitación atribuida a un OWNER de otro tenant');
  await pendingDoc.ref.update({createdBy:owner.uid});
+ // Admin SDK omite reglas: un OWNER residual con raíz que identifica a
+ // otra persona no debe administrar ni sostener invitaciones de A.
+ await businessRoot.update({ownerUserId:other.uid});
+ assert.equal((await call('/api/business-invites',{
+   businessId,email:employee.email,name:'Propietario discordante',role:'KITCHEN',
+ },ownerToken)).status,403,'OWNER discordante no puede crear invitaciones');
+ assert.equal((await call('/api/business-invites?businessId='+businessId,undefined,ownerToken,'GET')).status,403,
+   'OWNER discordante no puede listar invitaciones');
+ assert.equal((await call('/api/business-invites/revoke',{
+   businessId,inviteId:pendingDoc.id,
+ },ownerToken)).status,403,'OWNER discordante no puede revocar');
+ assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,410,
+   'Una invitación de OWNER discordante no debe parecer vigente');
+ assert.equal((await call('/api/business-invites/accept',{token:pendingToken},secondToken)).status,403,
+   'No crear membresía a partir de invitación de OWNER discordante');
+ assert.equal((await db.collection('businessMemberships')
+   .doc(businessId+'_'+secondEmployee.uid).get()).exists,false,
+   'La aceptación denegada no deja membresía parcial');
+ await businessRoot.update({ownerUserId:owner.uid});
+ assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,200,
+   'Restaurar el OWNER de la raíz debe recuperar la invitación');
+ // Compatibilidad explícita: raíces legacy sin ownerUserId se auditan,
+ // pero no deben romper el flujo de invitaciones ya autorizado.
+ await businessRoot.update({ownerUserId:FieldValue.delete()});
+ assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,200,
+   'Raíz histórica sin ownerUserId conserva vista previa');
+ await businessRoot.update({ownerUserId:owner.uid});
  assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,200,
    'Restaurar identidad y permisos debe recuperar la vista previa');
  const recovered=await call('/api/business-invites/accept',{token:pendingToken},secondToken);
