@@ -21,6 +21,7 @@ const mocks = {
   'firebase/firestore': [
     'export const doc = (_db,...parts) => ({path:parts.join("/")});',
     'export const getDoc = async ref => {window.qa.reads.push(ref.path); window.qa.onRead?.(ref); const data=window.qa.docs[ref.path]; return {id:ref.path.split("/").at(-1),exists:()=>!!data,data:()=>data};};',
+    'export const getDocFromServer = async ref => {window.qa.serverReads++; if (window.qa.serverError) throw window.qa.serverError; return getDoc(ref);};',
     'export const writeBatch = () => {const actions=[]; return {set:(ref,data)=>actions.push({op:"set",path:ref.path,data}),update:(ref,data)=>actions.push({op:"update",path:ref.path,data}),delete:ref=>actions.push({op:"delete",path:ref.path}),commit:async()=>{if(window.qa.batchError)throw window.qa.batchError; window.qa.writes.push(...actions);}};};',
     'export const updateDoc = async (ref,data) => {window.qa.writes.push({op:"updateDoc",path:ref.path,data});};',
     'export const arrayUnion = value => ({arrayUnion:value});',
@@ -53,7 +54,7 @@ const bundle = await build({
 });
 const dom=new JSDOM('',{url:'https://example.test/',runScripts:'outside-only'});
 const {window}=dom;
-window.qa={reads:[],writes:[],created:0,docs:{}};
+window.qa={reads:[],writes:[],created:0,docs:{},serverReads:0,serverError:null};
 const user=uid=>({uid,email:uid+'@example.test'});
 const member=(tenant,uid,role='OWNER',active=true)=>({
   restaurantId:tenant,userId:uid,role,active,name:uid,email:uid+'@example.test',
@@ -64,7 +65,7 @@ const input=(tenant='tenant-a',role='WAITER',accountMode='new')=>({
 const reset=(role='OWNER')=>{
   window.qa.auth.currentUser=user('owner-a');
   window.qa.reads=[];window.qa.writes=[];window.qa.created=0;
-  window.qa.onRead=null;window.qa.onCreated=null;window.qa.batchError=null;
+  window.qa.onRead=null;window.qa.onCreated=null;window.qa.batchError=null;window.qa.serverError=null;
   window.qa.docs={
     'businessMemberships/tenant-a_owner-a':member('tenant-a','owner-a',role),
     'businesses/tenant-a':{restaurantId:'tenant-a',ownerUserId:'owner-a'},
@@ -191,6 +192,17 @@ try {
   assert.deepEqual(window.qa.writes.map(w=>w.op),['delete','update']);
   assert.equal(window.qa.writes[1].data.employeeUserIds.arrayRemove,'employee-existing');
 
+  // La caché de OWNER no puede autorizar crear una cuenta Auth secundaria
+  // si el servidor no está disponible para comprobar permisos vigentes.
+  reset();
+  window.qa.serverError = new Error('offline');
+  await assert.rejects(window.qa.create(input()), /offline/);
+  assert.equal(window.qa.created, 0, 'Sin servidor no crear Auth secundaria');
+  assert.equal(window.qa.writes.length, 0);
+  await assert.rejects(window.qa.update('tenant-a','employee-existing',{active:false}), /offline/);
+  assert.equal(window.qa.writes.length, 0);
+  assert(window.qa.serverReads > 0, 'Preflight de empleados debe leer permisos del servidor');
+  console.log('PASS: alta/edición de empleados no inicia Auth ni escribe con permisos cacheados offline (simulado).');
   console.log('PASS: permisos y sesión del responsable antes/después de Auth, jerarquía de roles, edición y retiro aislados A/B (simulados).');
 } finally {
   window.close();

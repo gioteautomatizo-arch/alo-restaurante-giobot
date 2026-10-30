@@ -18,7 +18,8 @@ const mocks = {
     'export const query = (collection, ...filters) => ({collection, filters});',
     'export async function getDocs() {return {docs: window.qa.memberships.map(data => ({id: data.id || data.restaurantId + "_" + data.userId, data: () => data}))};}',
     'export async function getDocsFromServer() { window.qa.serverReads++; if (window.qa.serverPending) return new Promise((resolve, reject) => window.qa.serverRequests.push({resolve, reject})); if (window.qa.serverError) throw window.qa.serverError; return {docs: (window.qa.latestMemberships ?? window.qa.memberships).map(data => ({id: data.id || data.restaurantId + "_" + data.userId, data: () => data}))}; }',
-    'export function getDoc(ref) {return new Promise((resolve, reject) => window.qa.pending.push({ref, resolve, reject}));}',
+    'export function getDoc(ref) {return new Promise((resolve, reject) => window.qa.pending.push({ref, resolve, reject, source:"cache"}));}',
+    'export function getDocFromServer(ref) {return new Promise((resolve, reject) => window.qa.pending.push({ref, resolve, reject, source:"server"}));}',
     'export function writeBatch() {throw new Error("No Firestore writes in this test");}',
   ].join('\n'),
   './firebase': 'export const auth = {currentUser: {uid:"owner-a"}}; export const db = {}; window.qa.auth = auth;',
@@ -75,6 +76,8 @@ const readIndividual = async ({first = member('tenant-a'), root = snap('tenant-a
   }
   const result = await request;
   assert.equal(window.qa.pending.length, expectedReads);
+  if (expectedReads >= 2) assert.equal(window.qa.pending[1].source, 'server', 'Raíz privada debe venir del servidor');
+  if (expectedReads === 3) assert.equal(window.qa.pending[2].source, 'server', 'Permiso final debe venir del servidor');
   return result;
 };
 try {
@@ -260,6 +263,8 @@ try {
       await waitFor(() => window.qa.pending.length === 3, 'Revalidación del rol');
       window.qa.pending[2].resolve(last === null ? {exists: () => false} : memberSnap(last));
     }
+    assert.equal(window.qa.pending[1].source, 'server', 'Identidad OWNER requiere raíz remota');
+    if (rootValid) assert.equal(window.qa.pending[2].source, 'server', 'Rol final requiere servidor');
     return request;
   };
   assert.equal((await readRole())?.role, 'OWNER');
@@ -359,6 +364,31 @@ try {
   window.qa.pending[0].resolve(snap('tenant-b', {ownerUserId:'owner-a'}));
   assert.equal((await recovered).map(item => item.restaurantId).join(','), 'tenant-b');
   assert(window.qa.serverReads >= 6, 'El selector exige revalidación remota en cada lectura exitosa');
+  // La caché puede conservar una membresía antigua: un fallo del servidor
+  // debe impedir entregar el Workspace, incluso cuando la caché dice OWNER.
+  window.qa.pending = [];
+  const offlineWorkspace = window.qa.one('owner-a', 'tenant-a');
+  const offlineWorkspaceRejected = assert.rejects(offlineWorkspace, /offline/);
+  await waitFor(() => window.qa.pending.length === 1, 'Membresía cacheada');
+  window.qa.pending[0].resolve(memberSnap(member('tenant-a')));
+  await waitFor(() => window.qa.pending.length === 2, 'Raíz remota');
+  assert.equal(window.qa.pending[1].source, 'server');
+  window.qa.pending[1].reject(new Error('offline'));
+  await offlineWorkspaceRejected;
+
+  window.qa.pending = [];
+  const offlineRole = window.qa.member('owner-a', 'tenant-a');
+  const offlineRoleRejected = assert.rejects(offlineRole, /offline/);
+  await waitFor(() => window.qa.pending.length === 1, 'Rol cacheado');
+  window.qa.pending[0].resolve(memberSnap(member('tenant-a')));
+  await waitFor(() => window.qa.pending.length === 2, 'Raíz remota para rol');
+  window.qa.pending[1].resolve(snap('tenant-a', {ownerUserId:'owner-a'}));
+  await waitFor(() => window.qa.pending.length === 3, 'Rol final remoto');
+  assert.equal(window.qa.pending[2].source, 'server');
+  window.qa.pending[2].reject(new Error('offline'));
+  await offlineRoleRejected;
+
+  console.log('PASS: Workspace y rol OWNER fallan cerrados ante caché offline (Auth/Firestore simulados).');
   console.log('PASS: selector A/B revalida membresías en servidor, bloquea revocación, cambio de rol, fallo de red y UID obsoleto (simulado).');
   console.log('PASS: lista, OWNER/raíz, revalidación tras revocación y negocio individual aislados por UID/tenant/rol/sesión (Firestore simulado).');
 } finally {

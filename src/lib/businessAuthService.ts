@@ -8,6 +8,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
   getDocsFromServer,
   query,
@@ -324,7 +325,7 @@ export async function getBusinessesForUser(userId: string): Promise<BusinessDire
       throw new Error('Una membresía contiene un identificador de negocio inválido.');
     }
     try {
-      const snap = await getDoc(businessRef(businessId));
+      const snap = await getDocFromServer(businessRef(businessId));
       assertCurrentBusinessSession(userId);
       if (!snap.exists()) throw new Error('La membresía apunta a un negocio inexistente.');
       const tenant = snap.data() as RestaurantTenant;
@@ -391,7 +392,7 @@ export async function getBusinessForUser(
   const membership = membershipSnap.data() as RestaurantMembership;
   if (!hasValidMembership(membership, businessId, userId)) return null;
 
-  const businessSnap = await getDoc(businessRef(businessId));
+  const businessSnap = await getDocFromServer(businessRef(businessId));
   assertCurrentBusinessSession(userId);
   if (!businessSnap.exists()) return null;
   const tenant = businessSnap.data() as RestaurantTenant;
@@ -400,10 +401,11 @@ export async function getBusinessForUser(
     return null;
   }
 
+  // La revalidación debe ir al servidor: getDoc puede volver a usar caché offline.
   // La membresía pudo revocarse mientras se leía la raíz. No entregar al
   // Workspace una raíz privada usando permisos de una lectura obsoleta.
   // Esta defensa de cliente no impide que Firestore ya haya enviado la raíz.
-  const latestMembershipSnap = await getDoc(membershipRef(businessId, userId));
+  const latestMembershipSnap = await getDocFromServer(membershipRef(businessId, userId));
   assertCurrentBusinessSession(userId);
   if (!latestMembershipSnap.exists()) return null;
   const latestMembership = latestMembershipSnap.data() as RestaurantMembership;
@@ -429,7 +431,7 @@ export async function getBusinessMembership(
   // raíz identifica a otro propietario. Comprobar también que la raíz existe.
   // Las raíces históricas sin ownerUserId mantienen compatibilidad hasta su
   // revisión autorizada; esto no sustituye la seguridad de las reglas.
-  const businessSnap = await getDoc(businessRef(businessId));
+  const businessSnap = await getDocFromServer(businessRef(businessId));
   assertCurrentBusinessSession(userId);
   if (!businessSnap.exists()) return null;
   const tenant = businessSnap.data() as RestaurantTenant;
@@ -438,9 +440,10 @@ export async function getBusinessMembership(
     return null;
   }
 
+  // Revalidar desde servidor, no con una copia offline de la membresía.
   // Evitar entregar un rol leído antes de una revocación/cambio de rol durante
   // la lectura de la raíz. Una sesión distinta tampoco recibe este permiso.
-  const latestSnap = await getDoc(membershipRef(businessId, userId));
+  const latestSnap = await getDocFromServer(membershipRef(businessId, userId));
   assertCurrentBusinessSession(userId);
   if (!latestSnap.exists()) return null;
   const latest = latestSnap.data() as RestaurantMembership;
@@ -457,7 +460,7 @@ export async function isPlatformAdmin(userId: string): Promise<boolean> {
   // No aceptar una respuesta de permisos iniciada por una cuenta anterior.
   if (!userId || auth.currentUser?.uid !== userId) return false;
   try {
-    const snap = await getDoc(doc(db, PLATFORM_ADMINS_COLLECTION, userId));
+    const snap = await getDocFromServer(doc(db, PLATFORM_ADMINS_COLLECTION, userId));
     assertCurrentBusinessSession(userId);
     if (!snap.exists()) return false;
     const data = snap.data();
@@ -481,7 +484,7 @@ export async function getAllBusinesses(userId: string): Promise<RestaurantTenant
   }
   assertCurrentBusinessSession(userId);
   try {
-    const snap = await getDocs(collection(db, BUSINESSES_COLLECTION));
+    const snap = await getDocsFromServer(collection(db, BUSINESSES_COLLECTION));
     assertCurrentBusinessSession(userId);
     const tenants: RestaurantTenant[] = [];
     snap.forEach((docSnap) => {
@@ -492,6 +495,7 @@ export async function getAllBusinesses(userId: string): Promise<RestaurantTenant
       // Mantener Calientito fuera de la lista de tenants nuevos.
       if (data.restaurantId !== 'alo-restaurante') tenants.push(data);
     });
+    // El listado global también exige respuesta del servidor, no caché offline.
     // La consulta global puede tardar; no entregar raíces si el permiso
     // Super Admin fue revocado después de autorizar la primera lectura.
     if (!(await isPlatformAdmin(userId))) {

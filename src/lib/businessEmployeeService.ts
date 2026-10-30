@@ -12,7 +12,7 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDoc,
+  getDocFromServer,
   getDocs,
   query,
   setDoc,
@@ -73,7 +73,8 @@ async function assertEmployeeManager(businessId: string, targetRole?: BusinessRo
   }
   const user = auth.currentUser;
   if (!user) throw new Error('Inicia sesión para administrar empleados.');
-  const snap = await getDoc(membershipRef(businessId, user.uid));
+  // Nunca iniciar Auth secundaria con permisos procedentes de caché offline.
+  const snap = await getDocFromServer(membershipRef(businessId, user.uid));
   assertEmployeeSession(user.uid);
   const membership = snap.exists() ? snap.data() as Partial<BusinessEmployee> : null;
   if (!membership || snap.id !== `${businessId}_${user.uid}`
@@ -86,7 +87,7 @@ async function assertEmployeeManager(businessId: string, targetRole?: BusinessRo
   if (targetRole && !canManageEmployeeRole(role, targetRole)) {
     throw new Error('Tu rol no permite administrar ese puesto.');
   }
-  const businessSnap = await getDoc(doc(db, 'businesses', businessId));
+  const businessSnap = await getDocFromServer(doc(db, 'businesses', businessId));
   assertEmployeeSession(user.uid);
   const business = businessSnap.exists() ? businessSnap.data() : null;
   if (!business || business.restaurantId !== businessId
@@ -101,7 +102,7 @@ async function assertEditableEmployee(businessId: string, userId: string, newRol
   if (!userId.trim() || userId.includes('/') || userId === manager.uid) {
     throw new Error('No puedes modificar tu propia membresía desde Empleados.');
   }
-  const snap = await getDoc(membershipRef(businessId, userId));
+  const snap = await getDocFromServer(membershipRef(businessId, userId));
   assertEmployeeSession(manager.uid);
   const target = snap.exists() ? snap.data() as Partial<BusinessEmployee> : null;
   if (!target || snap.id !== `${businessId}_${userId}`
@@ -219,8 +220,9 @@ export async function listBusinessEmployees(businessId: string): Promise<Busines
       throw new Error('La sesión cambió durante la consulta del equipo. Vuelve a entrar y reintenta.');
     }
   };
+  // Ambas comprobaciones (antes y después del roster) requieren servidor.
   const readManagerRole = async (): Promise<BusinessRole> => {
-    const snap = await getDoc(membershipRef(businessId, requesterId));
+    const snap = await getDocFromServer(membershipRef(businessId, requesterId));
     assertSession();
     const member = snap.exists() ? snap.data() as Partial<BusinessEmployee> : null;
     if (!member || snap.id !== `${businessId}_${requesterId}` ||
@@ -237,7 +239,7 @@ export async function listBusinessEmployees(businessId: string): Promise<Busines
   const initialRole = await readManagerRole();
   // Firestore cannot safely authorize a collection query over businessMemberships:
   // read the deterministic membership IDs from the tenant's roster instead.
-  const businessSnap = await getDoc(doc(db, 'businesses', businessId));
+  const businessSnap = await getDocFromServer(doc(db, 'businesses', businessId));
   assertSession();
   if (!businessSnap.exists() || businessSnap.data().restaurantId !== businessId) {
     throw new Error('El negocio no existe o su identificador es inconsistente.');
@@ -261,7 +263,7 @@ export async function listBusinessEmployees(businessId: string): Promise<Busines
   }
 
   const memberships = await Promise.all(
-    (employeeUserIds as string[]).map((userId) => getDoc(membershipRef(businessId, userId))),
+    (employeeUserIds as string[]).map((userId) => getDocFromServer(membershipRef(businessId, userId))),
   );
   assertSession();
 

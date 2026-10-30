@@ -30,6 +30,7 @@ const mocks = {
     '  }',
     '  return new Promise((resolve,reject) => window.qa.pending.push({ref,resolve,reject}));',
     '};',
+    'export const getDocFromServer = ref => {window.qa.serverReads++; if (window.qa.serverError) return Promise.reject(window.qa.serverError); return getDoc(ref);};',
     'export const arrayRemove = () => ({});',
     'export const arrayUnion = () => ({});',
     'export const collection = () => ({});',
@@ -61,7 +62,7 @@ const bundle = await build({
 });
 const dom = new JSDOM('', {url: 'https://example.test/', runScripts: 'outside-only'});
 const {window} = dom;
-window.qa = {pending: [], managerReads: 0, managerOverride: undefined};
+window.qa = {pending: [], managerReads: 0, managerOverride: undefined, serverReads: 0, serverError: null};
 const waitFor = async (predicate, message) => {
   for (let i = 0; i < 200; i++) {
     if (predicate()) return;
@@ -210,6 +211,14 @@ try {
   await assert.rejects(window.qa.load('tenant-a'), /Inicia sesión/);
   assert.equal(window.qa.pending.length, 1, 'Sin sesión no se debe consultar Firestore');
 
+  window.qa.auth.currentUser = {uid: 'owner-a'};
+  window.qa.pending = [];
+  window.qa.serverError = new Error('offline');
+  await assert.rejects(window.qa.load('tenant-a'), /offline/);
+  assert.equal(window.qa.pending.length, 0, 'No consultar roster con permiso cacheado si servidor falla');
+  window.qa.serverError = null;
+  assert(window.qa.serverReads > 0, 'Todas las lecturas de roster pasan por servidor');
+  console.log('PASS: roster A/B y permisos vigentes requieren servidor; sin caché offline (simulado).');
   console.log('PASS: lista de empleados validada por tenant, UID, rol, índice y sesión; fallos sin datos parciales (Firestore/Auth simulados).');
 } finally {
   window.close();

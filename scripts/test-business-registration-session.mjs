@@ -24,6 +24,7 @@ const mocks = {
     'export const collection = (_db, name) => ({name});',
     'export const doc = (_db, collection, id) => ({collection,id});',
     'export const getDoc = async () => ({exists:()=>false});',
+    'export const getDocFromServer = async () => ({exists:()=>false});',
     'export const getDocs = async () => ({docs:[]});',
     'export const getDocsFromServer = async () => ({docs:[]});',
     'export const query = (...args) => args;',

@@ -19,6 +19,7 @@ const mocks = {
     'export async function getDocs() {window.qa.unsafeReads++; throw Error("NO consultar Firestore directo");}',
     'export async function getDocsFromServer() {window.qa.unsafeReads++; throw Error("NO consultar Firestore directo");}',
     'export async function getDoc() {throw Error("NO leer Firestore directo");}',
+    'export async function getDocFromServer() {throw Error("NO leer Firestore directo");}',
     'export function writeBatch() {throw Error("NO escribir Firestore");}',
   ].join('\n'),
   './firebase': [

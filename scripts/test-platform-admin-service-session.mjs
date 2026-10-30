@@ -16,9 +16,10 @@ const mocks = {
     'export const doc = (_db, collection, id) => ({collection, id});',
     'export const where = (field, op, value) => ({field, op, value});',
     'export const query = (collection, ...filters) => ({collection, filters});',
-    'export const getDoc = ref => new Promise((resolve, reject) => window.qa.docs.push({ref, resolve, reject}));',
+    'export const getDoc = ref => new Promise((resolve, reject) => window.qa.docs.push({ref, resolve, reject, source:"cache"}));',
+    'export const getDocFromServer = ref => new Promise((resolve, reject) => window.qa.docs.push({ref, resolve, reject, source:"server"}));',
     'export const getDocs = ref => new Promise((resolve, reject) => window.qa.lists.push({ref, resolve, reject}));',
-    'export const getDocsFromServer = ref => new Promise((resolve, reject) => window.qa.lists.push({ref, resolve, reject}));',
+    'export const getDocsFromServer = ref => new Promise((resolve, reject) => window.qa.lists.push({ref, resolve, reject, source:"server"}));',
     'export const writeBatch = () => {throw new Error("No writes in this test")};',
   ].join('\n'),
   './firebase': 'export const auth = {currentUser: {uid:"admin-a"}}; export const db = {}; window.qa.auth = auth;',
@@ -167,9 +168,19 @@ try {
   window.qa.docs[15].resolve(adminSnap());
   assert.equal((await restored).map(item => item.restaurantId).join(','), 'tenant-b');
 
+  assert(window.qa.docs.every(read => read.source === 'server'),
+    'Ningún permiso Super Admin puede resolverse desde caché');
+  assert(window.qa.lists.every(read => read.source === 'server'),
+    'Las raíces globales requieren lectura de servidor');
+  const beforeOffline = window.qa.docs.length;
+  const offlineAdmin = window.qa.check('admin-a');
+  await waitFor(() => window.qa.docs.length === beforeOffline + 1, 'Permiso remoto offline');
+  window.qa.docs.at(-1).reject(new Error('offline'));
+  assert.equal(await offlineAdmin, false, 'Sin servidor no hay autorización Super Admin');
+
   use(null);
   assert.equal(await window.qa.check('admin-a'), false);
-  assert.equal(window.qa.docs.length, 16, 'No leer permisos tras cerrar sesión');
+  assert.equal(window.qa.docs.length, 17, 'No leer permisos tras cerrar sesión');
   console.log('PASS: Super Admin servicio verifica UID antes/después de lecturas, deniega cuentas ajenas y rechaza listas corruptas (Firebase simulado).');
 } finally {
   window.close();
