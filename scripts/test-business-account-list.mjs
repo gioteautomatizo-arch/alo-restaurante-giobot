@@ -17,6 +17,7 @@ const mocks = {
     'export const where = (field, op, value) => ({field, op, value});',
     'export const query = (collection, ...filters) => ({collection, filters});',
     'export async function getDocs() {return {docs: window.qa.memberships.map(data => ({id: data.id || data.restaurantId + "_" + data.userId, data: () => data}))};}',
+    'export async function getDocsFromServer() { window.qa.serverReads++; if (window.qa.serverPending) return new Promise((resolve, reject) => window.qa.serverRequests.push({resolve, reject})); if (window.qa.serverError) throw window.qa.serverError; return {docs: (window.qa.latestMemberships ?? window.qa.memberships).map(data => ({id: data.id || data.restaurantId + "_" + data.userId, data: () => data}))}; }',
     'export function getDoc(ref) {return new Promise((resolve, reject) => window.qa.pending.push({ref, resolve, reject}));}',
     'export function writeBatch() {throw new Error("No Firestore writes in this test");}',
   ].join('\n'),
@@ -44,7 +45,7 @@ const bundle = await build({
 });
 const dom = new JSDOM('', {url: 'http://localhost/', runScripts: 'outside-only'});
 const {window} = dom;
-window.qa = {memberships: [], pending: []};
+window.qa = {memberships: [], pending: [], latestMemberships: null, serverReads: 0, serverPending: false, serverRequests: [], serverError: null};
 const waitFor = async (condition, message) => {
   for (let i = 0; i < 200; i++) {
     if (condition()) return;
@@ -300,6 +301,65 @@ try {
   window.qa.pending[1].resolve(snap('tenant-a'));
   await assert.rejects(stale, /sesión cambió/, 'No devolver negocio privado tras cambiar cuenta');
   window.qa.auth.currentUser = {uid:'owner-a'};
+  // Paso 2: no devolver tarjetas A/B si el rol cambia mientras se leen raíces.
+  const readListWithChange = async (initial, latest, errorPattern) => {
+    window.qa.memberships = initial;
+    window.qa.latestMemberships = latest;
+    window.qa.pending = [];
+    const request = window.qa.load('owner-a');
+    const rejected = assert.rejects(request, errorPattern);
+    await waitFor(() => window.qa.pending.length === new Set(initial.map(m => m.restaurantId)).size,
+      'Lecturas de raíces A/B antes de revalidar');
+    for (const pending of window.qa.pending) pending.resolve(snap(pending.ref.id, {ownerUserId:'owner-a'}));
+    await rejected;
+    window.qa.latestMemberships = null;
+  };
+  await readListWithChange([member('tenant-a'), member('tenant-b')],
+    [member('tenant-b')], /permisos.*cambiaron/,
+    'Revocación de A no devuelve tarjetas A/B obsoletas');
+  await readListWithChange([member('tenant-a')], [member('tenant-a','owner-a','WAITER')],
+    /permisos.*cambiaron/);
+  await readListWithChange([member('tenant-a')], [member('tenant-a'),member('tenant-b')],
+    /permisos.*cambiaron/);
+  await readListWithChange([member('tenant-a')], [{...member('tenant-a'), id:'tenant-b_owner-a'}],
+    /permisos.*inconsistentes/);
+
+  // Un fallo de la revalidación de servidor no se interpreta como lista vacía.
+  window.qa.memberships = [member('tenant-a')];
+  window.qa.pending = [];
+  window.qa.serverError = new Error('permission-denied');
+  const offlineList = window.qa.load('owner-a');
+  const offlineRejected = assert.rejects(offlineList, /permission-denied/);
+  await waitFor(() => window.qa.pending.length === 1, 'Raíz antes de fallo del servidor');
+  window.qa.pending[0].resolve(snap('tenant-a', {ownerUserId:'owner-a'}));
+  await offlineRejected;
+  window.qa.serverError = null;
+
+  // Si cambia el UID durante la revalidación, la respuesta del UID anterior
+  // no puede volver a pintar el selector de la cuenta nueva.
+  window.qa.serverPending = true;
+  window.qa.pending = [];
+  const delayed = window.qa.load('owner-a');
+  const delayedRejected = assert.rejects(delayed, /sesión cambió/);
+  await waitFor(() => window.qa.pending.length === 1, 'Raíz antes de revalidación tardía');
+  window.qa.pending[0].resolve(snap('tenant-a', {ownerUserId:'owner-a'}));
+  await waitFor(() => window.qa.serverRequests.length === 1, 'Revalidación remota pendiente');
+  window.qa.auth.currentUser = {uid:'owner-b'};
+  window.qa.serverRequests[0].resolve({docs:[{id:'tenant-a_owner-a',data:()=>member('tenant-a')}]});
+  await delayedRejected;
+  window.qa.auth.currentUser = {uid:'owner-a'};
+  window.qa.serverPending = false;
+  window.qa.serverRequests = [];
+
+  // Tras un cambio de permisos, una consulta nueva recupera el listado vigente.
+  window.qa.memberships = [member('tenant-b')];
+  window.qa.pending = [];
+  const recovered = window.qa.load('owner-a');
+  await waitFor(() => window.qa.pending.length === 1, 'Raíz de B después de revocación A');
+  window.qa.pending[0].resolve(snap('tenant-b', {ownerUserId:'owner-a'}));
+  assert.deepEqual((await recovered).map(item => item.restaurantId), ['tenant-b']);
+  assert(window.qa.serverReads >= 6, 'El selector exige revalidación remota en cada lectura exitosa');
+  console.log('PASS: selector A/B revalida membresías en servidor, bloquea revocación, cambio de rol, fallo de red y UID obsoleto (simulado).');
   console.log('PASS: lista, OWNER/raíz, revalidación tras revocación y negocio individual aislados por UID/tenant/rol/sesión (Firestore simulado).');
 } finally {
   window.close();
