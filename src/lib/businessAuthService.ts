@@ -398,7 +398,29 @@ export async function getBusinessMembership(
   assertCurrentBusinessSession(userId);
   if (!snap.exists()) return null;
   const membership = snap.data() as RestaurantMembership;
-  return hasValidMembership(membership, businessId, userId) ? membership : null;
+  if (!hasValidMembership(membership, businessId, userId)) return null;
+
+  // Un OWNER residual no debe mostrarse como responsable de un tenant cuya
+  // raíz identifica a otro propietario. Comprobar también que la raíz existe.
+  // Las raíces históricas sin ownerUserId mantienen compatibilidad hasta su
+  // revisión autorizada; esto no sustituye la seguridad de las reglas.
+  const businessSnap = await getDoc(businessRef(businessId));
+  assertCurrentBusinessSession(userId);
+  if (!businessSnap.exists()) return null;
+  const tenant = businessSnap.data() as RestaurantTenant;
+  if (tenant.restaurantId !== businessId ||
+      (membership.role === 'OWNER' && tenant.ownerUserId !== undefined && tenant.ownerUserId !== userId)) {
+    return null;
+  }
+
+  // Evitar entregar un rol leído antes de una revocación/cambio de rol durante
+  // la lectura de la raíz. Una sesión distinta tampoco recibe este permiso.
+  const latestSnap = await getDoc(membershipRef(businessId, userId));
+  assertCurrentBusinessSession(userId);
+  if (!latestSnap.exists()) return null;
+  const latest = latestSnap.data() as RestaurantMembership;
+  return hasValidMembership(latest, businessId, userId) && latest.role === membership.role
+    ? latest : null;
 }
 
 export const PLATFORM_ADMINS_COLLECTION = 'platformAdmins';
