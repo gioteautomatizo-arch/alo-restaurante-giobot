@@ -126,9 +126,9 @@ try {
   assert.equal((await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data()?.items[0].id, winner.items[0].id);
   // Edición efectiva de catálogo con el SDK real conectado al emulador.
   const updatedA = await saveBusinessCatalog(idA, [
-    ...catalogA.data()!.items,
+    ...winner.items,
     { id: 'extra-a', name: 'Solo A', description: '', category: 'Prueba', price: 42, available: true, sortOrder: 99 },
-  ], 'Propietario A');
+  ], 'Propietario A', winner.revision || winner.updatedAt || null);
   assert(updatedA.items.some(item => item.id === 'extra-a'));
   assert((await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data()?.items.some(item => item.id === 'extra-a'));
   // Dos editores partieron de la misma versión: una escritura gana y la otra
@@ -190,7 +190,7 @@ try {
   await saveBusinessCatalog(idB, [
     ...catalogB.data()!.items,
     { id: 'extra-b', name: 'Solo B', description: '', category: 'Prueba', price: 25, available: true, sortOrder: 99 },
-  ], 'Propietario B');
+  ], 'Propietario B', catalogB.data()!.revision || catalogB.data()!.updatedAt || null);
   await addCatalogProductThroughUI({
     businessId: idB, businessName: b.tenant.branding.restaurantName,
     user: auth.currentUser!, bridge: managementBridge, productName: 'Producto UI B', price: 26,
@@ -200,7 +200,7 @@ try {
   assert(!(await getDoc(doc(db, 'businesses', idB, 'catalog', 'menu_catalog'))).data()?.items.some(item => item.id === 'extra-a'));
   assert(!(await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data()?.items.some(item => item.id === 'extra-b'));
   assert.deepEqual((await getBusinessesForUser(uidB)).map(x => x.restaurantId), [idB]);
-  await assert.rejects(saveBusinessCatalog(idA, updatedA.items, 'B no puede editar A'), /acceso|permission-denied/i);
+  await assert.rejects(saveBusinessCatalog(idA, updatedA.items, 'B no puede editar A', updatedA.revision), /acceso|permission-denied/i);
   await deny(getDoc(doc(db, 'businesses', idA)), 'B no lee configuración privada de A');
   await deny(getDoc(doc(db, 'businessMemberships', idA + '_' + uidA)), 'B no lee OWNER de A');
   await deny(setDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'), {
