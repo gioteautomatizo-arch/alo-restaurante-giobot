@@ -15,7 +15,7 @@ const mocks = {
     'export const runTransaction = async (_db,fn) => fn({get:ref=>new Promise((resolve,reject)=>window.qa.pending.push({ref,resolve,reject})),set:(ref,data)=>window.qa.writes.push({type:"set",ref,data}),delete:ref=>window.qa.writes.push({type:"delete",ref})});',
   ].join('\n'),
   './firebase': 'export const auth = {currentUser:null}; export const db = {}; window.qa.auth = auth;',
-  './catalogOptions': 'export const cleanOptionGroups = groups => groups || [];',
+  './catalogOptions': 'export const cleanOptionGroups = groups => groups || []; export const assertUniqueOptionGroupIdentity = () => {};',
 };
 const bundle = await build({
   absWorkingDir:root,bundle:true,write:false,format:'iife',platform:'browser',

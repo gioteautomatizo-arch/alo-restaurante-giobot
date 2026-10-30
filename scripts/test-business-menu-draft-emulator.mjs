@@ -28,7 +28,7 @@ const mocks = {
     'export const setDoc = (...args) => globalThis.draftSdk.setDoc(...args);',
   ].join('\n'),
   './firebase': 'export const db = {}; export const auth = globalThis.draftAuth;',
-  './catalogOptions': 'export const cleanOptionGroups = groups => groups || [];',
+  './catalogOptions': 'export const cleanOptionGroups = groups => groups || []; export const assertUniqueOptionGroupIdentity = () => {};',
 };
 const bundle = await build({
   absWorkingDir:fileURLToPath(new URL('../',import.meta.url)),
