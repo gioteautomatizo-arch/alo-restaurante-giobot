@@ -32,6 +32,45 @@ export function cleanOptionGroups(groups: CatalogOptionGroup[] | undefined): Cat
 }
 
 /**
+ * Validar ANTES de cleanOptionGroups: la normalización histórica convertía
+ * precios inválidos en $0 y descartaba opciones con nombre repetido. Eso
+ * cambiaría silenciosamente el precio que introdujo el negocio.
+ * Se permiten placeholders completamente vacíos mientras se edita y cadenas
+ * numéricas válidas de consumidores antiguos; ningún extra con nombre puede
+ * guardarse con precio inválido o duplicado.
+ */
+export function assertValidOptionChoicesBeforeCleaning(groups: CatalogOptionGroup[] | undefined): void {
+  if (!Array.isArray(groups)) return;
+  for (const group of groups) {
+    const groupName = String(group?.name ?? '').trim();
+    const choices = Array.isArray(group?.choices) ? group.choices : [];
+    const namedChoices = choices.filter(choice => String(choice?.name ?? '').trim());
+    // Grupo nuevo sin completar: no tiene contenido que se vaya a publicar.
+    if (!groupName && namedChoices.length === 0) continue;
+    if (!groupName || namedChoices.length === 0
+        || typeof group.required !== 'boolean' || typeof group.multiple !== 'boolean') {
+      throw new Error('OPCIONES_CATALOGO_INVALIDAS: Completa el nombre y las opciones del grupo antes de guardar.');
+    }
+    const seen = new Set<string>();
+    for (const choice of namedChoices) {
+      const name = String(choice.name).trim().toLowerCase();
+      const rawPrice: unknown = choice.price;
+      const price = typeof rawPrice === 'number' ? rawPrice
+        : typeof rawPrice === 'string' && rawPrice.trim() !== '' ? Number(rawPrice) : NaN;
+      // El carrito opera con centavos: evitar desbordamiento o precisión
+      // insegura incluso si el número original es finito.
+      if (!Number.isFinite(price) || price < 0 || !Number.isSafeInteger(Math.round(price * 100))) {
+        throw new Error('OPCIONES_CATALOGO_INVALIDAS: Un extra tiene precio inválido. Revisa los importes antes de guardar.');
+      }
+      if (seen.has(name)) {
+        throw new Error('OPCIONES_CATALOGO_INVALIDAS: Hay opciones con nombres repetidos en un mismo grupo.');
+      }
+      seen.add(name);
+    }
+  }
+}
+
+/**
  * No permitir dos grupos con la misma clave de selección o nombre.
  * El carrito indexa selecciones por group.id; IDs repetidos aplican una
  * elección a ambos grupos y pueden duplicar el importe de los extras.
