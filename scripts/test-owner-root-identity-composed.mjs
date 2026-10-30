@@ -63,6 +63,11 @@ async function scenario(rules, protectedOwner, suffix) {
   try {
     await assertSucceeds(register(alice, a, aliceId));
     await assertSucceeds(register(bob, b, bobId));
+    // El menú de B existe pero todavía NO está publicado: su lectura debe
+    // requerir una membresía realmente autorizada, no solo UID/tenant.
+    await assertSucceeds(setDoc(doc(bob, catalog(b)), {
+      businessId: b, items: [{ id: 'private-b', price: 12 }],
+    }));
     // SOLO el administrador del emulador simula un OWNER histórico discordante.
     // El documento tiene clave, tenant y UID correctos, pero no coincide con
     // businesses/{b}.ownerUserId: es la brecha que faltaba en la composición.
@@ -79,6 +84,7 @@ async function scenario(rules, protectedOwner, suffix) {
     // Leer la propia ficha corrupta no debe interpretarse como permiso OWNER.
     await assertSucceeds(getDoc(doc(alice, memberPath(b, aliceId))));
     await check(getDoc(doc(alice, root(b))));
+    await check(getDoc(doc(alice, catalog(b))));
     await check(updateDoc(doc(alice, root(b)), {
       branding: { restaurantName: 'intrusion' },
     }));
@@ -94,8 +100,10 @@ async function scenario(rules, protectedOwner, suffix) {
     // legítimo con MANAGER; este último nunca puede hacerse OWNER.
     await assertSucceeds(getDoc(doc(alice, root(a))));
     await assertSucceeds(getDoc(doc(bob, root(b))));
+    await assertSucceeds(getDoc(doc(bob, catalog(b))));
     await assertSucceeds(setDoc(doc(bob, 'publicBusinessProfiles', b), profile(b)));
     await assertSucceeds(getDoc(doc(manager, root(b))));
+    await assertSucceeds(getDoc(doc(manager, catalog(b))));
     await assertSucceeds(setDoc(doc(manager, catalog(b)), { businessId: b, items: [] }));
     await assertFails(updateDoc(doc(manager, root(b)), {
       branding: { restaurantName: 'manager-cannot-own' },
@@ -120,10 +128,10 @@ async function scenario(rules, protectedOwner, suffix) {
     await check(getDoc(doc(alice, root(orphan))));
     await check(setDoc(doc(alice, 'publicBusinessProfiles', orphan), profile(orphan)));
     if (protectedOwner) {
-      console.log('PASS (propuesta NO desplegada): OWNER discordante/sin raíz verificable no autoriza raíz, perfil, empleados ni catálogo; OWNER auténtico, MANAGER y Super Admin conservan acceso.');
+      console.log('PASS (propuesta NO desplegada): OWNER discordante/sin raíz verificable no lee menú privado ni autoriza raíz, perfil, empleados o catálogo; OWNER auténtico, MANAGER y Super Admin conservan acceso.');
       console.warn('PENDIENTE: inventario y tratamiento manual de raíces históricas sin ownerUserId; límites de lecturas get/exists, consultas list y revisión independiente antes de cualquier corte.');
     } else {
-      console.warn('PENDIENTE SEGURIDAD (candidato compuesto anterior): OWNER con UID/tenant correctos pero raíz de otro propietario puede leer/escribir B; OWNER sin propietario verificable también obtiene permisos.');
+      console.warn('PENDIENTE SEGURIDAD (candidato compuesto anterior): OWNER con UID/tenant correctos pero raíz de otro propietario puede leer menú privado y leer/escribir B; OWNER sin propietario verificable también obtiene permisos.');
     }
   } finally {
     await env.cleanup();
