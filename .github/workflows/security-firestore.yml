@@ -58,6 +58,8 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-atomic-owner-proposal-test --config firebase.launch-security-emulator.json "node scripts/test-owner-atomic-proposal.mjs"
       - name: Diagnose malformed tenant memberships and test isolated identity gate (no rule deployment)
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-membership-identity-test --config firebase.launch-security-emulator.json "node scripts/test-membership-identity-proposal.mjs"
+      - name: Test composed membership list and historical identity boundaries (emulator only)
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-membership-list-composed-test --config firebase.launch-security-emulator.json "node scripts/test-business-membership-list-composed.mjs"
       - name: Test opt-in private business list with two tenants (Auth+Firestore Emulator, no deployment)
         run: npx firebase emulators:exec --only auth,firestore --project gioteautomatizo-secure-business-list-test --config firebase.invites-emulator.json "node --import tsx scripts/test-business-directory-api.mjs"
       - name: Diagnose business handle reuse and test isolated no-client-delete proposal
