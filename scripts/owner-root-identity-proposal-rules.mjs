@@ -31,7 +31,30 @@ export function buildOwnerRootIdentityProposalRules(identityRules) {
             && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUserId == request.auth.uid
           )
         );`;
-  return identityRules.slice(0, begin)
+  let guarded = identityRules.slice(0, begin)
     + original.replace(roleAnchor, replacement)
     + identityRules.slice(finish);
+
+  // La lectura privada de menu_catalog utiliza otro helper, introducido por
+  // la propuesta de borradores. Sin esta sustitución un OWNER histórico con
+  // UID/tenant correctos, pero raíz de otro dueño, todavía podría LEER el
+  // catálogo no publicado aunque la puerta anterior negara sus escrituras.
+  // Solo se endurece la composición aislada; no se altera STAGED.
+  const catalogStart = '    function hasIdentifiedCatalogMembership(businessId) {';
+  const catalogEnd = '    function isIdentifiedPublishedCatalog(businessId) {';
+  assert.equal(guarded.split(catalogStart).length, 2,
+    'ALTO: falta el helper de lectura privada de catálogo en la composición.');
+  assert.equal(guarded.split(catalogEnd).length, 2,
+    'ALTO: cambió el límite del helper de catálogo privado.');
+  const catalogBegin = guarded.indexOf(catalogStart);
+  const catalogFinish = guarded.indexOf(catalogEnd);
+  assert(catalogFinish > catalogBegin, 'ALTO: helper de catálogo ambiguo.');
+  guarded = guarded.slice(0, catalogBegin)
+    + `    function hasIdentifiedCatalogMembership(businessId) {
+      return hasVerifiedTenantMembership(businessId);
+    }
+
+`
+    + guarded.slice(catalogFinish);
+  return guarded;
 }
