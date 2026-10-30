@@ -82,14 +82,14 @@ const passOwner = async (promise, id='tenant-a', uid='owner-a', legacy=false) =>
 try {
   window.eval(bundle.outputFiles[0].text);
   reset();
-  const good = window.qa.saveCatalog('tenant-a',[item],'Prueba');
+  const good = window.qa.saveCatalog('tenant-a',[item],'Prueba',null);
   await passCatalog(good);
   assert.equal(window.qa.writes.length,1);
   assert.equal(window.qa.writes[0].ref.path,'businesses/tenant-a/catalog/menu_catalog');
   assert.equal(window.qa.writes[0].data.businessId,'tenant-a');
 
   reset();
-  const wrongRole = window.qa.saveCatalog('tenant-a',[item],'Prueba');
+  const wrongRole = window.qa.saveCatalog('tenant-a',[item],'Prueba',null);
   await waitFor(() => window.qa.pending.length === 1,'Falta consulta rol');
   window.qa.pending[0].resolve(membership('owner-a','CASHIER'));
   await assert.rejects(wrongRole,/No tienes permiso/);
@@ -97,21 +97,21 @@ try {
 
   // Una membresía almacenada bajo la ruta de A no autoriza editar B.
   reset();
-  const wrongTenantCatalog = window.qa.saveCatalog('tenant-a',[item],'Prueba');
+  const wrongTenantCatalog = window.qa.saveCatalog('tenant-a',[item],'Prueba',null);
   await waitFor(() => window.qa.pending.length === 1,'Falta membresía cruzada del catálogo');
   window.qa.pending[0].resolve(membership('owner-a','OWNER','tenant-b'));
   await assert.rejects(wrongTenantCatalog,/No tienes permiso/);
   assert.equal(window.qa.writes.length,0,'Membresía discordante no guarda catálogo');
 
   reset();
-  const inactiveCatalog = window.qa.saveCatalog('tenant-a',[item],'Prueba');
+  const inactiveCatalog = window.qa.saveCatalog('tenant-a',[item],'Prueba',null);
   await waitFor(() => window.qa.pending.length === 1,'Falta membresía inactiva');
   window.qa.pending[0].resolve(membership('owner-a','OWNER','tenant-a',false));
   await assert.rejects(inactiveCatalog,/No tienes permiso/);
   assert.equal(window.qa.writes.length,0);
 
   reset();
-  const switched = window.qa.saveCatalog('tenant-a',[item],'Prueba');
+  const switched = window.qa.saveCatalog('tenant-a',[item],'Prueba',null);
   await waitFor(() => window.qa.pending.length === 1,'Falta consulta antes de cambio UID');
   window.qa.auth.currentUser = {uid:'owner-b'};
   window.qa.pending[0].resolve(membership('owner-a'));
@@ -119,18 +119,18 @@ try {
   assert.equal(window.qa.writes.length,0,'Cambio de cuenta no debe guardar catálogo A');
 
   reset('owner-b');
-  const second = window.qa.saveCatalog('tenant-b',[{...item,id:'product-b'}],'Prueba B');
+  const second = window.qa.saveCatalog('tenant-b',[{...item,id:'product-b'}],'Prueba B',null);
   await passCatalog(second,'tenant-b','owner-b');
   assert.equal(window.qa.writes[0].ref.path,'businesses/tenant-b/catalog/menu_catalog');
 
   // El catálogo rechaza raíces ajenas, OWNER discordante y revocaciones
   // sin intentar guardar; un MANAGER legítimo y OWNER histórico conservan acceso.
   reset();
-  await passCatalog(window.qa.saveCatalog('tenant-a',[item],'Prueba'), 'tenant-a','owner-a','OWNER',true);
+  await passCatalog(window.qa.saveCatalog('tenant-a',[item],'Prueba'), 'tenant-a','owner-a','OWNER',true,null);
   assert.equal(window.qa.writes.length,1,'OWNER histórico conserva acceso');
 
   reset('manager-a');
-  await passCatalog(window.qa.saveCatalog('tenant-a',[item],'Prueba'), 'tenant-a','manager-a','MANAGER');
+  await passCatalog(window.qa.saveCatalog('tenant-a',[item],'Prueba'), 'tenant-a','manager-a','MANAGER',null);
   assert.equal(window.qa.writes.length,1,'MANAGER legítimo conserva acceso');
 
   for (const root of [
@@ -139,7 +139,7 @@ try {
     {exists:()=>false,data:()=>null},
   ]) {
     reset();
-    const blocked = window.qa.saveCatalog('tenant-a',[item],'Prueba');
+    const blocked = window.qa.saveCatalog('tenant-a',[item],'Prueba',null);
     await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
     await resolveRead(1,root,'businesses/tenant-a');
     await assert.rejects(blocked,/identidad del negocio o propietario/);
@@ -154,7 +154,7 @@ try {
     {exists:()=>false,data:()=>null},
   ]) {
     reset();
-    const blocked = window.qa.saveCatalog('tenant-a',[item],'Prueba');
+    const blocked = window.qa.saveCatalog('tenant-a',[item],'Prueba',null);
     await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
     await resolveRead(1,businessRoot('tenant-a','owner-a'),'businesses/tenant-a');
     await resolveRead(2,latest,'businessMemberships/tenant-a_owner-a');
@@ -163,7 +163,7 @@ try {
   }
 
   reset();
-  const switchedCatalogAfterRoot = window.qa.saveCatalog('tenant-a',[item],'Prueba');
+  const switchedCatalogAfterRoot = window.qa.saveCatalog('tenant-a',[item],'Prueba',null);
   await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
   await waitFor(()=>window.qa.pending.length===2,'Falta raíz de catálogo');
   window.qa.auth.currentUser={uid:'owner-b'};
