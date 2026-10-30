@@ -69,6 +69,12 @@ try {
     }
   });
   await assertFails(getDoc(doc(alice, reservation(idA))));
+  // Antes de la primera siembra el documento menu_catalog NO existe. La
+  // lectura transaccional del propietario debe poder comprobar su ausencia;
+  // un visitante no debe obtener acceso a esa ruta sin catálogo publicado.
+  const missingCatalog = await assertSucceeds(getDoc(doc(alice, path(idA, 'menu_catalog'))));
+  assert.equal(missingCatalog.exists(), false, 'OWNER puede comprobar menú aún no creado');
+  await assertFails(getDoc(doc(visitor, path(idA, 'menu_catalog'))));
   await assertFails(getDoc(doc(bob, root(idA))));
   await assertFails(getDoc(doc(alice, root(idB))));
 
