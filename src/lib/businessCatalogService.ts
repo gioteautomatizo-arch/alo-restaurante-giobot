@@ -206,9 +206,10 @@ export async function seedBusinessCatalogIfMissing(
 }
 
 /**
- * expectedRevision indefinido conserva el guardado histórico de otros módulos.
- * El editor siempre envía su versión (null si el catálogo aún no existe):
- * una transacción impide sobrescribir una edición realizada por otra pestaña.
+ * El guardado de catálogo COMPLETO requiere la versión observada.
+ * null representa un catálogo inexistente; undefined no es una versión.
+ * No admitir el fallback histórico sin CAS: puede sobrescribir cambios de otra
+ * pestaña. Los consumidores antiguos deben recargar y enviar revision/updatedAt.
  */
 export async function saveBusinessCatalog(
   businessId: string,
@@ -216,47 +217,33 @@ export async function saveBusinessCatalog(
   actorName: string,
   expectedRevision?: string | null
 ): Promise<BusinessCatalogDocument> {
+  // Mantener el argumento opcional en TypeScript durante la transición para
+  // fallar con un error recuperable en clientes antiguos, nunca escribir a ciegas.
+  if (expectedRevision === undefined) {
+    throw new Error('CONFLICTO_CATALOGO: Este editor necesita actualizarse para guardar con revisión. Recarga el catálogo.');
+  }
   const managerUid = await assertCatalogManager(businessId);
   const payload = buildCatalogPayload(businessId, items, actorName);
   if (auth.currentUser?.uid !== managerUid) {
     throw new Error('La sesión cambió antes de guardar el catálogo. No se envió ningún cambio.');
   }
   const ref = catalogRef(businessId);
-  if (expectedRevision !== undefined) {
-    return runTransaction(db, async (transaction) => {
-      if (auth.currentUser?.uid !== managerUid) {
-        throw new Error('La sesión cambió antes de guardar el catálogo.');
-      }
-      const current = await transaction.get(ref);
-      if (current.exists() && (current.data().businessId !== businessId || !Array.isArray(current.data().items))) {
-        throw new Error('El catálogo contiene datos inconsistentes del negocio. No se guardó ningún cambio.');
-      }
-      const currentRevision = current.exists()
-        ? (current.data().revision || current.data().updatedAt || null)
-        : null;
-      if (currentRevision !== expectedRevision) {
-        throw new Error('CONFLICTO_CATALOGO: Otra persona modificó el catálogo. Recarga antes de sobrescribir.');
-      }
-      if (auth.currentUser?.uid !== managerUid) {
-        throw new Error('La sesión cambió durante el guardado del catálogo.');
-      }
-      transaction.set(ref, payload);
-      return payload;
-    });
-  }
-  // Compatibilidad con consumidores heredados que aún no envían revisión.
-  // No proporciona CAS: una edición válida posterior puede sobrescribir otra.
-  // Sin embargo, nunca debe reemplazar un documento corrupto o de otro tenant.
   return runTransaction(db, async (transaction) => {
     if (auth.currentUser?.uid !== managerUid) {
-      throw new Error('La sesión cambió antes del guardado heredado del catálogo.');
+      throw new Error('La sesión cambió antes de guardar el catálogo.');
     }
     const current = await transaction.get(ref);
     if (current.exists() && (current.data().businessId !== businessId || !Array.isArray(current.data().items))) {
       throw new Error('El catálogo contiene datos inconsistentes del negocio. No se guardó ningún cambio.');
     }
+    const currentRevision = current.exists()
+      ? (current.data().revision || current.data().updatedAt || null)
+      : null;
+    if (currentRevision !== expectedRevision) {
+      throw new Error('CONFLICTO_CATALOGO: Otra persona modificó el catálogo. Recarga antes de sobrescribir.');
+    }
     if (auth.currentUser?.uid !== managerUid) {
-      throw new Error('La sesión cambió durante el guardado heredado del catálogo.');
+      throw new Error('La sesión cambió durante el guardado del catálogo.');
     }
     transaction.set(ref, payload);
     return payload;
