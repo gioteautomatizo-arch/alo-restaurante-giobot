@@ -99,7 +99,7 @@ try {
   assert.equal(event.kind,'error','La lectura de A no puede presentar un catálogo con identidad B');
   assert.match(String(event.value),/identidad o lista de productos inconsistente/);
   await assert.rejects(save('tenant-a',[item('No sobrescribir')],'Dueño A','cross-v1'),/datos inconsistentes/);
-  await assert.rejects(save('tenant-a',[item('Heredado cruzado')],'Dueño A'),/datos inconsistentes/);
+  await assert.rejects(save('tenant-a',[item('Heredado cruzado')],'Dueño A'),/CONFLICTO_CATALOGO/);
   await assert.rejects(upsertItem('tenant-a',[item('Obsoleto')],item('No tocar'),'Dueño A'),/datos inconsistentes/);
   await assert.rejects(deleteItem('tenant-a',[item('Obsoleto')],'product-1','Dueño A'),/datos inconsistentes/);
   await env.withSecurityRulesDisabled(async ctx=>{
@@ -114,7 +114,7 @@ try {
   event=await firstSnapshot('tenant-a',()=>false);
   assert.equal(event.kind,'error','No interpretar catálogo sin items como menú vacío');
   await assert.rejects(save('tenant-a',[item('No sobrescribir')],'Dueño A','bad-items'),/datos inconsistentes/);
-  await assert.rejects(save('tenant-a',[item('Heredado sin lista')],'Dueño A'),/datos inconsistentes/);
+  await assert.rejects(save('tenant-a',[item('Heredado sin lista')],'Dueño A'),/CONFLICTO_CATALOGO/);
 
   await env.withSecurityRulesDisabled(async ctx=>{
     await sdk.setDoc(ref(ctx.firestore(),'tenant-a'),{
@@ -127,12 +127,12 @@ try {
   const updated=await save('tenant-a',[item('Actualizado A')],'Dueño A',created.revision);
   assert.equal(updated.items[0].name,'Actualizado A');
   await assert.rejects(save('tenant-a',[item('Obsoleto A')],'Dueño A',created.revision),/CONFLICTO_CATALOGO/);
-  // Escritura heredada sin revisión: válida para el tenant correcto, pero
-  // no puede borrar un documento corrupto ni cambiar el catálogo de B.
-  const legacySaved=await save('tenant-a',[item('Actualizado heredado A')],'Dueño A');
-  assert.equal(legacySaved.items[0].name,'Actualizado heredado A');
-  const legacyRead=await sdk.getDoc(ref(ownerA,'tenant-a'));
-  assert.equal(legacyRead.data().items[0].name,'Actualizado heredado A');
+  // La firma antigua sin expectedRevision falla cerrada: ni un OWNER
+  // legítimo puede reemplazar el catálogo entero sin CAS.
+  await assert.rejects(save('tenant-a',[item('Sobrescritura ciega')],'Dueño A'),/CONFLICTO_CATALOGO/);
+  const afterBlind=await sdk.getDoc(ref(ownerA,'tenant-a'));
+  assert.equal(afterBlind.data().items[0].name,'Actualizado A','Rechazo sin revisión no muta A');
+  const legacyRead=afterBlind;
 
   // Dos consumidores heredados editan distintos productos desde el mismo
   // snapshot antiguo. La transacción debe conservar ambas altas, incluso
