@@ -213,18 +213,38 @@ async function findExistingEmployeeAuth(
 export async function listBusinessEmployees(businessId: string): Promise<BusinessEmployee[]> {
   const requesterId = auth.currentUser?.uid;
   if (!requesterId) throw new Error('Inicia sesión para consultar el equipo.');
+  if (!businessId.trim() || businessId.includes('/')) throw new Error('Identificador de negocio inválido.');
   const assertSession = () => {
     if (auth.currentUser?.uid !== requesterId) {
       throw new Error('La sesión cambió durante la consulta del equipo. Vuelve a entrar y reintenta.');
     }
   };
+  const readManagerRole = async (): Promise<BusinessRole> => {
+    const snap = await getDoc(membershipRef(businessId, requesterId));
+    assertSession();
+    const member = snap.exists() ? snap.data() as Partial<BusinessEmployee> : null;
+    if (!member || snap.id !== `${businessId}_${requesterId}` ||
+        member.restaurantId !== businessId || member.userId !== requesterId ||
+        member.active !== true ||
+        !(['OWNER', 'ADMIN', 'MANAGER'] as BusinessRole[]).includes(member.role as BusinessRole)) {
+      throw new Error('No tienes permiso para consultar el equipo de este negocio.');
+    }
+    return member.role as BusinessRole;
+  };
 
+  // Comprobar permisos incluso si el índice está vacío: una lista vacía no
+  // debe aparentar autorización para una cuenta revocada o de otro negocio.
+  const initialRole = await readManagerRole();
   // Firestore cannot safely authorize a collection query over businessMemberships:
   // read the deterministic membership IDs from the tenant's roster instead.
   const businessSnap = await getDoc(doc(db, 'businesses', businessId));
   assertSession();
   if (!businessSnap.exists() || businessSnap.data().restaurantId !== businessId) {
     throw new Error('El negocio no existe o su identificador es inconsistente.');
+  }
+  if (initialRole === 'OWNER' && businessSnap.data().ownerUserId !== undefined &&
+      businessSnap.data().ownerUserId !== requesterId) {
+    throw new Error('La identidad del propietario es inconsistente.');
   }
 
   const rawIds: unknown = businessSnap.data().employeeUserIds;
@@ -235,7 +255,10 @@ export async function listBusinessEmployees(businessId: string): Promise<Busines
   if (employeeUserIds.some((id) => typeof id !== 'string' || !id.trim() || id.includes('/'))) {
     throw new Error('El índice de empleados del negocio contiene identificadores inválidos.');
   }
-  if (employeeUserIds.length === 0) return [];
+  if (employeeUserIds.length === 0) {
+    if (await readManagerRole() !== initialRole) throw new Error('Tus permisos cambiaron durante la consulta del equipo.');
+    return [];
+  }
 
   const memberships = await Promise.all(
     (employeeUserIds as string[]).map((userId) => getDoc(membershipRef(businessId, userId))),
@@ -261,6 +284,9 @@ export async function listBusinessEmployees(businessId: string): Promise<Busines
     return { ...data, id: item.id } as BusinessEmployee;
   });
   assertSession();
+  if (await readManagerRole() !== initialRole) {
+    throw new Error('Tus permisos cambiaron durante la consulta del equipo.');
+  }
   return employees.sort((a, b) => a.name.localeCompare(b.name, 'es-MX'));
 }
 
