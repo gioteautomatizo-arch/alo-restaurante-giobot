@@ -18,9 +18,12 @@ import {
   signOut,
 } from 'firebase/auth';
 import {
-  connectFirestoreEmulator, doc, getDoc, getDocFromServer, writeBatch, deleteDoc, updateDoc, terminate,
+  connectFirestoreEmulator, doc, getDoc, getDocFromServer, writeBatch, deleteDoc, updateDoc, setDoc, terminate,
 } from 'firebase/firestore';
 import { buildThreeDocumentRecoveryMarkerProposalRules } from './owner-atomic-proposal-rules.mjs';
+import { buildPrivateCatalogReadProposalRules } from './catalog-private-read-proposal-rules.mjs';
+import { buildMembershipIdentityProposalRules } from './membership-identity-proposal-rules.mjs';
+import { buildOwnerRootIdentityProposalRules } from './owner-root-identity-proposal-rules.mjs';
 import { registerThroughOnboardingUI } from './business-onboarding-emulator-ui.mjs';
 import { saveBrandingThroughUI, addCatalogProductThroughUI } from './business-management-emulator-ui.mjs';
 import { publishBusinessThroughUI, publishAndHideBusinessThroughUI, assertForeignWorkspaceDeniedThroughUI, assertStaffCannotPublishThroughUI } from './business-publication-emulator-ui.mjs';
@@ -29,10 +32,16 @@ const projectId = 'gioteautomatizo-three-doc-onboarding-test';
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080');
 assert.equal(process.env.FIREBASE_AUTH_EMULATOR_HOST, '127.0.0.1:9099');
 const staged = readFileSync('docs/firestore.launch-security.STAGED.rules', 'utf8');
+// Integración A/B con las CUATRO propuestas simultáneas, solo en memoria.
+// La variante anterior de esta prueba usaba únicamente el contrato 3-doc.
+const composedRules = buildOwnerRootIdentityProposalRules(
+  buildMembershipIdentityProposalRules(
+    buildPrivateCatalogReadProposalRules(
+      buildThreeDocumentRecoveryMarkerProposalRules(staged))));
 const env = await initializeTestEnvironment({
   projectId,
   firestore: {
-    rules: buildThreeDocumentRecoveryMarkerProposalRules(staged),
+    rules: composedRules,
     host: '127.0.0.1', port: 8080,
   },
 });
@@ -439,6 +448,18 @@ try {
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA)))
     .data()?.branding.restaurantName, 'Candidato A configurado');
+  // El propietario puede guardar un borrador, pero publicar A solo hace
+  // público menu_catalog. La propuesta de privacidad no puede romper el
+  // onboarding ni revelar el borrador a visitantes sin cuenta.
+  const draftA = businessPath(idA) + '/catalog/menu_import_draft';
+  await setDoc(doc(db, draftA), {
+    businessId: idA, sourceImageUrl: 'https://example.test/private-draft.png', items: [],
+  });
+  assert((await getDoc(doc(db, draftA))).exists(), 'OWNER A lee su borrador');
+  const visitorDb = env.unauthenticatedContext().firestore();
+  assert((await getDoc(doc(visitorDb, businessPath(idA) + '/catalog/menu_catalog'))).exists(),
+    'Visitante lee solo el menú publicado A');
+  await deny(getDoc(doc(visitorDb, draftA)), 'Visitante no lee borrador de A publicada');
 
   await signOut(auth);
   const b = await registerThroughOnboardingUI({
@@ -462,6 +483,9 @@ try {
     bridge: managementBridge, name: 'Candidato B configurado',
   });
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idB))).data()?.published, false);
+  await deny(getDoc(doc(visitorDb, businessPath(idB) + '/catalog/menu_catalog')),
+    'Visitante no lee menú de B despublicado');
+  await deny(getDoc(doc(db, draftA)), 'OWNER B no lee borrador privado de A');
   assert.equal((await getDoc(doc(db, businessPath(idB) + '/catalog/menu_catalog')))
     .data()?.items?.some((item: { name: string }) => item.name === 'Producto candidato A'), false);
   assert.equal((await getDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog')))
@@ -782,7 +806,7 @@ try {
   console.log('PASS recuperación 2→3 (solo emulador): Auth persistente, mismo UID/handle, OWNER y reserva, catálogo idempotente y rechazo de otro propietario.');
   console.log('PASS cliente candidato reutilizable 3-doc (solo emulador): onboarding A/B, recuperación Auth y reservas con servicio real; NO conectado a producción.');
 
-  console.log('PASS (solo emulador): onboarding React 3 documentos, aislamiento de dos negocios, baja administrativa atómica, catálogo no público tras baja, OWNER sin republicación y reserva persistente.');
+  console.log('PASS (solo emulador): onboarding React 3-doc A/B bajo reglas compuestas OWNER/raíz, identidad, catálogo privado y reserva; borrador no público, invitaciones, baja atómica y reserva persistente.');
   console.warn('PENDIENTE: un borrado privilegiado sin despublicación deja visible el perfil huérfano; la propuesta aislada bloquea catálogo y republicación, pero exige baja administrativa atómica y revisión.');
   console.warn('PENDIENTE: el onboarding de producción sigue llamando registerBusiness de DOS documentos; candidato 3-doc NO activado. Coordinar cliente, reglas y migración histórica antes de cualquier despliegue.');
   console.warn('PENDIENTE: la respuesta perdida se inyecta sintéticamente DESPUÉS del commit; falta comprobar fallos reales de transporte, compatibilidad de clientes antiguos y reglas desplegadas.');
