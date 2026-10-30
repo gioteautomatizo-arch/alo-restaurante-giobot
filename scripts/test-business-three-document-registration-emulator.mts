@@ -721,14 +721,14 @@ try {
   // La membresía OWNER residual no autoriza a republicar tras borrar raíz.
   await signOut(auth);
   await signInWithEmailAndPassword(auth, emailA, password);
-  // El cliente ahora falla cerrado antes de intentar la escritura; no exigir
-  // exclusivamente permission-denied de Firestore para estas dos rutas.
+  // Bajo la composición OWNER/raíz, Firestore puede negar la lectura de
+  // una raíz huérfana ANTES de que el cliente llegue a su mensaje de error.
+  // Ambos fallos son seguros; nunca aceptar una republicación exitosa.
+  const orphanDenied = /identidad del negocio o propietario es inconsistente|permission-denied/i;
   await assert.rejects(setBusinessPublication(idA, retry.tenant, true),
-    /identidad del negocio o propietario es inconsistente/,
-    'OWNER no puede republicar perfil huérfano A');
+    orphanDenied, 'OWNER no puede republicar perfil huérfano A');
   await assert.rejects(setBusinessPublication(lostId, recovered.tenant, true),
-    /identidad del negocio o propietario es inconsistente/,
-    'OWNER no puede reactivar un negocio retirado');
+    orphanDenied, 'OWNER no puede reactivar un negocio retirado');
 
   // Comprobar explícitamente el cliente ACTUAL, sin modificarlo: su batch de
   // dos documentos debe ser rechazado por la propuesta permanente. La cuenta
