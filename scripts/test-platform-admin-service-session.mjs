@@ -164,7 +164,7 @@ try {
   window.qa.lists[7].resolve(listing(['tenant-b', tenant('tenant-b')]));
   await waitFor(() => window.qa.docs.length === 16, 'Revalidación recuperada');
   window.qa.docs[15].resolve(adminSnap());
-  assert.deepEqual((await restored).map(item => item.restaurantId), ['tenant-b']);
+  assert.equal((await restored).map(item => item.restaurantId).join(','), 'tenant-b');
 
   use(null);
   assert.equal(await window.qa.check('admin-a'), false);
