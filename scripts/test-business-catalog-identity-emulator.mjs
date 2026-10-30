@@ -259,6 +259,23 @@ try {
   await assert.rejects(upsertItem('tenant-a',baseline,badOptions([
     optionGroup('extras','Extras'),optionGroup('extras','Salsas'),
   ]),'Dueño A'),/OPCIONES_CATALOGO_INVALIDAS/);
+  // Antes se normalizaba un precio negativo/no numérico a $0 y se
+  // descartaban nombres repetidos: ambos casos deben fallar SIN escritura.
+  for(const price of [-7, Number.NaN, Infinity, 'precio desconocido', undefined]){
+    await assert.rejects(save('tenant-a',[badOptions([{
+      ...optionGroup('extras','Extras'),choices:[{name:'Queso',price}],
+    }])],'Dueño A',revision),/OPCIONES_CATALOGO_INVALIDAS/);
+  }
+  await assert.rejects(upsertItem('tenant-a',baseline,badOptions([{
+    ...optionGroup('extras','Extras'),choices:[{name:'Queso',price:-5}],
+  }]),'Dueño A'),/OPCIONES_CATALOGO_INVALIDAS/);
+  await assert.rejects(save('tenant-a',[badOptions([{
+    ...optionGroup('extras','Extras'),
+    choices:[{name:'Queso',price:5},{name:' queso ',price:10}],
+  }])],'Dueño A',revision),/OPCIONES_CATALOGO_INVALIDAS/);
+  await assert.rejects(save('tenant-a',[badOptions([{
+    ...optionGroup('guiso','Guiso'),required:true,choices:[{name:'',price:0}],
+  }])],'Dueño A',revision),/OPCIONES_CATALOGO_INVALIDAS/);
   let afterInvalid=await sdk.getDoc(ref(ownerA,'tenant-a'));
   assert.equal(afterInvalid.data().revision,revision,'Rechazos no cambian revisión A');
   assert.deepEqual(afterInvalid.data().items,baseline,'Rechazos no alteran productos A');
