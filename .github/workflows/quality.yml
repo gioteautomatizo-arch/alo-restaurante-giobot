@@ -90,6 +90,8 @@ jobs:
         run: node scripts/test-business-onboarding-journey-ui.mjs
       - name: Test invite acceptance tenant isolation and retry (mocked Auth/backend, no Firebase writes)
         run: node scripts/test-business-invite-accept-ui.mjs
+      - name: Test invite client session drift and invalid lists (mocked Auth/API, no Firebase writes)
+        run: node scripts/test-business-invite-service-session.mjs
       - name: Test catalog and publication session drift (mocked Auth/Firestore, no real writes)
         run: node scripts/test-business-catalog-publication-session.mjs
       - name: Test catalog editor read failure and tenant switch (React/jsdom, no Firebase writes)
