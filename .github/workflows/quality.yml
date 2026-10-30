@@ -118,6 +118,8 @@ jobs:
         run: node scripts/test-public-order-write-path.mjs
       - name: Test public checkout interactions (mocked backend, no Firebase writes)
         run: node scripts/test-public-checkout-ui.mjs
+      - name: Reject ambiguous option group identities before catalog save (pure synthetic data)
+        run: node --import tsx scripts/test-catalog-option-group-identity.mts
       - name: Test safe public catalog checkout (no Firebase writes)
         run: node --import tsx scripts/test-business-public-catalog.mts
       - name: Test isolated trusted public order price calculation (synthetic, no backend writes)

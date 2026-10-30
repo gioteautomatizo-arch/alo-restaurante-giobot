@@ -31,6 +31,28 @@ export function cleanOptionGroups(groups: CatalogOptionGroup[] | undefined): Cat
   return result;
 }
 
+/**
+ * No permitir dos grupos con la misma clave de selección o nombre.
+ * El carrito indexa selecciones por group.id; IDs repetidos aplican una
+ * elección a ambos grupos y pueden duplicar el importe de los extras.
+ * Rechazar antes de escribir, sin eliminar ni renombrar opciones del dueño.
+ */
+export function assertUniqueOptionGroupIdentity(groups: CatalogOptionGroup[]): void {
+  const ids = new Set<string>();
+  const names = new Set<string>();
+  for (const group of groups) {
+    const id = group.id;
+    const name = group.name;
+    if (typeof id !== 'string' || !id.trim() || id.trim() !== id
+        || typeof name !== 'string' || !name.trim()
+        || ids.has(id) || names.has(name.toLowerCase())) {
+      throw new Error('OPCIONES_CATALOGO_INVALIDAS: Hay grupos de opciones con identificadores o nombres repetidos. Revisa las opciones antes de guardar.');
+    }
+    ids.add(id);
+    names.add(name.toLowerCase());
+  }
+}
+
 /** Elegir en un grupo: si es de una sola opción reemplaza; si es múltiple, activa/desactiva. */
 export function toggleChoice(group: CatalogOptionGroup, current: string[] | undefined, choiceName: string): string[] {
   const list = current || [];

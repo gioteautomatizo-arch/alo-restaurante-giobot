@@ -28,7 +28,6 @@ const mocks={
     'export const setDoc = (...args) => globalThis.catalogSdk.setDoc(...args);',
   ].join('\n'),
   './firebase':'export const db={}; export const auth=globalThis.catalogAuth;',
-  './catalogOptions':'export const cleanOptionGroups = groups => groups || [];',
 };
 const bundle=await build({
   absWorkingDir:fileURLToPath(new URL('../',import.meta.url)),
@@ -43,6 +42,7 @@ const bundle=await build({
   }}],
 });
 const {subscribeToBusinessCatalog:subscribe,saveBusinessCatalog:save,
+  seedBusinessCatalogIfMissing:seed,
   upsertBusinessCatalogItem:upsertItem,deleteBusinessCatalogItem:deleteItem}=await import(
   'data:text/javascript;base64,'+Buffer.from(bundle.outputFiles[0].text).toString('base64'));
 const ownerA=env.authenticatedContext('owner-a').firestore();
@@ -74,6 +74,18 @@ try {
   let event=await firstSnapshot('tenant-a');
   assert.equal(event.kind,'data');
   assert.equal(event.value,null,'Catálogo ausente se distingue de error');
+  const optionGroup=(id,name)=>({
+    id,name,required:false,multiple:true,choices:[{name:'Queso',price:5}],
+  });
+  const badOptions=(groups)=>({...item('Opciones ambiguas'),optionGroups:groups});
+  const duplicateId=badOptions([
+    optionGroup('extras','Extras'),optionGroup('extras','Salsas'),
+  ]);
+  // La siembra debe rechazar el grupo ambiguo ANTES de crear el catálogo.
+  await assert.rejects(seed('tenant-a',[duplicateId],'Dueño A'),
+    /OPCIONES_CATALOGO_INVALIDAS/);
+  assert.equal((await sdk.getDoc(ref(ownerA,'tenant-a'))).exists(),false,
+    'Siembra inválida no crea catálogo');
   const created=await save('tenant-a',[item('Solo A')],'Dueño A',null);
   event=await firstSnapshot('tenant-a',value=>value?.items?.[0]?.name==='Solo A');
   assert.equal(event.kind,'data');
@@ -233,6 +245,28 @@ try {
     'Borrado obsoleto no cambia revisión ni otros productos');
 
 
+  // Guardado completo y helper heredado deben fallar cerrados si la
+  // normalización conserva dos grupos con el mismo ID o nombre.
+  const beforeInvalid=await sdk.getDoc(ref(ownerA,'tenant-a'));
+  const baseline=beforeInvalid.data().items;
+  const revision=beforeInvalid.data().revision;
+  await assert.rejects(save('tenant-a',[badOptions([
+    optionGroup('extras','Extras'),optionGroup('extras','Salsas'),
+  ])],'Dueño A',revision),/OPCIONES_CATALOGO_INVALIDAS/);
+  await assert.rejects(save('tenant-a',[badOptions([
+    optionGroup('extras','Extras'),optionGroup('salsas','extras'),
+  ])],'Dueño A',revision),/OPCIONES_CATALOGO_INVALIDAS/);
+  await assert.rejects(upsertItem('tenant-a',baseline,badOptions([
+    optionGroup('extras','Extras'),optionGroup('extras','Salsas'),
+  ]),'Dueño A'),/OPCIONES_CATALOGO_INVALIDAS/);
+  let afterInvalid=await sdk.getDoc(ref(ownerA,'tenant-a'));
+  assert.equal(afterInvalid.data().revision,revision,'Rechazos no cambian revisión A');
+  assert.deepEqual(afterInvalid.data().items,baseline,'Rechazos no alteran productos A');
+  const valid=await save('tenant-a',[...baseline,badOptions([
+    optionGroup('extras','Extras'),optionGroup('salsas','Salsas'),
+  ])],'Dueño A',revision);
+  assert.equal(valid.items.at(-1).optionGroups.length,2,'Dos grupos válidos se conservan');
+  assert.equal(valid.items.at(-1).optionGroups[0].choices[0].price,5);
   as('owner-b',ownerB);
   event=await firstSnapshot('tenant-b');
   assert.equal(event.kind,'data');

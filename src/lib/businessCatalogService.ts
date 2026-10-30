@@ -2,7 +2,7 @@ import { doc, getDoc, onSnapshot, runTransaction } from 'firebase/firestore';
 import { auth } from './firebase';
 import { db } from './firebase';
 import { BusinessRole } from './restaurantCore';
-import { cleanOptionGroups } from './catalogOptions';
+import { assertUniqueOptionGroupIdentity, cleanOptionGroups } from './catalogOptions';
 
 export interface CatalogChoice {
   name: string;
@@ -166,6 +166,7 @@ function buildCatalogPayload(
     items: ensureUniqueIds(items)
       .map((item) => {
         const optionGroups = cleanOptionGroups(item.optionGroups);
+        assertUniqueOptionGroupIdentity(optionGroups);
         const { optionGroups: _discard, ...rest } = item;
         // Firestore no acepta valores undefined: se omiten los campos vacíos.
         return JSON.parse(JSON.stringify(optionGroups.length ? { ...rest, optionGroups } : rest)) as BusinessCatalogItem;
