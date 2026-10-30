@@ -231,6 +231,8 @@ export const BusinessCatalogEditor: React.FC<{
       if (error instanceof Error && error.message.includes('CONFLICTO_CATALOGO')) {
         setRemoteConflict(true);
         setMessage('El catálogo cambió en otra sesión. Conservamos tu borrador; recarga para revisar los cambios.');
+      } else if (error instanceof Error && error.message.includes('OPCIONES_CATALOGO_INVALIDAS')) {
+        setMessage('No se guardó el catálogo: revisa los nombres, grupos y precios de los extras. Conservamos tus cambios para corregirlos.');
       } else {
         setMessage('No pudimos guardar el catálogo. Revisa tu conexión y permisos.');
       }
