@@ -38,6 +38,8 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-owner-draft-composed-test --config firebase.launch-security-emulator.json "node scripts/test-registration-private-catalog-composed.mjs"
       - name: Diagnose OWNER/root mismatch and test isolated root-identity gate (emulator only)
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-owner-root-identity-test --config firebase.launch-security-emulator.json "node scripts/test-owner-root-identity-composed.mjs"
+      - name: Test composed OWNER/root batch access budget (emulator only)
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-owner-batch-budget-test --config firebase.launch-security-emulator.json "node scripts/test-owner-root-batch-budget.mjs"
       - name: Diagnose public order price authority gap (expected PENDIENTE, emulator only)
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-public-price-authority-audit --config firebase.launch-security-emulator.json "node scripts/test-public-order-price-authority-audit.mjs"
       - name: Test isolated public order write gate candidate (emulator only, no rule deployment)
