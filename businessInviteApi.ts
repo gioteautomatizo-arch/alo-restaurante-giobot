@@ -43,8 +43,14 @@ function matchesTenant(data: Record<string, unknown> | undefined, businessId: st
 }
 function activeTenantMember(
   data: Record<string, unknown> | undefined, businessId: string, uid: string,
+  tenant: Record<string, unknown> | undefined,
 ): boolean {
-  return data?.active === true && data.restaurantId === businessId && data.userId === uid;
+  // Firebase Admin ignora las reglas de cliente. Un OWNER con membresía
+  // residual no puede invitar si la raíz identifica a otro propietario.
+  // Las raíces históricas sin ownerUserId conservan su ruta de compatibilidad;
+  // deben auditarse antes del corte de permisos.
+  return data?.active === true && data.restaurantId === businessId && data.userId === uid
+    && (data.role !== 'OWNER' || (tenant?.ownerUserId === undefined || tenant.ownerUserId === uid));
 }
 const safeId = (v: unknown): v is string =>
   typeof v === 'string' && /^[a-z0-9][a-z0-9-]{1,63}$/.test(v);
@@ -100,7 +106,7 @@ export function registerBusinessInviteApi(app: Express): void {
         // Re-check permissions in the same transaction that issues the token.
         // A revoked or cross-tenant membership cannot race the initial lookup.
         if (!tenantSnap.exists || !matchesTenant(tenantSnap.data(), businessId) ||
-            !memberSnap.exists || !activeTenantMember(memberSnap.data(), businessId, actor.uid) ||
+            !memberSnap.exists || !activeTenantMember(memberSnap.data(), businessId, actor.uid, tenantSnap.data()) ||
             !canInvite(actorRole, role)) return 'DENIED';
         const currentCount = (snap: typeof actorSnap, interval: number) => {
           const value = snap.data();
@@ -144,7 +150,7 @@ export function registerBusinessInviteApi(app: Express): void {
       ]);
       const role = member.data()?.role;
       if (!business.exists || !matchesTenant(business.data(), businessId) ||
-          !member.exists || !activeTenantMember(member.data(), businessId, actor.uid) ||
+          !member.exists || !activeTenantMember(member.data(), businessId, actor.uid, business.data()) ||
           !['OWNER','ADMIN','MANAGER'].includes(String(role))) {
         return fail(res, 403, 'No tienes permiso para ver las invitaciones.');
       }
@@ -179,7 +185,7 @@ export function registerBusinessInviteApi(app: Express): void {
         .filter(snap => {
           const invite = snap.data();
           const inviter = inviters.get(invite.createdBy);
-          return activeTenantMember(inviter, businessId, invite.createdBy)
+          return activeTenantMember(inviter, businessId, invite.createdBy, business.data())
             && canInvite(inviter?.role, invite.role);
         })
         .map(snap => exposedInvite(snap.id, snap.data()))
@@ -211,7 +217,7 @@ export function registerBusinessInviteApi(app: Express): void {
         ]);
         const role = member.data()?.role;
         if (!business.exists || !matchesTenant(business.data(), businessId) ||
-            !member.exists || !activeTenantMember(member.data(), businessId, actor.uid) ||
+            !member.exists || !activeTenantMember(member.data(), businessId, actor.uid, business.data()) ||
             !['OWNER','ADMIN','MANAGER'].includes(String(role))) {
           return { status: 403, error: 'No tienes permisos para cancelar esta invitación.' };
         }
@@ -261,7 +267,7 @@ export function registerBusinessInviteApi(app: Express): void {
         return fail(res, 410, 'Esta invitación ya no está disponible.');
       }
       const inviterRole = inviter.data()?.role as ActorRole | undefined;
-      if (!inviter.exists || !activeTenantMember(inviter.data(), businessId, invite.createdBy) ||
+      if (!inviter.exists || !activeTenantMember(inviter.data(), businessId, invite.createdBy, business.data()) ||
           !canInvite(inviterRole, invite.role)) {
         return fail(res, 410, 'Esta invitación ya no está disponible.');
       }
@@ -310,7 +316,7 @@ export function registerBusinessInviteApi(app: Express): void {
           return { status: 404, error: 'El negocio ya no existe.' };
         }
         const inviterRole = inviter.data()?.role as ActorRole | undefined;
-        if (!inviter.exists || !activeTenantMember(inviter.data(), businessId, invite.createdBy) ||
+        if (!inviter.exists || !activeTenantMember(inviter.data(), businessId, invite.createdBy, business.data()) ||
             !canInvite(inviterRole, invite.role)) {
           return { status: 403, error: 'La persona que invitó ya no tiene permisos suficientes.' };
         }
