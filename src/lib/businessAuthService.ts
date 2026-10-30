@@ -171,18 +171,18 @@ export async function registerBusiness(input: RegisterBusinessInput): Promise<Re
     await batch.commit();
   } catch (commitError) {
     // El servidor puede haber confirmado el lote aunque la respuesta se haya
-    // perdido. Recuperar SOLO una alta propia con OWNER válido; una colisión de
+    // perdido. Verificar en el SERVIDOR (nunca caché) una alta propia con OWNER válido; una colisión de
     // handle ajeno debe conservar el error original y nunca tomar ese negocio.
     try {
       assertCurrentBusinessSession(userId);
-      const existingMembershipSnap = await getDoc(membershipRef(businessId, userId));
+      const existingMembershipSnap = await getDocFromServer(membershipRef(businessId, userId));
       assertCurrentBusinessSession(userId);
       if (!existingMembershipSnap.exists()) throw commitError;
       const existingMembership = existingMembershipSnap.data() as RestaurantMembership;
       if (!hasValidMembership(existingMembership, businessId, userId) || existingMembership.role !== 'OWNER') {
         throw commitError;
       }
-      const existingTenantSnap = await getDoc(businessRef(businessId));
+      const existingTenantSnap = await getDocFromServer(businessRef(businessId));
       assertCurrentBusinessSession(userId);
       if (!existingTenantSnap.exists()) throw commitError;
       const existingTenant = existingTenantSnap.data() as RestaurantTenant;

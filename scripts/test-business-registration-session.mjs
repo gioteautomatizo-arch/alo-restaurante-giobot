@@ -23,8 +23,17 @@ const mocks = {
   'firebase/firestore': [
     'export const collection = (_db, name) => ({name});',
     'export const doc = (_db, collection, id) => ({collection,id});',
-    'export const getDoc = async () => ({exists:()=>false});',
-    'export const getDocFromServer = async () => ({exists:()=>false});',
+    'export const getDoc = async ref => {',
+    '  window.qa.events.push("cache:" + ref.collection);',
+    '  const data = window.qa.cacheDocs[ref.collection + "/" + ref.id];',
+    '  return {exists:()=>!!data,data:()=>data};',
+    '};',
+    'export const getDocFromServer = async ref => {',
+    '  window.qa.events.push("server:" + ref.collection);',
+    '  if (window.qa.serverUnavailable) throw new Error("SIMULATED_OFFLINE");',
+    '  const data = window.qa.serverDocs[ref.collection + "/" + ref.id];',
+    '  return {exists:()=>!!data,data:()=>data};',
+    '};',
     'export const getDocs = async () => ({docs:[]});',
     'export const getDocsFromServer = async () => ({docs:[]});',
     'export const query = (...args) => args;',
@@ -33,6 +42,11 @@ const mocks = {
     '  set(ref, data) {window.qa.writes.push({ref,data});},',
     '  async commit() {',
     '    window.qa.events.push("commit");',
+    '    if (window.qa.commitMode === "reject") throw new Error("SIMULATED_COMMIT_REJECTED");',
+    '    if (window.qa.commitMode === "lost-after") {',
+    '      for (const {ref,data} of window.qa.writes) window.qa.serverDocs[ref.collection + "/" + ref.id] = data;',
+    '      throw new Error("SIMULATED_LOST_COMMIT_RESPONSE");',
+    '    }',
     '    if (window.qa.switchAt === "after-commit") window.qa.auth.currentUser = {uid:"owner-b",email:"b@example.test"};',
     '  },',
     '});',
@@ -65,11 +79,13 @@ const bundle = await build({
 });
 const dom = new JSDOM('', {url:'http://localhost/',runScripts:'outside-only'});
 const {window} = dom;
-window.qa = {events:[],writes:[],catalogs:[],switchAt:null,emailUsed:false};
+window.qa = {events:[],writes:[],catalogs:[],switchAt:null,emailUsed:false,commitMode:null,serverUnavailable:false,serverDocs:{},cacheDocs:{}};
 const input = {businessName:'Negocio A',handle:'tenant-a',email:'a@example.test',password:'test-only-password'};
 const reset = () => {
   window.qa.events = []; window.qa.writes = []; window.qa.catalogs = [];
   window.qa.auth.currentUser = null; window.qa.switchAt = null; window.qa.emailUsed = false;
+  window.qa.commitMode = null; window.qa.serverUnavailable = false;
+  window.qa.serverDocs = {}; window.qa.cacheDocs = {};
 };
 try {
   window.eval(bundle.outputFiles[0].text);
@@ -108,7 +124,52 @@ try {
   assert.equal(window.qa.events.includes('signin'),true,'Reautenticación de cuenta existente');
   assert.equal(window.qa.writes.length,2);
 
-  console.log('PASS: alta atómica simulada, cambio de UID antes/después del commit, catálogo aislado y correo existente (sin Firebase).');
+
+  // El batch puede fallar mientras la caché contiene una alta vieja o
+  // especulativa. No se debe devolver un OWNER ni sembrar catálogo sin servidor.
+  reset();
+  window.qa.commitMode = 'reject';
+  window.qa.cacheDocs = {
+    'businessMemberships/tenant-a_owner-a': {restaurantId:'tenant-a',userId:'owner-a',role:'OWNER',active:true},
+    'businesses/tenant-a': {restaurantId:'tenant-a',ownerUserId:'owner-a',branding:{restaurantName:'Fantasma'}},
+  };
+  await assert.rejects(window.qa.register(input), /SIMULATED_COMMIT_REJECTED/,
+    'Una caché aparentemente válida no confirma el alta rechazada');
+  assert.equal(window.qa.events.some(event => event.startsWith('cache:')), false,
+    'La recuperación nunca consulta caché');
+  assert.deepEqual(Array.from(window.qa.events.filter(event => event.startsWith('server:'))),
+    ['server:businessMemberships']);
+  assert.equal(window.qa.catalogs.length, 0);
+
+  reset();
+  window.qa.commitMode = 'reject';
+  window.qa.serverUnavailable = true;
+  await assert.rejects(window.qa.register(input), /SIMULATED_COMMIT_REJECTED/,
+    'Sin conexión no se confirma un alta no verificada');
+  assert.equal(window.qa.catalogs.length, 0);
+
+  reset();
+  window.qa.commitMode = 'lost-after';
+  const recovered = await window.qa.register(input);
+  assert.equal(recovered.tenant.restaurantId, 'tenant-a');
+  assert.equal(recovered.membership.role, 'OWNER');
+  assert.deepEqual(Array.from(window.qa.events.filter(event => event.startsWith('server:'))),
+    ['server:businessMemberships','server:businesses'],
+    'Una respuesta perdida solo se recupera tras comprobar ambos documentos en servidor');
+  assert.equal(window.qa.catalogs.length, 1,
+    'Una alta realmente confirmada permite continuar con catálogo');
+
+  reset();
+  window.qa.commitMode = 'reject';
+  window.qa.serverDocs = {
+    'businessMemberships/tenant-a_owner-a': {restaurantId:'tenant-a',userId:'owner-a',role:'OWNER',active:true},
+    'businesses/tenant-a': {restaurantId:'tenant-a',ownerUserId:'owner-b',branding:{restaurantName:'Otro propietario'}},
+  };
+  await assert.rejects(window.qa.register(input), /SIMULATED_COMMIT_REJECTED/,
+    'OWNER residual no recupera negocio con propietario diferente');
+  assert.equal(window.qa.catalogs.length, 0);
+
+  console.log('PASS: alta simulada, UID, recuperación remota sin caché, fallo offline, respuesta perdida, OWNER ajeno y catálogo aislado (sin Firebase).');
 } finally {
   window.close();
 }

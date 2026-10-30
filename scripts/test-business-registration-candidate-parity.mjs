@@ -25,6 +25,12 @@ assert.equal((currentFn.match(/\bbatch\.set\s*\(/g) || []).length, 2,
   'El registro público no debe cambiar de contrato sin corte aprobado');
 assert.equal((candidateFn.match(/\bbatch\.set\s*\(/g) || []).length, 3,
   'El candidato requiere negocio, OWNER y reserva en un solo batch');
+for (const [name, fn] of [['cliente 2-doc', currentFn], ['candidato 3-doc', candidateFn]]) {
+  assert.equal((fn.match(/\\bgetDocFromServer\\s*\\(/g) || []).length, 2,
+    name + ': la recuperación debe consultar OWNER y raíz directamente al servidor');
+  assert.doesNotMatch(fn, /\\bgetDoc\\s*\\(/,
+    name + ': no recuperar altas fallidas con caché local');
+}
 assert.doesNotMatch(currentFn, /registrationContractVersion/,
   'El registro público no debe simular el contrato 3-doc');
 assert.match(candidateFn, /const registrationTenant = \{ \.\.\.tenant, registrationContractVersion: 3 \};/,
