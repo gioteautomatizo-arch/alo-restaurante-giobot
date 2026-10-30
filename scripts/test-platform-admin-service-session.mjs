@@ -18,6 +18,7 @@ const mocks = {
     'export const query = (collection, ...filters) => ({collection, filters});',
     'export const getDoc = ref => new Promise((resolve, reject) => window.qa.docs.push({ref, resolve, reject}));',
     'export const getDocs = ref => new Promise((resolve, reject) => window.qa.lists.push({ref, resolve, reject}));',
+    'export const getDocsFromServer = ref => new Promise((resolve, reject) => window.qa.lists.push({ref, resolve, reject}));',
     'export const writeBatch = () => {throw new Error("No writes in this test")};',
   ].join('\n'),
   './firebase': 'export const auth = {currentUser: {uid:"admin-a"}}; export const db = {}; window.qa.auth = auth;',
