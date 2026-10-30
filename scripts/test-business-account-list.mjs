@@ -245,6 +245,38 @@ try {
   window.qa.pending[0].resolve(memberSnap(member('tenant-a', 'owner-a', 'OWNER', false)));
   assert.equal(await inactive, null, 'No aceptar membresía inactiva');
 
+  // La lectura de rol que usa Workspace también debe cotejar la raíz y
+  // revalidar la membresía: OWNER residual no obtiene controles del nuevo dueño.
+  const readRole = async ({first = member('tenant-a'), root = snap('tenant-a', {ownerUserId:'owner-a'}),
+    last = first, rootValid = true} = {}) => {
+    window.qa.pending = [];
+    const request = window.qa.member('owner-a', 'tenant-a');
+    await waitFor(() => window.qa.pending.length === 1, 'Primera lectura del rol');
+    window.qa.pending[0].resolve(memberSnap(first));
+    await waitFor(() => window.qa.pending.length === 2, 'Raíz para comprobar OWNER');
+    window.qa.pending[1].resolve(root);
+    if (rootValid) {
+      await waitFor(() => window.qa.pending.length === 3, 'Revalidación del rol');
+      window.qa.pending[2].resolve(last === null ? {exists: () => false} : memberSnap(last));
+    }
+    return request;
+  };
+  assert.equal((await readRole())?.role, 'OWNER');
+  assert.equal(await readRole({root:snap('tenant-a',{ownerUserId:'owner-b'}),rootValid:false}),null,
+    'OWNER residual no se devuelve con raíz de otro UID');
+  assert.equal((await readRole({root:snap('tenant-a')}))?.role,'OWNER',
+    'Raíz histórica sin ownerUserId conserva compatibilidad');
+  assert.equal((await readRole({first:member('tenant-a','owner-a','WAITER'),
+    last:member('tenant-a','owner-a','WAITER'),root:snap('tenant-a',{ownerUserId:'owner-b'})}))?.role,'WAITER',
+    'Empleado legítimo no necesita ser propietario de la raíz');
+  assert.equal(await readRole({last:member('tenant-a','owner-a','OWNER',false)}),null,
+    'Revocación durante lectura de la raíz invalida el rol');
+  assert.equal(await readRole({last:member('tenant-a','owner-a','MANAGER')}),null,
+    'Cambio de rol invalida permiso leído previamente');
+  assert.equal(await readRole({last:null}),null,'Membresía borrada no concede rol');
+  assert.equal(await readRole({root:snap('tenant-b'),rootValid:false}),null,
+    'Raíz de otro negocio no concede rol');
+
   // Si la sesión cambia durante la segunda lectura de permisos, no se
   // entrega el tenant aunque ambas membresías fueran válidas.
   window.qa.pending = [];
