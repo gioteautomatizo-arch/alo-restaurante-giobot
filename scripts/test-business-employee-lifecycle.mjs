@@ -39,7 +39,7 @@ const mocks = {
     '    if(window.qa.batchMode === "lost-after") {',
     '      window.qa.remoteDocs={...window.qa.docs};',
     '      for(const action of actions) {',
-    '        if(action.op === "set") window.qa.remoteDocs[action.path]=action.data;',
+    '        if(action.op === "set") window.qa.remoteDocs[action.path]={...action.data};',
     '        if(action.op === "update") {',
     '          const old=window.qa.remoteDocs[action.path] || {};',
     '          window.qa.remoteDocs[action.path]={...old,employeeUserIds:[...new Set([...(old.employeeUserIds||[]),action.data.employeeUserIds.arrayUnion])]};',
