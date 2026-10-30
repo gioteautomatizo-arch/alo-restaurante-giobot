@@ -20,7 +20,16 @@ const mocks = {
   ].join('\n'),
   'firebase/firestore': [
     'export const doc = (_db, collection, id) => ({collection,id});',
-    'export const getDoc = ref => new Promise((resolve,reject) => window.qa.pending.push({ref,resolve,reject}));',
+    'export const getDoc = ref => {',
+    '  if (ref.collection === "businessMemberships" && ref.id.endsWith("_owner-a")) {',
+    '    const tenant = ref.id.slice(0, -"_owner-a".length);',
+    '    const index = ++window.qa.managerReads;',
+    '    const fallback = {restaurantId:tenant,userId:"owner-a",role:"OWNER",active:true};',
+    '    const data = typeof window.qa.managerOverride === "function" ? window.qa.managerOverride(index, fallback) : (window.qa.managerOverride ?? fallback);',
+    '    return Promise.resolve({id:ref.id,exists:()=>!!data,data:()=>data});',
+    '  }',
+    '  return new Promise((resolve,reject) => window.qa.pending.push({ref,resolve,reject}));',
+    '};',
     'export const arrayRemove = () => ({});',
     'export const arrayUnion = () => ({});',
     'export const collection = () => ({});',
@@ -52,7 +61,7 @@ const bundle = await build({
 });
 const dom = new JSDOM('', {url: 'https://example.test/', runScripts: 'outside-only'});
 const {window} = dom;
-window.qa = {pending: []};
+window.qa = {pending: [], managerReads: 0, managerOverride: undefined};
 const waitFor = async (predicate, message) => {
   for (let i = 0; i < 200; i++) {
     if (predicate()) return;
@@ -71,11 +80,13 @@ const employee = (tenant, uid, overrides = {}) => ({
 const memberSnap = (tenant, uid, overrides = {}, id = tenant + '_' + uid) => ({
   id, exists: () => true, data: () => employee(tenant, uid, overrides),
 });
-async function begin(tenant, ids) {
+async function begin(tenant, ids, managerOverride = undefined, rootOverride = null) {
   window.qa.pending = [];
+  window.qa.managerReads = 0;
+  window.qa.managerOverride = managerOverride;
   const promise = window.qa.load(tenant);
   await waitFor(() => window.qa.pending.length === 1, 'Falta lectura del negocio');
-  window.qa.pending[0].resolve(businessSnap(tenant, ids));
+  window.qa.pending[0].resolve(rootOverride || businessSnap(tenant, ids));
   if (Array.isArray(ids) && ids.length) {
     await waitFor(() => window.qa.pending.length === 1 + new Set(ids).size, 'Faltan membresías');
   }
@@ -100,6 +111,44 @@ try {
   ({promise} = await begin('tenant-a', []));
   assert.equal((await promise).length, 0);
   assert.equal(window.qa.pending.length, 1);
+
+  // El índice vacío también requiere permisos vigentes; una cuenta ajena o
+  // revocada no debe recibir una respuesta engañosa de lista vacía.
+  for (const invalid of [
+    {restaurantId:'tenant-b',userId:'owner-a',role:'OWNER',active:true},
+    {restaurantId:'tenant-a',userId:'owner-b',role:'OWNER',active:true},
+    {restaurantId:'tenant-a',userId:'owner-a',role:'WAITER',active:true},
+    {restaurantId:'tenant-a',userId:'owner-a',role:'OWNER',active:false},
+  ]) {
+    window.qa.pending = [];
+    window.qa.managerReads = 0;
+    window.qa.managerOverride = invalid;
+    await assert.rejects(window.qa.load('tenant-a'), /No tienes permiso/);
+    assert.equal(window.qa.pending.length, 0, 'No leer raíz ni roster sin permiso');
+  }
+  ({promise} = await begin('tenant-a', [], undefined, {
+    exists:()=>true, data:()=>({restaurantId:'tenant-a',ownerUserId:'owner-b',employeeUserIds:[]}),
+  }));
+  await assert.rejects(promise, /propietario es inconsistente/);
+  assert.equal(window.qa.pending.length, 1, 'OWNER residual no consulta personal');
+
+  // Revocación o cambio de rol entre índice y entrega: no retornar un roster
+  // ni siquiera si está vacío. El segundo permiso se lee de nuevo.
+  ({promise} = await begin('tenant-a', [], (n, valid) => n === 1 ? valid : {...valid,active:false}));
+  await assert.rejects(promise, /No tienes permiso/);
+  assert.equal(window.qa.managerReads, 2);
+  ({promise} = await begin('tenant-a', ['user-a'], (n, valid) => n === 1 ? valid : {...valid,role:'WAITER'}));
+  const revokedRoster = assert.rejects(promise, /No tienes permiso/);
+  window.qa.pending[1].resolve(memberSnap('tenant-a','user-a'));
+  await revokedRoster;
+  assert.equal(window.qa.managerReads, 2);
+
+  // Un ADMIN legítimo puede ver su roster aunque no sea el OWNER de la raíz.
+  ({promise} = await begin('tenant-a', ['user-a'], (_n, valid) => ({...valid,role:'ADMIN'}), {
+    exists:()=>true, data:()=>({restaurantId:'tenant-a',ownerUserId:'owner-b',employeeUserIds:['user-a']}),
+  }));
+  window.qa.pending[1].resolve(memberSnap('tenant-a','user-a'));
+  assert.equal((await promise)[0].userId,'user-a');
 
   // Documento mal identificado: nunca devolver una membresía del tenant B en A.
   for (const bad of [
