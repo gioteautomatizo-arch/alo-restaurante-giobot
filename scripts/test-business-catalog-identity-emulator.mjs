@@ -147,6 +147,16 @@ try {
   const migrated=await save('tenant-a',[item('Legado actualizado')],'Dueño A',legacyUpdatedAt);
   assert.equal(migrated.items[0].name,'Legado actualizado');
   assert.ok(migrated.revision,'La edición CAS genera una revisión nueva');
+  await assert.rejects(
+    save('tenant-a',[item('Cliente con fecha obsoleta')],'Dueño A',legacyUpdatedAt),
+    /CONFLICTO_CATALOGO/,
+  );
+  await env.withSecurityRulesDisabled(async ctx=>{
+    const snap=await sdk.getDoc(ref(ctx.firestore(),'tenant-a'));
+    assert.equal(snap.data().items[0].name,'Legado actualizado',
+      'El cliente histórico obsoleto no revierte la migración CAS');
+    assert.equal(snap.data().revision,migrated.revision);
+  });
 
   await env.withSecurityRulesDisabled(async ctx=>{
     await sdk.setDoc(ref(ctx.firestore(),'tenant-a'),{
