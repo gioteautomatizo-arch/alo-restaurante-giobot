@@ -14,7 +14,7 @@ const mocks = {
     'export async function runTransaction(_db, fn) { const transaction = {get: ref => getDoc(ref), set: (ref,data) => window.qa.writes.push({ref,data,transaction:true})}; return fn(transaction); }',
   ].join('\n'),
   './firebase': 'export const auth = {currentUser:null}; export const db = {}; window.qa.auth = auth;',
-  './catalogOptions': 'export const cleanOptionGroups = groups => groups || []; export const assertUniqueOptionGroupIdentity = () => {};',
+  './catalogOptions': 'export const cleanOptionGroups = groups => groups || []; export const assertUniqueOptionGroupIdentity = () => {}; export const assertValidOptionChoicesBeforeCleaning = () => {};',
   './businessAuthService': 'export async function isPlatformAdmin() {return window.qa.admin;}',
 };
 const bundle = await build({
