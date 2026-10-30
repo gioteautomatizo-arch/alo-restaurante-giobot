@@ -2,7 +2,7 @@ import { doc, getDoc, onSnapshot, runTransaction } from 'firebase/firestore';
 import { auth } from './firebase';
 import { db } from './firebase';
 import { BusinessRole } from './restaurantCore';
-import { assertUniqueOptionGroupIdentity, cleanOptionGroups } from './catalogOptions';
+import { assertUniqueOptionGroupIdentity, assertValidOptionChoicesBeforeCleaning, cleanOptionGroups } from './catalogOptions';
 
 export interface CatalogChoice {
   name: string;
@@ -165,6 +165,7 @@ function buildCatalogPayload(
     sourceLabel: 'Catálogo del negocio',
     items: ensureUniqueIds(items)
       .map((item) => {
+        assertValidOptionChoicesBeforeCleaning(item.optionGroups);
         const optionGroups = cleanOptionGroups(item.optionGroups);
         assertUniqueOptionGroupIdentity(optionGroups);
         const { optionGroups: _discard, ...rest } = item;
