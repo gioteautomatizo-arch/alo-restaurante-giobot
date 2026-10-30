@@ -195,6 +195,34 @@ try {
   await assert.rejects(conflict,/CONFLICTO_CATALOGO/);
   assert.equal(window.qa.writes.length,0);
 
+  // Un documento histórico existente SIN revision/updatedAt no equivale
+  // a uno inexistente. Incluso expectedRevision=null debe fallar cerrado.
+  for (const legacy of [
+    {businessId:'tenant-a',items:[item]},
+    {businessId:'tenant-a',items:[item],revision:'',updatedAt:''},
+    {businessId:'tenant-a',items:[item],revision:42},
+  ]) {
+    reset();
+    const blocked = window.qa.saveCatalog('tenant-a',[{...item,name:'No borrar histórico'}],'Prueba',null);
+    await passCatalogReads();
+    await resolveRead(3,{exists:()=>true,data:()=>legacy},'businesses/tenant-a/catalog/menu_catalog');
+    await assert.rejects(blocked,/CONFLICTO_CATALOGO.*histórico/);
+    assert.equal(window.qa.writes.length,0,'Histórico sin versión no se sobrescribe');
+  }
+
+  // Compatibilidad: un documento antiguo con updatedAt, pero sin revision,
+  // todavía puede editarse usando ese timestamp como versión observada.
+  reset();
+  const legacyTimestamp = '2025-01-01T00:00:00.000Z';
+  const legacyVersioned = window.qa.saveCatalog('tenant-a',[item],'Prueba',legacyTimestamp);
+  await passCatalogReads();
+  await resolveRead(3,{exists:()=>true,data:()=>({
+    businessId:'tenant-a',items:[item],updatedAt:legacyTimestamp,
+  })},'businesses/tenant-a/catalog/menu_catalog');
+  await legacyVersioned;
+  assert.equal(window.qa.writes.length,1,'Histórico con updatedAt mantiene CAS compatible');
+  assert.ok(window.qa.writes[0].data.revision,'El guardado genera revisión nueva');
+
   // Documento existente corrupto: aunque la revisión coincida, no se sobrescribe.
   for (const invalid of [
     {businessId:'tenant-b',items:[],revision:'cross-v1'},
