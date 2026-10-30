@@ -144,8 +144,75 @@ try{
   assert.equal(visible('Pozole D'),true,'No vaciar el editor si la limpieza falla');
   assert.equal(window.qa.clearVersions.at(-1),'original-tenant-d');
   window.qa.clearConflict=false;
+
+  // Fallo de lectura de catálogo después de cargar el borrador: no publicar,
+  // conservar el borrador y permitir una nueva suscripción verificable.
+  window.qa.render('tenant-e','owner-e');
+  await waitFor(()=>window.qa.draftReads.length===6,'Falta borrador E');
+  await waitFor(()=>window.qa.subscriptions.length===5,'Falta catálogo E');
+  window.qa.draftReads[5].resolve(draft('tenant-e','Enchiladas E'));
+  await waitFor(()=>visible('Enchiladas E'),'Falta borrador E visible');
+  const beforeReadError=window.qa.catalogWrites.length;
+  window.qa.subscriptions[4].onError(Error('unavailable'));
+  await waitFor(()=>!!button('Reintentar catálogo'),'Fallo del catálogo debe tener reintento');
+  assert.equal(button('Publicar en mi catálogo').disabled,true,'Lectura fallida debe bloquear publicación');
+  assert.equal(window.qa.catalogWrites.length,beforeReadError,'Error de lectura no debe escribir');
+  assert.equal(visible('Enchiladas E'),true,'No perder borrador E tras error de catálogo');
+
+  button('Reintentar catálogo').click();
+  await waitFor(()=>window.qa.subscriptions.length===6,'Falta nueva suscripción E');
+  assert.equal(window.qa.subscriptions[4].active,false,'Reintento debe cancelar listener anterior');
+  window.qa.subscriptions[4].callback(catalog('tenant-e','revision-obsoleta'));
+  await new Promise(resolve=>setTimeout(resolve,20));
+  assert.equal(button('Publicar en mi catálogo').disabled,true,'Callback tardío no habilita publicación');
+  window.qa.subscriptions[5].callback(catalog('tenant-e','rev-e'));
+  await waitFor(()=>button('Publicar en mi catálogo')?.disabled===false,'Lectura válida debe desbloquear publicación');
+  button('Publicar en mi catálogo').click();
+  await waitFor(()=>window.qa.catalogWrites.length===beforeReadError+1,'Falta publicación E tras reintento');
+  assert.equal(window.qa.catalogWrites.at(-1).revision,'rev-e','Publicar con revisión nueva, no la obsoleta');
+  assert.equal(window.qa.catalogWrites.at(-1).items[0].name,'Enchiladas E');
+
+  // Documento histórico existente sin revision ni updatedAt: HOLD explícito.
+  // No es un catálogo ausente y nunca se puede sobrescribir con CAS null.
+  window.qa.render('tenant-f','owner-f');
+  await waitFor(()=>window.qa.draftReads.length===7,'Falta borrador F');
+  await waitFor(()=>window.qa.subscriptions.length===7,'Falta catálogo F');
+  window.qa.draftReads[6].resolve(draft('tenant-f','Sopa F'));
+  await waitFor(()=>visible('Sopa F'),'Falta borrador F visible');
+  const beforeHistorical=window.qa.catalogWrites.length;
+  window.qa.subscriptions[6].callback({businessId:'tenant-f',items:[{id:'historic',name:'Producto histórico',category:'Comida'}]});
+  await waitFor(()=>visible('catálogo histórico no tiene una revisión verificable'),'Debe explicar HOLD histórico');
+  assert.equal(button('Publicar en mi catálogo').disabled,true,'Histórico sin revisión no publica');
+  assert.equal(window.qa.catalogWrites.length,beforeHistorical,'Histórico sin revisión no se sobrescribe');
+  assert.equal(visible('Sopa F'),true,'Borrador F se conserva durante HOLD');
+  button('Reintentar catálogo').click();
+  await waitFor(()=>window.qa.subscriptions.length===8,'Falta nueva lectura F');
+  window.qa.subscriptions[6].callback(catalog('tenant-f','rev-vieja'));
+  await new Promise(resolve=>setTimeout(resolve,20));
+  assert.equal(button('Publicar en mi catálogo').disabled,true,'Listener histórico obsoleto no habilita publicar');
+  window.qa.subscriptions[7].callback(catalog('tenant-f','rev-f'));
+  await waitFor(()=>button('Publicar en mi catálogo')?.disabled===false,'Recuperación autorizada habilita publicar');
+  assert.equal(visible('Sopa F'),true,'Reintento no pierde borrador F');
+
+  // Una suscripción anterior tampoco puede contaminar el siguiente negocio.
+  window.qa.render('tenant-g','owner-g');
+  await waitFor(()=>window.qa.draftReads.length===8,'Falta borrador G');
+  await waitFor(()=>window.qa.subscriptions.length===9,'Falta catálogo G');
+  window.qa.draftReads[7].resolve(draft('tenant-g','Tostada G'));
+  await waitFor(()=>visible('Tostada G'),'Falta borrador G');
+  window.qa.subscriptions[7].callback(catalog('tenant-f','rev-tardia-f'));
+  await new Promise(resolve=>setTimeout(resolve,20));
+  assert.equal(button('Publicar en mi catálogo').disabled,true,'Snapshot de F no habilita publicar G');
+  window.qa.subscriptions[8].callback(catalog('tenant-g','rev-g'));
+  await waitFor(()=>button('Publicar en mi catálogo')?.disabled===false,'G requiere su propio catálogo');
+  button('Publicar en mi catálogo').click();
+  await waitFor(()=>window.qa.catalogWrites.length===beforeHistorical+1,'Falta publicación G');
+  assert.equal(window.qa.catalogWrites.at(-1).businessId,'tenant-g');
+  assert.equal(window.qa.catalogWrites.at(-1).revision,'rev-g');
+  assert.equal(window.qa.catalogWrites.at(-1).items[0].name,'Tostada G');
+
   assert.deepEqual(errors,[],'Sin errores de React');
-  console.log('PASS: fallo de borrador bloquea editor, reintento recupera, conflicto de borrador bloquea publicación, limpieza fallida conserva edición, conflicto de catálogo conserva borrador, revisión transaccional y cambio de tenant aislado (React/jsdom).');
+  console.log('PASS: borrador recuperable, catálogo con error/reintento, callbacks tardíos A/B descartados, histórico sin revisión en HOLD, sin mutación en errores, CAS de publicación y recuperación (React/jsdom).');
 }finally{
   window.qa.unmount?.();
   window.close();
