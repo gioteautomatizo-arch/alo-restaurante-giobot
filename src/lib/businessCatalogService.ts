@@ -264,15 +264,49 @@ export async function saveBusinessCatalog(
 }
 
 /**
+ * La lista heredada puede estar obsoleta, pero sí identifica la versión del
+ * producto que el operador vio. Comparamos solo ese producto: otros cambios
+ * simultáneos no bloquean la operación. Ordenamos las claves para no confundir
+ * el orden de serialización de Firestore con una edición.
+ */
+function itemFingerprint(value: unknown): string {
+  return JSON.stringify(value, (_key, part: unknown) => {
+    if (part && typeof part === 'object' && !Array.isArray(part)) {
+      const record = part as Record<string, unknown>;
+      return Object.fromEntries(Object.keys(record).sort().map((key) => [key, record[key]]));
+    }
+    return part;
+  }) ?? '';
+}
+
+function assertLegacyItemUnchanged(
+  current: BusinessCatalogItem[],
+  baseline: BusinessCatalogItem[],
+  itemId: string
+): void {
+  if (!Array.isArray(baseline) || !itemId) {
+    throw new Error('CONFLICTO_CATALOGO: No se pudo verificar el producto anterior. Recarga el catálogo.');
+  }
+  const previous = baseline.filter((product) => product?.id === itemId);
+  const latest = current.filter((product) => product?.id === itemId);
+  if (previous.length > 1 || latest.length > 1
+      || previous.length !== latest.length
+      || (previous.length === 1 && itemFingerprint(previous[0]) !== itemFingerprint(latest[0]))) {
+    throw new Error('CONFLICTO_CATALOGO: Este producto cambió en otra sesión. Recarga antes de editar o borrar.');
+  }
+}
+
+/**
  * Compatibilidad para consumidores antiguos que envían currentItems.
- * No confiar en esa lista: puede ser un snapshot anterior al de otra pestaña.
- * Aplicamos solo la mutación del producto solicitado sobre el documento leído
- * en la misma transacción. Para editar simultáneamente el MISMO producto sin
- * pérdida de cambios se necesita una revisión del llamador (editor actual: CAS).
+ * Nunca reemplazar todo el catálogo con ese snapshot: aplicar solo la mutación
+ * del producto sobre la versión actual, pero rechazar cambios al MISMO producto
+ * si ya no coincide con la versión que vio el operador.
  */
 async function mutateBusinessCatalogItem(
   businessId: string,
   actorName: string,
+  baseline: BusinessCatalogItem[],
+  itemId: string,
   mutation: (items: BusinessCatalogItem[]) => BusinessCatalogItem[]
 ): Promise<BusinessCatalogDocument> {
   const managerUid = await assertCatalogManager(businessId);
@@ -289,6 +323,7 @@ async function mutateBusinessCatalogItem(
       throw new Error('La sesión cambió durante la modificación del producto.');
     }
     const items = current.exists() ? current.data().items as BusinessCatalogItem[] : [];
+    assertLegacyItemUnchanged(items, baseline, itemId);
     const payload = buildCatalogPayload(businessId, mutation(items), actorName);
     transaction.set(ref, payload);
     return payload;
@@ -301,10 +336,7 @@ export async function upsertBusinessCatalogItem(
   item: BusinessCatalogItem,
   actorName: string
 ): Promise<BusinessCatalogDocument> {
-  // Se conserva currentItems por compatibilidad de firma; NO se usa para
-  // reemplazar el catálogo completo con datos posiblemente obsoletos.
-  void currentItems;
-  return mutateBusinessCatalogItem(businessId, actorName, (items) => {
+  return mutateBusinessCatalogItem(businessId, actorName, currentItems, item.id, (items) => {
     const updated = [...items];
     const index = updated.findIndex((candidate) => candidate.id === item.id);
     if (index >= 0) updated[index] = item;
@@ -319,8 +351,7 @@ export async function deleteBusinessCatalogItem(
   itemId: string,
   actorName: string
 ): Promise<BusinessCatalogDocument> {
-  void currentItems;
-  return mutateBusinessCatalogItem(businessId, actorName, (items) => {
+  return mutateBusinessCatalogItem(businessId, actorName, currentItems, itemId, (items) => {
     // No crear un catálogo vacío ni alterar una versión nueva cuando el
     // producto solicitado ya no existe. Pedir recarga al consumidor antiguo.
     if (!items.some((item) => item.id === itemId)) {
