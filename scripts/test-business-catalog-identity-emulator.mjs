@@ -148,12 +148,40 @@ try {
   assert.deepEqual(after.data().items.map(product=>product.id).sort(),
     ['product-1','extra-a','extra-c'].sort(),'Dos altas concurrentes no se pisan');
 
-  await upsertItem('tenant-a',staleItems,{...item('Editado A'),id:'product-1'},'Dueño A');
+  // Dos ediciones del MISMO producto desde el mismo snapshot: solo una
+  // puede ganar. La otra debe recibir CONFLICTO_CATALOGO y conservar el ganador.
+  const competing=await Promise.allSettled([
+    upsertItem('tenant-a',staleItems,{...item('Versión 1'),id:'product-1'},'Dueño A'),
+    upsertItem('tenant-a',staleItems,{...item('Versión 2'),id:'product-1'},'Dueño A'),
+  ]);
+  assert.equal(competing.filter(result=>result.status==='fulfilled').length,1,
+    'Solo una edición concurrente del mismo producto puede ganar');
+  assert.equal(competing.filter(result=>result.status==='rejected').length,1);
+  assert.match(String(competing.find(result=>result.status==='rejected').reason),/CONFLICTO_CATALOGO/);
+  after=await sdk.getDoc(ref(ownerA,'tenant-a'));
+  assert.ok(['Versión 1','Versión 2'].includes(
+    after.data().items.find(product=>product.id==='product-1').name));
+  assert.equal(after.data().items.length,3,'Las altas de otros productos se conservan');
+
+  const revisionAfterWinner=after.data().revision;
+  await assert.rejects(upsertItem('tenant-a',staleItems,{...item('Obsoleto'),id:'product-1'},'Dueño A'),
+    /CONFLICTO_CATALOGO/);
+  await assert.rejects(deleteItem('tenant-a',staleItems,'product-1','Dueño A'),
+    /CONFLICTO_CATALOGO/);
+  after=await sdk.getDoc(ref(ownerA,'tenant-a'));
+  assert.equal(after.data().revision,revisionAfterWinner,
+    'Edición y borrado obsoletos no alteran la revisión');
+
+  const freshItems=after.data().items;
+  await upsertItem('tenant-a',freshItems,{...item('Editado A'),id:'product-1'},'Dueño A');
   after=await sdk.getDoc(ref(ownerA,'tenant-a'));
   assert.equal(after.data().items.find(product=>product.id==='product-1').name,'Editado A');
   assert.equal(after.data().items.length,3,'Editar producto no borra altas recientes');
 
-  await deleteItem('tenant-a',staleItems,'product-1','Dueño A');
+  // El borrado debe partir de la versión más reciente del producto.
+  await assert.rejects(deleteItem('tenant-a',freshItems,'product-1','Dueño A'),
+    /CONFLICTO_CATALOGO/);
+  await deleteItem('tenant-a',after.data().items,'product-1','Dueño A');
   after=await sdk.getDoc(ref(ownerA,'tenant-a'));
   assert.deepEqual(after.data().items.map(product=>product.id).sort(),['extra-a','extra-c']);
   const revisionBeforeRejectedDelete=after.data().revision;
@@ -168,7 +196,7 @@ try {
   assert.equal(event.kind,'data');
   assert.equal(event.value.items[0].name,'Solo B','A no modificó catálogo B');
 
-  console.log('PASS: catálogo SDK real en emulador, A/B, CAS, helpers heredados por producto, altas concurrentes, borrado obsoleto y rechazo cruzado.');
+  console.log('PASS: catálogo SDK real en emulador, A/B, CAS, helpers heredados por producto, altas concurrentes, conflictos del mismo producto, borrado obsoleto y rechazo cruzado.');
   console.log('PENDIENTE: lectura pública STAGED de borradores y permisos desplegados; este test no los corrige.');
 } finally {
   globalThis.catalogDb=null;
