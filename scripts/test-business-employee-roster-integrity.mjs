@@ -45,6 +45,7 @@ const mocks = {
     'export const setDoc = async () => {};',
     'export const updateDoc = async () => {};',
     'export const where = () => ({});',
+    'export const runTransaction = () => {throw new Error("No writes in roster test");};',
     'export const writeBatch = () => {throw new Error("No writes in roster test");};',
   ].join('\n'),
   './firebase': 'export const auth = {currentUser: {uid:"owner-a"}}; export const db = {}; window.qa.auth = auth;',
