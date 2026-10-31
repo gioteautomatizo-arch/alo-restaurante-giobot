@@ -15,10 +15,12 @@ import {
   getDocFromServer,
   getDocs,
   query,
+  runTransaction,
   setDoc,
   updateDoc,
   where,
   writeBatch,
+  type Transaction,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -55,7 +57,7 @@ function membershipRef(businessId: string, userId: string) {
   return doc(db, COLLECTION, `${businessId}_${userId}`);
 }
 
-type EmployeeManagerAccess = { uid: string; role: BusinessRole };
+type EmployeeManagerAccess = { uid: string; role: BusinessRole; ownerUserId?: string };
 
 function assertEmployeeSession(uid: string): void {
   if (auth.currentUser?.uid !== uid) {
@@ -94,10 +96,21 @@ async function assertEmployeeManager(businessId: string, targetRole?: BusinessRo
       || (role === 'OWNER' && business.ownerUserId !== undefined && business.ownerUserId !== user.uid)) {
     throw new Error('La identidad del negocio o propietario es inconsistente.');
   }
-  return { uid: user.uid, role };
+  return { uid: user.uid, role, ownerUserId: business.ownerUserId };
 }
 
-async function assertEditableEmployee(businessId: string, userId: string, newRole?: BusinessRole): Promise<string> {
+type EditableEmployeePreflight = EmployeeManagerAccess & {
+  observedTarget: {
+    role?: BusinessRole;
+    active?: boolean;
+    name?: string;
+    email?: string;
+    createdAt?: string;
+    updatedAt?: string;
+  };
+};
+
+async function assertEditableEmployee(businessId: string, userId: string, newRole?: BusinessRole): Promise<EditableEmployeePreflight> {
   const manager = await assertEmployeeManager(businessId, newRole);
   if (!userId.trim() || userId.includes('/') || userId === manager.uid) {
     throw new Error('No puedes modificar tu propia membresía desde Empleados.');
@@ -124,8 +137,9 @@ async function assertEditableEmployee(businessId: string, userId: string, newRol
     updatedAt: target.updatedAt,
   };
   const latest = await assertEmployeeManager(businessId, newRole);
-  if (latest.uid !== manager.uid || latest.role !== manager.role) {
-    throw new Error('Tus permisos cambiaron durante la gestión de empleados.');
+  if (latest.uid !== manager.uid || latest.role !== manager.role ||
+      latest.ownerUserId !== manager.ownerUserId) {
+    throw new Error('Tus permisos o la propiedad del negocio cambiaron durante la gestión de empleados.');
   }
   // El objetivo también pudo ser promovido, revocado, eliminado o recreado
   // mientras comprobábamos al responsable. No editar una ficha obsoleta.
@@ -142,7 +156,58 @@ async function assertEditableEmployee(businessId: string, userId: string, newRol
         .some(key => latestTarget[key] !== observedTarget[key])) {
     throw new Error('La membresía del empleado cambió durante la operación. Actualiza el equipo y reintenta.');
   }
-  return manager.uid;
+  return { ...latest, observedTarget };
+}
+
+/**
+ * La última autorización y la escritura comparten un snapshot transaccional.
+ * Si otro cliente modifica raíz, responsable u objetivo, Firestore reintenta
+ * con datos actuales y el preflight obsoleto se rechaza sin escritura.
+ * No sustituye las reglas de seguridad del servidor.
+ */
+async function mutateEmployeeAtomically(
+  businessId: string,
+  userId: string,
+  newRole: BusinessRole | undefined,
+  apply: (transaction: Transaction, targetRef: ReturnType<typeof membershipRef>, rootRef: ReturnType<typeof doc>) => void,
+): Promise<void> {
+  const preflight = await assertEditableEmployee(businessId, userId, newRole);
+  const managerRef = membershipRef(businessId, preflight.uid);
+  const targetRef = membershipRef(businessId, userId);
+  const rootRef = doc(db, 'businesses', businessId);
+  await runTransaction(db, async transaction => {
+    assertEmployeeSession(preflight.uid);
+    // Todas las lecturas deben preceder a las escrituras de la transacción.
+    const managerSnap = await transaction.get(managerRef);
+    const rootSnap = await transaction.get(rootRef);
+    const targetSnap = await transaction.get(targetRef);
+    assertEmployeeSession(preflight.uid);
+    const manager = managerSnap.exists() ? managerSnap.data() as Partial<BusinessEmployee> : null;
+    const root = rootSnap.exists() ? rootSnap.data() : null;
+    const target = targetSnap.exists() ? targetSnap.data() as Partial<BusinessEmployee> : null;
+    if (!manager || managerSnap.id !== `${businessId}_${preflight.uid}` ||
+        manager.restaurantId !== businessId || manager.userId !== preflight.uid ||
+        manager.active !== true || manager.role !== preflight.role ||
+        !(['OWNER', 'ADMIN', 'MANAGER'] as BusinessRole[]).includes(manager.role as BusinessRole)) {
+      throw new Error('Tus permisos cambiaron durante la operación. Actualiza el equipo y reintenta.');
+    }
+    if (!root || rootSnap.id !== businessId || root.restaurantId !== businessId ||
+        root.ownerUserId !== preflight.ownerUserId ||
+        (preflight.role === 'OWNER' && root.ownerUserId !== undefined && root.ownerUserId !== preflight.uid)) {
+      throw new Error('La identidad o propiedad del negocio cambió durante la operación.');
+    }
+    if (!target || targetSnap.id !== `${businessId}_${userId}` ||
+        target.restaurantId !== businessId || target.userId !== userId ||
+        !MANAGEABLE_EMPLOYEE_ROLES.includes(target.role as BusinessRole) ||
+        !canManageEmployeeRole(preflight.role, target.role as BusinessRole) ||
+        (newRole !== undefined && !canManageEmployeeRole(preflight.role, newRole)) ||
+        (Object.keys(preflight.observedTarget) as (keyof typeof preflight.observedTarget)[])
+          .some(key => target[key] !== preflight.observedTarget[key])) {
+      throw new Error('La membresía del empleado cambió durante la operación. Actualiza el equipo y reintenta.');
+    }
+    assertEmployeeSession(preflight.uid);
+    apply(transaction, targetRef, rootRef);
+  });
 }
 
 function secondaryAuthName(businessId: string) {
@@ -492,27 +557,22 @@ export async function updateBusinessEmployee(
   if (changes.role === undefined && changes.active === undefined && changes.name === undefined) {
     throw new Error('No hay cambios válidos para guardar.');
   }
-  const managerUid = await assertEditableEmployee(businessId, userId, changes.role);
   const changesToApply = {
     ...(changes.role !== undefined ? { role: changes.role } : {}),
     ...(changes.active !== undefined ? { active: changes.active } : {}),
     ...(changes.name !== undefined ? { name: changes.name.trim() } : {}),
     updatedAt: new Date().toISOString(),
   };
-  assertEmployeeSession(managerUid);
-  await updateDoc(membershipRef(businessId, userId), changesToApply);
+  await mutateEmployeeAtomically(businessId, userId, changes.role, (transaction, targetRef) => {
+    transaction.update(targetRef, changesToApply);
+  });
 }
 
 export async function removeBusinessEmployee(businessId: string, userId: string): Promise<void> {
-  const managerUid = await assertEditableEmployee(businessId, userId);
-  assertEmployeeSession(managerUid);
-  const batch = writeBatch(db);
-  batch.delete(membershipRef(businessId, userId));
-  batch.update(doc(db, 'businesses', businessId), {
-    employeeUserIds: arrayRemove(userId),
+  await mutateEmployeeAtomically(businessId, userId, undefined, (transaction, targetRef, rootRef) => {
+    transaction.delete(targetRef);
+    transaction.update(rootRef, { employeeUserIds: arrayRemove(userId) });
   });
-  assertEmployeeSession(managerUid);
-  await batch.commit();
 }
 
 export function getRolePermissions(role: BusinessRole): BusinessPermission[] {
