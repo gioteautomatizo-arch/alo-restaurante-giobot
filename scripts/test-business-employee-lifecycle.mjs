@@ -27,6 +27,30 @@ const mocks = {
     '  const data=window.qa.remoteDocs[ref.path];',
     '  return {id:ref.path.split("/").at(-1),exists:()=>!!data,data:()=>data};',
     '};',
+    'export const runTransaction = async (_db, callback) => {',
+    '  window.qa.transactions++;',
+    '  for (let attempt = 0; attempt < 2; attempt++) {',
+    '    const observed = new Map(); const staged = [];',
+    '    const transaction = {',
+    '      get: async ref => {',
+    '        window.qa.onTransactionRead?.(ref, attempt);',
+    '        const snapshot = await getDoc(ref);',
+    '        observed.set(ref.path, JSON.stringify(window.qa.docs[ref.path]));',
+    '        return snapshot;',
+    '      },',
+    '      update: (ref, data) => staged.push({op: ref.path.startsWith("businesses/") ? "update" : "updateDoc",path:ref.path,data}),',
+    '      delete: ref => staged.push({op:"delete",path:ref.path}),',
+    '    };',
+    '    await callback(transaction);',
+    '    window.qa.onBeforeTransactionCommit?.(attempt);',
+    '    if ([...observed].some(([path, version]) => JSON.stringify(window.qa.docs[path]) !== version)) {',
+    '      window.qa.conflicts++;',
+    '      if (attempt === 0) continue;',
+    '      throw new Error("transaction-conflict");',
+    '    }',
+    '    window.qa.writes.push(...staged); return;',
+    '  }',
+    '};',
     'export const writeBatch = () => {const actions=[]; return {',
     '  set:(ref,data)=>actions.push({op:"set",path:ref.path,data}),',
     '  update:(ref,data)=>actions.push({op:"update",path:ref.path,data}),',
@@ -91,7 +115,7 @@ const bundle = await build({
 });
 const dom=new JSDOM('',{url:'https://example.test/',runScripts:'outside-only'});
 const {window}=dom;
-window.qa={reads:[],writes:[],created:0,docs:{},serverReads:0,serverError:null,remoteDocs:null,batchMode:null,corruptAfterCommit:null};
+window.qa={reads:[],writes:[],created:0,docs:{},serverReads:0,serverError:null,remoteDocs:null,batchMode:null,corruptAfterCommit:null,transactions:0,conflicts:0};
 const user=uid=>({uid,email:uid+'@example.test'});
 const member=(tenant,uid,role='OWNER',active=true)=>({
   restaurantId:tenant,userId:uid,role,active,name:uid,email:uid+'@example.test',
@@ -103,6 +127,7 @@ const reset=(role='OWNER')=>{
   window.qa.auth.currentUser=user('owner-a');
   window.qa.reads=[];window.qa.writes=[];window.qa.created=0;
   window.qa.onRead=null;window.qa.onCreated=null;window.qa.batchError=null;window.qa.serverError=null;
+  window.qa.onTransactionRead=null;window.qa.onBeforeTransactionCommit=null;window.qa.transactions=0;window.qa.conflicts=0;
   window.qa.remoteDocs=null;window.qa.batchMode=null;window.qa.corruptAfterCommit=null;
   window.qa.docs={
     'businessMemberships/tenant-a_owner-a':member('tenant-a','owner-a',role),
@@ -212,6 +237,7 @@ try {
   assert.equal(window.qa.writes.length,1);
   assert.deepEqual(Object.keys(window.qa.writes[0].data).sort(),['active','name','role','updatedAt']);
   assert.equal(window.qa.writes[0].data.name,'Ana');
+  assert.equal(window.qa.transactions,1,'La edición debe confirmar su permiso dentro de una transacción');
 
   // El objetivo puede cambiar DESPUÉS de su primera lectura, mientras se
   // revalidan los permisos del responsable. Ni edición ni baja deben operar
@@ -319,6 +345,59 @@ try {
   await window.qa.remove('tenant-a','employee-existing');
   assert.deepEqual(window.qa.writes.map(w=>w.op),['delete','update']);
   assert.equal(window.qa.writes[1].data.employeeUserIds.arrayRemove,'employee-existing');
+  assert.equal(window.qa.transactions,1,'La baja y su índice deben compartir una transacción');
+
+
+  // Regresión atómica: un cambio DESPUÉS de la última lectura del preflight
+  // y ANTES de las lecturas transaccionales nunca debe autorizar escrituras.
+  for (const operation of ['update','remove']) {
+    for (const [label, path, mutate, expected] of [
+      ['objetivo promovido', employeePath, () => {window.qa.docs[employeePath].role='OWNER';}, /membresía del empleado cambió/],
+      ['objetivo desactivado', employeePath, () => {window.qa.docs[employeePath].active=false;}, /membresía del empleado cambió/],
+      ['objetivo movido a B', employeePath, () => {window.qa.docs[employeePath].restaurantId='tenant-b';}, /membresía del empleado cambió/],
+      ['objetivo renombrado', employeePath, () => {window.qa.docs[employeePath].name='Actualizado por otro';}, /membresía del empleado cambió/],
+      ['responsable revocado', 'businessMemberships/tenant-a_owner-a', () => {window.qa.docs['businessMemberships/tenant-a_owner-a'].active=false;}, /Tus permisos cambiaron/],
+      ['propietario reasignado', 'businesses/tenant-a', () => {window.qa.docs['businesses/tenant-a'].ownerUserId='owner-b';}, /identidad o propiedad/],
+    ]) {
+      reset();
+      let mutated=false;
+      window.qa.onTransactionRead=ref=>{
+        if (!mutated && ref.path===path) {mutated=true;mutate();}
+      };
+      await assert.rejects(
+        operation==='update'
+          ? window.qa.update('tenant-a','employee-existing',{active:false})
+          : window.qa.remove('tenant-a','employee-existing'),
+        expected, label+' / '+operation,
+      );
+      assert(mutated,label+': mutación al comenzar transacción');
+      assert.equal(window.qa.transactions,1);
+      assert.equal(window.qa.writes.length,0,label+': no hay escritura parcial');
+    }
+
+    // Una escritura concurrente entre lecturas y commit causa reintento;
+    // el callback debe detectar el rol actualizado, no aplicar el preflight.
+    reset();
+    window.qa.onBeforeTransactionCommit=attempt=>{
+      if(attempt===0) window.qa.docs[employeePath].role='OWNER';
+    };
+    await assert.rejects(
+      operation==='update'
+        ? window.qa.update('tenant-a','employee-existing',{active:false})
+        : window.qa.remove('tenant-a','employee-existing'),
+      /membresía del empleado cambió/,
+    );
+    assert.equal(window.qa.conflicts,1,'Conflicto optimista debe reintentar la transacción');
+    assert.equal(window.qa.writes.length,0,'Un reintento no escribe con rol obsoleto');
+  }
+
+  // Sin cambios concurrentes, ADMIN puede editar en A pero no mutar B.
+  reset('ADMIN');
+  await window.qa.update('tenant-a','employee-existing',{name:'Nuevo nombre'});
+  assert.equal(window.qa.writes.length,1);
+  reset('ADMIN');
+  await assert.rejects(window.qa.remove('tenant-b','employee-existing'),/No tienes permiso/);
+  assert.equal(window.qa.writes.length,0);
 
   // La caché de OWNER no puede autorizar crear una cuenta Auth secundaria
   // si el servidor no está disponible para comprobar permisos vigentes.
@@ -401,6 +480,7 @@ try {
   console.log('PASS: alta de empleado recupera respuesta perdida solo con membresía e índice exactos del servidor; caché, offline y sesión ajena fallan cerrados (simulado).');
   console.log('PASS: alta/edición de empleados no inicia Auth ni escribe con permisos cacheados offline (simulado).');
   console.log('PASS: permisos y sesión del responsable antes/después de Auth, jerarquía de roles, edición y retiro aislados A/B (simulados).');
+  console.log('PASS: edición y baja transaccionales rechazan cambios de objetivo, responsable y raíz; conflicto optimista reintenta sin escrituras parciales (simulado).');
 } finally {
   window.close();
 }
