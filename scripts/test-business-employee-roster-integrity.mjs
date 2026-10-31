@@ -28,7 +28,12 @@ const mocks = {
     '    const data = typeof window.qa.managerOverride === "function" ? window.qa.managerOverride(index, fallback) : (window.qa.managerOverride ?? fallback);',
     '    return Promise.resolve({id:ref.id,exists:()=>!!data,data:()=>data});',
     '  }',
-    '  return new Promise((resolve,reject) => window.qa.pending.push({ref,resolve,reject}));',
+    '  if (ref.collection === "businesses" && window.qa.lastRootSnap) {',
+    '    return Promise.resolve(window.qa.rootRecheckOverride || window.qa.lastRootSnap);',
+    '  }',
+    '  return new Promise((resolve,reject) => window.qa.pending.push({ref,',
+    '    resolve:snap => { if (ref.collection === "businesses") window.qa.lastRootSnap = snap; resolve(snap); },reject',
+    '  }));',
     '};',
     'export const getDocFromServer = ref => {window.qa.serverReads++; if (window.qa.serverError) return Promise.reject(window.qa.serverError); return getDoc(ref);};',
     'export const arrayRemove = () => ({});',
@@ -62,7 +67,7 @@ const bundle = await build({
 });
 const dom = new JSDOM('', {url: 'https://example.test/', runScripts: 'outside-only'});
 const {window} = dom;
-window.qa = {pending: [], managerReads: 0, managerOverride: undefined, serverReads: 0, serverError: null};
+window.qa = {pending: [], managerReads: 0, managerOverride: undefined, serverReads: 0, serverError: null, lastRootSnap: null, rootRecheckOverride: null};
 const waitFor = async (predicate, message) => {
   for (let i = 0; i < 200; i++) {
     if (predicate()) return;
@@ -95,6 +100,14 @@ async function begin(tenant, ids, managerOverride = undefined, rootOverride = nu
 }
 try {
   window.eval(bundle.outputFiles[0].text);
+  // Cada consulta empieza con una raíz nueva; solo su segunda lectura se
+  // resuelve automáticamente desde el snapshot inicial (o una mutación test).
+  const originalLoad = window.qa.load;
+  window.qa.load = (...args) => {
+    window.qa.lastRootSnap = null;
+    window.qa.rootRecheckOverride = null;
+    return originalLoad(...args);
+  };
 
   // Dos miembros del tenant A; los índices duplicados no duplican personas.
   let {promise} = await begin('tenant-a', ['user-z', 'user-a', 'user-a']);
@@ -150,6 +163,23 @@ try {
   }));
   window.qa.pending[1].resolve(memberSnap('tenant-a','user-a'));
   assert.equal((await promise)[0].userId,'user-a');
+
+  // Revalidación nueva: aunque la membresía del OWNER siga activa,
+  // no devolver roster si la raíz cambió durante las lecturas de empleados.
+  for (const [label, changedRoot, error] of [
+    ['OWNER reasignado', {restaurantId:'tenant-a',ownerUserId:'owner-b',employeeUserIds:['user-a']}, /propiedad/],
+    ['tenant de raíz cambiado', {restaurantId:'tenant-b',ownerUserId:'owner-a',employeeUserIds:['user-a']}, /identidad/],
+    ['índice de empleados cambiado', {restaurantId:'tenant-a',ownerUserId:'owner-a',employeeUserIds:['user-b']}, /índice/],
+  ]) {
+    ({promise} = await begin('tenant-a', ['user-a'], undefined, {
+      exists:()=>true, data:()=>({restaurantId:'tenant-a',ownerUserId:'owner-a',employeeUserIds:['user-a']}),
+    }));
+    const rejected = assert.rejects(promise, error, label);
+    window.qa.rootRecheckOverride = {exists:()=>true,data:()=>changedRoot};
+    window.qa.pending[1].resolve(memberSnap('tenant-a','user-a'));
+    await rejected;
+    assert.equal(window.qa.pending.length, 2, label + ': no emitir lecturas adicionales no controladas');
+  }
 
   // Documento mal identificado: nunca devolver una membresía del tenant B en A.
   for (const bad of [
