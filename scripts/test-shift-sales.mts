@@ -240,22 +240,22 @@ const datedOrder = paidOffTableOrder('COBRO-VERIFICADO', 'delivery', 'tarjeta',
 const legacySample = [legacyOrderWithoutPaidAt, datedOrder];
 const legacyShift = computeShiftSalesFromOrders(legacySample, shiftStart, shiftEnd);
 const legacyReport = buildSalesReport(legacySample, 1, new Date(shiftEnd));
-assert.equal(legacyShift.total, 70, 'Comportamiento actual de Caja: usa createdAt sin paidAt');
+assert.equal(legacyShift.total, 20, 'Caja no atribuye el cobro histórico a createdAt');
 assert.equal(legacyReport.totalSales, 20, 'Reportes no inventa fecha de cobro');
 assert.equal(legacyReport.unreconciledPaidCount, 1, 'Reportes señala el pago histórico por conciliar');
-assert.equal(legacyShift.total - legacyReport.totalSales, 50,
-  'Diferencia conocida: no interpretarla como ventas adicionales verificadas');
-console.warn('PENDIENTE DE CONCILIACIÓN: fecha de cobro ausente genera diferencia entre Caja y Reportes (datos sintéticos).');
+assert.equal(legacyShift.total, legacyReport.totalSales,
+  'Caja y Reportes excluyen el cobro sin fecha verificable');
+console.warn('PENDIENTE HISTÓRICO: fecha de cobro ausente excluida de Caja y Reportes; falta comprobante (datos sintéticos).');
 
 // El corte diario de pedidos externos comparte el fallback histórico de Caja.
 // Esta prueba NO aprueba esa atribución: documenta que debe revisarse antes de
 // ofrecer cifras definitivas. Reportes no inventa paidAt.
 const legacyDaily = offTableSalesForDay(legacySample, '2026-10-23');
-assert.deepEqual(legacyDaily, { total: 70, count: 2 },
-  'Comportamiento actual del corte diario: incluye el histórico sin paidAt');
-assert.equal(legacyDaily.total - legacyReport.totalSales, 50,
-  'La divergencia del corte diario debe permanecer visible hasta conciliar historial');
-console.warn('PENDIENTE: el corte diario también usa createdAt para pedidos pagados sin paidAt.');
+assert.deepEqual(legacyDaily, { total: 20, count: 1 },
+  'El corte diario tampoco inventa fecha de cobro');
+assert.equal(legacyDaily.total, legacyReport.totalSales,
+  'El corte diario coincide con Reportes para cobros con fecha comprobable');
+console.warn('PENDIENTE HISTÓRICO: el cobro sin paidAt requiere evidencia; no se migró ni imputó fecha.');
 
 // Si paidAt existe pero es inválido, ninguno de los módulos debe sustituirlo
 // silenciosamente por createdAt. La alerta de Reportes sí debe permanecer.
@@ -296,11 +296,11 @@ assert.deepEqual(incompleteReceiptShift,
   { cash: 0, card: 0, platforms: 0, total: 0, count: 1 },
   'Diagnóstico actual: ticket MIXTO sin desglose cuenta ticket, pero no asigna importe');
 assert.deepEqual(incompletePaymentShift,
-  { cash: 0, card: 0, platforms: 90, total: 90, count: 1 },
-  'Diagnóstico actual: pago MIXTO sin desglose se atribuye a plataformas');
-assert.equal(incompletePaymentShift.total - incompleteReceiptShift.total, 90,
-  'La diferencia debe conciliarse con comprobantes antes de cambiar cálculos reales');
-console.warn('PENDIENTE DE CONCILIACIÓN: MIXTO sin desglose produce cifras diferentes entre tickets y pagos (datos sintéticos).');
+  { cash: 0, card: 0, platforms: 0, total: 0, count: 1 },
+  'Un MIXTO sin desglose no puede atribuirse a plataformas');
+assert.equal(incompletePaymentShift.total, incompleteReceiptShift.total,
+  'Pagos y tickets no inventan importes clasificados en MIXTO sin desglose');
+console.warn('PENDIENTE HISTÓRICO: MIXTO sin desglose excluido de importes clasificados; faltan comprobantes.');
 
 
 // Diagnóstico pendiente: MIXTO con desglose parcial. Aunque ambos orígenes
@@ -320,12 +320,12 @@ const partialPaymentTotals = computeShiftSalesFromPayments([
     paymentMethod: 'MIXTO', total: 90, paymentBreakdown: partialMixedParts },
 ], shiftStart, shiftEnd);
 assert.deepEqual(partialReceiptTotals,
-  { cash: 30, card: 0, platforms: 0, total: 30, count: 1 },
-  'Diagnóstico actual: ticket MIXTO parcial solo suma los métodos declarados');
+  { cash: 0, card: 0, platforms: 0, total: 0, count: 1 },
+  'Un MIXTO parcial no se clasifica hasta reconciliar el total');
 assert.deepEqual(partialPaymentTotals, partialReceiptTotals,
   'Pagos y tickets coinciden en desglose parcial, pero no con el importe declarado');
-assert.equal(partialMixedReceipt.totalPaid - partialReceiptTotals.total, 60,
-  'Los $60 sin desglose requieren comprobantes; no atribuirlos a un método supuesto');
+assert.equal(partialMixedReceipt.totalPaid - partialReceiptTotals.total, 90,
+  'El cobro de $90 sigue pendiente; no se reconocen parcialmente $30 como conciliados');
 console.warn('PENDIENTE DE CONCILIACIÓN: MIXTO parcial registra $90, pero solo desglosa $30 (datos sintéticos).');
 
 // Diagnóstico pendiente: un MIXTO también puede sobredeclarar sus métodos.
@@ -351,12 +351,12 @@ const overallocatedFromPayment = computeShiftSalesFromPayments([
     paymentMethod: 'MIXTO', total: 90, paymentBreakdown: overallocatedParts },
 ], shiftStart, shiftEnd);
 assert.deepEqual(overallocatedFromReceipt,
-  { cash: 60, card: 50, platforms: 0, total: 110, count: 1 },
-  'Diagnóstico actual: un MIXTO sobreasignado suma más que el total cobrado');
+  { cash: 0, card: 0, platforms: 0, total: 0, count: 1 },
+  'Un MIXTO sobreasignado no se registra como ingresos comprobados');
 assert.deepEqual(overallocatedFromPayment, overallocatedFromReceipt,
   'La coincidencia entre rutas no garantiza que el desglose coincida con el cobro');
-assert.equal(overallocatedFromReceipt.total - overallocatedReceipt.totalPaid, 20,
-  'Los $20 excedentes requieren conciliación; no son ingresos comprobados');
+assert.equal(overallocatedReceipt.totalPaid - overallocatedFromReceipt.total, 90,
+  'Todo el cobro requiere conciliación; los $20 excedentes no son ingresos comprobados');
 assert.equal(JSON.stringify(overallocatedReceipt), overallocatedSnapshot,
   'El diagnóstico no debe modificar el ticket original');
 console.warn('PENDIENTE DE CONCILIACIÓN: MIXTO de $90 con desglose de $110 (datos sintéticos).');
@@ -375,19 +375,19 @@ const mixedDailySamples = [
 const mixedDailySnapshot = JSON.stringify(mixedDailySamples);
 const partialDaily = paymentsSalesForDay([mixedDailySamples[0]], '2026-10-23');
 const partialByShift = computeShiftSalesFromPayments([mixedDailySamples[0]], shiftStart, shiftEnd);
-assert.deepEqual(partialDaily, { total: 90, count: 1 });
-assert.equal(partialByShift.total, 30);
-assert.equal(partialDaily.total - partialByShift.total, 60,
-  'El resumen diario y el turno difieren $60 por desglose parcial');
+assert.deepEqual(partialDaily, { total: 0, count: 0 });
+assert.equal(partialByShift.total, 0);
+assert.equal(partialDaily.total, partialByShift.total,
+  'El diario y el turno excluyen MIXTO parcial hasta conciliación');
 const excessDaily = paymentsSalesForDay([mixedDailySamples[1]], '2026-10-23');
 const excessByShift = computeShiftSalesFromPayments([mixedDailySamples[1]], shiftStart, shiftEnd);
-assert.deepEqual(excessDaily, { total: 90, count: 1 });
-assert.equal(excessByShift.total, 110);
-assert.equal(excessByShift.total - excessDaily.total, 20,
-  'El turno excede el resumen diario $20 por desglose sobreasignado');
+assert.deepEqual(excessDaily, { total: 0, count: 0 });
+assert.equal(excessByShift.total, 0);
+assert.equal(excessByShift.total, excessDaily.total,
+  'El diario y el turno excluyen MIXTO excesivo hasta conciliación');
 assert.equal(JSON.stringify(mixedDailySamples), mixedDailySnapshot,
   'El diagnóstico diario/turno no modifica pagos sintéticos');
-console.warn('PENDIENTE: resumen diario y corte por turno discrepan con MIXTO parcial/excesivo.');
+console.warn('PENDIENTE HISTÓRICO: MIXTO parcial/excesivo se excluye de importes clasificados hasta comprobarlo.');
 
 
 // Diagnóstico pendiente: método de pago desconocido en pedido externo.
@@ -407,8 +407,8 @@ const unknownOffTableReport = buildSalesReport(
   [unknownOffTablePayment], 1, new Date(shiftEnd),
 );
 assert.deepEqual(unknownOffTableShift,
-  { cash: 0, card: 0, platforms: 45, total: 45, count: 1 },
-  'Diagnóstico actual: Caja clasifica un método desconocido como plataformas');
+  { cash: 0, card: 0, platforms: 0, total: 0, count: 0 },
+  'Caja no inventa transferencia/plataformas para método desconocido');
 assert.equal(unknownOffTableReport.totalSales, 45);
 assert.equal(unknownOffTableReport.unclassifiedPaymentTotal, 45,
   'Reportes conserva el importe sin inventar un método de pago');
@@ -417,7 +417,7 @@ assert.deepEqual(unknownOffTableReport.byPayment,
   'Reportes no atribuye el método desconocido a transferencia');
 assert.equal(JSON.stringify(unknownOffTablePayment), unknownOffTableSnapshot,
   'El diagnóstico no modifica el pedido original');
-console.warn('PENDIENTE: Caja atribuye método desconocido a plataformas; Reportes lo deja sin clasificar (datos sintéticos).');
+console.warn('PENDIENTE HISTÓRICO: método desconocido no clasificado en Caja; Reportes lo conserva como importe sin clasificar.');
 
 
 // Diagnóstico pendiente: importes nulos o negativos en pedidos externos.
@@ -462,13 +462,13 @@ const nonPositiveTableDaily = paymentsSalesForDay(nonPositiveTablePayments, '202
 assert.deepEqual(nonPositiveTableShift,
   { cash: 0, card: 0, platforms: 0, total: 0, count: 2 },
   'El turno cuenta ambos pagos, pero no suma importes no positivos');
-assert.deepEqual(nonPositiveTableDaily, { total: -10, count: 2 },
-  'El corte diario incluye el importe negativo y ambos pagos');
-assert.equal(nonPositiveTableDaily.total - nonPositiveTableShift.total, -10,
-  'La diferencia requiere revisión contable, no reclasificación automática');
+assert.deepEqual(nonPositiveTableDaily, { total: 0, count: 0 },
+  'El corte diario no cuenta pagos sin importe positivo verificable');
+assert.equal(nonPositiveTableDaily.total, nonPositiveTableShift.total,
+  'El diario y turno excluyen pagos de mesa no positivos sin reclasificarlos');
 assert.equal(JSON.stringify(nonPositiveTablePayments), nonPositiveTableSnapshot,
   'El diagnóstico no modifica los pagos sintéticos');
-console.warn('PENDIENTE: pagos de mesa cero/negativos difieren entre corte diario y turno (datos sintéticos).');
+console.warn('PENDIENTE HISTÓRICO: pagos de mesa cero/negativos requieren revisión documental; no se trataron como reembolsos.');
 
 
 // Diagnóstico de aislamiento: los sumadores de Caja NO filtran por tenant.
