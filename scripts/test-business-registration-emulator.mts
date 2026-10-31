@@ -324,6 +324,49 @@ try {
   });
   assert.equal((await call('/api/business-invites/preview', { token: inviteToken })).status, 200);
 
+  // Revocación concurrente del responsable mientras el servidor lista las
+  // invitaciones. Interceptar únicamente la lectura de emisores en el Admin
+  // SDK del EMULADOR, después de obtener sus snapshots y antes de la respuesta.
+  // Sin la revalidación final, esta solicitud devolvería nombres/correos con
+  // un permiso ya revocado. No se modifican datos reales ni reglas.
+  const inviteDb = getAdminFirestore(adminApp);
+  const inviteOwnerRef = inviteDb.doc('businessMemberships/' + idA + '_' + uidA);
+  const inviteRootRef = inviteDb.doc('businesses/' + idA);
+  const originalInviteGetAll: any = inviteDb.getAll.bind(inviteDb);
+  for (const scenario of [
+    { label: 'OWNER revocado en vuelo', mutate: () => inviteOwnerRef.update({ active: false }), expected: 403 },
+    { label: 'OWNER degradado sin acceso en vuelo', mutate: () => inviteOwnerRef.update({ role: 'CASHIER' }), expected: 403 },
+    { label: 'rol autorizado cambiado en vuelo', mutate: () => inviteOwnerRef.update({ role: 'ADMIN' }), expected: 409 },
+    { label: 'raíz reasignada en vuelo', mutate: () => inviteRootRef.update({ ownerUserId: uidB }), expected: 403 },
+  ]) {
+    let intercepted = false;
+    (inviteDb as any).getAll = async (...refs: any[]) => {
+      const snapshots = await originalInviteGetAll(...refs);
+      if (!intercepted && refs.length &&
+          refs.every(ref => ref.parent.id === 'businessMemberships')) {
+        intercepted = true;
+        await scenario.mutate();
+      }
+      return snapshots;
+    };
+    try {
+      const staleList = await call('/api/business-invites?businessId=' + idA, undefined, aToken, 'GET');
+      assert(intercepted, scenario.label + ': se interceptó lectura de emisores');
+      assert.equal(staleList.status, scenario.expected, scenario.label + ': denegar respuesta obsoleta');
+      assert.equal('invites' in staleList.data, false, scenario.label + ': sin correos ni lista parcial');
+    } finally {
+      (inviteDb as any).getAll = originalInviteGetAll;
+      await inviteOwnerRef.update({ active: true, role: 'OWNER' });
+      await inviteRootRef.update({ ownerUserId: uidA });
+    }
+    const recovered = await call('/api/business-invites?businessId=' + idA, undefined, aToken, 'GET');
+    assert.equal(recovered.status, 200, scenario.label + ': acceso restaurado');
+    assert(recovered.data.invites.some((invite: { email: string }) => invite.email === employeeEmail),
+      scenario.label + ': la invitación sigue pendiente tras restaurar permisos');
+    assert.equal((await call('/api/business-invites?businessId=' + idA, undefined, bToken, 'GET')).status, 403,
+      scenario.label + ': B sigue aislado de A');
+  }
+
   await signOut(auth);
   const staff = await createUserWithEmailAndPassword(auth, employeeEmail, password);
   await adminAuth.updateUser(staff.user.uid, { emailVerified: true });
