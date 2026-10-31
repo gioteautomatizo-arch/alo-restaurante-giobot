@@ -213,6 +213,67 @@ try {
   assert.deepEqual(Object.keys(window.qa.writes[0].data).sort(),['active','name','role','updatedAt']);
   assert.equal(window.qa.writes[0].data.name,'Ana');
 
+  // El objetivo puede cambiar DESPUÉS de su primera lectura, mientras se
+  // revalidan los permisos del responsable. Ni edición ni baja deben operar
+  // con esa versión antigua. Las reglas Firestore siguen siendo autoridad.
+  const employeePath='businessMemberships/tenant-a_employee-existing';
+  const concurrentTargetChanges=[
+    ['promovido a OWNER',()=>{window.qa.docs[employeePath].role='OWNER';}],
+    ['desactivado',()=>{window.qa.docs[employeePath].active=false;}],
+    ['trasladado a B',()=>{window.qa.docs[employeePath].restaurantId='tenant-b';}],
+    ['identidad cambiada',()=>{window.qa.docs[employeePath].userId='employee-new';}],
+    ['nombre cambiado',()=>{window.qa.docs[employeePath].name='Otro nombre';}],
+    ['borrado',()=>{delete window.qa.docs[employeePath];}],
+    ['recreado',()=>{window.qa.docs[employeePath]={...member('tenant-a','employee-existing','WAITER'),createdAt:'nuevo-registro'};}],
+  ];
+  for(const [label,mutate] of concurrentTargetChanges){
+    for(const operation of ['update','remove']){
+      reset();
+      let roots=0;
+      window.qa.onRead=ref=>{
+        if(ref.path==='businesses/tenant-a' && ++roots===2)mutate();
+      };
+      const attempt=operation==='update'
+        ? window.qa.update('tenant-a','employee-existing',{active:false})
+        : window.qa.remove('tenant-a','employee-existing');
+      await assert.rejects(attempt,/membresía del empleado cambió/,label+' / '+operation);
+      assert.equal(roots,2,label+': mutación durante revalidación del responsable');
+      assert.equal(window.qa.writes.length,0,label+': sin escrituras');
+    }
+  }
+  // También se descartan la sesión cambiada y el servidor caído justo antes
+  // de la segunda lectura del empleado, sin ejecutar updateDoc ni el batch.
+  for(const operation of ['update','remove']){
+    reset();
+    let targetReads=0;
+    window.qa.onRead=ref=>{
+      if(ref.path===employeePath && ++targetReads===2)
+        window.qa.auth.currentUser=user('owner-b');
+    };
+    await assert.rejects(
+      operation==='update'
+        ? window.qa.update('tenant-a','employee-existing',{active:false})
+        : window.qa.remove('tenant-a','employee-existing'),
+      /sesión cambió/,
+    );
+    assert.equal(targetReads,2);
+    assert.equal(window.qa.writes.length,0);
+
+    reset();
+    let roots=0;
+    window.qa.onRead=ref=>{
+      if(ref.path==='businesses/tenant-a' && ++roots===2)
+        window.qa.serverError=new Error('offline-target-recheck');
+    };
+    await assert.rejects(
+      operation==='update'
+        ? window.qa.update('tenant-a','employee-existing',{active:false})
+        : window.qa.remove('tenant-a','employee-existing'),
+      /offline-target-recheck/,
+    );
+    assert.equal(window.qa.writes.length,0);
+  }
+
   // No editar propietario, ni la propia cuenta, ni un miembro del otro tenant.
   reset();
   await assert.rejects(window.qa.update('tenant-a','owner-a',{active:false}),/propia membresía/);
