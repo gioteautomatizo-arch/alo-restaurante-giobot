@@ -13,7 +13,7 @@ export function hasValidInviterId(value: unknown): value is string {
 export function isPendingInviteWithinWindow(
   invite: Record<string, unknown> | undefined,
   now: number,
-): boolean {
+): invite is Record<string, unknown> {
   if (!invite || invite.status !== 'PENDING') return false;
   const { createdAt, expiresAt } = invite;
   return typeof createdAt === 'number' && Number.isSafeInteger(createdAt) && createdAt > 0
