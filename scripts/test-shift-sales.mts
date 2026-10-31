@@ -86,13 +86,13 @@ assert.deepEqual(fromReceipts, { cash: 80.5, card: 59.75, platforms: 65.25, tota
 // Las ventanas diarias usan Ciudad de México (UTC-6 en estas fechas), no el día UTC.
 const dayOrders = [
   { orderType: 'pickup', status: 'ENTREGADO', billingStatus: 'PAGADO',
-    total: 10, paidAt: '2026-10-23T06:00:00.000Z' },
+    paymentMethod: 'efectivo', total: 10, paidAt: '2026-10-23T06:00:00.000Z' },
   { orderType: 'delivery', status: 'ENTREGADO', billingStatus: 'PAGADO',
-    total: 25.5, paidAt: '2026-10-24T05:59:59.000Z' },
+    paymentMethod: 'efectivo', total: 25.5, paidAt: '2026-10-24T05:59:59.000Z' },
   { orderType: 'pickup', status: 'ENTREGADO', billingStatus: 'PAGADO',
-    total: 99, paidAt: '2026-10-24T06:00:00.000Z' },
+    paymentMethod: 'efectivo', total: 99, paidAt: '2026-10-24T06:00:00.000Z' },
   { orderType: 'pickup', status: 'ENTREGADO', billingStatus: 'PAGADO',
-    total: 90, paidAt: '2026-10-23T05:59:59.000Z' },
+    paymentMethod: 'efectivo', total: 90, paidAt: '2026-10-23T05:59:59.000Z' },
   { orderType: 'table', status: 'ENTREGADO', billingStatus: 'PAGADO',
     total: 300, paidAt: '2026-10-23T12:00:00.000Z' },
   { orderType: 'pickup', status: 'CANCELADO', billingStatus: 'PAGADO',
@@ -440,15 +440,17 @@ const unknownOffTableReport = buildSalesReport(
 assert.deepEqual(unknownOffTableShift,
   { cash: 0, card: 0, platforms: 0, total: 0, count: 0 },
   'Caja no inventa transferencia/plataformas para método desconocido');
-assert.equal(unknownOffTableReport.totalSales, 45);
+assert.equal(unknownOffTableReport.totalSales, 0);
+assert.equal(unknownOffTableReport.orderCount, 0);
+assert.equal(unknownOffTableReport.unclassifiedPaidCount, 1);
 assert.equal(unknownOffTableReport.unclassifiedPaymentTotal, 45,
-  'Reportes conserva el importe sin inventar un método de pago');
+  'Reportes conserva el importe pendiente por separado, sin sumarlo a ventas verificadas');
 assert.deepEqual(unknownOffTableReport.byPayment,
   { efectivo: 0, transferencia: 0, tarjeta: 0 },
   'Reportes no atribuye el método desconocido a transferencia');
 assert.equal(JSON.stringify(unknownOffTablePayment), unknownOffTableSnapshot,
   'El diagnóstico no modifica el pedido original');
-console.warn('PENDIENTE HISTÓRICO: método desconocido no clasificado en Caja; Reportes lo conserva como importe sin clasificar.');
+console.warn('PENDIENTE HISTÓRICO: método desconocido excluido de ventas verificadas y mostrado por separado; faltan comprobantes.');
 
 // El turno debe detectar importes/métodos no conciliables sin mutar pedidos.
 const unclassifiedFixtures = [
@@ -470,10 +472,9 @@ console.log('PASS: auditoría de métodos/importes no conciliables bloquea el ci
 
 
 
-// Diagnóstico pendiente: importes nulos o negativos en pedidos externos.
-// El corte diario y Reportes los contabilizan, pero el corte por turno los omite.
-// Esta prueba solo registra la divergencia actual con pedidos ficticios;
-// NO interpreta los negativos como reembolsos ni altera datos de producción.
+// Regresión: importes nulos o negativos en pedidos externos se excluyen de
+// Caja por turno, corte diario y Reportes. Se alertan por separado, sin
+// interpretarlos como reembolsos ni alterar datos de producción.
 const nonPositiveOrders = [
   paidOffTableOrder('IMPORTE-CERO', 'pickup', 'efectivo', 0,
     '2026-10-23T17:00:00.000Z'),
@@ -486,13 +487,44 @@ const nonPositiveDaily = offTableSalesForDay(nonPositiveOrders, '2026-10-23');
 const nonPositiveReport = buildSalesReport(nonPositiveOrders, 1, new Date(shiftEnd));
 assert.deepEqual(nonPositiveShift, { cash: 0, card: 0, platforms: 0, total: 0, count: 0 },
   'Caja por turno omite actualmente pedidos pagados con total cero o negativo');
-assert.deepEqual(nonPositiveDaily, { total: -10, count: 2 },
-  'El corte diario actualmente cuenta ambos pedidos e incluye el importe negativo');
-assert.equal(nonPositiveReport.totalSales, -10);
-assert.equal(nonPositiveReport.orderCount, 2);
+assert.deepEqual(nonPositiveDaily, { total: 0, count: 0 },
+  'El corte diario excluye pedidos con importe cero o negativo');
+assert.equal(nonPositiveReport.totalSales, 0);
+assert.equal(nonPositiveReport.orderCount, 0);
+assert.equal(nonPositiveReport.anomalousPaidCount, 2);
+assert.equal(nonPositiveReport.unclassifiedPaidCount, 0);
 assert.equal(JSON.stringify(nonPositiveOrders), nonPositiveSnapshot,
   'El diagnóstico no debe modificar pedidos ficticios');
-console.warn('PENDIENTE: pedidos pagados con importes cero/negativos difieren entre turno y corte diario (datos sintéticos).');
+console.warn('PENDIENTE HISTÓRICO: importes cero/negativos excluidos de ventas verificadas; requieren comprobantes.');
+
+
+
+// Coherencia de tres vistas: pedidos externos con importe no representable en centavos,
+// método desconocido y un pago válido. Los dos primeros quedan fuera de ventas,
+// pero aparecen como alertas de revisión; no se modifican los documentos.
+const invalidCents = paidOffTableOrder('TRES-DECIMALES', 'pickup', 'efectivo',
+  3.001, '2026-10-23T17:45:00.000Z');
+const mixedReconciliationOrders = [
+  paidOffTableOrder('COBRO-CORRECTO', 'delivery', 'tarjeta', 15.25, '2026-10-23T17:30:00.000Z'),
+  invalidCents,
+  unknownOffTablePayment,
+  ...nonPositiveOrders,
+];
+const mixedReconciliationSnapshot = JSON.stringify(mixedReconciliationOrders);
+const mixedReconciliationShift = computeShiftSalesFromOrders(mixedReconciliationOrders, shiftStart, shiftEnd);
+const mixedReconciliationDaily = offTableSalesForDay(mixedReconciliationOrders, '2026-10-23');
+const mixedReconciliationReport = buildSalesReport(mixedReconciliationOrders, 1, new Date(shiftEnd));
+assert.deepEqual(mixedReconciliationShift,
+  { cash: 0, card: 15.25, platforms: 0, total: 15.25, count: 1 });
+assert.deepEqual(mixedReconciliationDaily, { total: 15.25, count: 1 });
+assert.equal(mixedReconciliationReport.totalSales, 15.25);
+assert.equal(mixedReconciliationReport.orderCount, 1);
+assert.equal(mixedReconciliationReport.unclassifiedPaidCount, 1);
+assert.equal(mixedReconciliationReport.unclassifiedPaymentTotal, 45);
+assert.equal(mixedReconciliationReport.anomalousPaidCount, 3);
+assert.equal(JSON.stringify(mixedReconciliationOrders), mixedReconciliationSnapshot,
+  'El reporte no modifica cobros sintéticos pendientes');
+console.log('PASS: Caja por turno, corte diario y Reportes coinciden sin contar cobros anómalos.');
 
 // Diagnóstico pendiente: pagos de mesa con importes cero o negativos.
 // El corte por turno conserva el conteo, pero omite los importes; el diario
