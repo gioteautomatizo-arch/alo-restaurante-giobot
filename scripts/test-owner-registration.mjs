@@ -1,5 +1,5 @@
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch, arrayUnion, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch, runTransaction, arrayUnion, query, where } from 'firebase/firestore';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 
@@ -62,7 +62,8 @@ try {
   // leer un ID de membresía ausente para evitar sobrescribir uno existente.
   // Si STAGED deniega este get, la implementación requiere una propuesta de
   // reglas revisable; no se debe cambiar la regla de producción en este bloque.
-  await assertSucceeds(getDoc(doc(ownerDb, 'businessMemberships/new-business_future-employee')));
+  await assertFails(getDoc(doc(ownerDb, 'businessMemberships/new-business_future-employee')));
+  console.log('PENDIENTE: STAGED niega get de membresía ausente; alta create-only requiere reglas revisadas o API con precondición.');
 
   // El alta del personal también debe ser una operación atómica.
   const hire = writeBatch(ownerDb);
@@ -74,6 +75,28 @@ try {
   await assertSucceeds(hire.commit());
   const roster = await assertSucceeds(getDoc(doc(ownerDb, 'businesses/new-business')));
   assert.deepEqual(roster.data()?.employeeUserIds, ['employee-1']);
+
+  // SDK real: la reserva de un UID indexado puede protegerse dentro de la
+  // misma transacción que lee responsable y raíz, sin consultar membresías
+  // ausentes (que STAGED no permite leer). No cubre fichas históricas sin índice.
+  const hireSecond = () => runTransaction(ownerDb, async tx => {
+    const managerSnap = await tx.get(doc(ownerDb, 'businessMemberships/new-business_owner-new'));
+    const rootSnap = await tx.get(doc(ownerDb, 'businesses/new-business'));
+    assert.equal(managerSnap.data()?.role, 'OWNER');
+    if (rootSnap.data()?.employeeUserIds?.includes('employee-2')) {
+      throw new Error('Ya indexado');
+    }
+    tx.set(doc(ownerDb, 'businessMemberships/new-business_employee-2'), {
+      ...member('new-business','employee-2','WAITER'), name:'Segundo', email:'second@example.test',
+      createdAt:'2026-10-30T00:00:00Z', updatedAt:'2026-10-30T00:00:00Z',
+    });
+    tx.update(doc(ownerDb, 'businesses/new-business'), {employeeUserIds:arrayUnion('employee-2')});
+  });
+  await assertSucceeds(hireSecond());
+  await assert.rejects(hireSecond(),/Ya indexado/);
+  assert.equal((await getDoc(doc(ownerDb, 'businessMemberships/new-business_employee-2'))).data()?.name,'Segundo');
+  assert.deepEqual((await getDoc(doc(ownerDb, 'businesses/new-business'))).data()?.employeeUserIds,['employee-1','employee-2']);
+
 
   const staffDb = signed('employee-1');
   await assertSucceeds(getDoc(doc(staffDb, 'businessMemberships/new-business_employee-1')));
