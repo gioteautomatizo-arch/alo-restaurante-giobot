@@ -16,9 +16,9 @@ const mocks = {
     'export const doc = (_db, collection, id) => ({collection, id});',
     'export const where = (field, op, value) => ({field, op, value});',
     'export const query = (collection, ...filters) => ({collection, filters});',
-    'export async function getDocs() {return {docs: window.qa.memberships.map(data => ({id: data.id || data.restaurantId + "_" + data.userId, data: () => data}))};}',
+    'export async function getDocs() {throw new Error("Lectura cacheada de membresías prohibida");}',
     'export async function getDocsFromServer() { window.qa.serverReads++; if (window.qa.serverPending) return new Promise((resolve, reject) => window.qa.serverRequests.push({resolve, reject})); if (window.qa.serverError) throw window.qa.serverError; return {docs: (window.qa.latestMemberships ?? window.qa.memberships).map(data => ({id: data.id || data.restaurantId + "_" + data.userId, data: () => data}))}; }',
-    'export function getDoc(ref) {return new Promise((resolve, reject) => window.qa.pending.push({ref, resolve, reject, source:"cache"}));}',
+    'export function getDoc() {throw new Error("Lectura cacheada de rol prohibida");}',
     'export function getDocFromServer(ref) {return new Promise((resolve, reject) => window.qa.pending.push({ref, resolve, reject, source:"server"}));}',
     'export function writeBatch() {throw new Error("No Firestore writes in this test");}',
   ].join('\n'),
@@ -76,12 +76,19 @@ const readIndividual = async ({first = member('tenant-a'), root = snap('tenant-a
   }
   const result = await request;
   assert.equal(window.qa.pending.length, expectedReads);
+  assert.equal(window.qa.pending[0].source, 'server', 'Primera membresía debe venir del servidor');
   if (expectedReads >= 2) assert.equal(window.qa.pending[1].source, 'server', 'Raíz privada debe venir del servidor');
   if (expectedReads === 3) assert.equal(window.qa.pending[2].source, 'server', 'Permiso final debe venir del servidor');
   return result;
 };
 try {
   window.eval(bundle.outputFiles[0].text);
+  // Una membresía cacheada revocada en servidor no inicia lectura privada.
+  window.qa.memberships = [member('tenant-a')];
+  window.qa.latestMemberships = [];
+  assert.deepEqual(await window.qa.load('owner-a'), []);
+  assert.equal(window.qa.pending.length, 0, 'No leer raíz con permiso solo cacheado');
+  window.qa.latestMemberships = null;
   window.qa.memberships = [member('tenant-a'), member('tenant-b')];
   const first = window.qa.load('owner-a');
   const failed = assert.rejects(first, /No pudimos cargar todos tus negocios/);
@@ -285,6 +292,7 @@ try {
       await waitFor(() => window.qa.pending.length === 3, 'Revalidación del rol');
       window.qa.pending[2].resolve(last === null ? {exists: () => false} : memberSnap(last));
     }
+    assert.equal(window.qa.pending[0].source, 'server', 'Rol inicial requiere servidor');
     assert.equal(window.qa.pending[1].source, 'server', 'Identidad OWNER requiere raíz remota');
     if (rootValid) assert.equal(window.qa.pending[2].source, 'server', 'Rol final requiere servidor');
     return request;
@@ -351,15 +359,12 @@ try {
   await readListWithChange([member('tenant-a')], [{...member('tenant-a'), id:'tenant-b_owner-a'}],
     /permisos.*inconsistentes/);
 
-  // Un fallo de la revalidación de servidor no se interpreta como lista vacía.
+  // Si falla la primera lectura remota, no consultar ninguna raíz privada.
   window.qa.memberships = [member('tenant-a')];
   window.qa.pending = [];
   window.qa.serverError = new Error('permission-denied');
-  const offlineList = window.qa.load('owner-a');
-  const offlineRejected = assert.rejects(offlineList, /permission-denied/);
-  await waitFor(() => window.qa.pending.length === 1, 'Raíz antes de fallo del servidor');
-  window.qa.pending[0].resolve(snap('tenant-a', {ownerUserId:'owner-a'}));
-  await offlineRejected;
+  await assert.rejects(window.qa.load('owner-a'), /permission-denied/);
+  assert.equal(window.qa.pending.length, 0, 'Sin servidor no se leen raíces privadas');
   window.qa.serverError = null;
 
   // Si cambia el UID durante la revalidación, la respuesta del UID anterior
