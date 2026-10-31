@@ -58,6 +58,12 @@ try {
   await assertFails(updateDoc(doc(ownerDb, 'businesses/other-business'), { branding: { restaurantName: 'Invasión' } }));
   await assertFails(updateDoc(doc(otherDb, 'businesses/new-business'), { branding: { restaurantName: 'Invasión' } }));
 
+  // Diagnóstico previo a una transacción create-only: un responsable necesita
+  // leer un ID de membresía ausente para evitar sobrescribir uno existente.
+  // Si STAGED deniega este get, la implementación requiere una propuesta de
+  // reglas revisable; no se debe cambiar la regla de producción en este bloque.
+  await assertSucceeds(getDoc(doc(ownerDb, 'businessMemberships/new-business_future-employee')));
+
   // El alta del personal también debe ser una operación atómica.
   const hire = writeBatch(ownerDb);
   hire.set(doc(ownerDb, 'businessMemberships/new-business_employee-1'), {
