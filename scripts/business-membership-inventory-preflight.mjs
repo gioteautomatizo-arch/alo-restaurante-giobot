@@ -8,6 +8,7 @@
  */
 // SUPER_ADMIN se acredita por platformAdmins/{uid}; una membresía tenant
 // con ese rol es anómala, aunque el tipo global BusinessRole lo contemple.
+const EMPLOYEE_ROLES = new Set(['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE']);
 const VALID_ROLES = new Set([
   'OWNER', 'ADMIN', 'MANAGER', 'CASHIER',
   'WAITER', 'KITCHEN', 'EMPLOYEE', 'CLIENT',
@@ -31,6 +32,9 @@ export function auditBusinessMembershipInventory({ coverage, businesses, members
     orphanMemberships: 0,
     invalidIdentity: 0,
     duplicateDocuments: 0,
+    unindexedMemberships: 0,
+    staleEmployeeIndexEntries: 0,
+    invalidEmployeeIndexEntries: 0,
   };
   const issue = (code, collection, index) => {
     // No exponer identificadores o contenido de registros históricos.
@@ -72,7 +76,32 @@ export function auditBusinessMembershipInventory({ coverage, businesses, members
       }
       seenRootDocs.add(root.docId);
       if (root.docId === root.restaurantId && !roots.has(root.docId)) {
-        roots.set(root.docId, { ownerUserId: root.ownerUserId, owners: [] });
+        roots.set(root.docId, { ownerUserId: root.ownerUserId, owners: [],
+          employeeIds: undefined, membershipByUid: new Map() });
+      }
+    }
+    // El índice es la única barrera actual contra un alta de empleado duplicada
+    // desde Web SDK. No inferir ausencia de membresías a partir de su ausencia.
+    if (validDocId && root.docId === root.restaurantId) {
+      const entry = roots.get(root.docId);
+      if (entry && entry.employeeIds === undefined && root.employeeUserIds !== undefined) {
+        if (!Array.isArray(root.employeeUserIds)) {
+          counts.invalidEmployeeIndexEntries++;
+          issue('INVALID_EMPLOYEE_INDEX_SHAPE', 'businesses', index);
+        } else {
+          entry.employeeIds = new Set();
+          for (const uid of root.employeeUserIds) {
+            if (!isUid(uid)) {
+              counts.invalidEmployeeIndexEntries++;
+              issue('INVALID_EMPLOYEE_INDEX_UID', 'businesses', index);
+            } else if (entry.employeeIds.has(uid)) {
+              counts.invalidEmployeeIndexEntries++;
+              issue('DUPLICATE_EMPLOYEE_INDEX_UID', 'businesses', index);
+            } else {
+              entry.employeeIds.add(uid);
+            }
+          }
+        }
       }
     }
     if (isObject(root) && root.ownerUserId === undefined) {
@@ -111,6 +140,16 @@ export function auditBusinessMembershipInventory({ coverage, businesses, members
       counts.orphanMemberships++;
       issue('MEMBERSHIP_WITHOUT_VALID_ROOT', 'businessMemberships', index);
     }
+    if (valid && roots.has(member.restaurantId)) {
+      const root = roots.get(member.restaurantId);
+      // Incluir inactivos: un documento revocado sigue existiendo y puede
+      // ser sobrescrito por set() aunque no aparezca en la lista activa.
+      root.membershipByUid.set(member.userId, member);
+      if (member.role !== 'OWNER' && !root.employeeIds?.has(member.userId)) {
+        counts.unindexedMemberships++;
+        issue('UNINDEXED_MEMBERSHIP_COLLISION_REVIEW', 'businessMemberships', index);
+      }
+    }
     if (isObject(member) && member.active === true) {
       counts.activeMemberships++;
       if (member.role === 'OWNER') {
@@ -122,6 +161,16 @@ export function auditBusinessMembershipInventory({ coverage, businesses, members
   }
 
   for (const root of roots.values()) {
+    if (root.employeeIds) for (const uid of root.employeeIds) {
+      const member = root.membershipByUid.get(uid);
+      if (!member) {
+        counts.staleEmployeeIndexEntries++;
+        issue('EMPLOYEE_INDEX_WITHOUT_MEMBERSHIP', 'businesses');
+      } else if (!EMPLOYEE_ROLES.has(member.role)) {
+        counts.invalidEmployeeIndexEntries++;
+        issue('NON_EMPLOYEE_ROLE_IN_INDEX', 'businesses');
+      }
+    }
     if (root.owners.length === 0) {
       counts.rootsWithoutActiveOwner++;
       issue('ROOT_WITHOUT_ACTIVE_OWNER', 'businesses');
