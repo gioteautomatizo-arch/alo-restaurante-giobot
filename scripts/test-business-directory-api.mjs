@@ -95,6 +95,29 @@ try {
   assert.equal(JSON.stringify(employeeList.data).includes('PRIVADO-NO-DEVOLVER'), false,
     'Un empleado de B tampoco recibe configuración interna');
 
+  // Un empleado no debe recibir B si la raíz no tiene propietario válido,
+  // o si el mismo UID figura como propietario pero su rol no es OWNER.
+  // Este bloqueo del candidato privado es deliberadamente más estricto que
+  // algunos registros históricos; no activar el corte sin inventario.
+  for (const [label, mutate] of [
+    ['empleado figura como propietario sin rol OWNER', () =>
+      db.collection('businesses').doc(b).update({ ownerUserId: alice.uid })],
+    ['empleado con raíz sin propietario', () =>
+      db.collection('businesses').doc(b).update({ ownerUserId: FieldValue.delete() })],
+    ['empleado con propietario numérico', () =>
+      db.collection('businesses').doc(b).update({ ownerUserId: 123 })],
+    ['empleado con propietario en blanco', () =>
+      db.collection('businesses').doc(b).update({ ownerUserId: '   ' })],
+  ]) {
+    await mutate();
+    const invalidRoot = await call(aliceToken);
+    assert.equal(invalidRoot.status, 409, label + ': bloquear raíz inconsistente');
+    assert.equal('businesses' in invalidRoot.data, false, label + ': sin lista parcial de A');
+    await db.collection('businesses').doc(b).set(root(b, 'Negocio B'));
+    assert.deepEqual(ids(await call(aliceToken)), [a, b], label + ': recuperar A+B');
+    assert.deepEqual(ids(await call(bobToken)), [b], label + ': B sigue aislado');
+  }
+
   // OWNER de A no puede presentar una raíz cuyo propietario explícito sea B.
   await db.collection('businesses').doc(a).update({ ownerUserId: bob.uid });
   assert.equal((await call(aliceToken)).status, 409, 'OWNER y raíz discordantes');
@@ -239,7 +262,7 @@ try {
   assert.equal(overflow.status, 409);
   assert.equal('businesses' in overflow.data, false);
 
-  console.log('PASS (API opt-in NO activada): Auth, A/B, salida mínima, OWNER/raíz estrictos, raíz de empleado revalidada, rol global tenant rechazado antes de raíces y durante revalidación, legado sin ownerUserId bloqueado, revocación/rol/borrado, recuperación y límite 100 en emuladores.');
+  console.log('PASS (API opt-in NO activada): Auth, A/B, salida mínima, OWNER/raíz estrictos, raíz de empleado revalidada, propietario/rol congruentes, rol global tenant rechazado antes de raíces y durante revalidación, legado sin ownerUserId bloqueado, revocación/rol/borrado, recuperación y límite 100 en emuladores.');
   console.warn('PENDIENTE: revisión manual de OWNER históricos, costos de lecturas adicionales, reglas efectivas y corte compatible con clientes antiguos; la revalidación no es atómica.');
 } finally {
   afterRootsRead = null;

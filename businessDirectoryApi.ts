@@ -96,8 +96,14 @@ export function registerBusinessDirectoryApi(app: Express): void {
             !data.branding || typeof data.branding.restaurantName !== 'string' ||
             typeof data.branding.publicSlug !== 'string' ||
             (data.branding.logoUrl !== undefined && typeof data.branding.logoUrl !== 'string') ||
-            (ownerBusinessIds.has(businessIds[index]) &&
-              data.ownerUserId !== uid)) {
+            // La raíz debe tener propietario verificable también para EMPLEADOS.
+            // Si el propio UID figura como propietario, su rol debe ser OWNER:
+            // no entregar una tarjeta con propiedad/rol contradictorios.
+            typeof data.ownerUserId !== 'string' ||
+            !data.ownerUserId.trim() ||
+            (ownerBusinessIds.has(businessIds[index])
+              ? data.ownerUserId !== uid
+              : data.ownerUserId === uid)) {
           return fail(res, 409, 'No pudimos validar todos los negocios de tu cuenta.');
         }
         // El selector solo necesita ID, nombre, slug y logo. Nunca devolver la
@@ -156,7 +162,11 @@ export function registerBusinessDirectoryApi(app: Express): void {
             data.branding.restaurantName !== original.branding.restaurantName ||
             data.branding.publicSlug !== original.branding.publicSlug ||
             data.branding.logoUrl !== original.branding.logoUrl ||
-            (ownerBusinessIds.has(id) && data.ownerUserId !== uid)) {
+            typeof data.ownerUserId !== 'string' ||
+            !data.ownerUserId.trim() ||
+            (ownerBusinessIds.has(id)
+              ? data.ownerUserId !== uid
+              : data.ownerUserId === uid)) {
           return fail(res, 409, 'Un negocio cambió durante la consulta. Reintenta.');
         }
       }
