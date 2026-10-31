@@ -27,7 +27,11 @@ function classifiedPaymentParts(
   const totalCents = cents(total);
   if (totalCents === null) return null;
   const known = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA'];
+  // Un desglose no puede convertir un método principal desconocido en cobro clasificado.
+  if (method !== 'MIXTO' && !known.includes(method || '')) return null;
   if (method === 'MIXTO' || (breakdown && breakdown.length > 0)) {
+    // Para un pago no MIXTO, el desglose debe coincidir con su único método.
+    if (method !== 'MIXTO' && (breakdown?.length !== 1 || breakdown[0].method !== method)) return null;
     if (!breakdown || (method === 'MIXTO' && breakdown.length < 2) || breakdown.length === 0) return null;
     const seen = new Set<string>();
     let sum = 0;
