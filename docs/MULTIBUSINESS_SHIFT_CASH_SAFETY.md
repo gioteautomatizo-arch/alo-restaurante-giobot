@@ -83,3 +83,12 @@ Revisión estática de las referencias de código, sin ejecutar operaciones de C
 - Prueba previa a cualquier habilitación: con **dos negocios sintéticos** y emuladores, comprobar que un pedido del negocio B no se puede cobrar desde A, que un pago de B jamás aparece en el corte de A y que la operación es idempotente ante dos cajeros. No intentar la prueba contra Firestore real ni modificar el flujo transaccional hasta aprobar el diseño de aislamiento.
 
 **Alcance:** solo trazado de referencias; sin modificación de interfaz, reglas, transacciones, importes o datos. Las comprobaciones automatizadas existentes no equivalen a una prueba de cobro multinegocio.
+
+ 
+## Protección de Caja del 31 de octubre de 2026 — sin migración
+
+La rama multinegocio corrigió cálculos de lectura, no cobros históricos. `computeShiftSalesFromOrders` y `offTableSalesForDay` no usan `createdAt` como fecha de cobro cuando falta `paidAt`. `computeShiftSalesFromPayments`, `computeShiftSalesFromReceipts` y `paymentsSalesForDay` excluyen de los importes clasificados los MIXTO sin desglose, parciales, excesivos o con método/centavos inválidos. El dinero sigue registrado en su documento original; excluirlo de la clasificación **no equivale a borrarlo ni conciliarlo**.
+
+`auditUnclassifiedPaidOrders` alimenta un aviso y bloqueo de cierre de turno para pedidos pagados del turno con método desconocido o importe no positivo; la alerta de fechas históricas sin `paidAt` permanece separada. [Quality #41244841516](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/41244841516) pasó TypeScript, compilación y pruebas sintéticas de Caja sobre `4943d12b`. No hubo prueba visual ni validación de reglas remotas.
+
+**PENDIENTES:** método desconocido permanece en `unclassifiedPaymentTotal` de Reportes pero no se inventa como categoría de Caja; la UI de turno no lee `table_payments` y no bloquea anomalías MIXTO de mesa; pedidos externos cero/negativos siguen divergiendo entre diario/Reportes y turno. La reversión es por código; no se modificaron reglas ni datos.
