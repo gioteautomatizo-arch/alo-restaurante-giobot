@@ -249,10 +249,19 @@ try{
    });
  }
  await pageBatch.commit();
+ // Clientes previos sin protocolo de cursor deben fallar cerrados, no mostrar
+ // silenciosamente 150 de más de 160 documentos de A.
+ const legacy=await call('/api/business-invites?businessId='+businessId,undefined,ownerToken,'GET');
+ assert.equal(legacy.status,409,'Cliente antiguo debe actualizarse si hay historial truncado');
+ assert.equal('invites' in legacy.data,false,'409 no revela invitaciones parciales');
+ assert.equal((await call('/api/business-invites?businessId='+businessId+'&cursor='+pageIds[0],undefined,ownerToken,'GET')).status,400,
+   'Cursor sin protocolo explícito no está permitido');
+ assert.equal((await call('/api/business-invites?businessId='+businessId+'&pagination=2',undefined,ownerToken,'GET')).status,400,
+   'Versión de paginación desconocida no está permitida');
  const seenPageIds=new Set();
  let cursor=null;
  for(let page=0;page<5;page++){
-   const url='/api/business-invites?businessId='+businessId+(cursor?'&cursor='+cursor:'');
+   const url='/api/business-invites?businessId='+businessId+'&pagination=1'+(cursor?'&cursor='+cursor:'');
    const result=await call(url,undefined,ownerToken,'GET');
    assert.equal(result.status,200,'Página '+page+' de A');
    for(const item of result.data.invites){
@@ -264,8 +273,8 @@ try{
    cursor=result.data.nextCursor;
  }
  assert(pageIds.every(id=>seenPageIds.has(id)),'El historial paginado recupera 160 invitaciones válidas');
- assert.equal((await call('/api/business-invites?businessId='+businessId+'&cursor=../other',undefined,ownerToken,'GET')).status,400);
+ assert.equal((await call('/api/business-invites?businessId='+businessId+'&pagination=1&cursor=../other',undefined,ownerToken,'GET')).status,400);
  assert.equal((await call('/api/business-invites?businessId='+businessId,undefined,otherToken,'GET')).status,403);
  assert.equal((await call('/api/business-invites?businessId='+otherBusiness,undefined,otherToken,'GET')).status,200);
- console.log('PASS: two-tenant invite isolation, expiry, paginated history >150, cursor validation, recovery and rate limits.');
+ console.log('PASS: two-tenant invite isolation, expiry, legacy 409 on >150, paginated history, cursor validation, recovery and rate limits.');
 }finally{await new Promise(resolve=>server.close(resolve));}

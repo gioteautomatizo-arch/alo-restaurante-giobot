@@ -116,13 +116,21 @@ try {
   qa.requests[0].resolve(response({ invites: [], nextCursor: null }));
   assert.deepEqual(await empty, [], 'Lista vacía explícita sí es válida');
 
+  // El cliente actualizado solicita explícitamente el protocolo paginado.
+  reset(makeUser('owner-a'));
+  const protocol = lib.listBusinessInvites('tenant-a');
+  await waitFor(() => qa.requests.length === 1, 'protocolo explícito');
+  assert(qa.requests[0].url.includes('pagination=1'), 'Cliente actualizado pide pagination=1');
+  qa.requests[0].resolve(response({ invites: [], nextCursor: null }));
+  assert.deepEqual(await protocol, []);
+
   // Dos páginas: acumular sin perder registros y ordenar al final.
   reset(makeUser('owner-a'));
   const paged = lib.listBusinessInvites('tenant-a');
   await waitFor(() => qa.requests.length === 1, 'primera página');
   qa.requests[0].resolve(response({ invites: [{ ...actions[3].data.invites[0], id: 'old', createdAt: 1 }], nextCursor: 'a'.repeat(64) }));
   await waitFor(() => qa.requests.length === 2, 'segunda página');
-  assert(qa.requests[1].url.includes('cursor=' + 'a'.repeat(64)), 'cursor enviado al backend');
+  assert(qa.requests[1].url.includes('pagination=1&cursor=' + 'a'.repeat(64)), 'protocolo y cursor enviados al backend');
   qa.requests[1].resolve(response({ invites: [{ ...actions[3].data.invites[0], id: 'new', createdAt: 2 }], nextCursor: null }));
   assert.deepEqual((await paged).map(x => x.id), ['new', 'old']);
 

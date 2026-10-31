@@ -141,8 +141,15 @@ export function registerBusinessInviteApi(app: Express): void {
     if (process.env.ENABLE_BUSINESS_INVITES !== 'true') return fail(res, 404, 'Invitaciones no disponibles.');
     const businessId = req.query.businessId;
     if (!safeId(businessId)) return fail(res, 400, 'Negocio inválido.');
+    // Los clientes antiguos ignoran nextCursor: jamás entregarles una lista truncada.
+    // El cliente nuevo declara explícitamente el protocolo paginado.
+    const pagination = req.query.pagination;
+    if (pagination !== undefined && pagination !== '1') return fail(res, 400, 'Paginación inválida.');
+    const paginated = pagination === '1';
     const cursor = req.query.cursor;
-    if (cursor !== undefined && !isValidInviteCursor(cursor)) return fail(res, 400, 'Cursor inválido.');
+    if (cursor !== undefined && (!paginated || !isValidInviteCursor(cursor))) {
+      return fail(res, 400, 'Cursor inválido o paginación no habilitada.');
+    }
     try {
       const actor = await authenticated(req);
       if (!actor) return fail(res, 401, 'Inicia sesión.');
@@ -160,9 +167,14 @@ export function registerBusinessInviteApi(app: Express): void {
       // Orden estable por ID: no truncar silenciosamente los históricos.
       // Cada página vuelve a validar actor, raíz y emisores antes de responder.
       let inviteQuery = db.collection('business_invites').where('businessId', '==', businessId)
-        .orderBy(FieldPath.documentId()).limit(INVITE_LIST_PAGE_SIZE);
+        .orderBy(FieldPath.documentId()).limit(INVITE_LIST_PAGE_SIZE + (paginated ? 0 : 1));
       if (cursor) inviteQuery = inviteQuery.startAfter(cursor);
       const matches = await inviteQuery.get();
+      // Un cliente legado no sabe pedir la página siguiente. Comprobar con
+      // un documento centinela (151), antes de procesar nombres/correos.
+      if (!paginated && matches.docs.length > INVITE_LIST_PAGE_SIZE) {
+        return fail(res, 409, 'Actualiza la aplicación para consultar el historial completo de invitaciones.');
+      }
       const now = Date.now();
       // La vista previa y la aceptación ya invalidan tokens vencidos o creados
       // por empleados revocados. El listado debe aplicar el mismo contrato:
@@ -231,7 +243,8 @@ export function registerBusinessInviteApi(app: Express): void {
       }
       // No es una transacción ni impide cambios posteriores: la autorización
       // definitiva de aceptar/revocar invitaciones sigue siendo transaccional.
-      return res.json({ invites: pending, nextCursor: nextInviteCursor(matches.docs.map(snap => snap.id)) });
+      return res.json({ invites: pending, nextCursor: paginated
+        ? nextInviteCursor(matches.docs.map(snap => snap.id)) : null });
     } catch (error) {
       console.error('[business-invites/list]', error);
       return fail(res, 503, 'No pudimos cargar las invitaciones.');

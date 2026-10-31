@@ -62,7 +62,7 @@ export async function listBusinessInvites(businessId: string): Promise<PendingBu
   for (let page = 0; page < INVITE_LIST_MAX_PAGES; page++) {
     assertInviteSession(requesterUid);
     const endpoint = '/api/business-invites?businessId=' + encodeURIComponent(businessId)
-      + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
+      + '&pagination=1' + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
     const response = await fetch(endpoint, {
       cache: 'no-store', headers: { Authorization: 'Bearer ' + token },
     });
