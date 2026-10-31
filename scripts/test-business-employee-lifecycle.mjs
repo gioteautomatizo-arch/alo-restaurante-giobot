@@ -277,7 +277,7 @@ try {
   };
   prepareRoster();
   const ownRoster = await window.qa.list('tenant-a');
-  assert.deepEqual(ownRoster.map(employee => employee.userId), ['employee-existing']);
+  assert.deepEqual(Array.from(ownRoster, employee => employee.userId), ['employee-existing']);
   assert(window.qa.serverReads >= 5, 'El roster requiere permisos, raíz y revalidaciones remotas');
 
   // A no puede obtener el roster de B sin membresía de responsable en B.
@@ -331,7 +331,7 @@ try {
   assert.equal(rootReads, 2);
 
   prepareRoster([]);
-  assert.deepEqual(await window.qa.list('tenant-a'), [], 'Roster vacío estable permitido');
+  assert.equal((await window.qa.list('tenant-a')).length, 0, 'Roster vacío estable permitido');
   prepareRoster();
   window.qa.serverError = new Error('offline');
   await assert.rejects(window.qa.list('tenant-a'), /offline/, 'No usar caché offline para autorizar roster');
