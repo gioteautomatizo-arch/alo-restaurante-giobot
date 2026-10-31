@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import type { RestaurantOrder } from '../src/types';
 import { buildSalesReport } from '../src/lib/businessReports.ts';
 
@@ -282,3 +283,16 @@ assert.deepEqual(repeatedProductReport.topProducts, [{ name: 'Taco', quantity: 3
 assert.equal(repeatedProductReport.days[0]?.total, 120);
 console.log('PASS: productos repetidos concilian unidades e ingresos sin sumar pendientes ni cancelaciones.');
 
+
+
+// Contrato estático: el aviso de cobros anómalos se renderiza ANTES del estado
+// vacío de ventas. Esto no sustituye una prueba visual Android/iPad.
+const reportsViewSource = readFileSync(new URL('../src/components/platform/BusinessReportsView.tsx', import.meta.url), 'utf8');
+assert.match(reportsViewSource, /ready && \(report\.unclassifiedPaidCount > 0 \|\| report\.anomalousPaidCount > 0\)/);
+assert.match(reportsViewSource, /role="alert"[\s\S]*Cobros que requieren conciliación documental/);
+assert.ok(
+  reportsViewSource.indexOf('Cobros que requieren conciliación documental') <
+  reportsViewSource.indexOf('report.orderCount === 0'),
+  'La alerta no debe desaparecer cuando el periodo solo tiene cobros anómalos',
+);
+console.log('PASS: la interfaz declara avisos de conciliación incluso con cero ventas (revisión estática).');
