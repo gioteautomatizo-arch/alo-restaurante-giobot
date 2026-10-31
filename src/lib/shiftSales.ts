@@ -10,6 +10,17 @@ export interface ShiftSalesTotals {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+/** Los totales contables son positivos y representan centavos exactos. */
+export function isValidOrderPaymentAmount(value: unknown): value is number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return false;
+  const cents = Math.round(value * 100);
+  return Number.isSafeInteger(cents) && Math.abs(value * 100 - cents) < 0.000001;
+}
+
+export function isKnownOrderPaymentMethod(method: unknown): method is 'efectivo' | 'tarjeta' | 'transferencia' {
+  return method === 'efectivo' || method === 'tarjeta' || method === 'transferencia';
+}
+
 /** Solo métodos explícitos y MIXTO con desglose íntegro pueden clasificarse.
  * No completar diferencias con transferencia ni sumar un MIXTO parcial/excesivo.
  * El registro histórico se conserva para revisión; esta función nunca lo corrige.
@@ -104,9 +115,8 @@ export function computeShiftSalesFromOrders(
     // createdAt nunca prueba la fecha de cobro, incluso si paidAt falta.
     const at = Date.parse(o.paidAt || '');
     if (!Number.isFinite(at) || at < start || at > end) continue;
-    const amount = Number(o.total);
-    if (!Number.isFinite(amount) || amount <= 0) continue;
-    if (!['efectivo', 'tarjeta', 'transferencia'].includes(o.paymentMethod || '')) continue;
+    if (!isValidOrderPaymentAmount(o.total) || !isKnownOrderPaymentMethod(o.paymentMethod)) continue;
+    const amount = o.total;
     count += 1;
     if (o.paymentMethod === 'efectivo') cash += amount;
     else if (o.paymentMethod === 'tarjeta') card += amount;
@@ -134,11 +144,10 @@ export function auditUnclassifiedPaidOrders(
     if (order.status === 'CANCELADO' || order.billingStatus !== 'PAGADO') continue;
     const paidAt = Date.parse(order.paidAt || '');
     if (!Number.isFinite(paidAt) || paidAt < start) continue;
-    const total = Number(order.total);
-    if (Number.isFinite(total) && total > 0 &&
-        ['efectivo', 'tarjeta', 'transferencia'].includes(order.paymentMethod || '')) continue;
+    const total = order.total;
+    if (isValidOrderPaymentAmount(total) && isKnownOrderPaymentMethod(order.paymentMethod)) continue;
     count += 1;
-    if (Number.isFinite(total) && total > 0) positiveAmount += total;
+    if (typeof total === 'number' && Number.isFinite(total) && total > 0) positiveAmount += total;
   }
   return { count, positiveAmount: round2(positiveAmount) };
 }
@@ -168,7 +177,7 @@ export function computeShiftSalesCombined(
 
 /** Total cobrado en un día (clave yyyy-mm-dd, zona México) por pedidos para llevar/domicilio. */
 export function offTableSalesForDay(
-  orders: Array<{ orderType?: string; status?: string; billingStatus?: string; total?: number; paidAt?: string; createdAt?: string }>,
+  orders: Array<{ orderType?: string; status?: string; billingStatus?: string; paymentMethod?: string; total?: number; paidAt?: string; createdAt?: string }>,
   dayKey: string,
 ): { total: number; count: number } {
   let total = 0;
@@ -177,7 +186,8 @@ export function offTableSalesForDay(
     if (!isOffTableOrder(o) || o.status === 'CANCELADO' || o.billingStatus !== 'PAGADO') continue;
     const at = Date.parse(o.paidAt || '');
     if (!Number.isFinite(at) || new Date(at).toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' }) !== dayKey) continue;
-    total += Number(o.total || 0);
+    if (!isValidOrderPaymentAmount(o.total) || !isKnownOrderPaymentMethod(o.paymentMethod)) continue;
+    total += o.total;
     count += 1;
   }
   return { total: round2(total), count };
