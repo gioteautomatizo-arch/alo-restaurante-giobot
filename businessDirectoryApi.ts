@@ -89,6 +89,10 @@ export function registerBusinessDirectoryApi(app: Express): void {
 
       const roots = await db.getAll(...businessIds.map(id => db.collection('businesses').doc(id)));
       const businesses = [];
+      // Un empleado puede consultar un tenant ajeno solo si la raíz apunta
+      // a una membresía OWNER válida de ese tenant. Verificarla con Admin SDK
+      // al final, sin exponerla al cliente ni consultar todos los usuarios.
+      const foreignOwners: Array<{ businessId: string; ownerUid: string }> = [];
       for (let index = 0; index < roots.length; index++) {
         const snap = roots[index];
         const data = snap.data();
@@ -100,11 +104,14 @@ export function registerBusinessDirectoryApi(app: Express): void {
             // Si el propio UID figura como propietario, su rol debe ser OWNER:
             // no entregar una tarjeta con propiedad/rol contradictorios.
             typeof data.ownerUserId !== 'string' ||
-            !data.ownerUserId.trim() ||
+            !data.ownerUserId.trim() || data.ownerUserId.includes('/') ||
             (ownerBusinessIds.has(businessIds[index])
               ? data.ownerUserId !== uid
               : data.ownerUserId === uid)) {
           return fail(res, 409, 'No pudimos validar todos los negocios de tu cuenta.');
+        }
+        if (!ownerBusinessIds.has(businessIds[index])) {
+          foreignOwners.push({ businessId: businessIds[index], ownerUid: data.ownerUserId });
         }
         // El selector solo necesita ID, nombre, slug y logo. Nunca devolver la
         // raíz completa (instrucciones privadas de IA, configuración u otros
@@ -163,11 +170,37 @@ export function registerBusinessDirectoryApi(app: Express): void {
             data.branding.publicSlug !== original.branding.publicSlug ||
             data.branding.logoUrl !== original.branding.logoUrl ||
             typeof data.ownerUserId !== 'string' ||
-            !data.ownerUserId.trim() ||
+            !data.ownerUserId.trim() || data.ownerUserId.includes('/') ||
             (ownerBusinessIds.has(id)
               ? data.ownerUserId !== uid
               : data.ownerUserId === uid)) {
           return fail(res, 409, 'Un negocio cambió durante la consulta. Reintenta.');
+        }
+      }
+      // El propietario de un negocio donde el solicitante es EMPLEADO debe
+      // conservar una membresía OWNER activa y asociada a ese mismo tenant.
+      // Esta lectura adicional es acotada (máximo una por tenant empleado,
+      // MAX_MEMBERSHIPS=100) y ocurre tras la revalidación de raíces/roles.
+      // No es atómica: la revisión independiente y las reglas siguen siendo
+      // imprescindibles antes de activar el endpoint privado.
+      if (foreignOwners.length) {
+        const ownerMemberships = await db.getAll(...foreignOwners.map(
+          ({ businessId, ownerUid }) =>
+            db.collection('businessMemberships').doc(businessId + '_' + ownerUid)
+        ));
+        if (ownerMemberships.length !== foreignOwners.length) {
+          return fail(res, 409, 'No pudimos validar los propietarios de tus negocios.');
+        }
+        for (let index = 0; index < ownerMemberships.length; index++) {
+          const snap = ownerMemberships[index];
+          const expected = foreignOwners[index];
+          const data = snap.data();
+          if (!snap.exists || snap.id !== expected.businessId + '_' + expected.ownerUid ||
+              !data || data.restaurantId !== expected.businessId ||
+              data.userId !== expected.ownerUid || data.role !== 'OWNER' ||
+              data.active !== true) {
+            return fail(res, 409, 'El propietario de un negocio requiere revisión.');
+          }
         }
       }
       return res.status(200).json({ businesses });
