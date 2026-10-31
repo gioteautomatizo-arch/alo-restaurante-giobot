@@ -114,6 +114,31 @@ export function computeShiftSalesFromOrders(
   return { cash, card, platforms, total: round2(cash + card + platforms), count };
 }
 
+/** Anomalías de pedidos pagados dentro del turno que no pueden clasificarse.
+ * No incluye pedidos sin paidAt: ya tienen una guarda específica de fechas.
+ * Solo devuelve agregados; no modifica ni atribuye métodos/importes.
+ */
+export function auditUnclassifiedPaidOrders(
+  orders: Array<{ status?: string; billingStatus?: string; paymentMethod?: string; total?: number; paidAt?: string }>,
+  shiftStartIso: string,
+): { count: number; positiveAmount: number } {
+  const start = Date.parse(shiftStartIso);
+  if (!Number.isFinite(start)) return { count: 0, positiveAmount: 0 };
+  let count = 0;
+  let positiveAmount = 0;
+  for (const order of orders) {
+    if (order.status === 'CANCELADO' || order.billingStatus !== 'PAGADO') continue;
+    const paidAt = Date.parse(order.paidAt || '');
+    if (!Number.isFinite(paidAt) || paidAt < start) continue;
+    const total = Number(order.total);
+    if (Number.isFinite(total) && total > 0 &&
+        ['efectivo', 'tarjeta', 'transferencia'].includes(order.paymentMethod || '')) continue;
+    count += 1;
+    if (Number.isFinite(total) && total > 0) positiveAmount += total;
+  }
+  return { count, positiveAmount: round2(positiveAmount) };
+}
+
 /** Pedido para llevar / domicilio / WhatsApp: se cobra directo en Caja (no pasa por mesa). */
 export function isOffTableOrder(order: { orderType?: string }): boolean {
   return order.orderType === 'pickup' || order.orderType === 'delivery';
