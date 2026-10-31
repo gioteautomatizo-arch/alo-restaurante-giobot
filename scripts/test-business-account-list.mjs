@@ -86,7 +86,7 @@ try {
   // Una membresía cacheada revocada en servidor no inicia lectura privada.
   window.qa.memberships = [member('tenant-a')];
   window.qa.latestMemberships = [];
-  assert.deepEqual(await window.qa.load('owner-a'), []);
+  assert.equal((await window.qa.load('owner-a')).length, 0);
   assert.equal(window.qa.pending.length, 0, 'No leer raíz con permiso solo cacheado');
   window.qa.latestMemberships = null;
   window.qa.memberships = [member('tenant-a'), member('tenant-b')];
