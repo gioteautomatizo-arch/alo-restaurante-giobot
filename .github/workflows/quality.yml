@@ -102,6 +102,8 @@ jobs:
         run: node --import tsx scripts/test-business-invite-pagination.mjs
       - name: Preflight historical invitations, OWNER and client version limits (synthetic A/B, no Firebase)
         run: node --import tsx scripts/test-business-invite-history-preflight.mjs
+      - name: Verify historical invite capture page manifest (synthetic A/B, offline)
+        run: node scripts/test-business-invite-capture-manifest-preflight.mjs
       - name: Test catalog and publication session drift (mocked Auth/Firestore, no real writes)
         run: node scripts/test-business-catalog-publication-session.mjs
       - name: Test catalog editor read failure and tenant switch (React/jsdom, no Firebase writes)
