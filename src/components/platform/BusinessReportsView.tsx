@@ -76,7 +76,7 @@ export const BusinessReportsView: React.FC<{ businessId: string; businessName: s
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#E3BC6B]">Reportes</p>
               <h1 className="mt-1 font-serif text-2xl font-black text-[#F7F7F7]">Cómo va tu negocio</h1>
-              <p className="mt-1 text-sm text-[#C8C8C8]">Ventas calculadas con pedidos marcados como pagados. No incluyen tickets de mesa registrados por separado ni sustituyen el corte de Caja. Los pedidos cancelados no se suman.</p>
+              <p className="mt-1 text-sm text-[#C8C8C8]">Ventas con fecha, importe positivo y método de pago verificables. No incluyen tickets de mesa registrados por separado ni sustituyen el corte de Caja. Los cobros anómalos se muestran aparte para revisión.</p>
             </div>
           </div>
           <div className="mt-4 flex gap-2">
@@ -100,6 +100,18 @@ export const BusinessReportsView: React.FC<{ businessId: string; businessName: s
             <p className="mt-1 text-xs">Hay pedidos marcados como pagados sin fecha de cobro verificable en el historial de este negocio. No se incluyen en los totales del periodo hasta revisar cuándo se cobraron. No se modificó ningún pedido.</p>
           </div>
         )}
+        {ready && (report.unclassifiedPaidCount > 0 || report.anomalousPaidCount > 0) && (
+          <div role="alert" className={`${card} border-amber-500/50 bg-amber-500/10 text-sm text-amber-200`}>
+            <strong>Cobros que requieren conciliación documental</strong>
+            {report.unclassifiedPaidCount > 0 && (
+              <p className="mt-1 text-xs">{report.unclassifiedPaidCount} pedido(s) pagado(s) tienen método desconocido ({money(report.unclassifiedPaymentTotal)}). No se incluyen en ventas verificadas ni se asignan a un método.</p>
+            )}
+            {report.anomalousPaidCount > 0 && (
+              <p className="mt-1 text-xs">{report.anomalousPaidCount} pedido(s) pagado(s) tienen importe inválido, cero, negativo o centavos no verificables. No se interpretan como reembolsos ni se suman a ventas.</p>
+            )}
+            <p className="mt-1 text-xs">Revisa comprobantes antes de cerrar Caja. No se modificaron los pedidos originales.</p>
+          </div>
+        )}
         {failed ? (
           <div role="alert" className={`${card} border-red-700 text-center text-sm text-red-200`}>No se pudieron consultar las ventas de este negocio. Revisa la conexión o tus permisos. No significa que las ventas sean cero.</div>
         ) : !ready ? (
@@ -110,7 +122,9 @@ export const BusinessReportsView: React.FC<{ businessId: string; businessName: s
             <p className="mt-2 font-bold text-[#F7F7F7]">No hay ventas con cobro verificable en este periodo</p>
             <p className="mt-1 text-xs text-[#B7B7B7]">{report.unreconciledPaidCount > 0
               ? 'Hay pedidos pagados por conciliar. Revisa el aviso anterior: sus importes no se incluyen hasta verificar la fecha de cobro.'
-              : 'Aquí aparecerán los pedidos marcados como pagados con fecha de cobro verificable. Los tickets de mesa registrados por separado requieren conciliación en Caja.'}</p>
+              : report.unclassifiedPaidCount > 0 || report.anomalousPaidCount > 0
+                ? 'Hay cobros sin método o importe conciliable. Revisa el aviso anterior; no se presentan como ventas verificadas.'
+                : 'Aquí aparecerán los pedidos marcados como pagados con fecha, importe y método de cobro verificables. Los tickets de mesa registrados por separado requieren conciliación en Caja.'}</p>
             {report.cancelledCount > 0 && (
               <p className="mt-2 text-xs text-[#B7B7B7]">{report.cancelledCount} pedido{report.cancelledCount === 1 ? '' : 's'} cancelado{report.cancelledCount === 1 ? '' : 's'} en este periodo (no se suman a ventas).</p>
             )}
@@ -166,11 +180,6 @@ export const BusinessReportsView: React.FC<{ businessId: string; businessName: s
                   </div>
                 ))}
               </div>
-              {report.unclassifiedPaymentTotal > 0 && (
-                <p role="status" className="mt-3 rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 text-xs text-amber-200">
-                  {money(report.unclassifiedPaymentTotal)} de ventas pagadas tienen un método no reconocido. Se incluyen en ventas, pero no se atribuyen a efectivo, transferencia ni tarjeta. Revisa los comprobantes antes de conciliar Caja.
-                </p>
-              )}
               {report.cancelledCount > 0 && (
                 <p className="mt-3 flex items-center gap-2 text-xs text-[#B7B7B7]"><Receipt className="h-4 w-4" />{report.cancelledCount} pedido{report.cancelledCount === 1 ? '' : 's'} cancelado{report.cancelledCount === 1 ? '' : 's'} en este periodo (no se suman).</p>
               )}
