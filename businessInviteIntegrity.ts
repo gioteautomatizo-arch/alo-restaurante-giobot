@@ -16,7 +16,7 @@ export function isPendingInviteWithinWindow(
 ): invite is Record<string, unknown> {
   if (!invite || invite.status !== 'PENDING') return false;
   const { createdAt, expiresAt } = invite;
-  return typeof createdAt === 'number' && Number.isSafeInteger(createdAt) && createdAt > 0
+  return typeof createdAt === 'number' && Number.isSafeInteger(createdAt) && createdAt > 0 && createdAt <= now
     && typeof expiresAt === 'number' && Number.isSafeInteger(expiresAt)
     && expiresAt > now && expiresAt > createdAt
     && expiresAt - createdAt <= INVITE_EXPIRES_IN_MS;
