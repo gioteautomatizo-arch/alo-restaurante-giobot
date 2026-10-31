@@ -52,3 +52,17 @@ El recorrido ya existente `scripts/test-business-registration-emulator.mts` ahor
 **Evidencia de código/pruebas:** commit [`0de019a4`](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/commit/0de019a4d2285f4bcf4b67016fc521e7bfec20f2). [Quality #41192936712](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/41192936712) **success** (TypeScript, build y regresiones). [Staged Security #41192936704](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/41192936704) **success**: el log imprime `PASS (paridad de lectura)` tanto con reglas STAGED como con la propuesta OWNER aislada. El mismo log imprime `PENDIENTE: corte 2→3 requiere inventario histórico autorizado y compatibilidad real de clientes antiguos`. La propuesta OWNER solo se carga en memoria del emulador.
 
 **No es un corte activado:** el test invoca la API directamente, no ejecuta un cliente antiguo instalado ni prueba el flag Vite de una versión publicada. No se revisaron reglas desplegadas, inventario histórico autorizado, costos de producción, respaldo real ni Android/iPad. No se modificaron reglas ni datos reales. La API y la ruta privada del cliente siguen opt-in, sin fallback. **Paso 2 ABIERTO**; la conciliación de Caja sigue **PENDIENTE**.
+
+
+## Matriz histórica con dos membresías para un mismo UID (31 de octubre de 2026)
+
+El ensayo integrado `scripts/test-business-registration-emulator.mts` incorpora en `4400844d` una matriz adicional **solo con Auth/Firestore Emulator y Express local**: el propietario A tiene simultáneamente una membresía `WAITER` activa en B, creada sintéticamente por Admin SDK junto con el índice de empleados B. Compara ambas tarjetas entre Web SDK legado y API privada, sin cambiar flags permanentes ni reglas.
+
+La matriz exige las siguientes propiedades, **pendientes de confirmar con el CI del commit**:
+
+1. Con dos membresías válidas, ambos lectores entregan A y B sin mezclar raíces privadas.
+2. Si A carece de `ownerUserId`, el legado todavía puede mostrar A+B, pero la API privada debe devolver `409` **sin** `businesses`, nunca una lista parcial que silencie A y conserve B.
+3. Si el `ownerUserId` de A apunta al UID de B, ambos lectores deben rechazar la propiedad discordante; el endpoint no devuelve tarjetas parciales.
+4. Si se revoca temporalmente el OWNER A, solo permanece B por su membresía independiente; al restaurar OWNER A y retirar la membresía ficticia B, vuelve el aislamiento inicial.
+
+Este ensayo verifica **comportamiento esperado del código bajo prueba**, no el estado de datos históricos reales ni las reglas desplegadas. Los fixtures se escriben únicamente en emuladores y se restauran; no hay migración ni backfill. Un resultado exitoso en CI no resuelve el corte: se necesita inventario autorizado, revisión independiente de OWNER/raíz y clientes antiguos, pruebas de reglas efectivas, backup/rollback y validación visual/manual Android/iPad. No activar el endpoint ni cerrar el paso 2 por esta matriz. Caja y pagos mixtos siguen `PENDIENTE`.
