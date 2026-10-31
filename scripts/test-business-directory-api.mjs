@@ -95,6 +95,40 @@ try {
   assert.equal(JSON.stringify(employeeList.data).includes('PRIVADO-NO-DEVOLVER'), false,
     'Un empleado de B tampoco recibe configuración interna');
 
+  // La raíz de B no basta: para mostrarla a un empleado de A, el UID
+  // ownerUserId de B debe tener su propia membresía OWNER activa y congruente.
+  // No se leen datos reales ni se cambia el flag fuera del emulador.
+  const ownerB = ref(b, bob.uid);
+  for (const [label, mutate] of [
+    ['OWNER B sin membresía', () => ownerB.delete()],
+    ['OWNER B revocado', () => ownerB.update({ active: false })],
+    ['OWNER B degradado', () => ownerB.update({ role: 'WAITER' })],
+    ['OWNER B con tenant incorrecto', () => ownerB.update({ restaurantId: a })],
+    ['OWNER B con UID incorrecto', () => ownerB.update({ userId: visitor.uid })],
+  ]) {
+    await ownerB.set(member(b, bob.uid));
+    await mutate();
+    const invalidOwner = await call(aliceToken);
+    assert.equal(invalidOwner.status, 409, label + ': rechazar B sin OWNER legítimo');
+    assert.equal('businesses' in invalidOwner.data, false, label + ': sin lista parcial de A');
+    assert.equal(JSON.stringify(invalidOwner.data).includes('Negocio B'), false,
+      label + ': sin exponer datos de B');
+    await ownerB.set(member(b, bob.uid));
+    assert.deepEqual(ids(await call(aliceToken)), [a, b], label + ': restaurar A+B');
+    assert.deepEqual(ids(await call(bobToken)), [b], label + ': OWNER B restaurado');
+  }
+
+  // Revocar OWNER B entre la primera lectura de raíces y la comprobación
+  // final de membresía tampoco debe producir una tarjeta B obsoleta.
+  afterRootsRead = () => ownerB.update({ active: false });
+  const concurrentOwnerRevocation = await call(aliceToken);
+  assert.equal(concurrentOwnerRevocation.status, 409, 'OWNER B revocado en vuelo');
+  assert.equal('businesses' in concurrentOwnerRevocation.data, false,
+    'OWNER B revocado en vuelo: sin tarjetas parciales');
+  await ownerB.set(member(b, bob.uid));
+  assert.deepEqual(ids(await call(aliceToken)), [a, b], 'Recuperación tras revocación OWNER B');
+  assert.deepEqual(ids(await call(bobToken)), [b], 'OWNER B recupera su acceso');
+
   // Un empleado no debe recibir B si la raíz no tiene propietario válido,
   // o si el mismo UID figura como propietario pero su rol no es OWNER.
   // Este bloqueo del candidato privado es deliberadamente más estricto que
@@ -108,6 +142,10 @@ try {
       db.collection('businesses').doc(b).update({ ownerUserId: 123 })],
     ['empleado con propietario en blanco', () =>
       db.collection('businesses').doc(b).update({ ownerUserId: '   ' })],
+    ['empleado con UID propietario incompatible con path', () =>
+      db.collection('businesses').doc(b).update({ ownerUserId: 'uid/invalido' })],
+    ['empleado con propietario sin membresía OWNER', () =>
+      db.collection('businesses').doc(b).update({ ownerUserId: visitor.uid })],
   ]) {
     await mutate();
     const invalidRoot = await call(aliceToken);
@@ -262,8 +300,8 @@ try {
   assert.equal(overflow.status, 409);
   assert.equal('businesses' in overflow.data, false);
 
-  console.log('PASS (API opt-in NO activada): Auth, A/B, salida mínima, OWNER/raíz estrictos, raíz de empleado revalidada, propietario/rol congruentes, rol global tenant rechazado antes de raíces y durante revalidación, legado sin ownerUserId bloqueado, revocación/rol/borrado, recuperación y límite 100 en emuladores.');
-  console.warn('PENDIENTE: revisión manual de OWNER históricos, costos de lecturas adicionales, reglas efectivas y corte compatible con clientes antiguos; la revalidación no es atómica.');
+  console.log('PASS (API opt-in NO activada): Auth, A/B, salida mínima, OWNER/raíz estrictos, raíz de empleado revalidada, propietario/rol congruentes, OWNER ajeno activo verificado y revocación concurrente rechazada, rol global tenant rechazado antes de raíces y durante revalidación, legado sin ownerUserId bloqueado, revocación/rol/borrado, recuperación y límite 100 en emuladores.');
+  console.warn('PENDIENTE: revisión manual de OWNER históricos, costo de hasta una lectura OWNER extra por negocio empleado, reglas efectivas y corte compatible con clientes antiguos; la revalidación no es atómica.');
 } finally {
   afterRootsRead = null;
   db.getAll = originalGetAll;
