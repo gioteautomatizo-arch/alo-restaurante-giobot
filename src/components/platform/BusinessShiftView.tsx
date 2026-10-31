@@ -3,7 +3,7 @@ import { Clock, History, Lock, Play } from 'lucide-react';
 import type { RestaurantOrder } from '../../types';
 import { subscribeToBusinessRestaurantOrders } from '../../lib/ordersService';
 import { saveModuleDoc, subscribeToModule } from '../../lib/tenantModules';
-import { computeShiftSalesFromOrders } from '../../lib/shiftSales';
+import { auditUnclassifiedPaidOrders, computeShiftSalesFromOrders } from '../../lib/shiftSales';
 import { getCurrentAuthUser } from '../../lib/firebase';
 import { countHistoricalPaidOrdersMissingPaymentDate, countPaidOrdersMissingPaymentDate, getShiftReadiness, initialShiftFeedStates, parseShiftCashAmount, previewShiftCashDifference, type ShiftFeedName } from '../../lib/businessShiftReadiness';
 
@@ -92,6 +92,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
   const history = readiness.ready ? currentShifts.filter((s) => s.status === 'cerrado') : [];
   const missingPaymentDates = active && readiness.ready ? countPaidOrdersMissingPaymentDate(orders, active.openedAt) : 0;
   const historicalMissingPaymentDates = active && readiness.ready ? countHistoricalPaidOrdersMissingPaymentDate(orders, active.openedAt) : 0;
+  const unclassifiedPaid = active && readiness.ready ? auditUnclassifiedPaidOrders(orders, active.openedAt) : { count: 0, positiveAmount: 0 };
 
   const live = useMemo(() => {
     if (!active || !readiness.ready) return null;
@@ -138,6 +139,10 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
     if (!readiness.ready || !active || !live || busy) return;
     if (missingPaymentDates > 0) {
       setError('Hay pedidos pagados sin fecha de cobro verificable. Revisa esos pedidos antes de cerrar el turno.');
+      return;
+    }
+    if (unclassifiedPaid.count > 0) {
+      setError('Hay pedidos pagados con método desconocido o importe no positivo. Concílialos antes de cerrar el turno.');
       return;
     }
     setBusy(true);
@@ -241,8 +246,13 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
                 {historicalMissingPaymentDates} pedido(s) pagado(s) anteriores al turno o sin fecha de creación tampoco tienen fecha de cobro verificable. No se puede confirmar a qué turno pertenecen; revisa el historial antes de considerar definitivo el corte. No se les asigna una fecha automáticamente.
               </div>
             )}
+            {unclassifiedPaid.count > 0 && (
+              <div role="alert" className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
+                {unclassifiedPaid.count} pedido(s) pagado(s) del turno tienen método desconocido o importe no positivo; {money(unclassifiedPaid.positiveAmount)} requieren clasificación documental. El cierre queda bloqueado; no se asigna transferencia ni se inventa un cobro.
+              </div>
+            )}
             {!closing ? (
-              <button type="button" disabled={missingPaymentDates > 0} onClick={() => setClosing(true)} className="mt-4 flex items-center gap-2 rounded-xl border border-[#D6A34A] px-5 py-3 text-sm font-black text-[#E3BC6B] disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" disabled={missingPaymentDates > 0 || unclassifiedPaid.count > 0} onClick={() => setClosing(true)} className="mt-4 flex items-center gap-2 rounded-xl border border-[#D6A34A] px-5 py-3 text-sm font-black text-[#E3BC6B] disabled:cursor-not-allowed disabled:opacity-50">
                 <Lock className="h-4 w-4" /> Cerrar turno
               </button>
             ) : (
@@ -254,7 +264,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
                 )}
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas del corte (opcional)" rows={2} className={input} />
                 <div className="flex gap-2">
-                  <button type="button" disabled={busy || missingPaymentDates > 0 || parseShiftCashAmount(counted) === null} onClick={() => void closeShift()} className="rounded-xl bg-[#D6A34A] px-5 py-3 text-sm font-black text-[#050505] disabled:opacity-50">{busy ? 'Cerrando…' : 'Confirmar cierre'}</button>
+                  <button type="button" disabled={busy || missingPaymentDates > 0 || unclassifiedPaid.count > 0 || parseShiftCashAmount(counted) === null} onClick={() => void closeShift()} className="rounded-xl bg-[#D6A34A] px-5 py-3 text-sm font-black text-[#050505] disabled:opacity-50">{busy ? 'Cerrando…' : 'Confirmar cierre'}</button>
                   <button type="button" onClick={() => setClosing(false)} className="rounded-xl border border-[#3A3022] px-4 py-3 text-sm font-bold">Cancelar</button>
                 </div>
               </div>
