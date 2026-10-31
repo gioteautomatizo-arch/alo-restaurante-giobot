@@ -367,6 +367,53 @@ try {
       scenario.label + ': B sigue aislado de A');
   }
 
+  // Un segundo emisor legítimo (OWNER B que también es ADMIN de A) puede
+  // perder permisos mientras OWNER A consulta las invitaciones. La lista
+  // completa debe fallar con 409, no incluir una invitación ya no autorizada.
+  const crossInviterRef = inviteDb.doc('businessMemberships/' + idA + '_' + uidB);
+  const addInviter = inviteDb.batch();
+  addInviter.set(crossInviterRef, { restaurantId: idA, userId: uidB, role: 'ADMIN', active: true });
+  addInviter.update(inviteRootRef, { employeeUserIds: FieldValue.arrayUnion(uidB) });
+  await addInviter.commit();
+  try {
+    const secondInviteEmail = 'second-invite@beta.example.test';
+    const createdByB = await call('/api/business-invites', {
+      businessId: idA, name: 'Invitado de B en A', email: secondInviteEmail, role: 'WAITER',
+    }, bToken);
+    assert.equal(createdByB.status, 201, 'ADMIN de A puede emitir invitación ficticia');
+    let intercepted = false;
+    (inviteDb as any).getAll = async (...refs: any[]) => {
+      const snapshots = await originalInviteGetAll(...refs);
+      if (!intercepted && refs.length &&
+          refs.every(ref => ref.parent.id === 'businessMemberships')) {
+        intercepted = true;
+        await crossInviterRef.update({ active: false });
+      }
+      return snapshots;
+    };
+    try {
+      const staleInviter = await call('/api/business-invites?businessId=' + idA, undefined, aToken, 'GET');
+      assert(intercepted, 'Se interceptó la lectura del emisor ADMIN B');
+      assert.equal(staleInviter.status, 409, 'Emisor revocado en vuelo: rechazar lista completa');
+      assert.equal('invites' in staleInviter.data, false, 'Sin correos ni lista parcial de A');
+    } finally {
+      (inviteDb as any).getAll = originalInviteGetAll;
+      await crossInviterRef.update({ active: true });
+    }
+    const restored = await call('/api/business-invites?businessId=' + idA, undefined, aToken, 'GET');
+    assert.equal(restored.status, 200, 'Emisor ADMIN restaurado');
+    assert(restored.data.invites.some((invite: { email: string }) => invite.email === secondInviteEmail),
+      'La invitación del segundo emisor vuelve a mostrarse');
+  } finally {
+    (inviteDb as any).getAll = originalInviteGetAll;
+    const removeInviter = inviteDb.batch();
+    removeInviter.delete(crossInviterRef);
+    removeInviter.update(inviteRootRef, { employeeUserIds: FieldValue.arrayRemove(uidB) });
+    await removeInviter.commit();
+  }
+  assert.equal((await call('/api/business-invites?businessId=' + idA, undefined, bToken, 'GET')).status, 403,
+    'OWNER B sin membresía A vuelve a estar aislado');
+
   await signOut(auth);
   const staff = await createUserWithEmailAndPassword(auth, employeeEmail, password);
   await adminAuth.updateUser(staff.user.uid, { emailVerified: true });
