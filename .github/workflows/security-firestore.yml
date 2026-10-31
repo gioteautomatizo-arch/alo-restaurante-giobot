@@ -50,6 +50,8 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-order-status-emulator-test --config firebase.launch-security-emulator.json "node scripts/test-business-order-status-emulator.mjs"
       - name: Diagnose cross-tenant update reassignment and test isolated invariant proposal
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-tenant-update-isolation-test --config firebase.launch-security-emulator.json "node scripts/test-tenant-update-isolation-proposal.mjs"
+      - name: Test isolated create-only employee reservation and historical collisions (Admin SDK, emulator only)
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-employee-create-only-test --config firebase.launch-security-emulator.json "node scripts/test-employee-create-only-proposal.mjs"
       - name: Test atomic owner registration and employee access
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-owner-security-test --config firebase.launch-security-emulator.json "node scripts/test-owner-registration.mjs"
       - name: Test synthetic two-business backup and restore rehearsal (Firestore Emulator only)
