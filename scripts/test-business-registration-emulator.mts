@@ -16,6 +16,7 @@ import { connectAuthEmulator, createUserWithEmailAndPassword, getIdToken, reload
 import { connectFirestoreEmulator, deleteDoc, doc, getDoc, setDoc, updateDoc, terminate } from 'firebase/firestore';
 import { initializeApp as initializeAdminApp, deleteApp as deleteAdminApp } from 'firebase-admin/app';
 import { getAuth as getAdminAuth } from 'firebase-admin/auth';
+import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 
 const projectId = 'gioteautomatizo-registration-e2e-test';
 process.env.FIREBASE_PROJECT_ID = projectId;
@@ -47,7 +48,7 @@ connectFirestoreEmulator(db, '127.0.0.1', 8080);
 const { registerBusiness, getBusinessesForUser, getBusinessForUser, getBusinessMembership } = await import('../src/lib/businessAuthService.ts');
 const { setBusinessPublication, syncPublicProfileIfNeeded, getBusinessPublicationStatus } = await import('../src/lib/businessPublicProfileService.ts');
 const { saveBusinessCatalog, seedBusinessCatalogIfMissing, subscribeToBusinessCatalog } = await import('../src/lib/businessCatalogService.ts');
-const { listBusinessEmployees, updateBusinessEmployee } = await import('../src/lib/businessEmployeeService.ts');
+const { listBusinessEmployees, updateBusinessEmployee, removeBusinessEmployee } = await import('../src/lib/businessEmployeeService.ts');
 const { registerBusinessInviteApi } = await import('../businessInviteApi.ts');
 const adminApp = initializeAdminApp({ projectId });
 const adminAuth = getAdminAuth(adminApp);
@@ -345,13 +346,26 @@ try {
   await deny(getDoc(doc(db, 'businesses', idA)), 'Empleado revocado pierde acceso privado');
   await deny(getDoc(doc(db, 'businesses', idB)), 'Revocado tampoco accede a B');
   assert.deepEqual(await getBusinessesForUser(staff.user.uid), [], 'Empleado revocado sin negocios activos');
-  // Recuperación de sesión: ambos propietarios conservan únicamente su tenant.
+  // La baja definitiva debe eliminar membresía e índice en una sola transacción
+  // bajo reglas staged reales, no únicamente con el mock de Quality.
   await signInWithEmailAndPassword(auth, aEmail, password);
+  await assert.rejects(removeBusinessEmployee(idB, staff.user.uid), /No tienes permiso/,
+    'OWNER A no puede retirar empleados de B');
+  await removeBusinessEmployee(idA, staff.user.uid);
+  const deletedMembership = await getAdminFirestore(adminApp)
+    .doc('businessMemberships/' + idA + '_' + staff.user.uid).get();
+  assert.equal(deletedMembership.exists, false, 'La membresía A se eliminó realmente en el emulador');
+  const rootAfterRemoval = (await getDoc(doc(db, 'businesses', idA))).data();
+  assert(!rootAfterRemoval?.employeeUserIds?.includes(staff.user.uid),
+    'La baja transaccional también retira al empleado del índice A');
+  assert.deepEqual(await listBusinessEmployees(idA), [], 'El roster A no conserva una ficha retirada');
+
+  // Recuperación de sesión: ambos propietarios conservan únicamente su tenant.
   assert.deepEqual((await getBusinessesForUser(uidA)).map(x => x.restaurantId), [idA]);
   await signInWithEmailAndPassword(auth, bEmail, password);
   assert.deepEqual((await getBusinessesForUser(uidB)).map(x => x.restaurantId), [idB]);
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
-  console.log('PASS (' + (process.env.TEST_ATOMIC_OWNER_PROPOSAL === '1' ? 'propuesta OWNER aislada' : 'reglas staged') + '): onboarding, identidad, catálogo, publicación y empleados/invitaciones en React conectados a Auth/Firestore/API emulados; aislamiento, revocación y recuperación de sesión.');
+  console.log('PASS (' + (process.env.TEST_ATOMIC_OWNER_PROPOSAL === '1' ? 'propuesta OWNER aislada' : 'reglas staged') + '): onboarding, identidad, catálogo, publicación y empleados/invitaciones en React conectados a Auth/Firestore/API emulados; edición y baja transaccionales, aislamiento, revocación y recuperación de sesión.');
 } finally {
   if (server) await new Promise(resolve => server.close(resolve));
   await signOut(auth).catch(() => {});
