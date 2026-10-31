@@ -108,7 +108,7 @@ try {
   const malformed = lib.listBusinessInvites('tenant-a');
   await waitFor(() => qa.requests.length === 1, 'lista malformada');
   qa.requests[0].resolve(response({}));
-  await assert.rejects(malformed, /lista inválida/, 'Lista faltante debe permitir reintento');
+  await assert.rejects(malformed, /página inválida/, 'Lista faltante debe permitir reintento');
 
   reset(makeUser('owner-a'));
   const empty = lib.listBusinessInvites('tenant-a');
