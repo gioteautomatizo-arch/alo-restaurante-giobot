@@ -95,3 +95,14 @@ La rama multinegocio corrigió cálculos de lectura, no cobros históricos. `com
 
  
 **Regresión adicional protegida:** `859d78ee` exige que un método principal no MIXTO sea reconocido y, si trae desglose, que éste contenga exactamente ese método; un método desconocido con desglose aparentemente válido no se clasifica. `b5fb8f07` cubre método desconocido y desglose MIXTO duplicado en pruebas sintéticas. [Quality #41245269025](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/41245269025) aprobó TypeScript, build y pruebas sobre ese SHA. Sigue pendiente revisión documental de pagos reales y de reglas remotas.
+
+
+## Paso 4 — coherencia de cobros externos entre Caja y Reportes (31 de octubre de 2026)
+
+**Cambios de lectura, sin migración ni cobros reales:** `src/lib/shiftSales.ts` comparte la validación de importes positivos en centavos y métodos explícitos para turno, corte diario y auditoría. `src/lib/businessReports.ts` deja de sumar como ventas conciliadas los pedidos pagados con método desconocido, total cero/negativo o fracciones de centavo; los mantiene visibles por separado en `unclassifiedPaidCount`, `unclassifiedPaymentTotal` y `anomalousPaidCount`. `BusinessReportsView.tsx` muestra la alerta incluso si no hay ninguna venta verificable en el periodo. El origen de los registros no se modifica ni se trata un importe negativo como devolución.
+
+**Pruebas sintéticas:** `scripts/test-shift-sales.mts` compara Caja, corte diario y Reportes con cobros válidos y anómalos; `scripts/test-business-reports.mts` comprueba contadores, periodos, ausencia de mutación y la presencia estática del aviso en estado vacío. [Quality #41248696530](https://github.com/gioteautomatizo-arch/alo-restaurante-giobot/actions/runs/41248696530) aprobó TypeScript, build, ambas suites y los demás pasos sobre el commit funcional `56beca5a`. Esto no prueba UI visual ni reglas efectivas de Firebase.
+
+**Riesgos pendientes:** pagos MIXTO de mesa no se cargan en `BusinessShiftView`, por lo que esa pantalla aún no bloquea sus anomalías; `computeShiftSalesFromPayments` conserva conteos de pagos anómalos aunque sus importes estén excluidos; falta conciliación documental histórica, revisión de filtros entre tenants y pruebas Android/iPad. La vista Reportes solo lee pedidos, no tickets de mesa, y por tanto no equivale al corte de Caja. La clasificación no autoriza cerrar turnos con datos faltantes.
+
+**Rollback:** revertir `shiftSales.ts`, `businessReports.ts`, `BusinessReportsView.tsx` y las dos suites al estado anterior a `009b1de6` (sin tocar datos ni reglas). No activar cambios de seguridad ni despliegues en esta tarea. **PASO 4 PARCIAL: no hay conciliación histórica aprobada.**
