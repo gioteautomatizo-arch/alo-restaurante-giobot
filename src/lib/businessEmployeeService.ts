@@ -113,9 +113,34 @@ async function assertEditableEmployee(businessId: string, userId: string, newRol
   if (!canManageEmployeeRole(manager.role, target.role as BusinessRole)) {
     throw new Error('Tu rol no permite modificar a este empleado.');
   }
+  // Guardar los valores primitivos: los snapshots simulados y algunos
+  // consumidores pueden conservar referencias mutables al mismo objeto.
+  const observedTarget = {
+    role: target.role,
+    active: target.active,
+    name: target.name,
+    email: target.email,
+    createdAt: target.createdAt,
+    updatedAt: target.updatedAt,
+  };
   const latest = await assertEmployeeManager(businessId, newRole);
   if (latest.uid !== manager.uid || latest.role !== manager.role) {
     throw new Error('Tus permisos cambiaron durante la gestión de empleados.');
+  }
+  // El objetivo también pudo ser promovido, revocado, eliminado o recreado
+  // mientras comprobábamos al responsable. No editar una ficha obsoleta.
+  const latestTargetSnap = await getDocFromServer(membershipRef(businessId, userId));
+  assertEmployeeSession(manager.uid);
+  const latestTarget = latestTargetSnap.exists()
+    ? latestTargetSnap.data() as Partial<BusinessEmployee>
+    : null;
+  if (!latestTarget || latestTargetSnap.id !== `${businessId}_${userId}` ||
+      latestTarget.restaurantId !== businessId || latestTarget.userId !== userId ||
+      !MANAGEABLE_EMPLOYEE_ROLES.includes(latestTarget.role as BusinessRole) ||
+      !canManageEmployeeRole(latest.role, latestTarget.role as BusinessRole) ||
+      (Object.keys(observedTarget) as (keyof typeof observedTarget)[])
+        .some(key => latestTarget[key] !== observedTarget[key])) {
+    throw new Error('La membresía del empleado cambió durante la operación. Actualiza el equipo y reintenta.');
   }
   return manager.uid;
 }
