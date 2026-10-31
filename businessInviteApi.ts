@@ -190,6 +190,42 @@ export function registerBusinessInviteApi(app: Express): void {
         })
         .map(snap => exposedInvite(snap.id, snap.data()))
         .sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
+      // Admin SDK ignora las reglas: no devolver nombres/correos de invitaciones
+      // si el responsable fue revocado mientras se consultaban emisores.
+      // Revalidar también raíz y emisores antes de responder; una mutación
+      // concurrente provoca error recuperable, nunca un listado parcial.
+      const otherInviterUids = inviterUids.filter(uid => uid !== actor.uid);
+      const [latestActorSnap, latestBusinessSnap, ...latestInviterSnaps] = await db.getAll(
+        db.collection('businessMemberships').doc(businessId + '_' + actor.uid),
+        db.collection('businesses').doc(businessId),
+        ...otherInviterUids.map(uid => db.collection('businessMemberships').doc(businessId + '_' + uid)),
+      );
+      const latestActor = latestActorSnap.data();
+      const latestBusiness = latestBusinessSnap.data();
+      if (!latestBusinessSnap.exists || !matchesTenant(latestBusiness, businessId) ||
+          !latestActorSnap.exists || !activeTenantMember(latestActor, businessId, actor.uid, latestBusiness) ||
+          !['OWNER', 'ADMIN', 'MANAGER'].includes(String(latestActor?.role))) {
+        return fail(res, 403, 'Tus permisos cambiaron. Vuelve a iniciar sesión o reintenta.');
+      }
+      if (latestActor?.role !== role ||
+          latestBusiness?.ownerUserId !== business.data()?.ownerUserId) {
+        return fail(res, 409, 'Los permisos o la propiedad del negocio cambiaron. Reintenta.');
+      }
+      const latestInviters = new Map<string, Record<string, unknown> | undefined>([
+        [actor.uid, latestActor],
+        ...otherInviterUids.map((uid, index): [string, Record<string, unknown> | undefined] =>
+          [uid, latestInviterSnaps[index].data()]),
+      ]);
+      if (inviterUids.some(uid => {
+        const initial = inviters.get(uid);
+        const latest = latestInviters.get(uid);
+        return initial?.active !== latest?.active || initial?.role !== latest?.role ||
+          initial?.restaurantId !== latest?.restaurantId || initial?.userId !== latest?.userId;
+      })) {
+        return fail(res, 409, 'Las invitaciones o permisos cambiaron durante la consulta. Reintenta.');
+      }
+      // No es una transacción ni impide cambios posteriores: la autorización
+      // definitiva de aceptar/revocar invitaciones sigue siendo transaccional.
       return res.json({ invites: pending });
     } catch (error) {
       console.error('[business-invites/list]', error);
