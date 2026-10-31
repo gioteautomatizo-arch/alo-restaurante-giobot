@@ -66,3 +66,12 @@ La matriz exige las siguientes propiedades, **pendientes de confirmar con el CI 
 4. Si se revoca temporalmente el OWNER A, solo permanece B por su membresía independiente; al restaurar OWNER A y retirar la membresía ficticia B, vuelve el aislamiento inicial.
 
 Este ensayo verifica **comportamiento esperado del código bajo prueba**, no el estado de datos históricos reales ni las reglas desplegadas. Los fixtures se escriben únicamente en emuladores y se restauran; no hay migración ni backfill. Un resultado exitoso en CI no resuelve el corte: se necesita inventario autorizado, revisión independiente de OWNER/raíz y clientes antiguos, pruebas de reglas efectivas, backup/rollback y validación visual/manual Android/iPad. No activar el endpoint ni cerrar el paso 2 por esta matriz. Caja y pagos mixtos siguen `PENDIENTE`.
+
+
+## Revalidación de raíces de empleados durante el listado (31 de octubre de 2026)
+
+La API privada ahora relee **todas** las raíces de negocios antes de responder, también cuando el usuario tiene rol de empleado en B y OWNER en A. Compara existencia, `restaurantId`, `ownerUserId` observado y los campos públicos `branding.restaurantName`, `branding.publicSlug` y `branding.logoUrl` con el primer snapshot; para OWNER exige además propiedad vigente. Si cualquier raíz cambia, devuelve **409 sin tarjetas parciales** para permitir reintentar. Antes solo se revalidaban raíces OWNER al final.
+
+La prueba `scripts/test-business-directory-api.mjs`, ya incluida en Staged Security, ahora introduce en Firestore Emulator cambios de raíz B **entre** la primera lectura y la revalidación (borrado, cambio de tenant, cambio de propietario, nombre o slug) y exige rechazo 409 y recuperación posterior. Usa Auth/Firestore Emulator y Express local; no habilita el endpoint fuera del test ni toca reglas.
+
+**Evidencia de código:** `8ab23793` (API) y `a05ac4f5` (prueba). **CI y compilación del nuevo SHA: aún no confirmados**: el conector no enumera ejecuciones push por commit y el contenedor no tiene acceso DNS a GitHub. No presentar este cambio como aprobado hasta obtener Quality y Staged Security sobre el SHA de pruebas. Esta segunda lectura **no es transaccional**, añade lecturas y no elimina la ventana de cambios posteriores, ni reemplaza revisión independiente, reglas efectivas o compatibilidad histórica. El paso 2 continúa abierto.
