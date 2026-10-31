@@ -198,7 +198,49 @@ try {
   assert.equal(window.qa.writes[0].data.restaurantId,'tenant-a');
   assert.equal(window.qa.writes[1].data.employeeUserIds.arrayUnion,'employee-new');
 
-  // El batch puede fallar después de crear Auth: no afirmar que se borró la cuenta.
+  assert.equal(window.qa.transactions,1,'El alta revalida permisos y raíz en una transacción');
+
+  // Una cuenta ya indexada nunca debe volver a crear su membresía ni
+  // reemplazar nombre, rol o fechas mediante un segundo formulario de alta.
+  reset();
+  window.qa.docs['businesses/tenant-a'].employeeUserIds=['employee-new'];
+  window.qa.docs['businessMemberships/tenant-a_employee-new']={
+    ...member('tenant-a','employee-new','ADMIN'),createdAt:'registro-original',
+  };
+  await assert.rejects(window.qa.create(input()),/No se pudo confirmar/);
+  assert.equal(window.qa.writes.length,0,'El alta duplicada no sobrescribe al empleado');
+  assert.equal(window.qa.docs['businessMemberships/tenant-a_employee-new'].role,'ADMIN');
+
+  // La transacción relee el rol del responsable, la propiedad y el índice
+  // incluso si cambiaron DESPUÉS de crear la cuenta Auth secundaria.
+  for (const [label,ref,change] of [
+    ['responsable revocado','businessMemberships/tenant-a_owner-a',
+      () => {window.qa.docs['businessMemberships/tenant-a_owner-a'].active=false;}],
+    ['propietario reasignado','businesses/tenant-a',
+      () => {window.qa.docs['businesses/tenant-a'].ownerUserId='owner-b';}],
+    ['UID ya indexado','businesses/tenant-a',
+      () => {window.qa.docs['businesses/tenant-a'].employeeUserIds=['employee-new'];}],
+    ['índice corrupto','businesses/tenant-a',
+      () => {window.qa.docs['businesses/tenant-a'].employeeUserIds='inválido';}],
+  ]) {
+    reset();
+    let changed=false;
+    window.qa.onTransactionRead=target=>{
+      if(!changed && target.path===ref){changed=true;change();}
+    };
+    await assert.rejects(window.qa.create(input()),/No se pudo confirmar/,label);
+    assert(changed,label+': se ejecutó el cambio concurrente');
+    assert.equal(window.qa.writes.length,0,label+': sin escrituras');
+  }
+  reset();
+  window.qa.onBeforeTransactionCommit=attempt=>{
+    if(attempt===0) window.qa.docs['businesses/tenant-a'].employeeUserIds=['employee-new'];
+  };
+  await assert.rejects(window.qa.create(input()),/No se pudo confirmar/);
+  assert.equal(window.qa.conflicts,1,'Un alta concurrente obliga a reintentar');
+  assert.equal(window.qa.writes.length,0,'El reintento no sobrescribe un UID indexado');
+
+  // La transacción puede fallar después de crear Auth: no afirmar que se borró la cuenta.
   reset();
   window.qa.batchError=Object.assign(new Error('permission-denied'),{code:'permission-denied'});
   await assert.rejects(window.qa.create(input()),/No se pudo confirmar/);
@@ -504,6 +546,7 @@ try {
   await assert.rejects(window.qa.list('tenant-a'), /offline/, 'No usar caché offline para autorizar roster');
 
   console.log('PASS: roster A/B revalida raíz, propietario, índice y permisos; cambios en vuelo, sesión ajena y offline fallan cerrados (simulado).');
+  console.log('PASS: alta transaccional A/B revalida responsable, raíz e índice; colisión indexada y conflictos se rechazan sin escrituras (simulado).');
   console.log('PASS: alta de empleado recupera respuesta perdida solo con membresía e índice exactos del servidor; caché, offline y sesión ajena fallan cerrados (simulado).');
   console.log('PASS: alta/edición de empleados no inicia Auth ni escribe con permisos cacheados offline (simulado).');
   console.log('PASS: permisos y sesión del responsable antes/después de Auth, jerarquía de roles, edición y retiro aislados A/B (simulados).');
