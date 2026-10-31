@@ -3,6 +3,7 @@ import type { RestaurantOrder, SaleReceipt } from '../src/types';
 import { buildSalesReport } from '../src/lib/businessReports.ts';
 import {
   auditUnclassifiedPaidOrders,
+  auditUnclassifiedTablePayments,
   computeShiftSalesAll,
   computeShiftSalesCombined,
   computeShiftSalesFromOrders,
@@ -297,8 +298,8 @@ assert.deepEqual(incompleteReceiptShift,
   { cash: 0, card: 0, platforms: 0, total: 0, count: 1 },
   'Diagnóstico actual: ticket MIXTO sin desglose cuenta ticket, pero no asigna importe');
 assert.deepEqual(incompletePaymentShift,
-  { cash: 0, card: 0, platforms: 0, total: 0, count: 1 },
-  'Un MIXTO sin desglose no puede atribuirse a plataformas');
+  { cash: 0, card: 0, platforms: 0, total: 0, count: 0 },
+  'Un MIXTO sin desglose no puede contarse como pago conciliado');
 assert.equal(incompletePaymentShift.total, incompleteReceiptShift.total,
   'Pagos y tickets no inventan importes clasificados en MIXTO sin desglose');
 console.warn('PENDIENTE HISTÓRICO: MIXTO sin desglose excluido de importes clasificados; faltan comprobantes.');
@@ -323,8 +324,9 @@ const partialPaymentTotals = computeShiftSalesFromPayments([
 assert.deepEqual(partialReceiptTotals,
   { cash: 0, card: 0, platforms: 0, total: 0, count: 1 },
   'Un MIXTO parcial no se clasifica hasta reconciliar el total');
-assert.deepEqual(partialPaymentTotals, partialReceiptTotals,
-  'Pagos y tickets coinciden en desglose parcial, pero no con el importe declarado');
+assert.deepEqual(partialPaymentTotals,
+  { cash: 0, card: 0, platforms: 0, total: 0, count: 0 },
+  'Un pago de mesa parcial no se cuenta como conciliado; el ticket histórico sigue separado');
 assert.equal(partialMixedReceipt.totalPaid - partialReceiptTotals.total, 90,
   'El cobro de $90 sigue pendiente; no se reconocen parcialmente $30 como conciliados');
 console.warn('PENDIENTE DE CONCILIACIÓN: MIXTO parcial registra $90, pero solo desglosa $30 (datos sintéticos).');
@@ -354,8 +356,9 @@ const overallocatedFromPayment = computeShiftSalesFromPayments([
 assert.deepEqual(overallocatedFromReceipt,
   { cash: 0, card: 0, platforms: 0, total: 0, count: 1 },
   'Un MIXTO sobreasignado no se registra como ingresos comprobados');
-assert.deepEqual(overallocatedFromPayment, overallocatedFromReceipt,
-  'La coincidencia entre rutas no garantiza que el desglose coincida con el cobro');
+assert.deepEqual(overallocatedFromPayment,
+  { cash: 0, card: 0, platforms: 0, total: 0, count: 0 },
+  'Un pago de mesa sobreasignado no se cuenta como conciliado');
 assert.equal(overallocatedReceipt.totalPaid - overallocatedFromReceipt.total, 90,
   'Todo el cobro requiere conciliación; los $20 excedentes no son ingresos comprobados');
 assert.equal(JSON.stringify(overallocatedReceipt), overallocatedSnapshot,
@@ -406,8 +409,8 @@ const duplicatedMixedPayment = {
 };
 const badPayments = [misleadingPayment, duplicatedMixedPayment];
 assert.deepEqual(computeShiftSalesFromPayments(badPayments, shiftStart, shiftEnd),
-  { cash: 0, card: 0, platforms: 0, total: 0, count: 2 },
-  'Ni método desconocido ni desglose MIXTO duplicado son ingresos clasificados');
+  { cash: 0, card: 0, platforms: 0, total: 0, count: 0 },
+  'Ni método desconocido ni desglose MIXTO duplicado son pagos conciliados');
 assert.deepEqual(paymentsSalesForDay(badPayments, '2026-10-23'),
   { total: 0, count: 0 }, 'El diario también excluye cobros con clasificación ambigua');
 const misleadingReceipt: SaleReceipt = {
@@ -542,8 +545,8 @@ const nonPositiveTableShift = computeShiftSalesFromPayments(
 );
 const nonPositiveTableDaily = paymentsSalesForDay(nonPositiveTablePayments, '2026-10-23');
 assert.deepEqual(nonPositiveTableShift,
-  { cash: 0, card: 0, platforms: 0, total: 0, count: 2 },
-  'El turno cuenta ambos pagos, pero no suma importes no positivos');
+  { cash: 0, card: 0, platforms: 0, total: 0, count: 0 },
+  'El turno no cuenta pagos de mesa con importes no positivos como conciliados');
 assert.deepEqual(nonPositiveTableDaily, { total: 0, count: 0 },
   'El corte diario no cuenta pagos sin importe positivo verificable');
 assert.equal(nonPositiveTableDaily.total, nonPositiveTableShift.total,
@@ -552,6 +555,51 @@ assert.equal(JSON.stringify(nonPositiveTablePayments), nonPositiveTableSnapshot,
   'El diagnóstico no modifica los pagos sintéticos');
 console.warn('PENDIENTE HISTÓRICO: pagos de mesa cero/negativos requieren revisión documental; no se trataron como reembolsos.');
 
+
+// Contrato del diagnóstico puro de pagos de mesa: separar pendientes de
+// conciliados sin inventar importes, fechas ni cobros. Datos A/B sintéticos,
+// el filtro por tenant sigue siendo responsabilidad del origen de lectura.
+const tableAuditFixtures = [
+  { status: 'PAGADO', createdAt: '2026-10-23T16:00:00.000Z', paymentMethod: 'MIXTO',
+    total: 90, paymentBreakdown: [{ method: 'EFECTIVO', amount: 30 }, { method: 'TARJETA', amount: 60 }] },
+  { status: 'PAGADO', createdAt: '2026-10-23T16:10:00.000Z', paymentMethod: 'MIXTO',
+    total: 90, paymentBreakdown: [{ method: 'EFECTIVO', amount: 30 }] },
+  { status: 'PAGADO', createdAt: '2026-10-23T16:20:00.000Z', paymentMethod: 'VALE', total: 45 },
+  { status: 'PAGADO', createdAt: '2026-10-23T16:30:00.000Z', paymentMethod: 'EFECTIVO', total: 0 },
+  { status: 'PAGADO', createdAt: '2026-10-23T16:40:00.000Z', paymentMethod: 'EFECTIVO', total: 3.001 },
+  { status: 'PENDIENTE', createdAt: '2026-10-23T16:50:00.000Z', paymentMethod: 'VALE', total: 300 },
+  { status: 'PAGADO', createdAt: '2026-10-23T14:00:00.000Z', paymentMethod: 'VALE', total: 800 },
+  { status: 'PAGADO', createdAt: 'sin-fecha', paymentMethod: 'VALE', total: 600 },
+];
+const tableAuditSnapshot = JSON.stringify(tableAuditFixtures);
+assert.deepEqual(computeShiftSalesFromPayments(tableAuditFixtures, shiftStart, shiftEnd),
+  { cash: 30, card: 60, platforms: 0, total: 90, count: 1 },
+  'Solo el MIXTO íntegro cuenta como pago conciliado en turno');
+assert.deepEqual(paymentsSalesForDay(tableAuditFixtures, '2026-10-23'),
+  { total: 90, count: 1 }, 'Diario y turno cuentan los mismos pagos válidos');
+assert.deepEqual(auditUnclassifiedTablePayments(tableAuditFixtures, shiftStart, shiftEnd),
+  { count: 4, positiveAmount: 135 },
+  'MIXTO parcial, método desconocido, cero y centavos inválidos requieren revisión; solo 90+45 son centavos exactos');
+assert.deepEqual(auditUnclassifiedTablePayments(tableAuditFixtures, 'fecha inválida'),
+  { count: 0, positiveAmount: 0 }, 'No asignar anomalías a una apertura inválida');
+assert.deepEqual(auditUnclassifiedTablePayments(tableAuditFixtures, shiftStart, 'fecha inválida'),
+  { count: 0, positiveAmount: 0 }, 'No asignar anomalías a un cierre inválido');
+assert.deepEqual(auditUnclassifiedTablePayments(tableAuditFixtures, shiftStart, '2026-10-23T16:15:00.000Z'),
+  { count: 1, positiveAmount: 90 }, 'La ventana de auditoría excluye cobros posteriores');
+assert.equal(JSON.stringify(tableAuditFixtures), tableAuditSnapshot, 'Auditoría de mesa no muta pagos');
+
+const tenantTablePayments = [
+  { restaurantId: 'demo-a', status: 'PAGADO', createdAt: '2026-10-23T16:00:00.000Z',
+    paymentMethod: 'MIXTO', total: 90, paymentBreakdown: [{ method: 'EFECTIVO', amount: 30 }] },
+  { restaurantId: 'demo-b', status: 'PAGADO', createdAt: '2026-10-23T16:00:00.000Z',
+    paymentMethod: 'VALE', total: 700 },
+];
+assert.deepEqual(auditUnclassifiedTablePayments(tenantTablePayments.filter(p => p.restaurantId === 'demo-a'), shiftStart),
+  { count: 1, positiveAmount: 90 }, 'Auditoría de A solo recibe datos previamente filtrados de A');
+assert.deepEqual(auditUnclassifiedTablePayments(tenantTablePayments, shiftStart),
+  { count: 2, positiveAmount: 790 }, 'No conectar feeds mezclados: el helper puro NO filtra por tenant');
+console.log('PASS: pagos de mesa conciliados y anómalos quedan separados por fecha y fuente, sin escrituras.');
+console.warn('PENDIENTE: feed table_payments multinegocio y permisos Firestore aún requieren pruebas de aislamiento A/B.');
 
 // Diagnóstico de aislamiento: los sumadores de Caja NO filtran por tenant.
 // Los llamadores deben entregar listas previamente acotadas al negocio correcto.
