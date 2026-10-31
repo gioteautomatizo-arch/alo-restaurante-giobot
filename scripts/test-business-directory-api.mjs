@@ -128,6 +128,31 @@ try {
     assert.deepEqual(ids(await call(bobToken)), [b], label + ': B permanece aislado');
   }
 
+  // La segunda lectura de raíces también protege tarjetas de EMPLEADO:
+  // A sigue siendo OWNER y B es WAITER del mismo UID. Mutar B justo después
+  // de la primera lectura de raíces debe rechazar TODA la respuesta, no
+  // entregar la tarjeta B obsoleta ni la A como lista parcial.
+  for (const [label, mutate] of [
+    ['raíz B eliminada en vuelo', () =>
+      db.collection('businesses').doc(b).delete()],
+    ['raíz B reasignada a A en vuelo', () =>
+      db.collection('businesses').doc(b).update({ restaurantId: a })],
+    ['propietario B cambiado en vuelo', () =>
+      db.collection('businesses').doc(b).update({ ownerUserId: alice.uid })],
+    ['nombre público B cambiado en vuelo', () =>
+      db.collection('businesses').doc(b).update({ 'branding.restaurantName': 'B obsoleto' })],
+    ['slug público B cambiado en vuelo', () =>
+      db.collection('businesses').doc(b).update({ 'branding.publicSlug': 'slug-obsoleto' })],
+  ]) {
+    afterRootsRead = mutate;
+    const staleEmployeeRoot = await call(aliceToken);
+    assert.equal(staleEmployeeRoot.status, 409, label + ': rechazar tarjeta B obsoleta');
+    assert.equal('businesses' in staleEmployeeRoot.data, false, label + ': sin lista parcial');
+    await db.collection('businesses').doc(b).set(root(b, 'Negocio B'));
+    assert.deepEqual(ids(await call(aliceToken)), [a, b], label + ': recuperación A+B');
+    assert.deepEqual(ids(await call(bobToken)), [b], label + ': propietario B conserva aislamiento');
+  }
+
   // Una ficha mal asociada nunca sale en JSON, ni se devuelve lista parcial.
   await ref(b, alice.uid).set({ ...member(b, alice.uid), restaurantId: a });
   const corrupt = await call(aliceToken);
@@ -214,7 +239,7 @@ try {
   assert.equal(overflow.status, 409);
   assert.equal('businesses' in overflow.data, false);
 
-  console.log('PASS (API opt-in NO activada): Auth, A/B, salida mínima, OWNER/raíz estrictos, rol global tenant rechazado antes de raíces y durante revalidación, legado sin ownerUserId bloqueado, revocación/rol/borrado, recuperación y límite 100 en emuladores.');
+  console.log('PASS (API opt-in NO activada): Auth, A/B, salida mínima, OWNER/raíz estrictos, raíz de empleado revalidada, rol global tenant rechazado antes de raíces y durante revalidación, legado sin ownerUserId bloqueado, revocación/rol/borrado, recuperación y límite 100 en emuladores.');
   console.warn('PENDIENTE: revisión manual de OWNER históricos, costos de lecturas adicionales, reglas efectivas y corte compatible con clientes antiguos; la revalidación no es atómica.');
 } finally {
   afterRootsRead = null;
