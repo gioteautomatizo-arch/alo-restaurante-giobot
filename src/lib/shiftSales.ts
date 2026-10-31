@@ -10,6 +10,41 @@ export interface ShiftSalesTotals {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+/** Solo métodos explícitos y MIXTO con desglose íntegro pueden clasificarse.
+ * No completar diferencias con transferencia ni sumar un MIXTO parcial/excesivo.
+ * El registro histórico se conserva para revisión; esta función nunca lo corrige.
+ */
+function classifiedPaymentParts(
+  method: string | undefined,
+  total: number | undefined,
+  breakdown?: Array<{ method: string; amount: number }>,
+): Array<{ method: string; amount: number }> | null {
+  const cents = (value: number | undefined): number | null => {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
+    const scaled = Math.round(value * 100);
+    return Number.isSafeInteger(scaled) && Math.abs(value * 100 - scaled) < 0.000001 ? scaled : null;
+  };
+  const totalCents = cents(total);
+  if (totalCents === null) return null;
+  const known = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA'];
+  if (method === 'MIXTO' || (breakdown && breakdown.length > 0)) {
+    if (!breakdown || (method === 'MIXTO' && breakdown.length < 2) || breakdown.length === 0) return null;
+    const seen = new Set<string>();
+    let sum = 0;
+    for (const part of breakdown) {
+      const partCents = cents(part.amount);
+      if (!known.includes(part.method) || seen.has(part.method) || partCents === null) return null;
+      seen.add(part.method);
+      sum += partCents;
+    }
+    if (sum !== totalCents) return null;
+    return breakdown;
+  }
+  if (!method || !known.includes(method)) return null;
+  return [{ method, amount: totalCents / 100 }];
+}
+
+
 /**
  * Suma lo cobrado en los tickets cerrados desde que abrió el turno.
  * Usa el desglose de pago (cobros mixtos) y, si no hay, el método principal.
@@ -27,10 +62,9 @@ export function computeShiftSalesFromReceipts(
   let count = 0;
 
   const add = (method: string, amount: number) => {
-    if (!Number.isFinite(amount) || amount <= 0) return;
     if (method === 'EFECTIVO') cash += amount;
     else if (method === 'TARJETA') card += amount;
-    else platforms += amount; // TRANSFERENCIA, MERCADO_PAGO u otros
+    else if (method === 'TRANSFERENCIA') platforms += amount;
   };
 
   for (const receipt of receipts) {
@@ -38,12 +72,8 @@ export function computeShiftSalesFromReceipts(
     if (closedMs < start || closedMs > end) continue;
     count += 1;
     for (const payment of receipt.payments || []) {
-      const parts = (payment.paymentBreakdown || []).filter((p) => Number(p.amount) > 0);
-      if (parts.length > 0) {
-        parts.forEach((p) => add(p.method, Number(p.amount)));
-      } else if (payment.paymentMethod !== 'MIXTO') {
-        add(payment.paymentMethod, Number(payment.total || 0));
-      }
+      const parts = classifiedPaymentParts(payment.paymentMethod, payment.total, payment.paymentBreakdown);
+      parts?.forEach((part) => add(part.method, part.amount));
     }
   }
 
@@ -67,14 +97,16 @@ export function computeShiftSalesFromOrders(
   let count = 0;
   for (const o of orders) {
     if (o.status === 'CANCELADO' || o.billingStatus !== 'PAGADO') continue;
-    const at = Date.parse(o.paidAt || o.createdAt || '') || 0;
-    if (at < start || at > end) continue;
-    const amount = Number(o.total || 0);
-    if (!(amount > 0)) continue;
+    // createdAt nunca prueba la fecha de cobro, incluso si paidAt falta.
+    const at = Date.parse(o.paidAt || '');
+    if (!Number.isFinite(at) || at < start || at > end) continue;
+    const amount = Number(o.total);
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    if (!['efectivo', 'tarjeta', 'transferencia'].includes(o.paymentMethod || '')) continue;
     count += 1;
     if (o.paymentMethod === 'efectivo') cash += amount;
     else if (o.paymentMethod === 'tarjeta') card += amount;
-    else platforms += amount;
+    else if (o.paymentMethod === 'transferencia') platforms += amount;
   }
   cash = round2(cash);
   card = round2(card);
@@ -114,8 +146,8 @@ export function offTableSalesForDay(
   let count = 0;
   for (const o of orders) {
     if (!isOffTableOrder(o) || o.status === 'CANCELADO' || o.billingStatus !== 'PAGADO') continue;
-    const at = o.paidAt || o.createdAt || '';
-    if (!at || new Date(at).toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' }) !== dayKey) continue;
+    const at = Date.parse(o.paidAt || '');
+    if (!Number.isFinite(at) || new Date(at).toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' }) !== dayKey) continue;
     total += Number(o.total || 0);
     count += 1;
   }
@@ -160,21 +192,17 @@ export function computeShiftSalesFromPayments(
   let platforms = 0;
   let count = 0;
   const add = (method: string, amount: number) => {
-    if (!Number.isFinite(amount) || amount <= 0) return;
     if (method === 'EFECTIVO') cash += amount;
     else if (method === 'TARJETA') card += amount;
-    else platforms += amount;
+    else if (method === 'TRANSFERENCIA') platforms += amount;
   };
   for (const p of payments) {
     if (p.status && p.status !== 'PAGADO') continue;
     const at = Date.parse(p.createdAt || '') || 0;
     if (at < start || at > end) continue;
     count += 1;
-    if (p.paymentMethod === 'MIXTO' && p.paymentBreakdown?.length) {
-      p.paymentBreakdown.forEach((item) => add(item.method, Number(item.amount || 0)));
-    } else {
-      add(p.paymentMethod || '', Number(p.total || 0));
-    }
+    const parts = classifiedPaymentParts(p.paymentMethod, p.total, p.paymentBreakdown);
+    parts?.forEach((part) => add(part.method, part.amount));
   }
   cash = round2(cash);
   card = round2(card);
@@ -207,7 +235,9 @@ export function paymentsSalesForDay(payments: PaymentLike[], dayKey: string): { 
   for (const p of payments) {
     if ((p.status && p.status !== 'PAGADO') || !p.createdAt) continue;
     if (new Date(p.createdAt).toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' }) !== dayKey) continue;
-    total += Number(p.total || 0);
+    const parts = classifiedPaymentParts(p.paymentMethod, p.total, p.paymentBreakdown);
+    if (!parts) continue;
+    total += Number(p.total);
     count += 1;
   }
   return { total: round2(total), count };
