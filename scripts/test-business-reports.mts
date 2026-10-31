@@ -129,8 +129,8 @@ assert.equal(sameNameProducts.topProducts.reduce((sum, product) => sum + product
 
 console.log('PASS: reportes concilian fechas de cobro, históricos y medianoche CDMX al cambiar de mes y año.');
 
-// Un método de pago desconocido en registros históricos no debe desaparecer del total.
-// No se debe atribuir arbitrariamente a efectivo, transferencia o tarjeta.
+// Un método desconocido no puede figurar como venta conciliada, pero su
+// importe permanece visible como pendiente de comprobantes.
 const unknownMethod = buildSalesReport([
   make({ code: 'PAGADO-METODO-DESCONOCIDO', billingStatus: 'PAGADO',
     paidAt: '2026-10-23T14:00:00Z', paymentMethod: 'MIXTO' as RestaurantOrder['paymentMethod'], total: 75.25 }),
@@ -139,17 +139,18 @@ const unknownMethod = buildSalesReport([
   make({ code: 'CANCELADO-METODO-DESCONOCIDO', billingStatus: 'PAGADO', status: 'CANCELADO',
     paidAt: '2026-10-23T15:00:00Z', paymentMethod: 'MIXTO' as RestaurantOrder['paymentMethod'], total: 500 }),
 ], 1, now);
-assert.equal(unknownMethod.totalSales, 100);
-assert.equal(unknownMethod.orderCount, 2);
+assert.equal(unknownMethod.totalSales, 24.75);
+assert.equal(unknownMethod.orderCount, 1);
+assert.equal(unknownMethod.unclassifiedPaidCount, 1);
 assert.equal(unknownMethod.byPayment.efectivo, 24.75);
 assert.equal(unknownMethod.byPayment.transferencia, 0);
 assert.equal(unknownMethod.byPayment.tarjeta, 0);
-assert.equal(unknownMethod.unclassifiedPaymentTotal, 75.25, 'Señalar importe no clasificado sin alterar ventas');
+assert.equal(unknownMethod.unclassifiedPaymentTotal, 75.25, 'Señalar importe pendiente sin contarlo como venta');
 assert.equal(unknownMethod.cancelledCount, 1);
 
 
-// Invariante contable: los métodos reconocidos más los no clasificados deben
-// explicar todas las ventas verificables, sin arrastrar fechas ni estados ajenos.
+// Invariante contable: las ventas verificadas se explican solo por métodos
+// reconocidos. Los métodos desconocidos permanecen fuera del total conciliado.
 const paymentReconciliation = buildSalesReport([
   make({ code: 'SIN-CLASIFICAR-HOY', billingStatus: 'PAGADO',
     paidAt: '2026-10-23T14:00:00Z',
@@ -167,22 +168,48 @@ const paymentReconciliation = buildSalesReport([
     status: 'CANCELADO', paidAt: '2026-10-23T15:00:00Z',
     paymentMethod: 'vale' as RestaurantOrder['paymentMethod'], total: 900 }),
 ], 7, now);
-assert.equal(paymentReconciliation.totalSales, 100);
-assert.equal(paymentReconciliation.orderCount, 2);
+assert.equal(paymentReconciliation.totalSales, 66.67);
+assert.equal(paymentReconciliation.orderCount, 1);
+assert.equal(paymentReconciliation.unclassifiedPaidCount, 1);
 assert.equal(paymentReconciliation.cancelledCount, 1);
 assert.equal(paymentReconciliation.unreconciledPaidCount, 1);
 assert.equal(paymentReconciliation.unclassifiedPaymentTotal, 33.33);
 assert.equal(paymentReconciliation.byPayment.tarjeta, 66.67);
 assert.equal(paymentReconciliation.byPayment.efectivo, 0);
 assert.equal(paymentReconciliation.byPayment.transferencia, 0);
-const paymentBreakdownTotal = Math.round(100 * (
+const paymentBreakdownTotal = Math.round(100 *
   Object.values(paymentReconciliation.byPayment).reduce((sum, amount) => sum + amount, 0)
-  + paymentReconciliation.unclassifiedPaymentTotal
-)) / 100;
+) / 100;
 assert.equal(paymentBreakdownTotal, paymentReconciliation.totalSales,
-  'El desglose por método y lo no clasificado deben conciliar con ventas verificadas');
-assert.equal(paymentReconciliation.days.reduce((sum, day) => sum + day.total, 0), 100);
-console.log('PASS: desglose de pagos concilia sin sumar pendientes, cancelados, fechas inválidas ni cobros fuera del periodo.');
+  'Solo los métodos reconocidos concilian con ventas verificadas');
+assert.equal(paymentReconciliation.days.reduce((sum, day) => sum + day.total, 0), 66.67);
+console.log('PASS: Reportes separa métodos desconocidos y no suma pendientes, cancelados ni fechas inválidas.');
+
+
+
+// Incluso sin ventas válidas, el informe debe conservar alertas sobre cobros
+// sintéticos sin método, con total cero/negativo o fracciones de centavo.
+const anomalousOnly = [
+  make({ code: 'IMPORTE-CERO', billingStatus: 'PAGADO',
+    paidAt: '2026-10-23T14:00:00Z', total: 0 }),
+  make({ code: 'IMPORTE-NEGATIVO', billingStatus: 'PAGADO',
+    paidAt: '2026-10-23T14:00:00Z', total: -5 }),
+  make({ code: 'TRES-DECIMALES', billingStatus: 'PAGADO',
+    paidAt: '2026-10-23T14:00:00Z', total: 1.001 }),
+  make({ code: 'METODO-VALE', billingStatus: 'PAGADO',
+    paidAt: '2026-10-23T14:00:00Z',
+    paymentMethod: 'vale' as RestaurantOrder['paymentMethod'], total: 35 }),
+];
+const anomalousSnapshot = JSON.stringify(anomalousOnly);
+const anomalousReport = buildSalesReport(anomalousOnly, 1, now);
+assert.equal(anomalousReport.totalSales, 0);
+assert.equal(anomalousReport.orderCount, 0);
+assert.equal(anomalousReport.anomalousPaidCount, 3);
+assert.equal(anomalousReport.unclassifiedPaidCount, 1);
+assert.equal(anomalousReport.unclassifiedPaymentTotal, 35);
+assert.deepEqual(anomalousReport.topProducts, []);
+assert.equal(JSON.stringify(anomalousOnly), anomalousSnapshot);
+console.log('PASS: Reportes alerta por cobros anómalos aun sin ventas conciliadas.');
 
 // Regresión de Caja: tener paidAt no basta si el pedido sigue pendiente,
 // y un cobro con fecha futura no debe anticiparse en el corte de hoy.
