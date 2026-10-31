@@ -1,4 +1,5 @@
 import type { RestaurantOrder } from '../types';
+import { isKnownOrderPaymentMethod, isValidOrderPaymentAmount } from './shiftSales';
 
 /**
  * Reportes de ventas del negocio, calculados en el navegador con los pedidos que ya
@@ -29,8 +30,12 @@ export interface SalesReport {
   cancelledCount: number;
   /** Pedidos marcados como pagados sin fecha de cobro comprobable, en todo el historial consultado. */
   unreconciledPaidCount: number;
-  /** Importe pagado con método no reconocido: incluido en ventas, pendiente de clasificar. */
+  /** Importe positivo pagado con método desconocido, EXCLUIDO de ventas conciliadas. */
   unclassifiedPaymentTotal: number;
+  /** Pedidos pagados con método desconocido dentro del periodo. */
+  unclassifiedPaidCount: number;
+  /** Pedidos pagados con importe inválido, cero, negativo o centavos imprecisos. */
+  anomalousPaidCount: number;
   byPayment: Record<'efectivo' | 'transferencia' | 'tarjeta', number>;
   topProducts: ReportProduct[];
   days: ReportDay[];
@@ -65,6 +70,8 @@ export function buildSalesReport(orders: RestaurantOrder[], period: ReportPeriod
   let cancelledCount = 0;
   let unreconciledPaidCount = 0;
   let unclassifiedPaymentTotal = 0;
+  let unclassifiedPaidCount = 0;
+  let anomalousPaidCount = 0;
 
   for (const order of orders) {
     // Nunca atribuir un cobro a la fecha de creación cuando falta paidAt.
@@ -84,18 +91,24 @@ export function buildSalesReport(orders: RestaurantOrder[], period: ReportPeriod
 
     if (order.billingStatus !== 'PAGADO') continue;
 
-    const total = Number(order.total) || 0;
+    // No sumar importes anómalos ni métodos desconocidos como ventas conciliadas.
+    // Conservamos contadores y monto pendiente sin inventar cobros ni reembolsos.
+    if (!isValidOrderPaymentAmount(order.total)) {
+      anomalousPaidCount += 1;
+      continue;
+    }
+    const total = order.total;
+    if (!isKnownOrderPaymentMethod(order.paymentMethod)) {
+      unclassifiedPaidCount += 1;
+      unclassifiedPaymentTotal += total;
+      continue;
+    }
     totalSales += total;
     orderCount += 1;
     day.total += total;
     day.count += 1;
 
-    if (order.paymentMethod === 'efectivo' || order.paymentMethod === 'transferencia' || order.paymentMethod === 'tarjeta') {
-      byPayment[order.paymentMethod] += total;
-    } else {
-      // No inventar un método para pedidos históricos o registros inesperados.
-      unclassifiedPaymentTotal += total;
-    }
+    byPayment[order.paymentMethod] += total;
 
     for (const item of order.items || []) {
       const name = String(item.name || 'Producto').trim();
@@ -116,6 +129,8 @@ export function buildSalesReport(orders: RestaurantOrder[], period: ReportPeriod
     cancelledCount,
     unreconciledPaidCount,
     unclassifiedPaymentTotal: round(unclassifiedPaymentTotal),
+    unclassifiedPaidCount,
+    anomalousPaidCount,
     byPayment: {
       efectivo: round(byPayment.efectivo),
       transferencia: round(byPayment.transferencia),
