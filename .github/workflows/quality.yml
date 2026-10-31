@@ -72,6 +72,8 @@ jobs:
         run: node scripts/test-business-membership-inventory-preflight.mjs
       - name: Test safe business membership list cutover and rollback (offline, no Firebase)
         run: node scripts/test-business-list-cutover-gate.mjs
+      - name: Guard membership consumers and 2-to-3 cutover paths (source audit, no Firebase)
+        run: node scripts/test-business-membership-consumers.mjs
       - name: Test historical business handle migration preflight (synthetic inventory, no Firebase)
         run: node scripts/test-business-handle-migration-preflight.mjs
       - name: Preflight historical catalog cutover A/B (offline synthetic inventory, no Firebase)
