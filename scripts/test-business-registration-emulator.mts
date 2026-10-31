@@ -349,8 +349,8 @@ try {
   // La baja definitiva debe eliminar membresía e índice en una sola transacción
   // bajo reglas staged reales, no únicamente con el mock de Quality.
   await signInWithEmailAndPassword(auth, aEmail, password);
-  await assert.rejects(removeBusinessEmployee(idB, staff.user.uid), /No tienes permiso/,
-    'OWNER A no puede retirar empleados de B');
+  await deny(removeBusinessEmployee(idB, staff.user.uid),
+    'OWNER A no puede retirar empleados de B: las reglas niegan leer membresía ajena');
   await removeBusinessEmployee(idA, staff.user.uid);
   const deletedMembership = await getAdminFirestore(adminApp)
     .doc('businessMemberships/' + idA + '_' + staff.user.uid).get();
