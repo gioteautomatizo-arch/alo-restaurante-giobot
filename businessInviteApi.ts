@@ -329,7 +329,7 @@ export function registerBusinessInviteApi(app: Express): void {
       const inviteRef = db.collection('business_invites').doc(hash(req.body.token));
       const outcome = await db.runTransaction(async (tx) => {
         const invite = (await tx.get(inviteRef)).data();
-        if (!invite || invite.status !== 'PENDING' || Number(invite.expiresAt) <= Date.now()) {
+        if (!isPendingInviteWithinWindow(invite, Date.now())) {
           return { status: 410, error: 'La invitación venció o ya fue utilizada.' };
         }
         if (String(invite.email).toLowerCase() !== actor.email!.toLowerCase()) {
