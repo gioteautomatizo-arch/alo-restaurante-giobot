@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { auditBusinessMembershipInventory } from './business-membership-inventory-preflight.mjs';
 
-const root = (id, uid) => ({ docId: id, restaurantId: id, ownerUserId: uid });
+const root = (id, uid, employeeUserIds = []) => ({ docId: id, restaurantId: id, ownerUserId: uid, employeeUserIds });
 const member = (id, uid, role = 'OWNER', active = true) =>
   ({ docId: id + '_' + uid, restaurantId: id, userId: uid, role, active });
 const baseline = () => ({
@@ -10,7 +10,7 @@ const baseline = () => ({
     businesses: { complete: true, documentCount: 2, pagesRead: 1 },
     businessMemberships: { complete: true, documentCount: 3, pagesRead: 2 },
   },
-  businesses: [root('tenant-a', 'uid-a'), root('tenant-b', 'uid-b')],
+  businesses: [root('tenant-a', 'uid-a'), root('tenant-b', 'uid-b', ['uid-a'])],
   memberships: [
     member('tenant-a', 'uid-a'),
     member('tenant-b', 'uid-b'),
@@ -40,6 +40,51 @@ assert.deepEqual(clean.issues, []);
 assert.equal(clean.counts.businesses, 2);
 assert.equal(clean.counts.memberships, 3);
 assert.equal(clean.counts.activeOwners, 2);
+assert.equal(clean.counts.unindexedMemberships, 0);
+assert.equal(clean.counts.staleEmployeeIndexEntries, 0);
+
+
+blocked('Membresía histórica sin índice en B', f => {
+  delete f.businesses[1].employeeUserIds;
+}, 'UNINDEXED_MEMBERSHIP_COLLISION_REVIEW');
+blocked('Membresía no indexada aunque el índice exista vacío', f => {
+  f.businesses[1].employeeUserIds = [];
+}, 'UNINDEXED_MEMBERSHIP_COLLISION_REVIEW');
+blocked('Membresía inactiva sin índice todavía puede ser sobrescrita', f => {
+  f.memberships[2].active = false;
+  f.businesses[1].employeeUserIds = [];
+}, 'UNINDEXED_MEMBERSHIP_COLLISION_REVIEW');
+blocked('CLIENT histórico no indexado requiere revisión de colisión, no se asume empleado', f => {
+  f.memberships[2].role = 'CLIENT';
+  f.businesses[1].employeeUserIds = [];
+}, 'UNINDEXED_MEMBERSHIP_COLLISION_REVIEW');
+blocked('Índice con UID ausente', f => {
+  f.businesses[1].employeeUserIds.push('uid-inexistente');
+}, 'EMPLOYEE_INDEX_WITHOUT_MEMBERSHIP');
+blocked('UID de A colocado en índice de B sin membresía de B', f => {
+  f.businesses[0].employeeUserIds = ['uid-b'];
+}, 'EMPLOYEE_INDEX_WITHOUT_MEMBERSHIP');
+blocked('Índice con UID duplicado', f => {
+  f.businesses[1].employeeUserIds.push('uid-a');
+}, 'DUPLICATE_EMPLOYEE_INDEX_UID');
+blocked('Índice con UID inválido', f => {
+  f.businesses[1].employeeUserIds.push('invalid/uid');
+}, 'INVALID_EMPLOYEE_INDEX_UID');
+blocked('Índice con formato inválido', f => {
+  f.businesses[1].employeeUserIds = 'uid-a';
+}, 'INVALID_EMPLOYEE_INDEX_SHAPE');
+blocked('OWNER no debe figurar en índice de empleados', f => {
+  f.businesses[0].employeeUserIds = ['uid-a'];
+}, 'NON_EMPLOYEE_ROLE_IN_INDEX');
+blocked('CLIENT indexado no es empleado administrable', f => {
+  f.memberships[2].role = 'CLIENT';
+}, 'NON_EMPLOYEE_ROLE_IN_INDEX');
+const inactiveIndexed = audit(f => { f.memberships[2].active = false; });
+assert.equal(inactiveIndexed.status, 'READY_FOR_INDEPENDENT_REVIEW',
+  'Una membresía inactiva correctamente indexada sigue siendo una colisión protegida');
+const noEmployeesLegacy = audit(f => { delete f.businesses[0].employeeUserIds; });
+assert.equal(noEmployeesLegacy.status, 'READY_FOR_INDEPENDENT_REVIEW',
+  'Una raíz sin índice ni membresías de empleados puede pasar a revisión independiente');
 
 blocked('Sin cobertura', f => { delete f.coverage.businessMemberships; },
   'MISSING_COLLECTION_COVERAGE');
@@ -96,5 +141,5 @@ assert.equal(missing.status, 'BLOCKED');
 assert(missing.issues.some(item => item.code === 'MISSING_DOCUMENT_INVENTORY'));
 assert.equal(missing.safeToDeploy, false);
 
-console.log('PASS: preflight offline de raíces/membresías A/B, cobertura, identidad, OWNER, roles y huérfanos; nunca autoriza despliegue.');
+console.log('PASS: preflight offline A/B, cobertura, OWNER, colisiones históricas no indexadas, índices inválidos/obsoletos y membresías inactivas; nunca autoriza despliegue.');
 console.warn('PENDIENTE: inventario histórico REAL autorizado, revisión independiente, backup/restauración, reglas/clientes antiguos y recorrido visual A/B.');
