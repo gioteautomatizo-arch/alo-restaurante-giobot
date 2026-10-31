@@ -17,6 +17,8 @@ const a = 'restore-test-a', b = 'restore-test-b';
 const ownerA = 'restore-owner-a', ownerB = 'restore-owner-b', staffA = 'restore-staff-a';
 const business = (id, uid) => ({
   restaurantId: id, ownerUserId: uid,
+  // El snapshot sintético debe reflejar el índice que usa el alta actual.
+  employeeUserIds: id === a ? [staffA] : [],
   branding: { restaurantName: 'Prueba ' + id, publicSlug: id },
 });
 const membership = (id, uid, role) => ({ restaurantId: id, userId: uid, role, active: true });
@@ -86,6 +88,14 @@ try {
   assert.equal(auditSnapshot(tampered).status, 'BLOCKED', 'Snapshot cruzado bloqueado');
   const incomplete = before.filter(item => item.path !== `businessMemberships/${a}_${ownerA}`);
   assert.equal(auditSnapshot(incomplete).status, 'BLOCKED', 'Snapshot sin OWNER bloqueado');
+  const unindexed = structuredClone(before);
+  unindexed.find(item => item.path === `businesses/${a}`).data.employeeUserIds = [];
+  assert.equal(auditSnapshot(unindexed).status, 'BLOCKED',
+    'Snapshot con membresía histórica no indexada debe bloquear restauración');
+  const staleIndex = structuredClone(before);
+  staleIndex.find(item => item.path === `businesses/${b}`).data.employeeUserIds = [staffA];
+  assert.equal(auditSnapshot(staleIndex).status, 'BLOCKED',
+    'Snapshot con índice de empleado de otro negocio debe bloquear restauración');
 
   await assertSucceeds(getDoc(doc(signed(ownerA), 'businesses', a)));
   await assertSucceeds(getDoc(doc(signed(ownerB), 'businesses', b)));
@@ -128,7 +138,7 @@ try {
   await assertSucceeds(updateDoc(doc(signed(ownerA), 'businessMemberships', `${a}_${staffA}`), { active: false }));
   await assertFails(getDoc(doc(signed(staffA), 'businesses', a)));
   await assertSucceeds(getDoc(doc(signed(ownerB), 'businesses', b)));
-  console.log('PASS: restauración sintética A/B en Firestore Emulator, igualdad de 9 documentos, snapshot cruzado/incompleto rechazado, recuperación y revocación sin acceso cruzado.');
+  console.log('PASS: restauración sintética A/B en Firestore Emulator, igualdad de 9 documentos, snapshot cruzado/incompleto/no indexado rechazado, recuperación y revocación sin acceso cruzado.');
   console.warn('PENDIENTE: respaldo/restauración REALES, reglas desplegadas, Auth, VIP, pagos, Cloudinary y revisión visual Android/iPad.');
 } finally {
   await env.cleanup();
