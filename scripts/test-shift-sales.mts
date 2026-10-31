@@ -527,8 +527,8 @@ assert.equal(JSON.stringify(mixedReconciliationOrders), mixedReconciliationSnaps
 console.log('PASS: Caja por turno, corte diario y Reportes coinciden sin contar cobros anómalos.');
 
 // Diagnóstico pendiente: pagos de mesa con importes cero o negativos.
-// El corte por turno conserva el conteo, pero omite los importes; el diario
-// conserva también el importe negativo. No son devoluciones confirmadas.
+// El turno conserva el conteo histórico de registros, pero no suma importes;
+// el diario excluye esos registros. No son devoluciones confirmadas.
 // Prueba sintética, sin Firebase ni cambios en cálculos de producción.
 const nonPositiveTablePayments = [
   { status: 'PAGADO', createdAt: '2026-10-23T17:00:00.000Z',
