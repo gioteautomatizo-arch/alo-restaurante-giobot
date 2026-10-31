@@ -339,12 +339,15 @@ try {
   // Paso 2: no devolver tarjetas A/B si el rol cambia mientras se leen raíces.
   const readListWithChange = async (initial, latest, errorPattern) => {
     window.qa.memberships = initial;
-    window.qa.latestMemberships = latest;
+    window.qa.latestMemberships = null;
     window.qa.pending = [];
     const request = window.qa.load('owner-a');
     const rejected = assert.rejects(request, errorPattern);
     await waitFor(() => window.qa.pending.length === new Set(initial.map(m => m.restaurantId)).size,
       'Lecturas de raíces A/B antes de revalidar');
+    // El primer listado ya fue confirmado; simular cambio de permisos
+    // exclusivamente durante la lectura asíncrona de raíces.
+    window.qa.latestMemberships = latest;
     for (const pending of window.qa.pending) pending.resolve(snap(pending.ref.id, {ownerUserId:'owner-a'}));
     await rejected;
     window.qa.latestMemberships = null;
