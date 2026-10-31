@@ -80,11 +80,6 @@ try{
  const pendingToken=await create(secondEmployee.email);
  assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,200);
  const ownerMembership=db.collection('businessMemberships').doc(businessId+'_'+owner.uid);
- await ownerMembership.update({restaurantId:otherBusiness});
- assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,410,
-   'Una invitación de A no debe verse vigente con un invitador vinculado a B');
- assert.equal((await call('/api/business-invites',{businessId,email:employee.email,name:'Cruce',role:'KITCHEN'},ownerToken)).status,403);
- assert.equal((await call('/api/business-invites?businessId='+businessId,undefined,ownerToken,'GET')).status,403);
  const pendingList=await db.collection('business_invites').where('businessId','==',businessId).get();
  const pendingDoc=pendingList.docs.find(x=>x.data().email===secondEmployee.email);
  assert(pendingDoc,'pending invite for tenant mismatch test');
@@ -121,6 +116,11 @@ try{
  }
  assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,200,
    'La invitación íntegra vuelve a estar disponible');
+ await ownerMembership.update({restaurantId:otherBusiness});
+ assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,410,
+   'Una invitación de A no debe verse vigente con un invitador vinculado a B');
+ assert.equal((await call('/api/business-invites',{businessId,email:employee.email,name:'Cruce',role:'KITCHEN'},ownerToken)).status,403);
+ assert.equal((await call('/api/business-invites?businessId='+businessId,undefined,ownerToken,'GET')).status,403);
  assert.equal((await call('/api/business-invites/revoke',{businessId,inviteId:pendingDoc.id},ownerToken)).status,403);
  assert.equal((await call('/api/business-invites/accept',{token:pendingToken},secondToken)).status,403);
  await ownerMembership.update({restaurantId:businessId,userId:other.uid});
