@@ -104,8 +104,8 @@ assert.deepEqual(offTableSalesForDay(dayOrders, '2026-10-23'), { total: 35.5, co
   'El corte diario de pedidos externos respeta medianoche de México y excluye mesas/no pagados');
 
 const dayPayments = [
-  { status: 'PAGADO', total: 12, createdAt: '2026-10-23T06:00:00.000Z' },
-  { status: 'PAGADO', total: 4.25, createdAt: '2026-10-24T05:59:59.000Z' },
+  { status: 'PAGADO', paymentMethod: 'EFECTIVO', total: 12, createdAt: '2026-10-23T06:00:00.000Z' },
+  { status: 'PAGADO', paymentMethod: 'TARJETA', total: 4.25, createdAt: '2026-10-24T05:59:59.000Z' },
   { status: 'PAGADO', total: 99, createdAt: '2026-10-24T06:00:00.000Z' },
   { status: 'ANULADO', total: 300, createdAt: '2026-10-23T12:00:00.000Z' },
 ];
