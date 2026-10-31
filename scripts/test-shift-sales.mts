@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import type { RestaurantOrder, SaleReceipt } from '../src/types';
 import { buildSalesReport } from '../src/lib/businessReports.ts';
 import {
+  auditUnclassifiedPaidOrders,
   computeShiftSalesAll,
   computeShiftSalesCombined,
   computeShiftSalesFromOrders,
@@ -418,6 +419,25 @@ assert.deepEqual(unknownOffTableReport.byPayment,
 assert.equal(JSON.stringify(unknownOffTablePayment), unknownOffTableSnapshot,
   'El diagnóstico no modifica el pedido original');
 console.warn('PENDIENTE HISTÓRICO: método desconocido no clasificado en Caja; Reportes lo conserva como importe sin clasificar.');
+
+// El turno debe detectar importes/métodos no conciliables sin mutar pedidos.
+const unclassifiedFixtures = [
+  unknownOffTablePayment,
+  paidOffTableOrder('IMPORTE-NEGATIVO-AUDIT', 'pickup', 'efectivo', -10, '2026-10-23T17:10:00.000Z'),
+  paidOffTableOrder('IMPORTE-CERO-AUDIT', 'pickup', 'efectivo', 0, '2026-10-23T17:20:00.000Z'),
+  paidOffTableOrder('PAGO-VALIDO-AUDIT', 'pickup', 'efectivo', 30, '2026-10-23T17:30:00.000Z'),
+  { ...unknownOffTablePayment, code: 'SIN-FECHA-AUDIT', paidAt: undefined },
+  { ...unknownOffTablePayment, code: 'CANCELADO-AUDIT', status: 'CANCELADO' as const },
+];
+const unclassifiedBefore = JSON.stringify(unclassifiedFixtures);
+assert.deepEqual(auditUnclassifiedPaidOrders(unclassifiedFixtures, shiftStart),
+  { count: 3, positiveAmount: 45 },
+  'Método desconocido y dos importes no positivos bloquean cierre, no el pago válido');
+assert.deepEqual(auditUnclassifiedPaidOrders(unclassifiedFixtures, 'fecha inválida'),
+  { count: 0, positiveAmount: 0 }, 'Una apertura inválida no asigna cobros a un turno');
+assert.equal(JSON.stringify(unclassifiedFixtures), unclassifiedBefore, 'La auditoría no modifica datos');
+console.log('PASS: auditoría de métodos/importes no conciliables bloquea el cierre sin inventar dinero.');
+
 
 
 // Diagnóstico pendiente: importes nulos o negativos en pedidos externos.
