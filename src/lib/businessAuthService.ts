@@ -7,9 +7,7 @@ import {
 import {
   collection,
   doc,
-  getDoc,
   getDocFromServer,
-  getDocs,
   getDocsFromServer,
   query,
   where,
@@ -295,7 +293,8 @@ export async function getBusinessesForUser(userId: string): Promise<BusinessDire
     where('userId', '==', userId),
     where('active', '==', true)
   );
-  const membershipsSnap = await getDocs(membershipsQuery);
+  // No iniciar lecturas de raíces privadas usando permisos cacheados.
+  const membershipsSnap = await getDocsFromServer(membershipsQuery);
   assertCurrentBusinessSession(userId);
   const businessIds = [...new Set(membershipsSnap.docs.map((docSnap) => {
     const membership = docSnap.data() as RestaurantMembership;
@@ -387,7 +386,8 @@ export async function getBusinessForUser(
   businessId: string
 ): Promise<RestaurantTenant | null> {
   assertCurrentBusinessSession(userId);
-  const membershipSnap = await getDoc(membershipRef(businessId, userId));
+  // Confirmar la membresía en servidor antes de leer la raíz privada.
+  const membershipSnap = await getDocFromServer(membershipRef(businessId, userId));
   assertCurrentBusinessSession(userId);
   if (!membershipSnap.exists()) return null;
 
@@ -423,7 +423,8 @@ export async function getBusinessMembership(
   businessId: string
 ): Promise<RestaurantMembership | null> {
   assertCurrentBusinessSession(userId);
-  const snap = await getDoc(membershipRef(businessId, userId));
+  // El rol inicial debe estar vigente en servidor antes de consultar la raíz.
+  const snap = await getDocFromServer(membershipRef(businessId, userId));
   assertCurrentBusinessSession(userId);
   if (!snap.exists()) return null;
   const membership = snap.data() as RestaurantMembership;
