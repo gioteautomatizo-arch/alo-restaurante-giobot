@@ -2,8 +2,9 @@ import type { Express, Request, Response } from 'express';
 import { createHash, randomBytes } from 'node:crypto';
 import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { FieldPath, FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { hasValidInviterId, INVITE_EXPIRES_IN_MS, isPendingInviteWithinWindow } from './businessInviteIntegrity.ts';
+import { INVITE_LIST_PAGE_SIZE, isValidInviteCursor, nextInviteCursor } from './businessInvitePagination.ts';
 
 type InviteRole = 'ADMIN' | 'MANAGER' | 'CASHIER' | 'WAITER' | 'KITCHEN' | 'EMPLOYEE';
 type ActorRole = InviteRole | 'OWNER';
@@ -140,6 +141,8 @@ export function registerBusinessInviteApi(app: Express): void {
     if (process.env.ENABLE_BUSINESS_INVITES !== 'true') return fail(res, 404, 'Invitaciones no disponibles.');
     const businessId = req.query.businessId;
     if (!safeId(businessId)) return fail(res, 400, 'Negocio inválido.');
+    const cursor = req.query.cursor;
+    if (cursor !== undefined && !isValidInviteCursor(cursor)) return fail(res, 400, 'Cursor inválido.');
     try {
       const actor = await authenticated(req);
       if (!actor) return fail(res, 401, 'Inicia sesión.');
@@ -154,7 +157,12 @@ export function registerBusinessInviteApi(app: Express): void {
           !['OWNER','ADMIN','MANAGER'].includes(String(role))) {
         return fail(res, 403, 'No tienes permiso para ver las invitaciones.');
       }
-      const matches = await db.collection('business_invites').where('businessId', '==', businessId).limit(150).get();
+      // Orden estable por ID: no truncar silenciosamente los históricos.
+      // Cada página vuelve a validar actor, raíz y emisores antes de responder.
+      let inviteQuery = db.collection('business_invites').where('businessId', '==', businessId)
+        .orderBy(FieldPath.documentId()).limit(INVITE_LIST_PAGE_SIZE);
+      if (cursor) inviteQuery = inviteQuery.startAfter(cursor);
+      const matches = await inviteQuery.get();
       const now = Date.now();
       // La vista previa y la aceptación ya invalidan tokens vencidos o creados
       // por empleados revocados. El listado debe aplicar el mismo contrato:
@@ -223,7 +231,7 @@ export function registerBusinessInviteApi(app: Express): void {
       }
       // No es una transacción ni impide cambios posteriores: la autorización
       // definitiva de aceptar/revocar invitaciones sigue siendo transaccional.
-      return res.json({ invites: pending });
+      return res.json({ invites: pending, nextCursor: nextInviteCursor(matches.docs.map(snap => snap.id)) });
     } catch (error) {
       console.error('[business-invites/list]', error);
       return fail(res, 503, 'No pudimos cargar las invitaciones.');

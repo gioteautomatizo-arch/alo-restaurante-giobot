@@ -1,5 +1,6 @@
 import { auth } from './firebase';
 import type { BusinessRole } from './restaurantCore';
+import { INVITE_LIST_MAX_PAGES, isValidInviteCursor } from '../../businessInvitePagination';
 
 export const BUSINESS_INVITES_ENABLED = import.meta.env.VITE_BUSINESS_INVITES === 'true';
 export type InviteRole = Extract<BusinessRole, 'ADMIN' | 'MANAGER' | 'CASHIER' | 'WAITER' | 'KITCHEN' | 'EMPLOYEE'>;
@@ -54,17 +55,46 @@ export async function listBusinessInvites(businessId: string): Promise<PendingBu
   const requesterUid = user.uid;
   const token = await user.getIdToken();
   assertInviteSession(requesterUid);
-  const response = await fetch('/api/business-invites?businessId=' + encodeURIComponent(businessId), {
-    cache: 'no-store', headers: { Authorization: 'Bearer ' + token },
-  });
-  assertInviteSession(requesterUid);
-  const payload = await response.json().catch(() => ({})) as { invites?: PendingBusinessInvite[]; error?: string };
-  assertInviteSession(requesterUid);
-  if (!response.ok) throw new Error(payload.error || 'No se pudieron cargar las invitaciones.');
-  if (!Array.isArray(payload.invites)) {
-    throw new Error('El servicio de invitaciones devolvió una lista inválida. Reintenta.');
+  const collected: PendingBusinessInvite[] = [];
+  const seenCursors = new Set<string>();
+  const seenIds = new Set<string>();
+  let cursor: string | null = null;
+  for (let page = 0; page < INVITE_LIST_MAX_PAGES; page++) {
+    assertInviteSession(requesterUid);
+    const endpoint = '/api/business-invites?businessId=' + encodeURIComponent(businessId)
+      + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
+    const response = await fetch(endpoint, {
+      cache: 'no-store', headers: { Authorization: 'Bearer ' + token },
+    });
+    assertInviteSession(requesterUid);
+    const payload = await response.json().catch(() => ({})) as {
+      invites?: PendingBusinessInvite[]; nextCursor?: string | null; error?: string;
+    };
+    assertInviteSession(requesterUid);
+    if (!response.ok) throw new Error(payload.error || 'No se pudieron cargar las invitaciones.');
+    if (!Array.isArray(payload.invites) ||
+        !Object.prototype.hasOwnProperty.call(payload, 'nextCursor') ||
+        (payload.nextCursor !== null && !isValidInviteCursor(payload.nextCursor))) {
+      throw new Error('El servicio de invitaciones devolvió una página inválida. Reintenta.');
+    }
+    for (const invite of payload.invites) {
+      if (!invite || typeof invite.id !== 'string' || seenIds.has(invite.id)) {
+        throw new Error('El historial de invitaciones cambió durante la lectura. Reintenta.');
+      }
+      seenIds.add(invite.id);
+      collected.push(invite);
+    }
+    if (payload.nextCursor === null) {
+      assertInviteSession(requesterUid);
+      return collected.sort((a, b) => b.createdAt - a.createdAt);
+    }
+    if (seenCursors.has(payload.nextCursor!)) {
+      throw new Error('El historial de invitaciones cambió durante la lectura. Reintenta.');
+    }
+    seenCursors.add(payload.nextCursor!);
+    cursor = payload.nextCursor!;
   }
-  return payload.invites;
+  throw new Error('El historial de invitaciones supera el límite seguro de lectura. Solicita revisión antes de continuar.');
 }
 export function revokeBusinessInvite(businessId: string, inviteId: string) {
   return request<{ revoked: boolean }>('/api/business-invites/revoke', 'POST', { businessId, inviteId }, true);

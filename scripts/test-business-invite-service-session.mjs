@@ -50,7 +50,7 @@ const actions = [
     data: { revoked: true } },
   { name: 'listar', call: () => lib.listBusinessInvites('tenant-a'),
     data: { invites: [{ id: 'invite-a', name: 'Persona A', email: 'a@example.test',
-      role: 'WAITER', status: 'PENDING', createdAt: 1, expiresAt: 2000000000000 }] } },
+      role: 'WAITER', status: 'PENDING', createdAt: 1, expiresAt: 2000000000000 }], nextCursor: null } },
 ];
 const reset = (user) => {
   qa.user = user;
@@ -113,8 +113,33 @@ try {
   reset(makeUser('owner-a'));
   const empty = lib.listBusinessInvites('tenant-a');
   await waitFor(() => qa.requests.length === 1, 'lista vacía');
-  qa.requests[0].resolve(response({ invites: [] }));
+  qa.requests[0].resolve(response({ invites: [], nextCursor: null }));
   assert.deepEqual(await empty, [], 'Lista vacía explícita sí es válida');
+
+  // Dos páginas: acumular sin perder registros y ordenar al final.
+  reset(makeUser('owner-a'));
+  const paged = lib.listBusinessInvites('tenant-a');
+  await waitFor(() => qa.requests.length === 1, 'primera página');
+  qa.requests[0].resolve(response({ invites: [{ ...actions[3].data.invites[0], id: 'old', createdAt: 1 }], nextCursor: 'a'.repeat(64) }));
+  await waitFor(() => qa.requests.length === 2, 'segunda página');
+  assert(qa.requests[1].url.includes('cursor=' + 'a'.repeat(64)), 'cursor enviado al backend');
+  qa.requests[1].resolve(response({ invites: [{ ...actions[3].data.invites[0], id: 'new', createdAt: 2 }], nextCursor: null }));
+  assert.deepEqual((await paged).map(x => x.id), ['new', 'old']);
+
+  reset(makeUser('owner-a'));
+  const stalePage = lib.listBusinessInvites('tenant-a');
+  await waitFor(() => qa.requests.length === 1, 'primera página de UID A');
+  qa.requests[0].resolve(response({ invites: [actions[3].data.invites[0]], nextCursor: 'b'.repeat(64) }));
+  await waitFor(() => qa.requests.length === 2, 'segunda página de UID A');
+  qa.user = makeUser('owner-b');
+  qa.requests[1].resolve(response({ invites: [], nextCursor: null }));
+  await assert.rejects(stalePage, /La sesión cambió/, 'No entregar datos de UID A a UID B');
+
+  reset(makeUser('owner-a'));
+  const badCursor = lib.listBusinessInvites('tenant-a');
+  await waitFor(() => qa.requests.length === 1, 'cursor malformado');
+  qa.requests[0].resolve(response({ invites: [], nextCursor: '../tenant-b' }));
+  await assert.rejects(badCursor, /página inválida/, 'No continuar con cursor ajeno');
 
   // Vista previa es pública: no necesita sesión ni envía Authorization.
   reset(null);

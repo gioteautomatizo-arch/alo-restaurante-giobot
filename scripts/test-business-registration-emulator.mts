@@ -381,10 +381,14 @@ try {
       businessId: idA, name: 'Invitado de B en A', email: secondInviteEmail, role: 'WAITER',
     }, bToken);
     assert.equal(createdByB.status, 201, 'ADMIN de A puede emitir invitación ficticia');
+    const beforeRace = await call('/api/business-invites?businessId=' + idA, undefined, aToken, 'GET');
+    assert.equal(beforeRace.status, 200, 'El listado del OWNER A debe estar disponible');
+    assert(beforeRace.data.invites.some((invite: { email: string }) => invite.email === secondInviteEmail),
+      'La invitación del emisor B debe aparecer antes de ensayar revocación');
     let intercepted = false;
     (inviteDb as any).getAll = async (...refs: any[]) => {
       const snapshots = await originalInviteGetAll(...refs);
-      if (!intercepted && refs.length &&
+      if (!intercepted && refs.some(ref => ref.path === crossInviterRef.path) &&
           refs.every(ref => ref.parent.id === 'businessMemberships')) {
         intercepted = true;
         await crossInviterRef.update({ active: false });

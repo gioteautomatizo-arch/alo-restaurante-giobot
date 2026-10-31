@@ -234,5 +234,38 @@ try{
  assert(simultaneous.some(x=>x.status===429),'hourly rate limit');
  const attempted=simultaneous.filter(x=>x.status===201).length;
  assert(attempted<=7,'hourly rate cap');
- console.log('PASS: two-tenant invite isolation, stale/expired list filtering, fail-closed preview, recovery, token lifecycle and concurrent rate limiting.');
+ // Un historial de más de 150 documentos no puede ocultar invitaciones pendientes.
+ // Cada página mantiene el filtro del tenant y el OWNER B no lee la lista A.
+ const pagedNow=Date.now();
+ const pageBatch=db.batch();
+ const pageIds=[];
+ for(let i=0;i<160;i++){
+   const id=createHash('sha256').update('page-a-'+unique+'-'+i).digest('hex');
+   pageIds.push(id);
+   pageBatch.set(db.collection('business_invites').doc(id),{
+     businessId,email:'page-'+i+'@example.test',name:'Página '+i,role:'WAITER',
+     status:'PENDING',createdBy:owner.uid,createdAt:pagedNow-1000-i,
+     expiresAt:pagedNow+72*60*60*1000-1000-i,
+   });
+ }
+ await pageBatch.commit();
+ const seenPageIds=new Set();
+ let cursor=null;
+ for(let page=0;page<5;page++){
+   const url='/api/business-invites?businessId='+businessId+(cursor?'&cursor='+cursor:'');
+   const result=await call(url,undefined,ownerToken,'GET');
+   assert.equal(result.status,200,'Página '+page+' de A');
+   for(const item of result.data.invites){
+     assert.equal(seenPageIds.has(item.id),false,'Sin invitaciones duplicadas');
+     seenPageIds.add(item.id);
+   }
+   if(result.data.nextCursor===null)break;
+   assert.match(result.data.nextCursor,/^[a-f0-9]{64}$/);
+   cursor=result.data.nextCursor;
+ }
+ assert(pageIds.every(id=>seenPageIds.has(id)),'El historial paginado recupera 160 invitaciones válidas');
+ assert.equal((await call('/api/business-invites?businessId='+businessId+'&cursor=../other',undefined,ownerToken,'GET')).status,400);
+ assert.equal((await call('/api/business-invites?businessId='+businessId,undefined,otherToken,'GET')).status,403);
+ assert.equal((await call('/api/business-invites?businessId='+otherBusiness,undefined,otherToken,'GET')).status,200);
+ console.log('PASS: two-tenant invite isolation, expiry, paginated history >150, cursor validation, recovery and rate limits.');
 }finally{await new Promise(resolve=>server.close(resolve));}
