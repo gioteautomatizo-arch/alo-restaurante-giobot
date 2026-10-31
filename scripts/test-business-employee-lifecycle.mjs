@@ -38,6 +38,7 @@ const mocks = {
     '        observed.set(ref.path, JSON.stringify(window.qa.docs[ref.path]));',
     '        return snapshot;',
     '      },',
+    '      set: (ref, data) => staged.push({op:"set",path:ref.path,data}),',
     '      update: (ref, data) => staged.push({op: ref.path.startsWith("businesses/") ? "update" : "updateDoc",path:ref.path,data}),',
     '      delete: ref => staged.push({op:"delete",path:ref.path}),',
     '    };',
@@ -48,6 +49,29 @@ const mocks = {
     '      if (attempt === 0) continue;',
     '      throw new Error("transaction-conflict");',
     '    }',
+    '    if(window.qa.batchMode === "reject-cache") {',
+    '      window.qa.remoteDocs={}; throw Object.assign(new Error("NETWORK_LOST_BEFORE_COMMIT"),{code:"unavailable"});',
+    '    }',
+    '    if(window.qa.batchMode === "lost-after") {',
+    '      window.qa.remoteDocs=structuredClone(window.qa.docs);',
+    '      for(const action of staged) {',
+    '        if(action.op === "set") window.qa.remoteDocs[action.path]={...action.data};',
+    '        if(action.op === "update") {',
+    '          const old=window.qa.remoteDocs[action.path] || {};',
+    '          window.qa.remoteDocs[action.path]={...old,employeeUserIds:[...new Set([...(old.employeeUserIds||[]),action.data.employeeUserIds.arrayUnion])]};',
+    '        }',
+    '      }',
+    '      const root=window.qa.remoteDocs["businesses/tenant-a"];',
+    '      const member=window.qa.remoteDocs["businessMemberships/tenant-a_employee-new"];',
+    '      if(window.qa.corruptAfterCommit === "missing-index") root.employeeUserIds=[];',
+    '      if(window.qa.corruptAfterCommit === "wrong-owner") root.ownerUserId="owner-b";',
+    '      if(window.qa.corruptAfterCommit === "wrong-tenant") member.restaurantId="tenant-b";',
+    '      if(window.qa.corruptAfterCommit === "wrong-attempt") member.createdAt="previous-attempt";',
+    '      if(window.qa.corruptAfterCommit === "switch-session") window.qa.auth.currentUser={uid:"owner-b"};',
+    '      if(window.qa.corruptAfterCommit === "offline") window.qa.serverError=new Error("offline");',
+    '      throw Object.assign(new Error("LOST_COMMIT_RESPONSE"),{code:"unavailable"});',
+    '    }',
+    '    if(window.qa.batchError) throw window.qa.batchError;',
     '    window.qa.writes.push(...staged); return;',
     '  }',
     '};',
@@ -133,7 +157,6 @@ const reset=(role='OWNER')=>{
     'businessMemberships/tenant-a_owner-a':member('tenant-a','owner-a',role),
     'businesses/tenant-a':{restaurantId:'tenant-a',ownerUserId:'owner-a'},
     'businessMemberships/tenant-a_employee-existing':member('tenant-a','employee-existing','WAITER'),
-    'businessMemberships/tenant-a_employee-new':member('tenant-a','employee-new','WAITER'),
     'businesses/tenant-b':{restaurantId:'tenant-b',ownerUserId:'owner-b'},
     'businessMemberships/tenant-b_owner-b':member('tenant-b','owner-b'),
   };
@@ -414,6 +437,10 @@ try {
   const prepareRoster = (ids = ['employee-existing']) => {
     reset();
     window.qa.docs['businesses/tenant-a'].employeeUserIds = [...ids];
+    if (ids.includes('employee-new')) {
+      window.qa.docs['businessMemberships/tenant-a_employee-new'] =
+        member('tenant-a','employee-new','WAITER');
+    }
   };
   prepareRoster();
   const ownRoster = await window.qa.list('tenant-a');
