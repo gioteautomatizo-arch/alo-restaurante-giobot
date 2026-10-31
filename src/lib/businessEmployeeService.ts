@@ -481,17 +481,55 @@ export async function createBusinessEmployee(input: {
     updatedAt: now,
   };
 
-  // Membresía e índice de empleados se confirman juntos o se revierten juntos.
-  // Esto evita dejar empleados sin acceso visible o IDs huérfanos si fallan las reglas.
-  const batch = writeBatch(db);
-  batch.set(membershipRef(input.businessId, userId), employee);
-  batch.update(doc(db, 'businesses', input.businessId), {
-    employeeUserIds: arrayUnion(userId),
-  });
+  // La autorización y la reserva del UID en el índice comparten el commit.
+  // El responsable puede perder el rol o el negocio cambiar de dueño mientras
+  // se autentica al empleado: un batch con preflight antiguo no lo detectaría.
+  // Leer también la membresía de destino para exigir ausencia requiere un
+  // cambio de reglas STAGED (get de documento inexistente es denegado). Por
+  // eso esta transacción impide colisiones indexadas, pero NO certifica que
+  // un documento histórico sin índice no pueda ser sobrescrito: ese caso
+  // requiere una creación condicional en servidor y revisión de reglas.
+  const managerRef = membershipRef(input.businessId, manager.uid);
+  const employeeRef = membershipRef(input.businessId, userId);
+  const rootRef = doc(db, 'businesses', input.businessId);
   try {
-    await batch.commit();
+    await runTransaction(db, async transaction => {
+      assertEmployeeSession(manager.uid);
+      const managerSnap = await transaction.get(managerRef);
+      const rootSnap = await transaction.get(rootRef);
+      assertEmployeeSession(manager.uid);
+      const currentManager = managerSnap.exists()
+        ? managerSnap.data() as Partial<BusinessEmployee> : null;
+      const root = rootSnap.exists() ? rootSnap.data() : null;
+      if (!currentManager || managerSnap.id !== `${input.businessId}_${manager.uid}` ||
+          currentManager.restaurantId !== input.businessId ||
+          currentManager.userId !== manager.uid || currentManager.active !== true ||
+          currentManager.role !== latestManager.role ||
+          !(['OWNER', 'ADMIN', 'MANAGER'] as BusinessRole[]).includes(currentManager.role as BusinessRole) ||
+          !canManageEmployeeRole(currentManager.role as BusinessRole, input.role)) {
+        throw new Error('Tus permisos cambiaron durante el alta. Actualiza el equipo y reintenta.');
+      }
+      if (!root || rootSnap.id !== input.businessId ||
+          root.restaurantId !== input.businessId ||
+          root.ownerUserId !== latestManager.ownerUserId ||
+          (currentManager.role === 'OWNER' &&
+            root.ownerUserId !== undefined && root.ownerUserId !== manager.uid)) {
+        throw new Error('La identidad o propiedad del negocio cambió durante el alta.');
+      }
+      const rawIds: unknown = root.employeeUserIds;
+      if (rawIds !== undefined && (!Array.isArray(rawIds) ||
+          rawIds.some(id => typeof id !== 'string' || !id.trim() || id.includes('/')))) {
+        throw new Error('El índice de empleados es inconsistente. Revisa el equipo antes de continuar.');
+      }
+      if (Array.isArray(rawIds) && rawIds.includes(userId)) {
+        throw new Error('La cuenta ya figura en el equipo. Edítala desde Empleados en lugar de volver a crearla.');
+      }
+      assertEmployeeSession(manager.uid);
+      transaction.set(employeeRef, employee);
+      transaction.update(rootRef, { employeeUserIds: arrayUnion(userId) });
+    });
   } catch (error: any) {
-    // Un timeout puede ocurrir DESPUÉS de que Firestore confirme el batch.
+    // Un timeout puede ocurrir DESPUÉS de que Firestore confirme la transacción.
     // Nunca deducir que no hubo escritura ni usar caché para confirmarla.
     // La marca createdAt identifica este intento: una membresía anterior
     // parecida no basta para declarar éxito.
