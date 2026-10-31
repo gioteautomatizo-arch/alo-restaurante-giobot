@@ -410,6 +410,10 @@ export async function listBusinessEmployees(businessId: string): Promise<Busines
   return employees.sort((a, b) => a.name.localeCompare(b.name, 'es-MX'));
 }
 
+// Un rechazo propio del callback ocurre ANTES de confirmar la transacción:
+// no es una respuesta de red perdida ni requiere comprobar un posible commit.
+class EmployeeCreationPreconditionError extends Error {}
+
 export async function createBusinessEmployee(input: {
   businessId: string;
   name: string;
@@ -507,28 +511,29 @@ export async function createBusinessEmployee(input: {
           currentManager.role !== latestManager.role ||
           !(['OWNER', 'ADMIN', 'MANAGER'] as BusinessRole[]).includes(currentManager.role as BusinessRole) ||
           !canManageEmployeeRole(currentManager.role as BusinessRole, input.role)) {
-        throw new Error('Tus permisos cambiaron durante el alta. Actualiza el equipo y reintenta.');
+        throw new EmployeeCreationPreconditionError('Tus permisos cambiaron durante el alta. Actualiza el equipo y reintenta.');
       }
       if (!root || rootSnap.id !== input.businessId ||
           root.restaurantId !== input.businessId ||
           root.ownerUserId !== latestManager.ownerUserId ||
           (currentManager.role === 'OWNER' &&
             root.ownerUserId !== undefined && root.ownerUserId !== manager.uid)) {
-        throw new Error('La identidad o propiedad del negocio cambió durante el alta.');
+        throw new EmployeeCreationPreconditionError('La identidad o propiedad del negocio cambió durante el alta.');
       }
       const rawIds: unknown = root.employeeUserIds;
       if (rawIds !== undefined && (!Array.isArray(rawIds) ||
           rawIds.some(id => typeof id !== 'string' || !id.trim() || id.includes('/')))) {
-        throw new Error('El índice de empleados es inconsistente. Revisa el equipo antes de continuar.');
+        throw new EmployeeCreationPreconditionError('El índice de empleados es inconsistente. Revisa el equipo antes de continuar.');
       }
       if (Array.isArray(rawIds) && rawIds.includes(userId)) {
-        throw new Error('La cuenta ya figura en el equipo. Edítala desde Empleados en lugar de volver a crearla.');
+        throw new EmployeeCreationPreconditionError('La cuenta ya figura en el equipo. Edítala desde Empleados en lugar de volver a crearla.');
       }
       assertEmployeeSession(manager.uid);
       transaction.set(employeeRef, employee);
       transaction.update(rootRef, { employeeUserIds: arrayUnion(userId) });
     });
   } catch (error: any) {
+    if (error instanceof EmployeeCreationPreconditionError) throw error;
     // Un timeout puede ocurrir DESPUÉS de que Firestore confirme la transacción.
     // Nunca deducir que no hubo escritura ni usar caché para confirmarla.
     // La marca createdAt identifica este intento: una membresía anterior
