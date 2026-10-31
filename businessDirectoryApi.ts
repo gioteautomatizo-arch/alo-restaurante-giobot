@@ -10,8 +10,10 @@ import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 
+// SUPER_ADMIN se acredita únicamente mediante platformAdmins/{uid};
+// una membresía tenant con ese rol no concede acceso al directorio privado.
 const ROLES = new Set([
-  'SUPER_ADMIN', 'OWNER', 'ADMIN', 'MANAGER', 'CASHIER',
+  'OWNER', 'ADMIN', 'MANAGER', 'CASHIER',
   'WAITER', 'KITCHEN', 'EMPLOYEE', 'CLIENT',
 ]);
 const MAX_MEMBERSHIPS = 100;

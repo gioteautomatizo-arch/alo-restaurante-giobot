@@ -17,8 +17,10 @@ const db = getFirestore();
 // La mutación ocurre realmente en Firestore Emulator, no en un mock de datos.
 const originalGetAll = db.getAll.bind(db);
 let afterRootsRead = null;
+let rootReads = 0;
 db.getAll = async (...refs) => {
   const snapshots = await originalGetAll(...refs);
+  if (refs.length && refs.every(ref => ref.parent.id === 'businesses')) rootReads++;
   if (afterRootsRead && refs.length && refs.every(ref => ref.parent.id === 'businesses')) {
     const action = afterRootsRead;
     afterRootsRead = null;
@@ -135,6 +137,27 @@ try {
   assert.deepEqual(ids(await call(bobToken)), [b], 'Anomalía de A no afecta a B');
   await ref(b, alice.uid).set(member(b, alice.uid, 'WAITER'));
 
+  // SUPER_ADMIN es un rol de plataforma, nunca una membresía tenant.
+  // Admin SDK ignora las reglas: el endpoint debe rechazarlo por sí mismo,
+  // antes de consultar raíces y sin entregar la tarjeta válida de A.
+  const beforeForgedRole = rootReads;
+  await ref(b, alice.uid).set(member(b, alice.uid, 'SUPER_ADMIN'));
+  const forgedGlobalRole = await call(aliceToken);
+  assert.equal(forgedGlobalRole.status, 409, 'SUPER_ADMIN tenant debe bloquear listado');
+  assert.equal('businesses' in forgedGlobalRole.data, false, 'Sin lista parcial para rol global forjado');
+  assert.equal(rootReads, beforeForgedRole, 'No consultar raíces con membresía de rol global');
+  assert.deepEqual(ids(await call(bobToken)), [b], 'OWNER legítimo de B conserva acceso');
+  await ref(b, alice.uid).set(member(b, alice.uid, 'WAITER'));
+  assert.deepEqual(ids(await call(aliceToken)), [a, b], 'Empleado legítimo recupera listado');
+
+  // El mismo contrato debe rechazar el rol global en la membresía OWNER.
+  await ref(a, alice.uid).set(member(a, alice.uid, 'SUPER_ADMIN'));
+  const forgedOwner = await call(aliceToken);
+  assert.equal(forgedOwner.status, 409, 'Rol global no sustituye OWNER de A');
+  assert.equal('businesses' in forgedOwner.data, false);
+  await ref(a, alice.uid).set(member(a, alice.uid, 'OWNER'));
+  assert.deepEqual(ids(await call(aliceToken)), [a, b], 'OWNER legítimo vuelve a funcionar');
+
   await ref(b, alice.uid).set({ ...member(b, alice.uid), role: 'ROL_FALSO' });
   assert.equal((await call(aliceToken)).status, 409, 'Rol histórico inválido');
   await ref(b, alice.uid).set(member(b, alice.uid, 'WAITER'));
@@ -162,6 +185,7 @@ try {
   for (const [label, mutation] of [
     ['revocación en vuelo', () => ref(b, alice.uid).update({ active: false })],
     ['cambio de rol en vuelo', () => ref(b, alice.uid).update({ role: 'MANAGER' })],
+    ['rol global forjado en vuelo', () => ref(b, alice.uid).update({ role: 'SUPER_ADMIN' })],
     ['borrado en vuelo', () => ref(b, alice.uid).delete()],
   ]) {
     await ref(b, alice.uid).set(member(b, alice.uid, 'WAITER'));
@@ -190,7 +214,7 @@ try {
   assert.equal(overflow.status, 409);
   assert.equal('businesses' in overflow.data, false);
 
-  console.log('PASS (API opt-in NO activada): Auth, A/B, salida mínima, OWNER/raíz estrictos, legado sin ownerUserId bloqueado, cambio de propietario durante consulta, revocación/rol/borrado, recuperación y límite 100 en emuladores.');
+  console.log('PASS (API opt-in NO activada): Auth, A/B, salida mínima, OWNER/raíz estrictos, rol global tenant rechazado antes de raíces y durante revalidación, legado sin ownerUserId bloqueado, revocación/rol/borrado, recuperación y límite 100 en emuladores.');
   console.warn('PENDIENTE: revisión manual de OWNER históricos, costos de lecturas adicionales, reglas efectivas y corte compatible con clientes antiguos; la revalidación no es atómica.');
 } finally {
   afterRootsRead = null;
