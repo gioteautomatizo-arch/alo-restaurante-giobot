@@ -390,20 +390,74 @@ try {
   assert.equal(privateA.status, 200);
   assert.deepEqual(privateA.data.businesses, legacyA, 'OWNER A: mismas tarjetas, sin raíz privada');
 
-  // Compatibilidad histórica NO resuelta: el legado tolera OWNER sin
-  // ownerUserId, mientras el candidato seguro debe bloquear la lista completa.
-  // No "reparar" ni adoptar silenciosamente ese OWNER durante un corte.
-  const adminRootA = getAdminFirestore(adminApp).doc('businesses/' + idA);
+  // Un mismo UID puede ser OWNER de A y empleado de B. No basta con
+  // comprobar el caso de una sola tarjeta: ante un OWNER histórico corrupto,
+  // la API privada debe negar TODA la respuesta, no filtrar A y devolver B.
+  // Solo se insertan datos ficticios mediante Admin SDK del emulador.
+  const adminDb = getAdminFirestore(adminApp);
+  const adminRootA = adminDb.doc('businesses/' + idA);
+  const adminRootB = adminDb.doc('businesses/' + idB);
+  const crossMemberRef = adminDb.doc('businessMemberships/' + idB + '_' + uidA);
+  const ownerMemberRef = adminDb.doc('businessMemberships/' + idA + '_' + uidA);
+  const addCrossMembership = adminDb.batch();
+  addCrossMembership.set(crossMemberRef, {
+    restaurantId: idB, userId: uidA, role: 'WAITER', active: true,
+  });
+  addCrossMembership.update(adminRootB, { employeeUserIds: FieldValue.arrayUnion(uidA) });
+  await addCrossMembership.commit();
+  const sortCards = (cards: Array<{ restaurantId: string }>) =>
+    [...cards].sort((left, right) => left.restaurantId.localeCompare(right.restaurantId));
+  const twoLegacy = await getBusinessesForUser(uidA);
+  assert.deepEqual(sortCards(twoLegacy).map(x => x.restaurantId), [idA, idB],
+    'Un usuario OWNER A y empleado B recibe dos tarjetas legítimas');
+  const twoPrivate = await privateList(await getIdToken(auth.currentUser!, true));
+  assert.equal(twoPrivate.status, 200);
+  assert.deepEqual(sortCards(twoPrivate.data.businesses), sortCards(twoLegacy),
+    'Dos membresías válidas: paridad de tarjetas sin mezclar datos privados');
+
+  // El legado tolera OWNER sin ownerUserId; el candidato seguro debe fallar
+  // cerrado incluso cuando otra membresía legítima de B podría devolverse.
   await adminRootA.update({ ownerUserId: FieldValue.delete() });
-  assert.deepEqual((await getBusinessesForUser(uidA)).map(x => x.restaurantId), [idA],
-    'El lector legado aún admite OWNER histórico sin ownerUserId');
+  assert.deepEqual(sortCards(await getBusinessesForUser(uidA)).map(x => x.restaurantId), [idA, idB],
+    'El lector legado aún muestra A histórico y B válido');
   const historicPrivate = await privateList(await getIdToken(auth.currentUser!, true));
-  assert.equal(historicPrivate.status, 409, 'El candidato no legitima OWNER histórico sin raíz');
-  assert.equal('businesses' in historicPrivate.data, false, 'Sin lista parcial ante raíz histórica');
+  assert.equal(historicPrivate.status, 409, 'OWNER histórico sin raíz bloquea toda la lista privada');
+  assert.equal('businesses' in historicPrivate.data, false, 'No entregar B como lista parcial');
+
+  // Una raíz con OWNER ajeno no se legitima por una membresía OWNER activa.
+  await adminRootA.update({ ownerUserId: uidB });
+  await assert.rejects(getBusinessesForUser(uidA),
+    'El legado debe rechazar la propiedad discordante, sin tarjetas parciales');
+  const wrongOwnerPrivate = await privateList(await getIdToken(auth.currentUser!, true));
+  assert.equal(wrongOwnerPrivate.status, 409, 'OWNER discordante bloquea el endpoint');
+  assert.equal('businesses' in wrongOwnerPrivate.data, false);
+
+  // Una membresía OWNER revocada no debe aparecer; B sigue accesible por
+  // su membresía WAITER independiente. Restaurar ambos fixtures al terminar.
   await adminRootA.update({ ownerUserId: uidA });
+  await ownerMemberRef.update({ active: false });
+  const revokedOwnerLegacy = await getBusinessesForUser(uidA);
+  assert.deepEqual(revokedOwnerLegacy.map(x => x.restaurantId), [idB],
+    'OWNER A revocado: solo B legítimo permanece en el selector legado');
+  const revokedOwnerPrivate = await privateList(await getIdToken(auth.currentUser!, true));
+  assert.equal(revokedOwnerPrivate.status, 200);
+  assert.deepEqual(revokedOwnerPrivate.data.businesses, revokedOwnerLegacy,
+    'OWNER revocado no reaparece en la API privada');
+  await ownerMemberRef.update({ active: true });
   const restoredPrivate = await privateList(await getIdToken(auth.currentUser!, true));
-  assert.equal(restoredPrivate.status, 200, 'Recuperación después de restaurar OWNER ficticio');
-  assert.deepEqual(restoredPrivate.data.businesses, await getBusinessesForUser(uidA));
+  assert.equal(restoredPrivate.status, 200, 'Recuperación de OWNER ficticio');
+  assert.deepEqual(sortCards(restoredPrivate.data.businesses),
+    sortCards(await getBusinessesForUser(uidA)), 'Paridad recuperada tras restaurar OWNER');
+
+  const removeCrossMembership = adminDb.batch();
+  removeCrossMembership.delete(crossMemberRef);
+  removeCrossMembership.update(adminRootB, { employeeUserIds: FieldValue.arrayRemove(uidA) });
+  await removeCrossMembership.commit();
+  assert.deepEqual((await getBusinessesForUser(uidA)).map(x => x.restaurantId), [idA],
+    'Retirar membresía cruzada ficticia restaura el aislamiento inicial');
+  const isolatedPrivate = await privateList(await getIdToken(auth.currentUser!, true));
+  assert.equal(isolatedPrivate.status, 200);
+  assert.deepEqual(isolatedPrivate.data.businesses, await getBusinessesForUser(uidA));
 
   await signInWithEmailAndPassword(auth, bEmail, password);
   const legacyB = await getBusinessesForUser(uidB);
@@ -414,7 +468,7 @@ try {
   assert.equal(privateB.data.businesses.some((item: {restaurantId: string}) => item.restaurantId === idA), false,
     'OWNER B no ve tarjetas de A');
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
-  console.log('PASS (paridad de lectura): OWNER A/B y empleado invitado coinciden en legado/API; revocación elimina tarjetas y OWNER histórico sin raíz bloquea solo API (Auth+Firestore Emulator).');
+  console.log('PASS (matriz A/B histórica): OWNER A y empleado B con dos tarjetas, OWNER sin raíz/discordante sin lista parcial, revocación OWNER y restauración; paridad legado/API en Auth+Firestore Emulator.');
   console.warn('PENDIENTE: corte 2→3 requiere inventario histórico autorizado y compatibilidad real de clientes antiguos; la API sigue desactivada fuera de este ensayo.');
   console.log('PASS (' + (process.env.TEST_ATOMIC_OWNER_PROPOSAL === '1' ? 'propuesta OWNER aislada' : 'reglas staged') + '): onboarding, identidad, catálogo, publicación y empleados/invitaciones en React conectados a Auth/Firestore/API emulados; edición y baja transaccionales, aislamiento, revocación y recuperación de sesión.');
 } finally {
