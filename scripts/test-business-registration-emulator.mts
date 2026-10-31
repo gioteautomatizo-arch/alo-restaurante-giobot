@@ -16,11 +16,14 @@ import { connectAuthEmulator, createUserWithEmailAndPassword, getIdToken, reload
 import { connectFirestoreEmulator, deleteDoc, doc, getDoc, setDoc, updateDoc, terminate } from 'firebase/firestore';
 import { initializeApp as initializeAdminApp, deleteApp as deleteAdminApp } from 'firebase-admin/app';
 import { getAuth as getAdminAuth } from 'firebase-admin/auth';
-import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
+import { registerBusinessDirectoryApi } from '../businessDirectoryApi.ts';
 
 const projectId = 'gioteautomatizo-registration-e2e-test';
 process.env.FIREBASE_PROJECT_ID = projectId;
 process.env.ENABLE_BUSINESS_INVITES = 'true';
+// El endpoint de tarjetas permanece apagado salvo en el ensayo local controlado.
+delete process.env.ENABLE_SECURE_BUSINESS_LIST;
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080', 'Se requiere emulador Firestore');
 assert.equal(process.env.FIREBASE_AUTH_EMULATOR_HOST, '127.0.0.1:9099', 'Se requiere emulador Auth');
 
@@ -248,6 +251,7 @@ try {
   const app = express();
   app.use(express.json());
   registerBusinessInviteApi(app);
+  registerBusinessDirectoryApi(app);
   server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   const origin = 'http://127.0.0.1:' + server.address().port;
@@ -259,6 +263,13 @@ try {
     });
     return { status: response.status, data: await response.json() };
   };
+  // La API privada es opt-in: el mismo servidor Express local debe rechazarla
+  // antes de habilitar temporalmente el ensayo. Sin fallback al Web SDK.
+  const privateList = (token?: string) => call('/api/businesses/mine', undefined, token, 'GET');
+  assert.equal((await privateList(await getIdToken(auth.currentUser!, true))).status, 404,
+    'El directorio privado debe seguir desactivado por defecto');
+  process.env.ENABLE_SECURE_BUSINESS_LIST = 'true';
+  assert.equal((await privateList()).status, 401, 'El directorio privado exige Auth');
   // Las pantallas React de empleados/invitaciones delegan al SDK y API REALES
   // conectados a Auth/Firestore emulados. Ningún fetch sale a producción.
   const uiBridge = {
@@ -326,7 +337,14 @@ try {
   assert.equal((await getDoc(doc(db, 'businessMemberships', idA + '_' + staff.user.uid))).data()?.role, 'KITCHEN');
   await assertStaffCannotPublishThroughUI({businessId:idA,user:auth.currentUser!,bridge:publicationBridge});
   assert((await getDoc(doc(db, 'businesses', idA))).exists(), 'Empleado accede a A');
-  assert.deepEqual((await getBusinessesForUser(staff.user.uid)).map(x => x.restaurantId), [idA]);
+  const staffLegacyCards = await getBusinessesForUser(staff.user.uid);
+  assert.deepEqual(staffLegacyCards.map(x => x.restaurantId), [idA]);
+  const staffPrivate = await privateList(await getIdToken(auth.currentUser!, true));
+  assert.equal(staffPrivate.status, 200, 'Invitado legítimo obtiene tarjetas privadas');
+  assert.deepEqual(staffPrivate.data.businesses, staffLegacyCards,
+    'Empleado A: paridad de tarjetas Web SDK y API con las mismas membresías');
+  assert.equal(JSON.stringify(staffPrivate.data).includes('customInstructions'), false,
+    'El directorio privado no entrega configuración IA de la raíz');
   await deny(updateDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'), {
     sourceLabel: 'Modificación sin permiso',
   }), 'Empleado KITCHEN no modifica catálogo A');
@@ -346,6 +364,10 @@ try {
   await deny(getDoc(doc(db, 'businesses', idA)), 'Empleado revocado pierde acceso privado');
   await deny(getDoc(doc(db, 'businesses', idB)), 'Revocado tampoco accede a B');
   assert.deepEqual(await getBusinessesForUser(staff.user.uid), [], 'Empleado revocado sin negocios activos');
+  const revokedPrivate = await privateList(await getIdToken(auth.currentUser!, true));
+  assert.equal(revokedPrivate.status, 200, 'Revocación: lista vacía válida');
+  assert.deepEqual(revokedPrivate.data.businesses, [],
+    'La API no conserva tarjetas de un empleado revocado');
   // La baja definitiva debe eliminar membresía e índice en una sola transacción
   // bajo reglas staged reales, no únicamente con el mock de Quality.
   await signInWithEmailAndPassword(auth, aEmail, password);
@@ -360,13 +382,43 @@ try {
     'La baja transaccional también retira al empleado del índice A');
   assert.deepEqual(await listBusinessEmployees(idA), [], 'El roster A no conserva una ficha retirada');
 
-  // Recuperación de sesión: ambos propietarios conservan únicamente su tenant.
-  assert.deepEqual((await getBusinessesForUser(uidA)).map(x => x.restaurantId), [idA]);
+  // Matriz funcional 2→3 de lectura: comparar Web SDK legado y API opt-in
+  // sobre las mismas cuentas, reglas STAGED y documentos del emulador.
+  const legacyA = await getBusinessesForUser(uidA);
+  assert.deepEqual(legacyA.map(x => x.restaurantId), [idA]);
+  const privateA = await privateList(await getIdToken(auth.currentUser!, true));
+  assert.equal(privateA.status, 200);
+  assert.deepEqual(privateA.data.businesses, legacyA, 'OWNER A: mismas tarjetas, sin raíz privada');
+
+  // Compatibilidad histórica NO resuelta: el legado tolera OWNER sin
+  // ownerUserId, mientras el candidato seguro debe bloquear la lista completa.
+  // No "reparar" ni adoptar silenciosamente ese OWNER durante un corte.
+  const adminRootA = getAdminFirestore(adminApp).doc('businesses/' + idA);
+  await adminRootA.update({ ownerUserId: FieldValue.delete() });
+  assert.deepEqual((await getBusinessesForUser(uidA)).map(x => x.restaurantId), [idA],
+    'El lector legado aún admite OWNER histórico sin ownerUserId');
+  const historicPrivate = await privateList(await getIdToken(auth.currentUser!, true));
+  assert.equal(historicPrivate.status, 409, 'El candidato no legitima OWNER histórico sin raíz');
+  assert.equal('businesses' in historicPrivate.data, false, 'Sin lista parcial ante raíz histórica');
+  await adminRootA.update({ ownerUserId: uidA });
+  const restoredPrivate = await privateList(await getIdToken(auth.currentUser!, true));
+  assert.equal(restoredPrivate.status, 200, 'Recuperación después de restaurar OWNER ficticio');
+  assert.deepEqual(restoredPrivate.data.businesses, await getBusinessesForUser(uidA));
+
   await signInWithEmailAndPassword(auth, bEmail, password);
-  assert.deepEqual((await getBusinessesForUser(uidB)).map(x => x.restaurantId), [idB]);
+  const legacyB = await getBusinessesForUser(uidB);
+  assert.deepEqual(legacyB.map(x => x.restaurantId), [idB]);
+  const privateB = await privateList(await getIdToken(auth.currentUser!, true));
+  assert.equal(privateB.status, 200);
+  assert.deepEqual(privateB.data.businesses, legacyB, 'OWNER B: paridad sin datos de A');
+  assert.equal(privateB.data.businesses.some((item: {restaurantId: string}) => item.restaurantId === idA), false,
+    'OWNER B no ve tarjetas de A');
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
+  console.log('PASS (paridad de lectura): OWNER A/B y empleado invitado coinciden en legado/API; revocación elimina tarjetas y OWNER histórico sin raíz bloquea solo API (Auth+Firestore Emulator).');
+  console.warn('PENDIENTE: corte 2→3 requiere inventario histórico autorizado y compatibilidad real de clientes antiguos; la API sigue desactivada fuera de este ensayo.');
   console.log('PASS (' + (process.env.TEST_ATOMIC_OWNER_PROPOSAL === '1' ? 'propuesta OWNER aislada' : 'reglas staged') + '): onboarding, identidad, catálogo, publicación y empleados/invitaciones en React conectados a Auth/Firestore/API emulados; edición y baja transaccionales, aislamiento, revocación y recuperación de sesión.');
 } finally {
+  delete process.env.ENABLE_SECURE_BUSINESS_LIST;
   if (server) await new Promise(resolve => server.close(resolve));
   await signOut(auth).catch(() => {});
   await terminate(db);
