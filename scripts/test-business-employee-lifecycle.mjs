@@ -53,7 +53,7 @@ const mocks = {
     '      window.qa.remoteDocs={}; throw Object.assign(new Error("NETWORK_LOST_BEFORE_COMMIT"),{code:"unavailable"});',
     '    }',
     '    if(window.qa.batchMode === "lost-after") {',
-    '      window.qa.remoteDocs=structuredClone(window.qa.docs);',
+    '      window.qa.remoteDocs=JSON.parse(JSON.stringify(window.qa.docs));',
     '      for(const action of staged) {',
     '        if(action.op === "set") window.qa.remoteDocs[action.path]={...action.data};',
     '        if(action.op === "update") {',
