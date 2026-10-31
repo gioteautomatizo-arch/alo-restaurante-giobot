@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const expected = new Map([
   ['businessDirectoryApi.ts', 3], // Admin SDK: listado privado opt-in y OWNER ajeno por documento
-  ['businessInviteApi.ts', 7], // Admin SDK: membresías e invitaciones
+  ['businessInviteApi.ts', 9], // Admin SDK: invitaciones y revalidación final de actor/raíz/emisores
   ['menuImportApi.ts', 1], // REST: membresía individual para importar menú
   ['src/lib/businessAuthService.ts', 1], // Web SDK: listado directo legado y get individual
   ['src/lib/businessCatalogService.ts', 1], // Web SDK: permiso de catálogo
