@@ -134,25 +134,30 @@ export function registerBusinessDirectoryApi(app: Express): void {
           return fail(res, 409, 'Los permisos cambiaron durante la consulta. Reintenta.');
         }
       }
-      // El listado opt-in es una puerta de corte, no una ruta para legitimar
-      // OWNER históricos sin propietario comprobable. La segunda lectura de
-      // raíces OWNER reduce la ventana de cambios entre snapshot y respuesta.
-      // No es transaccional: requiere reglas y revisión de históricos aparte.
-      const ownerIds = businessIds.filter(id => ownerBusinessIds.has(id));
-      if (ownerIds.length) {
-        const currentOwnerRoots = await db.getAll(...ownerIds.map(
-          id => db.collection('businesses').doc(id)
-        ));
-        if (currentOwnerRoots.length !== ownerIds.length) {
-          return fail(res, 409, 'La propiedad de un negocio cambió durante la consulta. Reintenta.');
-        }
-        for (let index = 0; index < currentOwnerRoots.length; index++) {
-          const current = currentOwnerRoots[index];
-          const data = current.data();
-          if (!current.exists || current.id !== ownerIds[index] || !data ||
-              data.restaurantId !== ownerIds[index] || data.ownerUserId !== uid) {
-            return fail(res, 409, 'La propiedad de un negocio requiere revisión. Reintenta.');
-          }
+      // La raíz también puede cambiar para un EMPLEADO después de construir
+      // su tarjeta. Revalidar TODOS los tenants, no solo los OWNER: no devolver
+      // una tarjeta de B si su raíz desapareció, cambió de identidad o de
+      // branding durante la consulta. Es una defensa, NO un snapshot atómico.
+      const currentRoots = await db.getAll(...businessIds.map(
+        id => db.collection('businesses').doc(id)
+      ));
+      if (currentRoots.length !== businessIds.length) {
+        return fail(res, 409, 'Los negocios cambiaron durante la consulta. Reintenta.');
+      }
+      for (let index = 0; index < currentRoots.length; index++) {
+        const current = currentRoots[index];
+        const data = current.data();
+        const original = roots[index].data();
+        const id = businessIds[index];
+        if (!current.exists || current.id !== id || !data || !original ||
+            data.restaurantId !== id ||
+            data.ownerUserId !== original.ownerUserId ||
+            !data.branding ||
+            data.branding.restaurantName !== original.branding.restaurantName ||
+            data.branding.publicSlug !== original.branding.publicSlug ||
+            data.branding.logoUrl !== original.branding.logoUrl ||
+            (ownerBusinessIds.has(id) && data.ownerUserId !== uid)) {
+          return fail(res, 409, 'Un negocio cambió durante la consulta. Reintenta.');
         }
       }
       return res.status(200).json({ businesses });
