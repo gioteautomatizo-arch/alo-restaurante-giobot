@@ -207,28 +207,28 @@ try {
   window.qa.docs['businessMemberships/tenant-a_employee-new']={
     ...member('tenant-a','employee-new','ADMIN'),createdAt:'registro-original',
   };
-  await assert.rejects(window.qa.create(input()),/No se pudo confirmar/);
+  await assert.rejects(window.qa.create(input()),/ya figura en el equipo/);
   assert.equal(window.qa.writes.length,0,'El alta duplicada no sobrescribe al empleado');
   assert.equal(window.qa.docs['businessMemberships/tenant-a_employee-new'].role,'ADMIN');
 
   // La transacción relee el rol del responsable, la propiedad y el índice
   // incluso si cambiaron DESPUÉS de crear la cuenta Auth secundaria.
-  for (const [label,ref,change] of [
+  for (const [label,ref,change,expected] of [
     ['responsable revocado','businessMemberships/tenant-a_owner-a',
-      () => {window.qa.docs['businessMemberships/tenant-a_owner-a'].active=false;}],
+      () => {window.qa.docs['businessMemberships/tenant-a_owner-a'].active=false;},/Tus permisos cambiaron/],
     ['propietario reasignado','businesses/tenant-a',
-      () => {window.qa.docs['businesses/tenant-a'].ownerUserId='owner-b';}],
+      () => {window.qa.docs['businesses/tenant-a'].ownerUserId='owner-b';},/identidad o propiedad/],
     ['UID ya indexado','businesses/tenant-a',
-      () => {window.qa.docs['businesses/tenant-a'].employeeUserIds=['employee-new'];}],
+      () => {window.qa.docs['businesses/tenant-a'].employeeUserIds=['employee-new'];},/ya figura en el equipo/],
     ['índice corrupto','businesses/tenant-a',
-      () => {window.qa.docs['businesses/tenant-a'].employeeUserIds='inválido';}],
+      () => {window.qa.docs['businesses/tenant-a'].employeeUserIds='inválido';},/índice de empleados es inconsistente/],
   ]) {
     reset();
     let changed=false;
     window.qa.onTransactionRead=target=>{
       if(!changed && target.path===ref){changed=true;change();}
     };
-    await assert.rejects(window.qa.create(input()),/No se pudo confirmar/,label);
+    await assert.rejects(window.qa.create(input()),expected,label);
     assert(changed,label+': se ejecutó el cambio concurrente');
     assert.equal(window.qa.writes.length,0,label+': sin escrituras');
   }
@@ -236,7 +236,7 @@ try {
   window.qa.onBeforeTransactionCommit=attempt=>{
     if(attempt===0) window.qa.docs['businesses/tenant-a'].employeeUserIds=['employee-new'];
   };
-  await assert.rejects(window.qa.create(input()),/No se pudo confirmar/);
+  await assert.rejects(window.qa.create(input()),/ya figura en el equipo/);
   assert.equal(window.qa.conflicts,1,'Un alta concurrente obliga a reintentar');
   assert.equal(window.qa.writes.length,0,'El reintento no sobrescribe un UID indexado');
 
