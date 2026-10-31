@@ -367,17 +367,20 @@ try {
   assert.equal(window.qa.pending.length, 0, 'Sin servidor no se leen raíces privadas');
   window.qa.serverError = null;
 
-  // Si cambia el UID durante la revalidación, la respuesta del UID anterior
-  // no puede volver a pintar el selector de la cuenta nueva.
+  // Una respuesta tardía del segundo chequeo no entrega tarjetas a otro UID.
   window.qa.serverPending = true;
   window.qa.pending = [];
+  window.qa.serverRequests = [];
   const delayed = window.qa.load('owner-a');
   const delayedRejected = assert.rejects(delayed, /sesión cambió/);
-  await waitFor(() => window.qa.pending.length === 1, 'Raíz antes de revalidación tardía');
-  window.qa.pending[0].resolve(snap('tenant-a', {ownerUserId:'owner-a'}));
-  await waitFor(() => window.qa.serverRequests.length === 1, 'Revalidación remota pendiente');
-  window.qa.auth.currentUser = {uid:'owner-b'};
+  await waitFor(() => window.qa.serverRequests.length === 1, 'Primera membresía remota pendiente');
+  assert.equal(window.qa.pending.length, 0, 'No leer raíz antes de confirmar membresía remota');
   window.qa.serverRequests[0].resolve({docs:[{id:'tenant-a_owner-a',data:()=>member('tenant-a')}]});
+  await waitFor(() => window.qa.pending.length === 1, 'Raíz después de primera lectura remota');
+  window.qa.pending[0].resolve(snap('tenant-a', {ownerUserId:'owner-a'}));
+  await waitFor(() => window.qa.serverRequests.length === 2, 'Revalidación remota pendiente');
+  window.qa.auth.currentUser = {uid:'owner-b'};
+  window.qa.serverRequests[1].resolve({docs:[{id:'tenant-a_owner-a',data:()=>member('tenant-a')}]});
   await delayedRejected;
   window.qa.auth.currentUser = {uid:'owner-a'};
   window.qa.serverPending = false;
@@ -391,31 +394,26 @@ try {
   window.qa.pending[0].resolve(snap('tenant-b', {ownerUserId:'owner-a'}));
   assert.equal((await recovered).map(item => item.restaurantId).join(','), 'tenant-b');
   assert(window.qa.serverReads >= 6, 'El selector exige revalidación remota en cada lectura exitosa');
-  // La caché puede conservar una membresía antigua: un fallo del servidor
-  // debe impedir entregar el Workspace, incluso cuando la caché dice OWNER.
+  // Workspace y rol fallan antes de consultar la raíz si falla el servidor.
   window.qa.pending = [];
   const offlineWorkspace = window.qa.one('owner-a', 'tenant-a');
   const offlineWorkspaceRejected = assert.rejects(offlineWorkspace, /offline/);
-  await waitFor(() => window.qa.pending.length === 1, 'Membresía cacheada');
-  window.qa.pending[0].resolve(memberSnap(member('tenant-a')));
-  await waitFor(() => window.qa.pending.length === 2, 'Raíz remota');
-  assert.equal(window.qa.pending[1].source, 'server');
-  window.qa.pending[1].reject(new Error('offline'));
+  await waitFor(() => window.qa.pending.length === 1, 'Membresía remota inicial');
+  assert.equal(window.qa.pending[0].source, 'server');
+  window.qa.pending[0].reject(new Error('offline'));
   await offlineWorkspaceRejected;
+  assert.equal(window.qa.pending.length, 1, 'Workspace no consulta raíz sin permiso remoto');
 
   window.qa.pending = [];
   const offlineRole = window.qa.member('owner-a', 'tenant-a');
   const offlineRoleRejected = assert.rejects(offlineRole, /offline/);
-  await waitFor(() => window.qa.pending.length === 1, 'Rol cacheado');
-  window.qa.pending[0].resolve(memberSnap(member('tenant-a')));
-  await waitFor(() => window.qa.pending.length === 2, 'Raíz remota para rol');
-  window.qa.pending[1].resolve(snap('tenant-a', {ownerUserId:'owner-a'}));
-  await waitFor(() => window.qa.pending.length === 3, 'Rol final remoto');
-  assert.equal(window.qa.pending[2].source, 'server');
-  window.qa.pending[2].reject(new Error('offline'));
+  await waitFor(() => window.qa.pending.length === 1, 'Rol remoto inicial');
+  assert.equal(window.qa.pending[0].source, 'server');
+  window.qa.pending[0].reject(new Error('offline'));
   await offlineRoleRejected;
+  assert.equal(window.qa.pending.length, 1, 'Rol no consulta raíz sin permiso remoto');
 
-  console.log('PASS: Workspace y rol OWNER fallan cerrados ante caché offline (Auth/Firestore simulados).');
+  console.log('PASS: selector, Workspace y rol exigen membresía inicial de servidor antes de leer raíces (simulados).');
   console.log('PASS: selector A/B revalida membresías en servidor, bloquea revocación, cambio de rol, fallo de red y UID obsoleto (simulado).');
   console.log('PASS: lista, OWNER/raíz, revalidación tras revocación y negocio individual aislados por UID/tenant/rol/sesión (Firestore simulado).');
 } finally {
