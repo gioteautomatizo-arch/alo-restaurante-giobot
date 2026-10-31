@@ -88,6 +88,39 @@ try{
  const pendingList=await db.collection('business_invites').where('businessId','==',businessId).get();
  const pendingDoc=pendingList.docs.find(x=>x.data().email===secondEmployee.email);
  assert(pendingDoc,'pending invite for tenant mismatch test');
+ // Una fecha ausente/textual o extendida no debe crear tokens sin caducidad.
+ // El mismo contrato rige listado, preview y aceptación en Auth/Firestore Emulator.
+ const originalPendingInvite=pendingDoc.data();
+ const invalidPendingInvites=[
+   ['sin vencimiento', {expiresAt:FieldValue.delete()}],
+   ['vencimiento textual', {expiresAt:'no-date'}],
+   ['vencimiento numérico como texto', {expiresAt:String(originalPendingInvite.expiresAt)}],
+   ['sin creación', {createdAt:FieldValue.delete()}],
+   ['creación textual', {createdAt:'invalid'}],
+   ['creación futura', {createdAt:Date.now()+60_000}],
+   ['plazo mayor a 72 horas', {expiresAt:originalPendingInvite.createdAt+72*60*60*1000+1}],
+   ['emisor ausente', {createdBy:FieldValue.delete()}],
+   ['emisor con ruta inválida', {createdBy:'another/tenant'}],
+ ];
+ for(const [label,patch] of invalidPendingInvites){
+   await pendingDoc.ref.update(patch);
+   try{
+     const previewInvalid=await call('/api/business-invites/preview',{token:pendingToken});
+     assert.equal(previewInvalid.status,410,label+': vista previa no vigente');
+     const acceptInvalid=await call('/api/business-invites/accept',{token:pendingToken},secondToken);
+     assert.equal(acceptInvalid.status,410,label+': no aceptar invitación malformada');
+     const listInvalid=await call('/api/business-invites?businessId='+businessId,undefined,ownerToken,'GET');
+     assert.equal(listInvalid.status,200,label+': listado del OWNER disponible');
+     assert.equal(listInvalid.data.invites.some(x=>x.id===pendingDoc.id),false,
+       label+': no mostrar invitación malformada');
+     assert.equal((await db.collection('businessMemberships').doc(businessId+'_'+secondEmployee.uid).get()).exists,false,
+       label+': no crear membresía parcial');
+   }finally{
+     await pendingDoc.ref.set(originalPendingInvite);
+   }
+ }
+ assert.equal((await call('/api/business-invites/preview',{token:pendingToken})).status,200,
+   'La invitación íntegra vuelve a estar disponible');
  assert.equal((await call('/api/business-invites/revoke',{businessId,inviteId:pendingDoc.id},ownerToken)).status,403);
  assert.equal((await call('/api/business-invites/accept',{token:pendingToken},secondToken)).status,403);
  await ownerMembership.update({restaurantId:businessId,userId:other.uid});
