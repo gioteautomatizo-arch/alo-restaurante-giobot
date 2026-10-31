@@ -257,7 +257,34 @@ export async function listBusinessEmployees(businessId: string): Promise<Busines
   if (employeeUserIds.some((id) => typeof id !== 'string' || !id.trim() || id.includes('/'))) {
     throw new Error('El índice de empleados del negocio contiene identificadores inválidos.');
   }
+  // Una raíz/índice puede cambiar mientras se leen las membresías. Revalidar
+  // ambos desde el servidor ANTES de entregar cualquier ficha, incluso cuando
+  // el índice inicial estaba vacío. La segunda lectura no es una transacción:
+  // el corte definitivo también necesita reglas seguras y revisión histórica.
+  const initialOwnerId = businessSnap.data().ownerUserId;
+  const initialEmployeeIds = new Set(employeeUserIds as string[]);
+  const verifyRosterStillCurrent = async (): Promise<void> => {
+    const latestRootSnap = await getDocFromServer(doc(db, 'businesses', businessId));
+    assertSession();
+    const latestRoot = latestRootSnap.exists() ? latestRootSnap.data() : null;
+    if (!latestRoot || latestRoot.restaurantId !== businessId ||
+        latestRoot.ownerUserId !== initialOwnerId ||
+        (initialRole === 'OWNER' && latestRoot.ownerUserId !== undefined &&
+          latestRoot.ownerUserId !== requesterId)) {
+      throw new Error('La identidad o propiedad del negocio cambió durante la consulta del equipo.');
+    }
+    const latestRawIds: unknown = latestRoot.employeeUserIds;
+    if (latestRawIds !== undefined && !Array.isArray(latestRawIds)) {
+      throw new Error('El índice de empleados cambió durante la consulta del equipo.');
+    }
+    const latestIds = new Set((latestRawIds || []) as unknown[]);
+    if (latestIds.size !== initialEmployeeIds.size ||
+        [...latestIds].some(id => typeof id !== 'string' || !initialEmployeeIds.has(id))) {
+      throw new Error('El índice de empleados cambió durante la consulta del equipo.');
+    }
+  };
   if (employeeUserIds.length === 0) {
+    await verifyRosterStillCurrent();
     if (await readManagerRole() !== initialRole) throw new Error('Tus permisos cambiaron durante la consulta del equipo.');
     return [];
   }
@@ -286,6 +313,7 @@ export async function listBusinessEmployees(businessId: string): Promise<Busines
     return { ...data, id: item.id } as BusinessEmployee;
   });
   assertSession();
+  await verifyRosterStillCurrent();
   if (await readManagerRole() !== initialRole) {
     throw new Error('Tus permisos cambiaron durante la consulta del equipo.');
   }
