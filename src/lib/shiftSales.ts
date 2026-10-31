@@ -239,14 +239,45 @@ export function computeShiftSalesFromPayments(
     if (p.status && p.status !== 'PAGADO') continue;
     const at = Date.parse(p.createdAt || '') || 0;
     if (at < start || at > end) continue;
-    count += 1;
     const parts = classifiedPaymentParts(p.paymentMethod, p.total, p.paymentBreakdown);
-    parts?.forEach((part) => add(part.method, part.amount));
+    // Igual que el corte diario: un registro inválido no es un pago conciliado.
+    if (!parts) continue;
+    count += 1;
+    parts.forEach((part) => add(part.method, part.amount));
   }
   cash = round2(cash);
   card = round2(card);
   platforms = round2(platforms);
   return { cash, card, platforms, total: round2(cash + card + platforms), count };
+}
+
+/** Diagnóstico de pagos de mesa que NO pueden sumarse como ventas conciliadas.
+ * No asigna fechas ausentes ni filtra negocios: el llamador debe entregar un
+ * feed ya aislado por tenant y verificar permisos antes de usarlo en Caja.
+ * El importe positivo es orientativo, no dinero conciliado.
+ */
+export function auditUnclassifiedTablePayments(
+  payments: PaymentLike[],
+  shiftStartIso: string,
+  shiftEndIso?: string,
+): { count: number; positiveAmount: number } {
+  const start = Date.parse(shiftStartIso);
+  const end = shiftEndIso === undefined ? Infinity : Date.parse(shiftEndIso);
+  if (!Number.isFinite(start) || start <= 0 || !(end >= start)) {
+    return { count: 0, positiveAmount: 0 };
+  }
+  let count = 0;
+  let positiveAmount = 0;
+  for (const payment of payments) {
+    if (payment.status && payment.status !== 'PAGADO') continue;
+    const at = Date.parse(payment.createdAt || '');
+    // Sin fecha válida no se puede atribuir el registro a este turno.
+    if (!Number.isFinite(at) || at < start || at > end) continue;
+    if (classifiedPaymentParts(payment.paymentMethod, payment.total, payment.paymentBreakdown)) continue;
+    count += 1;
+    if (isValidOrderPaymentAmount(payment.total)) positiveAmount += payment.total;
+  }
+  return { count, positiveAmount: round2(positiveAmount) };
 }
 
 /** Ventas del turno = pagos de mesa + pedidos para llevar/domicilio cobrados. */
