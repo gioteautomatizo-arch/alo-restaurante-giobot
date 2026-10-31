@@ -391,6 +391,36 @@ assert.equal(JSON.stringify(mixedDailySamples), mixedDailySnapshot,
 console.warn('PENDIENTE HISTÓRICO: MIXTO parcial/excesivo se excluye de importes clasificados hasta comprobarlo.');
 
 
+// Una descripción de método desconocido no se sanea por traer un desglose válido.
+// El mismo rechazo debe aplicarse a tickets, pagos de mesa y corte diario.
+const misleadingPayment = {
+  status: 'PAGADO', createdAt: '2026-10-23T16:00:00.000Z',
+  paymentMethod: 'VALE', total: 90, paymentBreakdown: mixedBreakdown,
+};
+const duplicatedMixedPayment = {
+  ...misleadingPayment, paymentMethod: 'MIXTO',
+  paymentBreakdown: [
+    { method: 'EFECTIVO', amount: 30 },
+    { method: 'EFECTIVO', amount: 60 },
+  ],
+};
+const badPayments = [misleadingPayment, duplicatedMixedPayment];
+assert.deepEqual(computeShiftSalesFromPayments(badPayments, shiftStart, shiftEnd),
+  { cash: 0, card: 0, platforms: 0, total: 0, count: 2 },
+  'Ni método desconocido ni desglose MIXTO duplicado son ingresos clasificados');
+assert.deepEqual(paymentsSalesForDay(badPayments, '2026-10-23'),
+  { total: 0, count: 0 }, 'El diario también excluye cobros con clasificación ambigua');
+const misleadingReceipt: SaleReceipt = {
+  ...receipt, payments: [{ ...receipt.payments[0],
+    paymentMethod: 'VALE' as SaleReceipt['payments'][number]['paymentMethod'],
+    paymentBreakdown: mixedBreakdown }],
+};
+assert.deepEqual(computeShiftSalesCombined([misleadingReceipt], [], shiftStart, shiftEnd),
+  { cash: 0, card: 0, platforms: 0, total: 0, count: 1 },
+  'Los tickets no convierten un método desconocido en un MIXTO válido');
+console.log('PASS: métodos desconocidos, desgloses engañosos y métodos MIXTO duplicados se rechazan sin inventar categorías.');
+
+
 // Diagnóstico pendiente: método de pago desconocido en pedido externo.
 // Caja lo agrupa como plataformas, mientras Reportes lo deja sin clasificar.
 // Ambos reconocen el total, pero NO hay evidencia de que sea transferencia.
