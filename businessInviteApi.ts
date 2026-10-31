@@ -3,12 +3,12 @@ import { createHash, randomBytes } from 'node:crypto';
 import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { hasValidInviterId, INVITE_EXPIRES_IN_MS, isPendingInviteWithinWindow } from './businessInviteIntegrity.ts';
 
 type InviteRole = 'ADMIN' | 'MANAGER' | 'CASHIER' | 'WAITER' | 'KITCHEN' | 'EMPLOYEE';
 type ActorRole = InviteRole | 'OWNER';
 const ROLES: InviteRole[] = ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE'];
 const OPERATIONAL_ROLES: InviteRole[] = ['CASHIER', 'WAITER', 'KITCHEN', 'EMPLOYEE'];
-const EXPIRES_IN_MS = 72 * 60 * 60 * 1000;
 const INVITES_PER_HOUR = 10;
 const INVITES_PER_BUSINESS_DAY = 50;
 const PREVIEWS_PER_MINUTE = 60;
@@ -122,13 +122,13 @@ export function registerBusinessInviteApi(app: Express): void {
         tx.create(inviteRef, {
           businessId, email: email.trim().toLowerCase(), name: name.trim(),
           role, status: 'PENDING', createdBy: actor.uid, createdAt: now,
-          expiresAt: now + EXPIRES_IN_MS,
+          expiresAt: now + INVITE_EXPIRES_IN_MS,
         });
         return 'CREATED';
       });
       if (created === 'DENIED') return fail(res, 403, 'No tienes permiso para invitar personal de este negocio.');
       if (created === 'LIMIT') return fail(res, 429, 'Se alcanzó el límite de invitaciones. Intenta más tarde.');
-      return res.status(201).json({ token, expiresAt: now + EXPIRES_IN_MS });
+      return res.status(201).json({ token, expiresAt: now + INVITE_EXPIRES_IN_MS });
     } catch (error) {
       console.error('[business-invites/create]', error);
       return fail(res, 503, 'No pudimos preparar la invitación.');
@@ -161,14 +161,11 @@ export function registerBusinessInviteApi(app: Express): void {
       // nunca ofrecer una invitación que no podría aceptarse.
       const candidates = matches.docs.filter(snap => {
         const invite = snap.data();
-        return invite.status === 'PENDING'
+        return isPendingInviteWithinWindow(invite, now)
           && invite.businessId === businessId
-          && Number.isFinite(Number(invite.expiresAt))
-          && Number(invite.expiresAt) > now
           && safeEmail(invite.email)
           && ROLES.includes(invite.role as InviteRole)
-          && typeof invite.createdBy === 'string'
-          && /^[^/]{1,128}$/.test(invite.createdBy)
+          && hasValidInviterId(invite.createdBy)
           && (role !== 'MANAGER' || (invite.createdBy === actor.uid &&
             OPERATIONAL_ROLES.includes(invite.role as InviteRole)));
       });
@@ -283,7 +280,7 @@ export function registerBusinessInviteApi(app: Express): void {
     try {
       const { db } = adminServices();
       const invite = (await db.collection('business_invites').doc(hash(req.body?.token)).get()).data();
-      if (!invite || invite.status !== 'PENDING' || Number(invite.expiresAt) <= Date.now()) {
+      if (!isPendingInviteWithinWindow(invite, Date.now())) {
         return fail(res, 410, 'Esta invitación venció o ya fue utilizada.');
       }
       // La vista previa no debe prometer una invitación que el backend
@@ -291,7 +288,7 @@ export function registerBusinessInviteApi(app: Express): void {
       // invitador; un token pendiente no conserva permisos revocados.
       if (!safeId(invite.businessId) || !safeEmail(invite.email) ||
           !ROLES.includes(invite.role as InviteRole) ||
-          typeof invite.createdBy !== 'string' || !/^[^/]{1,128}$/.test(invite.createdBy)) {
+          !hasValidInviterId(invite.createdBy)) {
         return fail(res, 410, 'Esta invitación ya no está disponible.');
       }
       const businessId: string = invite.businessId;
@@ -338,8 +335,9 @@ export function registerBusinessInviteApi(app: Express): void {
         if (String(invite.email).toLowerCase() !== actor.email!.toLowerCase()) {
           return { status: 403, error: 'Esta invitación fue enviada a otro correo.' };
         }
-        if (!safeId(invite.businessId) || !ROLES.includes(invite.role as InviteRole)) {
-          return { status: 400, error: 'La invitación tiene datos inválidos.' };
+        if (!safeId(invite.businessId) || !ROLES.includes(invite.role as InviteRole) ||
+            !hasValidInviterId(invite.createdBy)) {
+          return { status: 410, error: 'La invitación ya no está disponible.' };
         }
         const businessId: string = invite.businessId;
         const businessRef = db.collection('businesses').doc(businessId);
