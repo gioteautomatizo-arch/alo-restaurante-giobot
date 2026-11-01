@@ -31,13 +31,14 @@ export function auditShiftCutoverCompatibility({
   const openIds = [];
   for (const row of shifts) {
     if (!row || typeof row !== 'object' || !validId(row.id)) { add('INVALID_SHIFT_ID'); summary.unknown++; continue; }
-    if (seenShifts.has(row.id)) add('DUPLICATE_SHIFT_ID');
-    seenShifts.add(row.id);
     if (row.businessId !== businessId) {
       add('SHIFT_TENANT_MISMATCH');
       // Un turno ajeno nunca cuenta como propio ni puede validar candados/recibos.
       continue;
     }
+    // La identidad del tenant precede al índice: IDs ajenos no son duplicados propios.
+    if (seenShifts.has(row.id)) add('DUPLICATE_SHIFT_ID');
+    seenShifts.add(row.id);
     const server = serverShiftId.test(row.id);
     if (row.status !== 'abierto' && row.status !== 'cerrado') { add('UNKNOWN_SHIFT_STATUS'); summary.unknown++; continue; }
     summary[(server ? 'server' : 'legacy') + (row.status === 'abierto' ? 'Open' : 'Closed')]++;
@@ -86,8 +87,9 @@ export function auditShiftCutoverCompatibility({
       add('RECEIPT_SHIFT_MISMATCH');
     }
   }
-  for (const row of shifts) {
-    if (row && serverShiftId.test(row.id ?? '') && row.status === 'cerrado' && !seenReceipts.has(row.id)) {
+  // Solo turnos propios validados pueden exigir comprobante propio.
+  for (const row of byId.values()) {
+    if (serverShiftId.test(row.id) && row.status === 'cerrado' && !seenReceipts.has(row.id)) {
       add('SERVER_CLOSED_WITHOUT_RECEIPT');
     }
   }
