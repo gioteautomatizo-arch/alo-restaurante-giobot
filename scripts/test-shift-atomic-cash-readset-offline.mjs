@@ -69,6 +69,29 @@ try {
   assert.ok(capped.issues.includes('ORDERS_HISTORY_LIMIT_EXCEEDED'));
   assert.equal(capped.capture.atomicReadSet, false);
   delete store.restaurant_orders.orphan;
+  const sid = 'srv-' + 'c'.repeat(32);
+  store['businesses/tenant-a/shifts'][sid] = { businessId: 'tenant-a', status: 'cerrado',
+    openedAt: at, closedAt: at, openedByUid: 'owner-a', openRequestId: 'open-a',
+    closedByUid: 'owner-a', closeRequestId: 'close-a' };
+  store['businesses/tenant-a/shiftAuthority']['closed-' + sid] = {
+    businessId: 'tenant-b', shiftId: sid, actorUid: 'owner-a', requestId: 'close-a', closedAt: at };
+  const foreignReceipt = await capture({ db, businessId: 'tenant-a' });
+  assert.ok(foreignReceipt.issues.includes('AUTHORITY_TENANT_MISMATCH'));
+  assert.ok(foreignReceipt.issues.includes('SERVER_CLOSED_WITHOUT_RECEIPT'));
+  delete store['businesses/tenant-a/shiftAuthority']['closed-' + sid];
+  store['businesses/tenant-a/shifts'][sid].status = 'abierto';
+  store['businesses/tenant-a/shiftAuthority'].current = {
+    businessId: 'tenant-b', status: 'abierto', shiftId: sid,
+    actorUid: 'owner-a', requestId: 'open-a' };
+  const foreignLock = await capture({ db, businessId: 'tenant-a' });
+  assert.ok(foreignLock.issues.includes('AUTHORITY_TENANT_MISMATCH'));
+  assert.ok(foreignLock.issues.includes('SERVER_OPEN_WITHOUT_LOCK'));
+  delete store['businesses/tenant-a/shiftAuthority'].current;
+  store['businesses/tenant-a/shifts'][sid].businessId = 'tenant-b';
+  const foreignShift = await capture({ db, businessId: 'tenant-a' });
+  assert.ok(foreignShift.issues.includes('SHIFTS_TENANT_MISMATCH'));
+  assert.equal(foreignShift.issues.includes('SERVER_OPEN_WITHOUT_LOCK'), false);
+  delete store['businesses/tenant-a/shifts'][sid];
   store['businesses/tenant-a'].restaurantId = 'tenant-b';
   assert.ok((await capture({ db, businessId: 'tenant-a' })).issues.includes('BUSINESS_NOT_FOUND_OR_MISMATCH'));
   store['businesses/tenant-a'].restaurantId = 'tenant-a';
