@@ -2,9 +2,22 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { ArrowRight, Search, Store, Utensils, ShoppingBag, Sparkles, MapPin, Bot } from 'lucide-react';
 import { db } from '../../lib/firebase';
-import type { RestaurantTenant } from '../../lib/restaurantCore';
-
-type DirectoryBusiness = RestaurantTenant & { publicListing?: boolean; published?: boolean };
+// El directorio consume solo campos públicos: no tipar la ficha como raíz privada.
+type DirectoryBusiness = {
+  restaurantId: string;
+  businessType?: string;
+  branding: {
+    restaurantName: string;
+    publicSlug: string;
+    description?: string;
+    tagline?: string;
+    address?: string;
+    coverUrl?: string;
+    logoUrl?: string;
+  };
+  publicListing?: boolean;
+  published?: boolean;
+};
 
 const normalize = (value: string) => value.toLocaleLowerCase('es-MX').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
@@ -38,7 +51,7 @@ function parsePublicDirectoryCard(id: string, value: unknown): DirectoryBusiness
   const raw = data.branding as Record<string, unknown>;
   if (typeof raw.restaurantName !== 'string' || !raw.restaurantName.trim() ||
       typeof raw.publicSlug !== 'string' || !raw.publicSlug.trim()) return null;
-  const branding: Record<string, string> = {
+  const branding: DirectoryBusiness['branding'] = {
     restaurantName: raw.restaurantName.trim(), publicSlug: raw.publicSlug.trim(),
   };
   for (const key of ['description', 'tagline', 'address', 'coverUrl', 'logoUrl'] as const) {
@@ -49,7 +62,7 @@ function parsePublicDirectoryCard(id: string, value: unknown): DirectoryBusiness
     published: true,
     businessType: typeof data.businessType === 'string' ? data.businessType : 'restaurant',
     branding,
-  } as DirectoryBusiness;
+  };
 }
 
 export const BusinessDirectory: React.FC = () => {
