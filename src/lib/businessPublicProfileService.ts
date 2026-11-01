@@ -120,10 +120,22 @@ export async function setBusinessPublication(businessId: string, tenant: Restaur
   }
 }
 
+// Una ficha de otro negocio o una ficha histórica corrupta nunca debe
+// certificar el estado del tenant consultado ni ser sobrescrita en silencio.
+function assertPublicProfileIdentity(businessId: string, data: Record<string, unknown>): void {
+  if (data.businessId !== businessId || data.restaurantId !== businessId
+      || typeof data.published !== 'boolean') {
+    throw new Error('La identidad de la página pública es inconsistente. Solicita revisión antes de publicarla.');
+  }
+}
+
 export async function getBusinessPublicationStatus(businessId: string): Promise<boolean> {
   // El estado de publicación también debe venir del servidor.
   const snap = await getDocFromServer(doc(db, 'publicBusinessProfiles', businessId));
-  return snap.exists() && snap.data().published === true;
+  if (!snap.exists()) return false;
+  const profile = snap.data();
+  assertPublicProfileIdentity(businessId, profile);
+  return profile.published;
 }
 
 
@@ -136,10 +148,13 @@ export async function syncPublicProfileIfNeeded(businessId: string, tenant: Rest
   const user = auth.currentUser;
   if (!user) return false;
   const snap = await getDocFromServer(doc(db, 'publicBusinessProfiles', businessId));
-  if (!snap.exists() || snap.data().published !== true) return false;
+  if (!snap.exists()) return false;
+  const profile = snap.data();
+  assertPublicProfileIdentity(businessId, profile);
+  if (!profile.published) return false;
   const expected = makePublicBusinessProfile(businessId, tenant).branding;
   const sortedJson = (value: unknown) => JSON.stringify(value, (_k, v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v));
-  if (sortedJson(snap.data().branding) === sortedJson(expected)) return false;
+  if (sortedJson(profile.branding) === sortedJson(expected)) return false;
   await setBusinessPublication(businessId, tenant, true);
   return true;
 }
