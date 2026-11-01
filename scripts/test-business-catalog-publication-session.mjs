@@ -464,8 +464,55 @@ try {
   const status = window.qa.publicationStatus('tenant-a');
   await waitFor(() => window.qa.pending.length === 1, 'Estado público remoto');
   assert.equal(window.qa.pending[0].source, 'server');
-  window.qa.pending[0].resolve({exists: () => true, data: () => ({published: true})});
+  window.qa.pending[0].resolve({exists: () => true, data: () => ({businessId:'tenant-a',restaurantId:'tenant-a',published:true})});
   assert.equal(await status, true);
+
+  // Un perfil publicado con identidad de B bajo la ruta de A no puede
+  // aparecer como «publicado» en el Workspace de A, ni sincronizarse.
+  const publicSnap = data => ({exists: () => true, data: () => data});
+  const invalidProfiles = [
+    {businessId:'tenant-b',restaurantId:'tenant-a',published:true},
+    {businessId:'tenant-a',restaurantId:'tenant-b',published:true},
+    {restaurantId:'tenant-a',published:true},
+    {businessId:'tenant-a',restaurantId:'tenant-a',published:'true'},
+    {businessId:'tenant-b',restaurantId:'tenant-a',published:false},
+  ];
+  for (const profile of invalidProfiles) {
+    reset();
+    const blockedStatus = window.qa.publicationStatus('tenant-a');
+    await resolveRead(0,publicSnap(profile),'publicBusinessProfiles/tenant-a');
+    await assert.rejects(blockedStatus,/identidad de la página pública es inconsistente/);
+    assert.equal(window.qa.writes.length,0,'Estado inconsistente no escribe perfil');
+
+    reset();
+    const blockedSync = window.qa.syncPublication('tenant-a',tenant('tenant-a'));
+    await resolveRead(0,publicSnap(profile),'publicBusinessProfiles/tenant-a');
+    await assert.rejects(blockedSync,/identidad de la página pública es inconsistente/);
+    assert.equal(window.qa.writes.length,0,'Sincronización no repara en silencio perfil cruzado');
+  }
+
+  // Perfiles válidos A/B, inexistentes y despublicados conservan su contrato.
+  for (const [id,published] of [['tenant-a',true],['tenant-b',false]]) {
+    reset();
+    const state = window.qa.publicationStatus(id);
+    await resolveRead(0,publicSnap({businessId:id,restaurantId:id,published}), 'publicBusinessProfiles/'+id);
+    assert.equal(await state,published);
+  }
+  reset();
+  const absentStatus = window.qa.publicationStatus('tenant-a');
+  await resolveRead(0,{exists:()=>false},'publicBusinessProfiles/tenant-a');
+  assert.equal(await absentStatus,false,'Una página aún no creada está despublicada');
+  reset();
+  const unpublishedSync = window.qa.syncPublication('tenant-a',tenant('tenant-a'));
+  await resolveRead(0,publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:false}), 'publicBusinessProfiles/tenant-a');
+  assert.equal(await unpublishedSync,false);
+  assert.equal(window.qa.writes.length,0,'No publicar automáticamente una página oculta');
+  reset();
+  const unchangedSync = window.qa.syncPublication('tenant-a',tenant('tenant-a'));
+  await resolveRead(0,publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:true,branding:tenant('tenant-a').branding}), 'publicBusinessProfiles/tenant-a');
+  assert.equal(await unchangedSync,false);
+  assert.equal(window.qa.writes.length,0,'Perfil vigente no se reescribe');
+
   reset();
   const statusOffline = window.qa.publicationStatus('tenant-a');
   await waitFor(() => window.qa.pending.length === 1, 'Estado público sin red');
@@ -481,7 +528,7 @@ try {
   await assert.rejects(syncOffline, /unavailable-sync/);
   assert.equal(window.qa.writes.length, 0, 'Sincronización offline no escribe perfil');
 
-  console.log('PASS: catálogo (guardar, siembra, revisión) y publicación A/B comprueban OWNER/raíz, rol, revocación, sesión, Super Admin y despublicación (Firebase simulado).');
+  console.log('PASS: catálogo y publicación A/B validan OWNER, revocación, identidad de perfiles públicos, lectura/sync fallan cerrados y despublicación (Firebase simulado).');
 } finally {
   window.close();
 }
