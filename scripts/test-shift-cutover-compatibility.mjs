@@ -67,6 +67,19 @@ assert.equal(mixedTenants.issues.includes('DUPLICATE_CLOSE_RECEIPT'), false,
 assert.equal(mixedTenants.issues.includes('SERVER_CLOSED_WITHOUT_RECEIPT'), false,
   'un recibo propio válido sí cubre el cierre propio');
 
+// Un cierre de B nunca exige comprobante en A, ni colisiona con el mismo ID de A.
+const foreignClosedOnly = run([{ ...modernClosed, businessId: 'tenant-b' }]);
+has(foreignClosedOnly, 'SHIFT_TENANT_MISMATCH');
+assert.equal(foreignClosedOnly.summary.serverClosed, 0);
+assert.equal(foreignClosedOnly.issues.includes('SERVER_CLOSED_WITHOUT_RECEIPT'), false);
+const foreignSameId = run([{ ...modernClosed, businessId: 'tenant-b' }, modernClosed], null, [receipt]);
+has(foreignSameId, 'SHIFT_TENANT_MISMATCH');
+assert.equal(foreignSameId.summary.serverClosed, 1);
+assert.equal(foreignSameId.issues.includes('DUPLICATE_SHIFT_ID'), false);
+assert.equal(foreignSameId.issues.includes('SERVER_CLOSED_WITHOUT_RECEIPT'), false);
+// El mismo ID duplicado dentro de A sigue siendo una anomalía.
+has(run([modernClosed, { ...modernClosed }], null, [receipt]), 'DUPLICATE_SHIFT_ID');
+
 has(run([modernClosed], null, [{ ...receipt, requestId: 'wrong' }]), 'RECEIPT_SHIFT_MISMATCH');
 has(run([], null, [receipt]), 'ORPHAN_OR_LEGACY_RECEIPT');
 has(run([modernClosed], null, [receipt, receipt]), 'DUPLICATE_CLOSE_RECEIPT');
