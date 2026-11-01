@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock, History, Lock, Play } from 'lucide-react';
 import type { RestaurantOrder } from '../../types';
 import { subscribeToBusinessRestaurantOrders } from '../../lib/ordersService';
@@ -37,8 +37,12 @@ interface ExpenseDoc { amount: number; paidWith?: string; createdAt: string }
 const card = 'rounded-2xl border border-[#3A3022] bg-[#111111] p-4';
 const input = 'w-full rounded-xl border border-[#3A3022] bg-[#0B0B0B] px-3 py-3 text-sm text-[#F7F7F7] outline-none focus:border-[#D6A34A]';
 
-/** Control de turno: abre, suma ventas solo desde los pedidos cobrados y cierra con diferencia. */
-export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId }) => {
+/** Cada negocio/cuenta conserva su propia operación y formulario. */
+export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId }) => (
+  <BusinessShiftSession key={`${businessId}:${getCurrentAuthUser()?.uid ?? ''}`} businessId={businessId} />
+);
+
+const BusinessShiftSession: React.FC<{ businessId: string }> = ({ businessId }) => {
   const [shifts, setShifts] = useState<ShiftDoc[]>([]);
   const [orders, setOrders] = useState<RestaurantOrder[]>([]);
   const [expenses, setExpenses] = useState<ExpenseDoc[]>([]);
@@ -50,18 +54,29 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [feedStates, setFeedStates] = useState(() => initialShiftFeedStates(businessId));
+  const [readAttempt, setReadAttempt] = useState(0);
+  const savingRef = useRef(false);
+  const mountedRef = useRef(false);
+  const sessionUid = useRef(getCurrentAuthUser()?.uid);
+  const isCurrentSession = () => mountedRef.current && !!sessionUid.current && getCurrentAuthUser()?.uid === sessionUid.current;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  // Reintentar solo lecturas: nunca repetir apertura/cierre automáticamente.
+  const retryReads = () => {
+    if (savingRef.current) return;
+    setFeedStates(initialShiftFeedStates(businessId));
+    setReadAttempt((attempt) => attempt + 1);
+  };
 
   // Una lectura denegada NO significa ventas/gastos = 0.
   // Aislar cada suscripción impide utilizar datos del negocio anterior al navegar.
   useEffect(() => {
     let alive = true;
     setFeedStates(initialShiftFeedStates(businessId));
-    // No reutilizar importes ni notas ingresados para otro negocio.
-    setFund('');
-    setCounted('');
-    setNotes('');
-    setError('');
-    setClosing(false);
+    // El componente se remonta al cambiar de negocio/cuenta; un reintento conserva la captura.
     const mark = (key: ShiftFeedName, status: 'ready' | 'error') => {
       if (alive) setFeedStates((previous) => ({
         ...previous,
@@ -83,7 +98,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
       }, () => mark('orders', 'error')),
     ];
     return () => { alive = false; subs.forEach((stop) => stop()); };
-  }, [businessId]);
+  }, [businessId, readAttempt]);
 
   const currentShifts = feedStates.shifts.businessId === businessId && feedStates.shifts.status === 'ready' ? shifts : [];
   const openShifts = currentShifts.filter((s) => s.status === 'abierto');
@@ -115,7 +130,8 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
   const userName = user?.displayName || user?.email || 'Usuario';
 
   const openShift = async () => {
-    if (!readiness.ready || openShifts.length !== 0 || busy) return;
+    if (!readiness.ready || openShifts.length !== 0 || savingRef.current || !isCurrentSession()) return;
+    savingRef.current = true;
     setBusy(true);
     setError('');
     try {
@@ -129,14 +145,15 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
         { action: 'shift.open', summary: `Abrió turno con fondo de ${money(fundAmount)}` },
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No pudimos abrir el turno.');
+      if (isCurrentSession()) setError(e instanceof Error ? e.message : 'No pudimos abrir el turno.');
     } finally {
-      setBusy(false);
+      savingRef.current = false;
+      if (isCurrentSession()) setBusy(false);
     }
   };
 
   const closeShift = async () => {
-    if (!readiness.ready || !active || !live || busy) return;
+    if (!readiness.ready || !active || !live || savingRef.current || !isCurrentSession()) return;
     if (missingPaymentDates > 0) {
       setError('Hay pedidos pagados sin fecha de cobro verificable. Revisa esos pedidos antes de cerrar el turno.');
       return;
@@ -145,6 +162,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
       setError('Hay pedidos pagados con método desconocido o importe no positivo. Concílialos antes de cerrar el turno.');
       return;
     }
+    savingRef.current = true;
     setBusy(true);
     setError('');
     try {
@@ -171,13 +189,16 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
         },
         { action: 'shift.close', summary: `Cerró turno · ventas ${money(live.sales.total)} · diferencia ${money(difference)}` },
       );
-      setClosing(false);
-      setCounted('');
-      setNotes('');
+      if (isCurrentSession()) {
+        setClosing(false);
+        setCounted('');
+        setNotes('');
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No pudimos cerrar el turno.');
+      if (isCurrentSession()) setError(e instanceof Error ? e.message : 'No pudimos cerrar el turno.');
     } finally {
-      setBusy(false);
+      savingRef.current = false;
+      if (isCurrentSession()) setBusy(false);
     }
   };
 
@@ -192,6 +213,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
       {readiness.errors.length > 0 && <div role="alert" className={card}>
         <strong className="text-sm text-red-300">No se puede conciliar la Caja todavía</strong>
         <p className="mt-2 text-xs text-[#C8C8C8]">No se pudieron consultar: {readiness.errors.join(', ')}. No significa que el saldo sea cero. Se bloquearon apertura y cierre de turno para evitar cortes incorrectos. Revisa permisos o conexión.</p>
+        <button type="button" disabled={busy} onClick={retryReads} className="mt-3 rounded-xl border border-[#D6A34A] px-4 py-2 text-sm font-bold text-[#E3BC6B] disabled:opacity-50">Reintentar consulta</button>
       </div>}
       {readiness.loading.length > 0 && readiness.errors.length === 0 && <div role="status" className={card}>
         <p className="text-xs text-[#C8C8C8]">Consultando turnos, pedidos, gastos y resguardo. No se permite operar Caja antes de obtener todos los datos.</p>
@@ -210,7 +232,7 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
           <div className="flex items-center gap-2 text-sm font-bold text-[#E3BC6B]"><Clock className="h-4 w-4" /> No hay turno abierto</div>
           <p className="mt-2 text-xs text-[#C8C8C8]">Los pedidos de clientes siguen entrando y quedan pendientes de pago aunque no haya turno. Abrir turno no los cobra automáticamente; las ventas se cuentan cuando se registra el pago confirmado.</p>
           <label className="mt-4 block text-xs font-bold text-[#C8C8C8]">Fondo inicial de caja ($)</label>
-          <input type="number" min="0" step="0.01" inputMode="decimal" placeholder="Ingresa el fondo real (ej. 0.00)" value={fund} onChange={(e) => setFund(e.target.value)} className={`${input} mt-1 max-w-xs`} />
+          <input type="number" min="0" step="0.01" inputMode="decimal" placeholder="Ingresa el fondo real (ej. 0.00)" disabled={busy} value={fund} onChange={(e) => setFund(e.target.value)} className={`${input} mt-1 max-w-xs`} />
           <p className="mt-2 text-xs text-[#C8C8C8]">Ingresa el efectivo real antes de abrir, incluso si son $0. No se asigna un fondo automáticamente.</p>
           <button type="button" disabled={busy || parseShiftCashAmount(fund) === null} onClick={() => void openShift()} className="mt-4 flex items-center gap-2 rounded-xl bg-[#D6A34A] px-5 py-3 text-sm font-black text-[#050505] disabled:opacity-50">
             <Play className="h-4 w-4" /> {busy ? 'Abriendo…' : 'Abrir turno'}
@@ -258,14 +280,14 @@ export const BusinessShiftView: React.FC<{ businessId: string }> = ({ businessId
             ) : (
               <div className="mt-4 space-y-3 rounded-xl border border-[#3A3022] bg-[#0B0B0B] p-4">
                 <label className="block text-xs font-bold text-[#C8C8C8]">Efectivo contado en caja ($)</label>
-                <input type="number" min="0" step="0.01" inputMode="decimal" value={counted} onChange={(e) => setCounted(e.target.value)} className={`${input} max-w-xs`} autoFocus />
+                <input type="number" min="0" step="0.01" inputMode="decimal" disabled={busy} value={counted} onChange={(e) => setCounted(e.target.value)} className={`${input} max-w-xs`} autoFocus />
                 {cashDifferencePreview !== null && (
                   <p className="text-xs text-[#C8C8C8]">Diferencia: <strong className={cashDifferencePreview === 0 ? 'text-emerald-300' : 'text-amber-300'}>{money(cashDifferencePreview)}</strong></p>
                 )}
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas del corte (opcional)" rows={2} className={input} />
+                <textarea disabled={busy} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas del corte (opcional)" rows={2} className={input} />
                 <div className="flex gap-2">
                   <button type="button" disabled={busy || missingPaymentDates > 0 || unclassifiedPaid.count > 0 || parseShiftCashAmount(counted) === null} onClick={() => void closeShift()} className="rounded-xl bg-[#D6A34A] px-5 py-3 text-sm font-black text-[#050505] disabled:opacity-50">{busy ? 'Cerrando…' : 'Confirmar cierre'}</button>
-                  <button type="button" onClick={() => setClosing(false)} className="rounded-xl border border-[#3A3022] px-4 py-3 text-sm font-bold">Cancelar</button>
+                  <button type="button" disabled={busy} onClick={() => setClosing(false)} className="rounded-xl border border-[#3A3022] px-4 py-3 text-sm font-bold">Cancelar</button>
                 </div>
               </div>
             )}

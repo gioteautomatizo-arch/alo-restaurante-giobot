@@ -192,7 +192,7 @@ assert.match(shiftViewSource, /subscribeToBusinessRestaurantOrders\(businessId,/
 const scopedFeeds = [...shiftViewSource.matchAll(/subscribeToModule(?:<[^()\n]+>)?\(businessId,\s*'(shifts|expenses|vault)'/g)].map((match) => match[1]).sort();
 assert.deepEqual(scopedFeeds, ['expenses', 'shifts', 'vault']);
 assert.match(shiftViewSource, /getShiftReadiness\(businessId, feedStates,/);
-assert.match(shiftViewSource, /}, \[businessId\]\);/);
+assert.match(shiftViewSource, /}, \[businessId, readAttempt\]\);/);
 assert.doesNotMatch(shiftViewSource, /\b(?:settleTableAccount|subscribeToRestaurantOrders|getActiveRestaurantId|RESTAURANT_ID)\b/);
 console.log('PASS: la vista de turno mantiene suscripciones multinegocio y no usa cobro legado (revisión estática).');
 
@@ -210,10 +210,8 @@ assert.match(shiftViewSource, /const fundAmount = parseShiftCashAmount\(fund\)/)
 assert.match(shiftViewSource, /const countedCash = parseShiftCashAmount\(counted\)/);
 console.log('PASS: guardia visual de cierre por fecha de pago y captura explícita de efectivo (revisión estática).');
 
-// Evitar que importes o notas escritos para un negocio se reutilicen al cambiar a otro.
-// Solo inspecciona el código de la interfaz; no abre ni cierra turnos.
-assert.match(shiftViewSource, /setFeedStates\(initialShiftFeedStates\(businessId\)\);\s*\/\/[^\n]*\n\s*setFund\(''\);\s*setCounted\(''\);\s*setNotes\(''\);/);
-console.log('PASS: el cambio de negocio limpia fondo, efectivo contado y notas (revisión estática).');
+// El aislamiento de formularios y respuestas tardías se ejecuta en React/jsdom
+// mediante test-business-shift-session-ui.mjs, sin depender de una regex de resets.
 assert.match(shiftViewSource, /countHistoricalPaidOrdersMissingPaymentDate\(orders,\s*active\.openedAt\)/);
 assert.match(shiftViewSource, /historicalMissingPaymentDates > 0/);
 console.log('PASS: la interfaz muestra aviso de pagos históricos sin fecha (revisión estática).');
