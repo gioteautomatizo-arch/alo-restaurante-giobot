@@ -69,6 +69,18 @@ try {
   assert.ok(capped.issues.includes('ORDERS_HISTORY_LIMIT_EXCEEDED'));
   assert.equal(capped.capture.atomicReadSet, false);
   delete store.restaurant_orders.orphan;
+  store['businesses/tenant-a/expenses'].foreign = {
+    businessId: 'tenant-b', createdAt: at, amount: 5, paidWith: 'efectivo_caja' };
+  const foreignExpense = await capture({ db, businessId: 'tenant-a' });
+  assert.ok(foreignExpense.issues.includes('EXPENSES_TENANT_MISMATCH'));
+  assert.equal(foreignExpense.issues.includes('EXPENSES_TENANT_MISMATCH_OR_MISSING'), false);
+  delete store['businesses/tenant-a/expenses'].foreign;
+  store['businesses/tenant-a/vault'].foreign = {
+    businessId: 'tenant-b', createdAt: at, amount: 5, kind: 'deposito' };
+  const foreignVault = await capture({ db, businessId: 'tenant-a' });
+  assert.ok(foreignVault.issues.includes('VAULT_TENANT_MISMATCH'));
+  assert.equal(foreignVault.issues.includes('VAULT_TENANT_MISMATCH_OR_MISSING'), false);
+  delete store['businesses/tenant-a/vault'].foreign;
   const sid = 'srv-' + 'c'.repeat(32);
   store['businesses/tenant-a/shifts'][sid] = { businessId: 'tenant-a', status: 'cerrado',
     openedAt: at, closedAt: at, openedByUid: 'owner-a', openRequestId: 'open-a',
