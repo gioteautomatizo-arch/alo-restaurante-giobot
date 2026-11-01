@@ -100,8 +100,17 @@ try {
   issue(await capture({ db, businessId: 'tenant-a' }), 'TABLE_PAYMENT_NOT_RECIPROCAL');
   await orders.doc('table-order-a').update({ paymentId: 'payment-a' });
   await expenses('tenant-a').doc('expense-a').update({ businessId: 'tenant-b' });
-  issue(await capture({ db, businessId: 'tenant-a' }), 'EXPENSES_TENANT_MISMATCH');
+  const foreignExpense = await capture({ db, businessId: 'tenant-a' });
+  issue(foreignExpense, 'EXPENSES_TENANT_MISMATCH');
+  assert.equal(foreignExpense.issues.includes('EXPENSES_TENANT_MISMATCH_OR_MISSING'), false,
+    'el auditor contable no debe volver a procesar gastos ajenos');
   await expenses('tenant-a').doc('expense-a').update({ businessId: 'tenant-a' });
+  await vault('tenant-a').doc('vault-a').update({ businessId: 'tenant-b' });
+  const foreignVault = await capture({ db, businessId: 'tenant-a' });
+  issue(foreignVault, 'VAULT_TENANT_MISMATCH');
+  assert.equal(foreignVault.issues.includes('VAULT_TENANT_MISMATCH_OR_MISSING'), false,
+    'el auditor contable no debe volver a procesar resguardos ajenos');
+  await vault('tenant-a').doc('vault-a').update({ businessId: 'tenant-a' });
   await authority('tenant-a').doc('closed-' + sidA).update({ shiftId: sidB });
   issue(await capture({ db, businessId: 'tenant-a' }), 'RECEIPT_DOCUMENT_ID_MISMATCH');
   await authority('tenant-a').doc('closed-' + sidA).update({ shiftId: sidA });
@@ -135,6 +144,56 @@ try {
   await root('tenant-a').update({ restaurantId: 'tenant-b' });
   issue(await capture({ db, businessId: 'tenant-a' }), 'BUSINESS_NOT_FOUND_OR_MISMATCH');
   await root('tenant-a').update({ restaurantId: 'tenant-a' });
+
+  // Carrera controlada: cambiar un pago NO leído mientras la transacción ya
+  // leyó los pedidos. No se asume que el SDK reintente o entregue un snapshot
+  // particular: se exige bloqueo y que la siguiente lectura detecte la ruptura.
+  let injected = false;
+  let attempts = 0;
+  const racingDb = {
+    collection: db.collection.bind(db),
+    runTransaction: (handler, options) => db.runTransaction(async (tx) => {
+      attempts++;
+      let reads = 0;
+      return handler({ get: async (ref) => {
+        const snapshot = await tx.get(ref);
+        reads++;
+        if (reads === 4 && !injected) {
+          injected = true; // raíz + shifts + authority + orders leídos
+          await payments.doc('payment-a').update({
+            total: 95, subtotal: 95,
+            paymentBreakdown: [{ method: 'EFECTIVO', amount: 35 },
+              { method: 'TARJETA', amount: 60 }],
+          });
+        }
+        return snapshot;
+      } });
+    }, options),
+  };
+  const racing = await capture({ db: racingDb, businessId: 'tenant-a' });
+  blocked(racing);
+  assert.equal(injected, true, 'la escritura concurrente de prueba debe ejecutarse');
+  assert.ok(attempts >= 1, 'debe haber al menos un intento de lectura');
+  if (racing.capture.atomicReadSet) {
+    // Si el SDK reintentó, puede ver el nuevo pago (inconsistente con pedido).
+    // Si conservó el snapshot inicial, verá ambos datos anteriores.
+    // Ambos resultados siguen BLOQUEADOS y no equivalen a conciliación.
+    assert.equal(racing.canActivate, false);
+  } else {
+    issue(racing, 'TRANSACTION_READ_FAILED');
+  }
+  const afterRace = await capture({ db, businessId: 'tenant-a' });
+  blocked(afterRace);
+  issue(afterRace, 'TABLE_PAYMENT_AMOUNT_MISMATCH');
+  await payments.doc('payment-a').update({
+    total: 90, subtotal: 90,
+    paymentBreakdown: [{ method: 'EFECTIVO', amount: 30 },
+      { method: 'TARJETA', amount: 60 }],
+  });
+  const afterRestore = await capture({ db, businessId: 'tenant-a' });
+  assert.equal(afterRestore.issues.includes('TABLE_PAYMENT_AMOUNT_MISMATCH'), false);
+  const unaffectedB = await capture({ db, businessId: 'tenant-b' });
+  assert.equal(unaffectedB.capture.counts.payments, 0);
 
   // El límite debe fallar cerrado, no truncar el universo de pedidos.
   const over = await capture({ db, businessId: 'tenant-a', maxRows: 2 });
