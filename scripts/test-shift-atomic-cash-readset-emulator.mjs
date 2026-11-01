@@ -71,7 +71,9 @@ try {
 
   const a = await capture({ db, businessId: 'tenant-a' });
   blocked(a);
-  assert.equal(a.capture.atomicReadSet, true);
+  assert.equal(a.capture.atomicReadSet, false);
+  assert.equal(a.capture.transactionalReadSet, true);
+  issue(a, 'CROSS_SOURCE_ATOMIC_SNAPSHOT_UNPROVEN');
   assert.deepEqual(a.capture.counts, { shifts: 1, authority: 1, orders: 2,
     payments: 1, expenses: 1, vault: 1 });
   assert.deepEqual(a.capture.otherTenant, { orders: 1, payments: 0 });
@@ -82,7 +84,8 @@ try {
   assert.equal(a.issues.includes('TABLE_PAYMENT_MIXED_BREAKDOWN_UNVERIFIED'), false);
   const b = await capture({ db, businessId: 'tenant-b' });
   blocked(b);
-  assert.equal(b.capture.atomicReadSet, true);
+  assert.equal(b.capture.atomicReadSet, false);
+  assert.equal(b.capture.transactionalReadSet, true);
   assert.deepEqual(b.capture.counts, { shifts: 1, authority: 1, orders: 1,
     payments: 0, expenses: 1, vault: 0 });
   assert.equal(b.capture.otherTenant.orders, 2);
@@ -146,8 +149,8 @@ try {
   await root('tenant-a').update({ restaurantId: 'tenant-a' });
 
   // Carrera controlada: cambiar un pago NO leído mientras la transacción ya
-  // leyó los pedidos. No se asume que el SDK reintente o entregue un snapshot
-  // particular: se exige bloqueo y que la siguiente lectura detecte la ruptura.
+  // leyó los pedidos. El emulador puede devolver el pago nuevo sin reintentar;
+  // por ello NO se certifica un snapshot global aunque el callback se ejecute una vez.
   let injected = false;
   let attempts = 0;
   const racingDb = {
@@ -174,15 +177,14 @@ try {
   blocked(racing);
   assert.equal(injected, true, 'la escritura concurrente de prueba debe ejecutarse');
   assert.ok(attempts >= 1, 'debe haber al menos un intento de lectura');
-  if (racing.capture.atomicReadSet) {
-    // En un único intento el snapshot debe conservar el pago anterior,
-    // aunque se haya actualizado después de leer los pedidos.
-    if (attempts === 1) {
-      assert.equal(racing.issues.includes('TABLE_PAYMENT_AMOUNT_MISMATCH'), false,
-        'una transacción sin reintento no debe mezclar versiones del pago');
-    }
-    // Si hubo reintento, puede ver la inconsistencia real posterior.
+  assert.equal(racing.capture.atomicReadSet, false,
+    'ningún resultado puede certificar atomicidad entre consultas secuenciales');
+  if (racing.capture.transactionalReadSet) {
+    issue(racing, 'CROSS_SOURCE_ATOMIC_SNAPSHOT_UNPROVEN');
+    // La mezcla de versiones puede manifestarse como importe contradictorio
+    // incluso en un solo intento: detectarlo es seguro; declararlo conciliado, no.
     assert.equal(racing.canActivate, false);
+    assert.equal(racing.canCloseCash, false);
   } else {
     issue(racing, 'TRANSACTION_READ_FAILED');
   }
@@ -204,6 +206,7 @@ try {
   blocked(over);
   issue(over, 'ORDERS_HISTORY_LIMIT_EXCEEDED');
   assert.equal(over.capture.atomicReadSet, false);
+  assert.equal(over.capture.transactionalReadSet, false);
   const fail = await capture({ db: { collection() {}, runTransaction: async () => {
     throw new Error('ABORTED');
   } }, businessId: 'tenant-a' });
@@ -213,7 +216,7 @@ try {
 
   assert.equal((await orders.doc('order-a').get()).data().total, 40);
   assert.equal((await root('tenant-a').get()).data().restaurantId, 'tenant-a');
-  console.log('PASS: captura transaccional ACOTADA en Firestore Emulator, A/B, seis fuentes, huérfanos, MIXTO, límites y fail-closed.');
+  console.log('PASS: lectura transaccional ACOTADA sin certificación de snapshot atómico, A/B, MIXTO, concurrencia y fail-closed.');
   console.log('PENDIENTE: historial externo, comprobantes reales, autoridad cliente-servidor, reglas desplegadas y Android/iPad; NO conciliar ni activar Caja.');
 } finally {
   await deleteApp(app);
