@@ -41,7 +41,8 @@ const call = async (method, token, body, header = token ? 'Bearer ' + token : un
     json(value) { this.payload = value; return this; },
   };
   await handlers[method]({ headers: { authorization: header }, body }, res);
-  return { status: res.code, ...res.payload };
+  const { status: state, ...payload } = res.payload;
+  return { httpState: state, status: res.code, ...payload };
 };
 const open = (tenant, requestId = 'open-request-a') =>
   ({ businessId: tenant, requestId, initialCashFund: 100 });
