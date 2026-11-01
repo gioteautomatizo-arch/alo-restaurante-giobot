@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, setDoc, where, type Firestore } from 'firebase/firestore';
 import { subscribeToBusinessTablePayments } from '../src/lib/businessTablePayments.ts';
 
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080',
@@ -36,7 +36,7 @@ function observe(firestore: ReturnType<typeof signed>, businessId: string): Prom
       businessId,
       (rows) => finish({ kind: 'data', ids: rows.map(row => row.id || ''), tenants: rows.map(row => row.restaurantId) }),
       (error) => finish({ kind: 'error', code: (error as Error & { code?: string }).code || 'unknown' }),
-      firestore,
+      firestore as unknown as Firestore,
     );
   });
 }
@@ -90,7 +90,7 @@ try {
   await assertFails(getDocs(collection(ownerA, 'table_payments')));
   await assertFails(getDoc(doc(ownerA, 'table_payments', 'b-only')));
   await assertFails(setDoc(doc(outsider, 'table_payments', 'forged'), payment('tenant-a', '2026-10-31T12:00:00.000Z')));
-  assert.throws(() => subscribeToBusinessTablePayments(' tenant-a', () => {}, () => {}, ownerA), /identificador/);
+  assert.throws(() => subscribeToBusinessTablePayments(' tenant-a', () => {}, () => {}, ownerA as unknown as Firestore), /identificador/);
   assert.throws(() => subscribeToBusinessTablePayments('', () => {}, () => {}, ownerA), /identificador/);
   console.log('PASS: listener real de pagos de mesa aislado A/B; errores explícitos, permisos y consulta sin filtro denegados.');
 } finally {
