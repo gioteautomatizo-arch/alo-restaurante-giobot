@@ -52,6 +52,8 @@ jobs:
         run: node scripts/test-shift-cutover-compatibility.mjs
       - name: Audit cross-source cash integrity A/B (synthetic, no Firebase or authorization)
         run: node scripts/test-shift-accounting-cross-source-audit.mjs
+      - name: Test bounded atomic cash read-set adapter A/B (mocked Firestore, no writes)
+        run: node scripts/test-shift-atomic-cash-readset-offline.mjs
       - name: Test cash shift double taps, retry and account isolation (React, no Firebase writes)
         run: node scripts/test-business-shift-session-ui.mjs
       - name: Test workspace tenant and account isolation (no Firebase writes)
