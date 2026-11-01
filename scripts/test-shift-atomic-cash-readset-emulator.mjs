@@ -105,6 +105,33 @@ try {
   await authority('tenant-a').doc('closed-' + sidA).update({ shiftId: sidB });
   issue(await capture({ db, businessId: 'tenant-a' }), 'RECEIPT_DOCUMENT_ID_MISMATCH');
   await authority('tenant-a').doc('closed-' + sidA).update({ shiftId: sidA });
+
+  // Una autoridad ajena dentro de la ruta A NO puede servir como recibo de A.
+  await authority('tenant-a').doc('closed-' + sidA).update({ businessId: 'tenant-b' });
+  const foreignReceipt = await capture({ db, businessId: 'tenant-a' });
+  issue(foreignReceipt, 'AUTHORITY_TENANT_MISMATCH');
+  issue(foreignReceipt, 'SERVER_CLOSED_WITHOUT_RECEIPT');
+  await authority('tenant-a').doc('closed-' + sidA).update({ businessId: 'tenant-a' });
+
+  // Una autoridad current de B tampoco puede validar el turno abierto de A.
+  const sidOpenA = 'srv-' + 'c'.repeat(32);
+  await shifts('tenant-a').doc(sidOpenA).set({ businessId: 'tenant-a', status: 'abierto',
+    openedAt: at, openedByUid: 'owner-a', openRequestId: 'open-c-123' });
+  await authority('tenant-a').doc('current').set({ businessId: 'tenant-b', status: 'abierto',
+    shiftId: sidOpenA, actorUid: 'owner-a', requestId: 'open-c-123' });
+  const foreignLock = await capture({ db, businessId: 'tenant-a' });
+  issue(foreignLock, 'AUTHORITY_TENANT_MISMATCH');
+  issue(foreignLock, 'SERVER_OPEN_WITHOUT_LOCK');
+  await authority('tenant-a').doc('current').delete();
+  await shifts('tenant-a').doc(sidOpenA).delete();
+
+  // Un turno con identidad B bajo la raíz A no se cuenta como abierto de A.
+  await shifts('tenant-a').doc(sidB).set({ businessId: 'tenant-b', status: 'abierto',
+    openedAt: at, openedByUid: 'owner-b', openRequestId: 'open-b-123' });
+  const foreignShift = await capture({ db, businessId: 'tenant-a' });
+  issue(foreignShift, 'SHIFTS_TENANT_MISMATCH');
+  assert.equal(foreignShift.issues.includes('SERVER_OPEN_WITHOUT_LOCK'), false);
+  await shifts('tenant-a').doc(sidB).delete();
   await root('tenant-a').update({ restaurantId: 'tenant-b' });
   issue(await capture({ db, businessId: 'tenant-a' }), 'BUSINESS_NOT_FOUND_OR_MISMATCH');
   await root('tenant-a').update({ restaurantId: 'tenant-a' });
