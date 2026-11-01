@@ -125,7 +125,7 @@ export async function captureAtomicCashReadSetEmulator({ db, businessId, maxRows
       });
       const accountingAudit = auditAccountingCrossSource({
         businessId, orders: own.orders, payments: own.payments,
-        expenses: rows.expenses, vault: rows.vault,
+        // El diagnóstico de relaciones contables nunca recibe filas ajenas.\n        // Las anomalías de identidad ya quedaron registradas arriba.\n        expenses: own.expenses, vault: own.vault,
       });
       for (const code of [...shiftAudit.issues, ...accountingAudit.issues]) issues.add(code);
       return blocked([...issues], capture);
