@@ -33,8 +33,8 @@ const db = {
   collection,
   runTransaction: async (fn) => {
     transactions++;
-    // El adaptador simula una instantánea por intento. No sustituye la
-    // verificación de la semántica transaccional real en Firebase Emulator.
+    // El adaptador simula una instantánea por intento. Firestore Emulator
+    // puede mostrar versiones distintas en consultas secuenciales reales.
     const snapshot = JSON.parse(JSON.stringify(store));
     let reads = 0;
     return fn({ get: async (ref) => {
@@ -69,7 +69,10 @@ try {
   assert.equal(a.canCloseCash, false);
   assert.equal(a.reconciled, false);
   assert.equal(a.inventoryComplete, false);
-  assert.equal(a.capture.atomicReadSet, true);
+  assert.equal(a.capture.atomicReadSet, false);
+  assert.equal(a.capture.transactionalReadSet, true);
+  assert.ok(a.issues.includes('CROSS_SOURCE_ATOMIC_SNAPSHOT_UNPROVEN'));
+
   assert.equal(a.capture.counts.orders, 1);
   assert.equal(a.capture.otherTenant.orders, 1);
   assert.ok(a.issues.includes('HISTORICAL_EVIDENCE_PENDING'));
@@ -82,6 +85,7 @@ try {
   const capped = await capture({ db, businessId: 'tenant-a', maxRows: 2 });
   assert.ok(capped.issues.includes('ORDERS_HISTORY_LIMIT_EXCEEDED'));
   assert.equal(capped.capture.atomicReadSet, false);
+  assert.equal(capped.capture.transactionalReadSet, false);
   delete store.restaurant_orders.orphan;
   store['businesses/tenant-a/expenses'].foreign = {
     businessId: 'tenant-b', createdAt: at, amount: 5, paidWith: 'efectivo_caja' };
@@ -109,7 +113,8 @@ try {
     store.table_payments.p.paymentBreakdown[0].amount = 35;
   };
   const duringRace = await capture({ db, businessId: 'tenant-a' });
-  assert.equal(duringRace.capture.atomicReadSet, true);
+  assert.equal(duringRace.capture.atomicReadSet, false);
+  assert.equal(duringRace.capture.transactionalReadSet, true);
   assert.equal(duringRace.issues.includes('TABLE_PAYMENT_AMOUNT_MISMATCH'), false);
   assert.equal(injectDuringRead, null);
   const afterRace = await capture({ db, businessId: 'tenant-a' });
@@ -149,7 +154,7 @@ try {
   assert.ok(broken.issues.includes('TRANSACTION_READ_FAILED'));
   assert.equal(broken.capture.atomicReadSet, false);
   assert.ok(transactions >= 4);
-  console.log('PASS: adaptador transaccional simulado A/B, huérfanos, límites y fail-closed (NO Firestore Emulator).');
+  console.log('PASS: adaptador simulado A/B, lectura transaccional sin certificar atomicidad, límites y fail-closed (NO Firestore Emulator).');
   console.log('PENDIENTE: prueba real de transacción en Firebase Emulator, historial y conciliación de Caja.');
 } finally {
   if (previous === undefined) delete process.env.FIRESTORE_EMULATOR_HOST;
