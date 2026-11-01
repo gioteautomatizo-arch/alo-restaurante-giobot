@@ -34,6 +34,8 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-shift-authority-proposal-test --config firebase.launch-security-emulator.json "node scripts/test-shift-server-authority-proposal.mjs"
       - name: Test isolated Admin shift opening transaction A/B and concurrency (emulator only, no endpoint)
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-shift-open-preflight-test --config firebase.launch-security-emulator.json "node scripts/test-shift-open-authority-preflight.mjs"
+      - name: Test isolated Admin shift close transaction A/B, money and concurrency (emulator only, no endpoint)
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-shift-close-preflight-test --config firebase.launch-security-emulator.json "node scripts/test-shift-close-authority-preflight.mjs"
       - name: Test staged order and catalog permissions
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-launch-security-test --config firebase.launch-security-emulator.json "node scripts/test-launch-security.mjs"
       - name: Test real menu draft CAS and two-business isolation (Firestore Emulator only)
