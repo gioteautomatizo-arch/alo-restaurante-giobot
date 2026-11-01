@@ -157,6 +157,28 @@ export function isOffTableOrder(order: { orderType?: string }): boolean {
   return order.orderType === 'pickup' || order.orderType === 'delivery';
 }
 
+/** Diagnóstico conservador: sin conciliación verificable de pagos de mesa,
+ * un pedido PAGADO no-pickup/delivery no es ingreso conciliado en Caja.
+ * Tipo ausente = origen incierto. Los pagos sin fecha no se atribuyen a un turno.
+ * No modifica pedidos ni autoriza cierres.
+ */
+export function auditUnreconciledTableOrders(
+  orders: Array<{ orderType?: string; status?: string; billingStatus?: string; paidAt?: string }>,
+  shiftStartIso: string,
+): { inWindow: number; undated: number } {
+  const start = Date.parse(shiftStartIso);
+  if (!Number.isFinite(start) || start <= 0) return { inWindow: 0, undated: 0 };
+  let inWindow = 0;
+  let undated = 0;
+  for (const order of orders) {
+    if (order.status === 'CANCELADO' || order.billingStatus !== 'PAGADO' || isOffTableOrder(order)) continue;
+    const paid = Date.parse(order.paidAt || '');
+    if (!Number.isFinite(paid) || paid <= 0) undated += 1;
+    else if (paid >= start) inWindow += 1;
+  }
+  return { inWindow, undated };
+}
+
 /** Une lo cobrado en tickets de mesa con lo cobrado en pedidos para llevar/domicilio. */
 export function computeShiftSalesCombined(
   receipts: SaleReceipt[],

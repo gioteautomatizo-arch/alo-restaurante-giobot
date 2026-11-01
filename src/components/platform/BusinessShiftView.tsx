@@ -3,7 +3,7 @@ import { Clock, History, Lock, Play } from 'lucide-react';
 import type { RestaurantOrder } from '../../types';
 import { subscribeToBusinessRestaurantOrders } from '../../lib/ordersService';
 import { saveModuleDoc, subscribeToModule } from '../../lib/tenantModules';
-import { auditUnclassifiedPaidOrders, computeShiftSalesFromOrders } from '../../lib/shiftSales';
+import { auditUnclassifiedPaidOrders, auditUnreconciledTableOrders, computeShiftSalesFromOrders, isOffTableOrder } from '../../lib/shiftSales';
 import { getCurrentAuthUser } from '../../lib/firebase';
 import { countHistoricalPaidOrdersMissingPaymentDate, countPaidOrdersMissingPaymentDate, getShiftReadiness, initialShiftFeedStates, parseShiftCashAmount, previewShiftCashDifference, type ShiftFeedName } from '../../lib/businessShiftReadiness';
 
@@ -108,10 +108,13 @@ const BusinessShiftSession: React.FC<{ businessId: string }> = ({ businessId }) 
   const missingPaymentDates = active && readiness.ready ? countPaidOrdersMissingPaymentDate(orders, active.openedAt) : 0;
   const historicalMissingPaymentDates = active && readiness.ready ? countHistoricalPaidOrdersMissingPaymentDate(orders, active.openedAt) : 0;
   const unclassifiedPaid = active && readiness.ready ? auditUnclassifiedPaidOrders(orders, active.openedAt) : { count: 0, positiveAmount: 0 };
+  const unverifiedTable = active && readiness.ready ? auditUnreconciledTableOrders(orders, active.openedAt) : { inWindow: 0, undated: 0 };
+  const tableCloseBlocked = unverifiedTable.inWindow > 0 || unverifiedTable.undated > 0;
 
   const live = useMemo(() => {
     if (!active || !readiness.ready) return null;
-    const sales = computeShiftSalesFromOrders(orders, active.openedAt);
+    // Sin feed de pagos de mesa conciliado, nunca atribuir pedidos de mesa al total provisional.
+    const sales = computeShiftSalesFromOrders(orders.filter(isOffTableOrder), active.openedAt);
     const start = Date.parse(active.openedAt) || 0;
     const cashExpenses = expenses
       .filter((e) => e.paidWith === 'efectivo_caja' && (Date.parse(e.createdAt) || 0) >= start)
@@ -162,6 +165,10 @@ const BusinessShiftSession: React.FC<{ businessId: string }> = ({ businessId }) 
       setError('Hay pedidos pagados con método desconocido o importe no positivo. Concílialos antes de cerrar el turno.');
       return;
     }
+    if (tableCloseBlocked) {
+      setError('Hay pedidos de mesa pagados o sin origen verificable pendientes de conciliación. No se puede cerrar Caja con esos importes.');
+      return;
+    }
     savingRef.current = true;
     setBusy(true);
     setError('');
@@ -206,7 +213,7 @@ const BusinessShiftSession: React.FC<{ businessId: string }> = ({ businessId }) 
     <div className="space-y-5">
       <div>
         <h2 className="font-serif text-xl font-black text-[#F7F7F7]">Control de turno</h2>
-        <p className="text-xs text-[#B7B7B7]">Las ventas se suman solas con los pedidos cobrados desde que abres el turno.</p>
+        <p className="text-xs text-[#B7B7B7]">Vista provisional: solo pedidos para llevar y domicilio con cobro verificable. Los pagos de mesa requieren conciliación independiente antes del cierre.</p>
       </div>
 
       {error && <div role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs font-semibold text-rose-200">{error}</div>}
@@ -273,8 +280,13 @@ const BusinessShiftSession: React.FC<{ businessId: string }> = ({ businessId }) 
                 {unclassifiedPaid.count} pedido(s) pagado(s) del turno tienen método desconocido o importe no positivo; {money(unclassifiedPaid.positiveAmount)} requieren clasificación documental. El cierre queda bloqueado; no se asigna transferencia ni se inventa un cobro.
               </div>
             )}
+            {tableCloseBlocked && (
+              <div role="alert" className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
+                Caja sin conciliación de mesa: {unverifiedTable.inWindow} pedido(s) pagado(s) durante el turno y {unverifiedTable.undated} sin fecha de cobro verificable. No se suman al total provisional ni se permite cerrar hasta comprobar pagos de mesa, referencias y permisos. No se alteró ningún cobro.
+              </div>
+            )}
             {!closing ? (
-              <button type="button" disabled={missingPaymentDates > 0 || unclassifiedPaid.count > 0} onClick={() => setClosing(true)} className="mt-4 flex items-center gap-2 rounded-xl border border-[#D6A34A] px-5 py-3 text-sm font-black text-[#E3BC6B] disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" disabled={missingPaymentDates > 0 || unclassifiedPaid.count > 0 || tableCloseBlocked} onClick={() => setClosing(true)} className="mt-4 flex items-center gap-2 rounded-xl border border-[#D6A34A] px-5 py-3 text-sm font-black text-[#E3BC6B] disabled:cursor-not-allowed disabled:opacity-50">
                 <Lock className="h-4 w-4" /> Cerrar turno
               </button>
             ) : (
@@ -286,7 +298,7 @@ const BusinessShiftSession: React.FC<{ businessId: string }> = ({ businessId }) 
                 )}
                 <textarea disabled={busy} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas del corte (opcional)" rows={2} className={input} />
                 <div className="flex gap-2">
-                  <button type="button" disabled={busy || missingPaymentDates > 0 || unclassifiedPaid.count > 0 || parseShiftCashAmount(counted) === null} onClick={() => void closeShift()} className="rounded-xl bg-[#D6A34A] px-5 py-3 text-sm font-black text-[#050505] disabled:opacity-50">{busy ? 'Cerrando…' : 'Confirmar cierre'}</button>
+                  <button type="button" disabled={busy || missingPaymentDates > 0 || unclassifiedPaid.count > 0 || tableCloseBlocked || parseShiftCashAmount(counted) === null} onClick={() => void closeShift()} className="rounded-xl bg-[#D6A34A] px-5 py-3 text-sm font-black text-[#050505] disabled:opacity-50">{busy ? 'Cerrando…' : 'Confirmar cierre'}</button>
                   <button type="button" disabled={busy} onClick={() => setClosing(false)} className="rounded-xl border border-[#3A3022] px-4 py-3 text-sm font-bold">Cancelar</button>
                 </div>
               </div>

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { auditUnreconciledTableOrders, computeShiftSalesFromOrders, isOffTableOrder } from '../src/lib/shiftSales.ts';
 import { countHistoricalPaidOrdersMissingPaymentDate, countPaidOrdersMissingPaymentDate, getShiftReadiness, initialShiftFeedStates, SHIFT_FEED_NAMES, parseShiftCashAmount, previewShiftCashDifference, type ShiftFeedStates } from '../src/lib/businessShiftReadiness.ts';
 
 const tenantA = 'giomero';
@@ -175,6 +176,27 @@ console.log('PASS: Caja advierte fechas históricas sin atribuirlas al turno ni 
 
 
 
+// Los pagos de mesa y los pedidos sin canal no son ventas conciliadas.
+const demoPaid = (orderType: string | undefined, paidAt: string | undefined, extra: Record<string, unknown> = {}) => ({
+  orderType, paidAt, billingStatus: 'PAGADO', status: 'ENTREGADO', paymentMethod: 'efectivo', total: 40, ...extra,
+});
+const tableOrders = [
+  demoPaid('dine_in', '2026-10-23T15:05:00.000Z'),
+  demoPaid(undefined, '2026-10-23T15:06:00.000Z'),
+  demoPaid('dine_in', undefined),
+  demoPaid('dine_in', '2026-10-23T14:59:59.000Z'),
+  demoPaid('pickup', '2026-10-23T15:07:00.000Z'),
+  demoPaid('delivery', '2026-10-23T15:08:00.000Z'),
+  demoPaid('dine_in', '2026-10-23T15:09:00.000Z', { status: 'CANCELADO' }),
+  demoPaid('dine_in', '2026-10-23T15:10:00.000Z', { billingStatus: 'PENDIENTE' }),
+];
+const tableSnapshot = JSON.stringify(tableOrders);
+assert.deepEqual(auditUnreconciledTableOrders(tableOrders, shiftOpened), { inWindow: 2, undated: 1 });
+assert.deepEqual(auditUnreconciledTableOrders(tableOrders, 'fecha inválida'), { inWindow: 0, undated: 0 });
+assert.equal(computeShiftSalesFromOrders(tableOrders.filter(isOffTableOrder), shiftOpened).total, 80);
+assert.equal(JSON.stringify(tableOrders), tableSnapshot, 'No modificar pedidos al auditar');
+console.log('PASS: Caja excluye pagos de mesa y canal indeterminado de la suma provisional.');
+
 // Guardia del origen de datos de Caja: proteger el filtro de pedidos por tenant
 // y la ruta de módulos por negocio. Es estática; no prueba reglas Firestore.
 const ordersServiceSource = readFileSync(new URL('../src/lib/ordersService.ts', import.meta.url), 'utf8');
@@ -202,8 +224,8 @@ console.log('PASS: la vista de turno mantiene suscripciones multinegocio y no us
 // Solo verifica el código fuente; no ejecuta Firebase ni operaciones de Caja.
 assert.match(shiftViewSource, /const missingPaymentDates = active && readiness\.ready \? countPaidOrdersMissingPaymentDate\(orders, active\.openedAt\) : 0;/);
 assert.match(shiftViewSource, /if \(missingPaymentDates > 0\) \{\s*setError\(/);
-assert.match(shiftViewSource, /disabled=\{missingPaymentDates > 0 \|\| unclassifiedPaid\.count > 0\}/);
-assert.match(shiftViewSource, /disabled=\{busy \|\| missingPaymentDates > 0 \|\| unclassifiedPaid\.count > 0 \|\| parseShiftCashAmount\(counted\) === null\}/);
+assert.match(shiftViewSource, /disabled=\{missingPaymentDates > 0 \|\| unclassifiedPaid\.count > 0 \|\| tableCloseBlocked\}/);
+assert.match(shiftViewSource, /disabled=\{busy \|\| missingPaymentDates > 0 \|\| unclassifiedPaid\.count > 0 \|\| tableCloseBlocked \|\| parseShiftCashAmount\(counted\) === null\}/);
 assert.match(shiftViewSource, /const \[fund, setFund\] = useState\(''\)/);
 assert.match(shiftViewSource, /const \[counted, setCounted\] = useState\(''\)/);
 assert.match(shiftViewSource, /const fundAmount = parseShiftCashAmount\(fund\)/);
@@ -216,6 +238,9 @@ assert.match(shiftViewSource, /countHistoricalPaidOrdersMissingPaymentDate\(orde
 assert.match(shiftViewSource, /historicalMissingPaymentDates > 0/);
 console.log('PASS: la interfaz muestra aviso de pagos históricos sin fecha (revisión estática).');
 assert.match(shiftViewSource, /auditUnclassifiedPaidOrders\(orders, active\.openedAt\)/);
+assert.match(shiftViewSource, /auditUnreconciledTableOrders\(orders, active\.openedAt\)/);
+assert.match(shiftViewSource, /computeShiftSalesFromOrders\(orders\.filter\(isOffTableOrder\), active\.openedAt\)/);
+assert.match(shiftViewSource, /if \(tableCloseBlocked\) \{\s*setError\(/);
 assert.match(shiftViewSource, /if \(unclassifiedPaid\.count > 0\) \{\s*setError\(/);
 assert.match(shiftViewSource, /unclassifiedPaid\.count > 0 && \(/);
 console.log('PASS: Caja alerta y bloquea cierre con métodos o importes sin clasificar (revisión estática).');
@@ -230,7 +255,7 @@ console.log('PASS: la vista de Caja muestra la diferencia de centavos coherente 
 // UX: la captura debe ser explícita y válida antes de habilitar acciones de Caja.
 // La validación dentro de openShift/closeShift sigue siendo la defensa final.
 assert.match(shiftViewSource, /disabled=\{busy \|\| parseShiftCashAmount\(fund\) === null\}/);
-assert.match(shiftViewSource, /disabled=\{busy \|\| missingPaymentDates > 0 \|\| unclassifiedPaid\.count > 0 \|\| parseShiftCashAmount\(counted\) === null\}/);
+assert.match(shiftViewSource, /disabled=\{busy \|\| missingPaymentDates > 0 \|\| unclassifiedPaid\.count > 0 \|\| tableCloseBlocked \|\| parseShiftCashAmount\(counted\) === null\}/);
 assert.equal(parseShiftCashAmount('0.00'), 0, 'El fondo o contado en cero es válido');
 assert.equal(parseShiftCashAmount('1.999'), null, 'No habilitar importes con más de dos decimales');
 console.log('PASS: los botones de apertura y cierre solo se habilitan con efectivo válido (guardia estática).');

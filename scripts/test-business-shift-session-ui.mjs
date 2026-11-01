@@ -116,6 +116,22 @@ try {
   // Cierre: dos clics solo envían uno; un error permite corregir y reintentar.
   active('tenant-b', 'shifts').next([shift('turno-b')]);
   await waitFor(() => button('Cerrar turno'), 'Turno B abierto');
+  const paidOrder = (orderType, paidAt, total) => ({
+    orderType, paidAt, total, billingStatus: 'PAGADO', status: 'ENTREGADO', paymentMethod: 'efectivo',
+    createdAt: '2026-10-31T15:01:00Z',
+  });
+  active('tenant-b', 'orders').next([
+    paidOrder('dine_in', '2026-10-31T15:05:00Z', 40),
+    paidOrder('pickup', '2026-10-31T15:06:00Z', 50),
+  ]);
+  await waitFor(() => button('Cerrar turno')?.disabled && document.body.textContent.includes('Caja sin conciliación de mesa'), 'Bloqueo por pago de mesa');
+  assert(document.body.textContent.includes('$50.00'), 'El total provisional solo incluye pickup, no los $40 de mesa');
+  assert.equal(qa.writes.length, 2, 'Un pago de mesa no provoca escrituras');
+  active('tenant-b', 'orders').next([paidOrder('dine_in', undefined, 40)]);
+  await waitFor(() => document.body.textContent.includes('1 sin fecha de cobro verificable'), 'Bloqueo histórico de mesa');
+  assert(button('Cerrar turno').disabled, 'No cerrar mesa sin fecha de pago');
+  active('tenant-b', 'orders').next([]);
+  await waitFor(() => !button('Cerrar turno')?.disabled, 'Se recupera el cierre al retirar anomalías ficticias');
   button('Cerrar turno').click();
   await waitFor(() => button('Confirmar cierre'), 'Formulario de cierre');
   enter('100');

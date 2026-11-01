@@ -146,3 +146,10 @@ El cálculo solo usa `computeShiftSalesFromPayments` para pagos de mesa; los ped
 `scripts/test-business-table-reconciliation-feed-emulator.mts` usa el servicio de producción contra el emulador y reglas STAGED con dos tenants, propietarios, cuenta ajena, miembro revocado y anónimo. Comprueba separación de A/B, pago MIXTO íntegro, MIXTO parcial sin total, referencia no recíproca, recuperación tras nueva suscripción y prohibición permanente de cierre. El workflow `security-firestore.yml` lo ejecuta sin tocar Firebase real. **No extrapolar a reglas desplegadas**. CI exacto y cualquier fallo se registran en el checklist.
 
 **Pendientes de salida:** auditoría histórica con comprobantes; comprobación de permisos desplegados; instantánea conjunta consistente/autorización de cierre por servidor; pruebas manuales Android/iPad; y validación del flujo de cobro de mesa multinegocio. **PASO 4 PARCIAL, NO CONCILIADO.** Reversión: retirar el coordinador, su test, su paso de Security y estas notas; no hay migración.
+
+
+### Barrera de cierre ante mesa no conciliada (1 de noviembre de 2026)
+
+La vista de Caja multinegocio no dispone de un feed de pagos de mesa con garantía transaccional. Un pedido PAGADO de `dine_in` o sin `orderType` verificable no es un ingreso de mesa conciliado. La vista solo presenta `pickup/delivery` como ventas **provisionales** y bloquea cierre si hay pedidos de mesa pagados en el turno o sin fecha de cobro. Un pago anterior con fecha verificable fuera del turno no bloquea el turno actual. Ningún cobro se reasigna ni se modifica.
+
+Este control React NO es autoridad de servidor y no prueba completitud de snapshots, permisos efectivos ni conciliación histórica. No conectar el feed de mesa ni habilitar cierre automático por el diagnóstico. Reversión: retirar auditoría, guardia de interfaz y pruebas, sin migración.
