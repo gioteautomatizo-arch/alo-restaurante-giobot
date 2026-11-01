@@ -91,7 +91,7 @@ try {
   await assertFails(getDoc(doc(ownerA, 'table_payments', 'b-only')));
   await assertFails(setDoc(doc(outsider, 'table_payments', 'forged'), payment('tenant-a', '2026-10-31T12:00:00.000Z')));
   assert.throws(() => subscribeToBusinessTablePayments(' tenant-a', () => {}, () => {}, ownerA as unknown as Firestore), /identificador/);
-  assert.throws(() => subscribeToBusinessTablePayments('', () => {}, () => {}, ownerA), /identificador/);
+  assert.throws(() => subscribeToBusinessTablePayments('', () => {}, () => {}, ownerA as unknown as Firestore), /identificador/);
   console.log('PASS: listener real de pagos de mesa aislado A/B; errores explícitos, permisos y consulta sin filtro denegados.');
 } finally {
   await env.cleanup();
