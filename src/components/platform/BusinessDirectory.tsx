@@ -27,23 +27,54 @@ const calientitoCard = (): DirectoryBusiness => ({
             published: true,
           } as DirectoryBusiness);
 
+// Las fichas públicas provienen de Firestore, no de un objeto tipado fiable.
+// Nunca renderizar un perfil con identidad ajena ni campos React incompatibles.
+function parsePublicDirectoryCard(id: string, value: unknown): DirectoryBusiness | null {
+  if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(id) || !value ||
+      typeof value !== 'object' || Array.isArray(value)) return null;
+  const data = value as Record<string, unknown>;
+  if (data.published !== true || data.businessId !== id || data.restaurantId !== id ||
+      !data.branding || typeof data.branding !== 'object' || Array.isArray(data.branding)) return null;
+  const raw = data.branding as Record<string, unknown>;
+  if (typeof raw.restaurantName !== 'string' || !raw.restaurantName.trim() ||
+      typeof raw.publicSlug !== 'string' || !raw.publicSlug.trim()) return null;
+  const branding: Record<string, string> = {
+    restaurantName: raw.restaurantName.trim(), publicSlug: raw.publicSlug.trim(),
+  };
+  for (const key of ['description', 'tagline', 'address', 'coverUrl', 'logoUrl'] as const) {
+    if (typeof raw[key] === 'string') branding[key] = raw[key];
+  }
+  return {
+    restaurantId: id,
+    published: true,
+    businessType: typeof data.businessType === 'string' ? data.businessType : 'restaurant',
+    branding,
+  } as DirectoryBusiness;
+}
+
 export const BusinessDirectory: React.FC = () => {
   const [businesses, setBusinesses] = useState<DirectoryBusiness[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [invalidProfiles, setInvalidProfiles] = useState(0);
+  const [reloadDirectory, setReloadDirectory] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setInvalidProfiles(0);
     getDocs(query(collection(db, 'publicBusinessProfiles'), where('published', '==', true)))
       .then((snapshot) => {
         if (cancelled) return;
         const rows = snapshot.docs
-          .map((item) => ({ ...(item.data() as DirectoryBusiness), restaurantId: item.id }))
-          .filter((business) => business.published === true);
-
+          .map((item) => parsePublicDirectoryCard(item.id, item.data()))
+          .filter((business): business is DirectoryBusiness => business !== null);
+        const rejected = snapshot.docs.length - rows.length;
+        if (rejected) console.warn('[BusinessDirectory] Fichas públicas inconsistentes omitidas:', rejected);
+        setInvalidProfiles(rejected);
         if (!rows.some((business) => business.restaurantId === 'alo-restaurante')) rows.push(calientitoCard());
-
         rows.sort((a, b) => a.branding.restaurantName.localeCompare(b.branding.restaurantName, 'es-MX'));
         setBusinesses(rows);
       })
@@ -56,7 +87,7 @@ export const BusinessDirectory: React.FC = () => {
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [reloadDirectory]);
 
   const visible = useMemo(() => {
     const term = normalize(search.trim());
@@ -105,7 +136,8 @@ export const BusinessDirectory: React.FC = () => {
           </div>
 
           {loading && <div className="py-14 text-center text-sm text-white/60">Cargando negocios publicados…</div>}
-          {error && <div className="mt-6 rounded-2xl border border-red-400/30 bg-red-950/20 p-5 text-sm text-red-100">No pudimos cargar todos los negocios ({error}). Si dice permission-denied, faltan publicar las reglas de Firestore.</div>}
+          {error && <div role="alert" className="mt-6 rounded-2xl border border-red-400/30 bg-red-950/20 p-5 text-sm text-red-100">No pudimos cargar todos los negocios ({error}). Si dice permission-denied, revisa los permisos de Firestore. <button type="button" onClick={() => setReloadDirectory((value) => value + 1)} className="ml-2 underline font-bold">Reintentar directorio</button></div>}
+          {!error && invalidProfiles > 0 && <div role="status" className="mt-6 rounded-2xl border border-amber-400/30 bg-amber-950/20 p-5 text-sm text-amber-100">Algunas fichas públicas tienen datos inconsistentes y no se mostraron. <button type="button" onClick={() => setReloadDirectory((value) => value + 1)} className="ml-2 underline font-bold">Reintentar directorio</button></div>}
           {!loading && !error && visible.length === 0 && <div className="mt-6 rounded-2xl border border-white/10 bg-white/[.03] p-8 text-center"><Store className="mx-auto h-9 w-9 text-[#D6A34A]"/><h3 className="mt-3 text-lg font-bold">{search ? 'No encontramos coincidencias' : 'Estamos preparando el directorio'}</h3><p className="mt-2 text-sm text-white/60">{search ? 'Prueba con otro nombre o categoría.' : 'Pronto aparecerán más negocios. Mientras tanto, puedes registrar el tuyo.'}</p></div>}
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {visible.map((business) => {
