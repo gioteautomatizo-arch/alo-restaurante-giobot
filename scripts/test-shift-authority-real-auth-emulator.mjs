@@ -13,7 +13,7 @@ const projectId = 'gioteautomatizo-shift-real-auth-test';
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080', 'ALTO: Firestore Emulator requerido');
 assert.equal(process.env.FIREBASE_AUTH_EMULATOR_HOST, '127.0.0.1:9099', 'ALTO: Auth Emulator requerido');
 const serverSource = readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
-assert(!serverSource.includes('shiftAuthorityHttpHandlers') && !/\\/api\\/shifts?\\b/.test(serverSource),
+assert(!serverSource.includes('shiftAuthorityHttpHandlers') && !/\/api\/shifts?\b/.test(serverSource),
   'No montar rutas de Caja antes del corte autorizado');
 
 const app = initializeApp({ projectId }, 'shift-real-auth');
