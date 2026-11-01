@@ -42,6 +42,8 @@ jobs:
         run: npx firebase emulators:exec --only auth,firestore --project gioteautomatizo-shift-real-auth-test --config firebase.invites-emulator.json "node scripts/test-shift-authority-real-auth-emulator.mjs"
       - name: Audit paginated shift and receipt inventory A/B (Firestore Emulator, NO cutover)
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-shift-cutover-inventory-test --config firebase.launch-security-emulator.json "node scripts/test-shift-cutover-emulator-inventory.mjs"
+      - name: Audit paginated accounting sources A/B (Firestore Emulator, NO reconciliation or cutover)
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-accounting-sources-test --config firebase.launch-security-emulator.json "node scripts/test-shift-accounting-sources-emulator-inventory.mjs"
       - name: Test staged order and catalog permissions
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-launch-security-test --config firebase.launch-security-emulator.json "node scripts/test-launch-security.mjs"
       - name: Test real menu draft CAS and two-business isolation (Firestore Emulator only)
