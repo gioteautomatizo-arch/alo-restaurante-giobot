@@ -124,6 +124,8 @@ jobs:
         run: node scripts/test-business-branding-session-ui.mjs
       - name: Test shift cash reconciliation (synthetic data, no Firebase writes)
         run: node --import tsx scripts/test-shift-sales.mts
+      - name: Test A/B table payment-order reconciliation preflight (synthetic, no Firebase writes)
+        run: node --import tsx scripts/test-table-payment-reconciliation.mts
       - name: Test table QR decoding and routing (no Firebase writes)
         run: node --import tsx scripts/test-business-table-qr.mts
       - name: Test sent order receipts (local tab storage, no Firebase writes)
