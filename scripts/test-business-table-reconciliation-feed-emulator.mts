@@ -45,7 +45,7 @@ const aPay = payment('a-pay', 'tenant-a', ['a-1', 'a-2'], 90, {
 });
 const aOne = order('a-1', 'tenant-a', 30, 'a-pay');
 const aTwo = order('a-2', 'tenant-a', 60, 'a-pay');
-const aPickup = order('a-pickup', 'tenant-a', 50, '', { orderType: 'pickup', paymentId: undefined });
+const aPickup = order('a-pickup', 'tenant-a', 50, '', { orderType: 'pickup' });
 const bPay = payment('b-pay', 'tenant-b', ['b-1'], 200);
 const bOne = order('b-1', 'tenant-b', 200, 'b-pay');
 
