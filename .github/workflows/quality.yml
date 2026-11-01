@@ -56,6 +56,8 @@ jobs:
         run: node scripts/test-shift-atomic-cash-readset-offline.mjs
       - name: Preflight coordinated cash version drift A/B (offline, NO cutover)
         run: node scripts/test-shift-cash-version-coordination.mjs
+      - name: Audit known cash writer sites and tenant bindings (offline, NO cutover)
+        run: node scripts/test-shift-cash-writer-inventory.mjs
       - name: Test cash shift double taps, retry and account isolation (React, no Firebase writes)
         run: node scripts/test-business-shift-session-ui.mjs
       - name: Test workspace tenant and account isolation (no Firebase writes)
