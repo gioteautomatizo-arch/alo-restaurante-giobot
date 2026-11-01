@@ -44,6 +44,29 @@ has(run([modernOpen], { ...lock, businessId: 'tenant-b' }), 'LOCK_TENANT_MISMATC
 has(run([modernOpen], { ...lock, requestId: 'different' }), 'LOCK_SHIFT_MISMATCH');
 has(run([modernClosed]), 'SERVER_CLOSED_WITHOUT_RECEIPT');
 has(run([modernClosed], null, [{ ...receipt, businessId: 'tenant-b' }]), 'RECEIPT_TENANT_MISMATCH');
+// Aislamiento también dentro del auditor puro (no depender del filtrado externo).
+const foreignLock = run([modernOpen], { ...lock, businessId: 'tenant-b' });
+has(foreignLock, 'LOCK_TENANT_MISMATCH');
+has(foreignLock, 'SERVER_OPEN_WITHOUT_LOCK');
+assert.equal(foreignLock.summary.serverOpen, 1);
+const foreignReceipt = run([modernClosed], null, [{ ...receipt, businessId: 'tenant-b' }]);
+has(foreignReceipt, 'RECEIPT_TENANT_MISMATCH');
+has(foreignReceipt, 'SERVER_CLOSED_WITHOUT_RECEIPT');
+const foreignShift = run([{ ...modernOpen, businessId: 'tenant-b' }], lock);
+has(foreignShift, 'SHIFT_TENANT_MISMATCH');
+assert.equal(foreignShift.summary.serverOpen, 0, 'un turno de B no se cuenta como abierto en A');
+has(foreignShift, 'LOCK_SHIFT_MISMATCH');
+const mixedTenants = run([modernClosed, { ...modernOpen, id: 'srv-' + 'b'.repeat(32),
+  businessId: 'tenant-b' }], null, [{ ...receipt, businessId: 'tenant-b' }, receipt]);
+assert.equal(mixedTenants.summary.serverClosed, 1);
+assert.equal(mixedTenants.summary.serverOpen, 0);
+has(mixedTenants, 'SHIFT_TENANT_MISMATCH');
+has(mixedTenants, 'RECEIPT_TENANT_MISMATCH');
+assert.equal(mixedTenants.issues.includes('DUPLICATE_CLOSE_RECEIPT'), false,
+  'un recibo ajeno no debe contaminar el índice de recibos propios');
+assert.equal(mixedTenants.issues.includes('SERVER_CLOSED_WITHOUT_RECEIPT'), false,
+  'un recibo propio válido sí cubre el cierre propio');
+
 has(run([modernClosed], null, [{ ...receipt, requestId: 'wrong' }]), 'RECEIPT_SHIFT_MISMATCH');
 has(run([], null, [receipt]), 'ORPHAN_OR_LEGACY_RECEIPT');
 has(run([modernClosed], null, [receipt, receipt]), 'DUPLICATE_CLOSE_RECEIPT');
