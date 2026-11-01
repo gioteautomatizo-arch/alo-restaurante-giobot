@@ -36,6 +36,26 @@ test(v => { v.orders[0].data.restaurantId = 'tenant-b'; }, 'ORDERS_TENANT_MISMAT
 test(v => { v.payments[0].data.restaurantId = 'tenant-b'; }, 'PAYMENTS_TENANT_MISMATCH_OR_MISSING');
 test(v => { v.expenses[0].data.businessId = 'tenant-b'; }, 'EXPENSES_TENANT_MISMATCH_OR_MISSING');
 test(v => { v.vault[0].data.businessId = undefined; }, 'VAULT_TENANT_MISMATCH_OR_MISSING');
+// IDs idénticos entre tenants no son duplicados contables de A.
+for (const [name, tenantKey] of [
+  ['orders', 'restaurantId'], ['payments', 'restaurantId'],
+  ['expenses', 'businessId'], ['vault', 'businessId'],
+]) {
+  const v = make();
+  v[name].unshift(row(v[name][0].id, { ...v[name][0].data, [tenantKey]: 'tenant-b' }));
+  const result = audit(v);
+  const prefix = name.toUpperCase();
+  has(result, prefix + '_TENANT_MISMATCH_OR_MISSING');
+  assert.equal(result.issues.includes(prefix + '_DUPLICATE_ID'), false,
+    'ID ajeno no es duplicado propio: ' + name);
+  assert.deepEqual(result.countsInPeriod, base.countsInPeriod);
+  assert.deepEqual(result.issues, [...base.issues, prefix + '_TENANT_MISMATCH_OR_MISSING'].sort());
+  // Un duplicado real dentro de A debe seguir diagnosticándose.
+  const own = make();
+  own[name].push({ ...own[name][0] });
+  has(audit(own), prefix + '_DUPLICATE_ID');
+}
+
 test(v => { v.orders[0].data.paidAt = 'fecha-desconocida'; }, 'ORDERS_DATE_UNVERIFIED');
 test(v => { v.orders.push({ ...v.orders[0] }); }, 'ORDERS_DUPLICATE_ID');
 assert.throws(() => audit({ ...make(), startIso: 'mal' }), /INVALID_AUDIT_INPUT/);
