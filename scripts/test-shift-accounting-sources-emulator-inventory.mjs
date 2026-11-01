@@ -37,7 +37,11 @@ try {
     paidAt: at, total: 300, orderType: 'delivery' });
   await payments.doc('payment-a').set({ restaurantId: 'tenant-a', status: 'PAGADO',
     createdAt: at, total: 90, paymentMethod: 'MIXTO',
+    orderIds: ['table-order-a'], subtotal: 90, discountAmount: 0, tipAmount: 0,
     paymentBreakdown: [{ method: 'EFECTIVO', amount: 30 }, { method: 'TARJETA', amount: 60 }] });
+  await orders.doc('table-order-a').set({ restaurantId: 'tenant-a',
+    orderType: 'dine_in', status: 'ENTREGADO', billingStatus: 'PAGADO',
+    paidAt: at, paymentId: 'payment-a', total: 90 });
   await payments.doc('payment-b').set({ restaurantId: 'tenant-b', status: 'PAGADO',
     createdAt: at, total: 300, paymentMethod: 'EFECTIVO' });
   await expenses('tenant-a').doc('expense-a').set({ businessId: 'tenant-a',
@@ -49,13 +53,15 @@ try {
   const a = await capture({ db, businessId: 'tenant-a', pageSize: 1 });
   blocked(a);
   assert.equal(a.capture.stable, true);
-  assert.deepEqual(a.capture.counts, { orders: 1, payments: 1, expenses: 1, vault: 1 });
+  assert.deepEqual(a.capture.counts, { orders: 2, payments: 1, expenses: 1, vault: 1 });
   assert.deepEqual(a.capture.otherTenant, { orders: 1, payments: 1 });
   assert.ok(a.capture.pages.orders >= 2);
   assert.ok(a.capture.pages.payments >= 2);
   issue(a, 'NOT_ATOMIC_SNAPSHOT');
   issue(a, 'HISTORICAL_EVIDENCE_PENDING');
   assert.equal(a.issues.includes('TABLE_PAYMENT_MIXED_BREAKDOWN_UNVERIFIED'), false);
+  assert.equal(a.issues.includes('TABLE_PAYMENT_NOT_RECIPROCAL'), false);
+  assert.equal(a.issues.includes('TABLE_PAYMENT_AMOUNT_MISMATCH'), false);
   const b = await capture({ db, businessId: 'tenant-b', pageSize: 2 });
   blocked(b);
   assert.deepEqual(b.capture.counts, { orders: 1, payments: 1, expenses: 1, vault: 0 });
@@ -77,6 +83,22 @@ try {
   await expenses('tenant-a').doc('expense-a').update({ businessId: 'tenant-b' });
   issue(await capture({ db, businessId: 'tenant-a' }), 'EXPENSES_TENANT_MISMATCH');
   await expenses('tenant-a').doc('expense-a').update({ businessId: 'tenant-a' });
+
+  await orders.doc('table-order-a').update({ paymentId: 'otra-referencia' });
+  issue(await capture({ db, businessId: 'tenant-a' }), 'TABLE_PAYMENT_NOT_RECIPROCAL');
+  await orders.doc('table-order-a').update({ paymentId: 'payment-a' });
+  await payments.doc('payment-a').update({ orderIds: ['table-order-a', 'table-order-a'] });
+  issue(await capture({ db, businessId: 'tenant-a' }), 'TABLE_PAYMENT_ORDER_DUPLICATE');
+  await payments.doc('payment-a').update({ orderIds: ['table-order-a'] });
+  await payments.doc('payment-a').update({ subtotal: 91 });
+  issue(await capture({ db, businessId: 'tenant-a' }), 'TABLE_PAYMENT_AMOUNT_MISMATCH');
+  await payments.doc('payment-a').update({ subtotal: 90 });
+  await expenses('tenant-a').doc('expense-a').update({ paidWith: 'metodo-desconocido' });
+  issue(await capture({ db, businessId: 'tenant-a' }), 'EXPENSES_AMOUNT_OR_METHOD_UNVERIFIED');
+  await expenses('tenant-a').doc('expense-a').update({ paidWith: 'efectivo_caja' });
+  await vault('tenant-a').doc('vault-a').update({ kind: 'tipo-desconocido' });
+  issue(await capture({ db, businessId: 'tenant-a' }), 'VAULT_AMOUNT_OR_KIND_UNVERIFIED');
+  await vault('tenant-a').doc('vault-a').update({ kind: 'deposito' });
 
   const changed = await capture({ db, businessId: 'tenant-a', pageSize: 1,
     afterFirstPass: () => payments.doc('payment-a').update({ total: 91 }),
