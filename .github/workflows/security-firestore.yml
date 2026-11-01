@@ -38,6 +38,8 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-shift-close-preflight-test --config firebase.launch-security-emulator.json "node scripts/test-shift-close-authority-preflight.mjs"
       - name: Test isolated authenticated shift HTTP handlers A/B (emulator only, NO route mounted)
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-shift-http-boundary-test --config firebase.launch-security-emulator.json "node scripts/test-shift-authority-http-handlers.mjs"
+      - name: Verify real Auth Emulator ID tokens for isolated cash HTTP handlers A/B (NO endpoint)
+        run: npx firebase emulators:exec --only auth,firestore --project gioteautomatizo-shift-real-auth-test --config firebase.invites-emulator.json "node scripts/test-shift-authority-real-auth-emulator.mjs"
       - name: Test staged order and catalog permissions
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-launch-security-test --config firebase.launch-security-emulator.json "node scripts/test-launch-security.mjs"
       - name: Test real menu draft CAS and two-business isolation (Firestore Emulator only)
