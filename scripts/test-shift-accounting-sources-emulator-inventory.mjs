@@ -65,7 +65,9 @@ try {
   const b = await capture({ db, businessId: 'tenant-b', pageSize: 2 });
   blocked(b);
   assert.deepEqual(b.capture.counts, { orders: 1, payments: 1, expenses: 1, vault: 0 });
-  assert.equal(b.capture.otherTenant.orders, 1);
+  // El fixture ahora contiene dos pedidos del tenant A: order-a y table-order-a.
+  // Ambos deben contabilizarse como ajenos a B, nunca como ventas de B.
+  assert.equal(b.capture.otherTenant.orders, 2);
 
   await orders.doc('orphan').set({ billingStatus: 'PAGADO', paidAt: at, total: 40 });
   issue(await capture({ db, businessId: 'tenant-a', pageSize: 2 }),
