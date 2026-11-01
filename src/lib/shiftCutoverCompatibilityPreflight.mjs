@@ -33,7 +33,11 @@ export function auditShiftCutoverCompatibility({
     if (!row || typeof row !== 'object' || !validId(row.id)) { add('INVALID_SHIFT_ID'); summary.unknown++; continue; }
     if (seenShifts.has(row.id)) add('DUPLICATE_SHIFT_ID');
     seenShifts.add(row.id);
-    if (row.businessId !== businessId) add('SHIFT_TENANT_MISMATCH');
+    if (row.businessId !== businessId) {
+      add('SHIFT_TENANT_MISMATCH');
+      // Un turno ajeno nunca cuenta como propio ni puede validar candados/recibos.
+      continue;
+    }
     const server = serverShiftId.test(row.id);
     if (row.status !== 'abierto' && row.status !== 'cerrado') { add('UNKNOWN_SHIFT_STATUS'); summary.unknown++; continue; }
     summary[(server ? 'server' : 'legacy') + (row.status === 'abierto' ? 'Open' : 'Closed')]++;
@@ -52,20 +56,26 @@ export function auditShiftCutoverCompatibility({
   if (summary.legacyOpen > 0) add('LEGACY_OPEN_SHIFT_REQUIRES_MANUAL_HANDOFF');
   if (summary.legacyClosed > 0) add('LEGACY_HISTORY_REQUIRES_REVIEW');
   if (openIds.length > 1) add('MULTIPLE_OPEN_SHIFTS');
-  if (currentLock !== null) {
-    if (currentLock.businessId !== businessId) add('LOCK_TENANT_MISMATCH');
-    if (currentLock.status !== 'abierto' || !serverShiftId.test(currentLock.shiftId ?? '') ||
-        !validId(currentLock.actorUid) || !validId(currentLock.requestId)) add('LOCK_INVALID');
-    const open = byId.get(currentLock.shiftId);
-    if (!open || open.status !== 'abierto' || open.openedByUid !== currentLock.actorUid ||
-        open.openRequestId !== currentLock.requestId) add('LOCK_SHIFT_MISMATCH');
+  if (currentLock !== null && currentLock.businessId !== businessId) add('LOCK_TENANT_MISMATCH');
+  // Un candado ajeno equivale a ausencia de candado propio, no a autoridad válida.
+  const ownLock = currentLock?.businessId === businessId ? currentLock : null;
+  if (ownLock !== null) {
+    if (ownLock.status !== 'abierto' || !serverShiftId.test(ownLock.shiftId ?? '') ||
+        !validId(ownLock.actorUid) || !validId(ownLock.requestId)) add('LOCK_INVALID');
+    const open = byId.get(ownLock.shiftId);
+    if (!open || open.status !== 'abierto' || open.openedByUid !== ownLock.actorUid ||
+        open.openRequestId !== ownLock.requestId) add('LOCK_SHIFT_MISMATCH');
   }
-  if (summary.serverOpen > 0 && currentLock === null) add('SERVER_OPEN_WITHOUT_LOCK');
-  if (currentLock !== null && openIds.length !== 1) add('LOCK_WITHOUT_SINGLE_OPEN_SHIFT');
+  if (summary.serverOpen > 0 && ownLock === null) add('SERVER_OPEN_WITHOUT_LOCK');
+  if (ownLock !== null && openIds.length !== 1) add('LOCK_WITHOUT_SINGLE_OPEN_SHIFT');
   const seenReceipts = new Set();
   for (const receipt of receipts) {
     if (!receipt || typeof receipt !== 'object' || !validId(receipt.shiftId)) { add('INVALID_RECEIPT'); continue; }
-    if (receipt.businessId !== businessId) add('RECEIPT_TENANT_MISMATCH');
+    if (receipt.businessId !== businessId) {
+      add('RECEIPT_TENANT_MISMATCH');
+      // Un recibo ajeno no puede cubrir un cierre propio.
+      continue;
+    }
     if (seenReceipts.has(receipt.shiftId)) add('DUPLICATE_CLOSE_RECEIPT');
     seenReceipts.add(receipt.shiftId);
     const shift = byId.get(receipt.shiftId);
