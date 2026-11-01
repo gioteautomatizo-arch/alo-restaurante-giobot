@@ -21,6 +21,7 @@ const store = {
   table_payments: {},
 };
 let transactions = 0;
+let injectDuringRead = null;
 const collection = (path) => ({
   doc: (id) => ({ path: path + '/' + id, collection: (name) => collection(path + '/' + id + '/' + name) }),
   orderBy: (field) => {
@@ -32,14 +33,27 @@ const db = {
   collection,
   runTransaction: async (fn) => {
     transactions++;
+    // El adaptador simula una instantánea por intento. No sustituye la
+    // verificación de la semántica transaccional real en Firebase Emulator.
+    const snapshot = JSON.parse(JSON.stringify(store));
+    let reads = 0;
     return fn({ get: async (ref) => {
+      let result;
       if (ref.limit === undefined) {
-        const data = store[ref.path];
-        return { exists: Boolean(data), data: () => data };
+        const data = snapshot[ref.path];
+        result = { exists: Boolean(data), data: () => data };
+      } else {
+        const docs = Object.entries(snapshot[ref.path] ?? {}).sort(([a], [b]) => a.localeCompare(b))
+          .slice(0, ref.limit).map(([id, data]) => ({ id, data: () => data }));
+        result = { size: docs.length, docs };
       }
-      const docs = Object.entries(store[ref.path] ?? {}).sort(([a], [b]) => a.localeCompare(b))
-        .slice(0, ref.limit).map(([id, data]) => ({ id, data: () => data }));
-      return { size: docs.length, docs };
+      reads++;
+      if (reads === 4 && injectDuringRead) {
+        const inject = injectDuringRead;
+        injectDuringRead = null;
+        inject();
+      }
+      return result;
     } });
   },
 };
@@ -81,6 +95,28 @@ try {
   assert.ok(foreignVault.issues.includes('VAULT_TENANT_MISMATCH'));
   assert.equal(foreignVault.issues.includes('VAULT_TENANT_MISMATCH_OR_MISSING'), false);
   delete store['businesses/tenant-a/vault'].foreign;
+  // El pedido ya leído y el pago todavía no leído deben pertenecer a la
+  // misma instantánea simulada, aunque el almacén cambie entre consultas.
+  store.restaurant_orders.table = { restaurantId: 'tenant-a', orderType: 'dine_in',
+    status: 'ENTREGADO', billingStatus: 'PAGADO', paidAt: at, total: 90, paymentId: 'p' };
+  store.table_payments.p = { restaurantId: 'tenant-a', status: 'PAGADO', createdAt: at,
+    total: 90, subtotal: 90, discountAmount: 0, tipAmount: 0, paymentMethod: 'MIXTO',
+    orderIds: ['table'], paymentBreakdown: [
+      { method: 'EFECTIVO', amount: 30 }, { method: 'TARJETA', amount: 60 }] };
+  injectDuringRead = () => {
+    store.table_payments.p.total = 95;
+    store.table_payments.p.subtotal = 95;
+    store.table_payments.p.paymentBreakdown[0].amount = 35;
+  };
+  const duringRace = await capture({ db, businessId: 'tenant-a' });
+  assert.equal(duringRace.capture.atomicReadSet, true);
+  assert.equal(duringRace.issues.includes('TABLE_PAYMENT_AMOUNT_MISMATCH'), false);
+  assert.equal(injectDuringRead, null);
+  const afterRace = await capture({ db, businessId: 'tenant-a' });
+  assert.ok(afterRace.issues.includes('TABLE_PAYMENT_AMOUNT_MISMATCH'));
+  assert.equal(afterRace.canActivate, false);
+  delete store.restaurant_orders.table;
+  delete store.table_payments.p;
   const sid = 'srv-' + 'c'.repeat(32);
   store['businesses/tenant-a/shifts'][sid] = { businessId: 'tenant-a', status: 'cerrado',
     openedAt: at, closedAt: at, openedByUid: 'owner-a', openRequestId: 'open-a',
