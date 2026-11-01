@@ -33,12 +33,13 @@ export function auditAccountingCrossSource({ businessId, orders, payments, expen
     own[name] = [];
     for (const row of rows) {
       if (!isRow(row)) { issues.add(name.toUpperCase() + '_ROW_INVALID'); continue; }
-      if (seen.has(row.id)) { issues.add(name.toUpperCase() + '_DUPLICATE_ID'); continue; }
-      seen.add(row.id);
       if (row.data[tenantKey] !== businessId) {
         issues.add(name.toUpperCase() + '_TENANT_MISMATCH_OR_MISSING');
         continue;
       }
+      // Un ID ajeno no puede crear un falso duplicado del tenant auditado.
+      if (seen.has(row.id)) { issues.add(name.toUpperCase() + '_DUPLICATE_ID'); continue; }
+      seen.add(row.id);
       own[name].push(row);
       const timeField = name === 'orders' ? (row.data.billingStatus === 'PAGADO' ? 'paidAt' : 'createdAt') : 'createdAt';
       const at = isoMs(row.data[timeField]);
