@@ -111,7 +111,8 @@ export async function captureAtomicCashReadSetEmulator({ db, businessId, maxRows
       for (const row of own.payments) paymentIssue(row, issues);
       let currentLock = null;
       const receipts = [];
-      for (const row of rows.authority) {
+      // Nunca tratar documentos de autoridad ajenos como candados o recibos del tenant.
+      for (const row of own.authority) {
         if (row.id === 'current') currentLock = row.data;
         else if (row.id.startsWith('closed-')) {
           if (row.id !== 'closed-' + row.data?.shiftId) issues.add('RECEIPT_DOCUMENT_ID_MISMATCH');
@@ -119,7 +120,7 @@ export async function captureAtomicCashReadSetEmulator({ db, businessId, maxRows
         } else issues.add('UNKNOWN_AUTHORITY_DOCUMENT');
       }
       const shiftAudit = auditShiftCutoverCompatibility({
-        businessId, shifts: rows.shifts.map((row) => ({ ...row.data, id: row.id })),
+        businessId, shifts: own.shifts.map((row) => ({ ...row.data, id: row.id })),
         currentLock, receipts, inventoryComplete: false,
       });
       const accountingAudit = auditAccountingCrossSource({
