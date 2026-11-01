@@ -11,7 +11,7 @@ const mocks = {
     'export const where = (...args) => args;',
     'export const query = (...args) => args;',
     'export const getDocs = () => new Promise((resolve, reject) => window.qa.pending.push({resolve, reject}));',
-  ].join('\\n'),
+  ].join('\n'),
   '../../lib/firebase': 'export const db = {};',
 };
 const bundle = await build({
@@ -24,7 +24,7 @@ const bundle = await build({
     "const root = createRoot(document.getElementById('root'));",
     "window.qa.mount = () => root.render(<BusinessDirectory />);",
     "window.qa.unmount = () => root.unmount();",
-  ].join('\\n')},
+  ].join('\n')},
   plugins: [{name: 'mock-public-directory', setup(build) {
     build.onResolve({filter: /.*/}, args => {
       if (args.importer.endsWith('/BusinessDirectory.tsx') && Object.hasOwn(mocks, args.path)) {
