@@ -4,6 +4,8 @@
  * Nunca devuelve importes ni filas, ni autoriza conciliación o cierre.
  * Dos pasadas NO son un snapshot atómico.
  */
+import { auditAccountingCrossSource } from './shiftAccountingCrossSourceAudit.mjs';
+
 const MAX_ROWS = 200;
 const validBusiness = (v) => typeof v === 'string' && /^[a-z0-9][a-z0-9-]{1,63}$/.test(v);
 const validDate = (v) => typeof v === 'string' && Number.isFinite(Date.parse(v)) &&
@@ -138,6 +140,17 @@ export async function captureAccountingSourcesEmulator({
         }
       }
     }
+    // Auditoría cruzada solo de filas del tenant seleccionado. Las globales
+    // ajenas se cuentan aparte y las huérfanas ya generan issue arriba.
+    // Ninguna cifra representa conciliación, ni las dos pasadas son atómicas.
+    const cross = auditAccountingCrossSource({
+      businessId,
+      orders: second.orders.rows.filter((row) => row.data?.restaurantId === businessId),
+      payments: second.payments.rows.filter((row) => row.data?.restaurantId === businessId),
+      expenses: second.expenses.rows,
+      vault: second.vault.rows,
+    });
+    for (const code of cross.issues) issues.add(code);
     capture.stable = true;
     return { status: 'BLOCKED', inventoryComplete: false, reconciled: false,
       canCloseCash: false, canActivate: false, issues: [...issues].sort(), capture };
