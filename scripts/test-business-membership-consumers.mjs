@@ -17,6 +17,7 @@ const expected = new Map([
   ['src/lib/businessEmployeeService.ts', 2], // Web SDK: roster por ID
   ['src/lib/businessPublicProfileService.ts', 1], // Web SDK: permiso de publicación
   ['src/lib/businessRegistrationThreeDocumentCandidate.ts', 1], // candidato inactivo
+  ['src/lib/shiftOpenAuthorityPreflight.mjs', 1], // preflight Admin aislado: miembro por ID en transacción, sin endpoint
 ]);
 
 function sourceFiles(dir, files = []) {
