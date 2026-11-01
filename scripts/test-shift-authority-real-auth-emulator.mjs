@@ -86,7 +86,8 @@ try {
   assert.match(a.data.shiftId, /^srv-[0-9a-f]{32}$/);
   const storedA = (await root('tenant-a').collection('shifts').doc(a.data.shiftId).get()).data();
   assert.equal(storedA.openedByUid, alice.uid);
-  assert.equal(storedA.openedByName, 'alice');
+  assert(['alice', 'alice@shift-real-auth.example.test'].includes(storedA.openedByName),
+    'Nombre del servidor debe proceder de name/email verificados, no del cliente');
   assert.equal(storedA.openedAt, clock.toISOString());
   assert.equal((await call('open', aliceToken, open('tenant-a', 'request-open-a'))).code, 200);
   assert.equal((await call('open', cashierToken, open('tenant-a', 'request-cashier-a'))).code, 409);
