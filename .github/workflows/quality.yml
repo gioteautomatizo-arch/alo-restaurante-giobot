@@ -40,6 +40,8 @@ jobs:
         run: node scripts/test-platform-branding.mjs
       - name: Test public home navigation and legacy Calientito links (no Firebase writes)
         run: node --import tsx scripts/test-platform-home-routing.mts
+      - name: Test public directory malformed profiles and retry (React/jsdom, mocked Firestore)
+        run: node scripts/test-business-directory-resilience-ui.mjs
       - name: Test safe order notifications (no Firebase writes)
         run: node --import tsx scripts/test-business-order-alerts.mts
       - name: Test paid sales reports (no Firebase writes)
