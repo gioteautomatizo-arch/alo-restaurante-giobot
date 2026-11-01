@@ -1,7 +1,8 @@
 /**
- * Lectura consistente y ACOTADA de seis fuentes de Caja, solo Admin SDK
+ * Lectura transaccional y ACOTADA de seis fuentes de Caja, solo Admin SDK
  * conectado a Firestore Emulator. No es endpoint, migrador ni autoridad.
- * Una transacción cubre el conjunto leído; no acredita historial externo,
+ * Las consultas secuenciales pueden observar versiones distintas incluso
+ * en una transacción de solo lectura; NO acredita snapshot atómico ni historial externo,
  * reglas desplegadas, comprobantes ni seguridad de clientes antiguos.
  */
 import { auditShiftCutoverCompatibility } from './shiftCutoverCompatibilityPreflight.mjs';
@@ -16,7 +17,8 @@ const cents = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 &&
 const methods = new Set(['EFECTIVO', 'TARJETA', 'TRANSFERENCIA']);
 const names = ['shifts', 'authority', 'orders', 'payments', 'expenses', 'vault'];
 const blank = () => ({
-  atomicReadSet: false, scope: 'EMULATOR_BOUNDED_SIX_SOURCES_ONLY',
+  atomicReadSet: false, transactionalReadSet: false,
+  scope: 'EMULATOR_BOUNDED_SIX_SOURCES_ONLY',
   counts: Object.fromEntries(names.map((name) => [name, 0])),
   otherTenant: { orders: 0, payments: 0 },
 });
@@ -79,8 +81,14 @@ export async function captureAtomicCashReadSetEmulator({ db, businessId, maxRows
         rows[name] = snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() }));
       }
       const capture = blank();
-      capture.atomicReadSet = true; // solo los documentos leídos dentro de ESTA transacción
-      const issues = new Set(['ATOMIC_READ_SET_NOT_HISTORICAL_PROOF']);
+      // Estar dentro de runTransaction NO prueba una versión global única:
+      // Firestore Emulator permite observar un pago modificado entre consultas.
+      // Conservar atomicReadSet=false para impedir que se certifique atomicidad.
+      capture.transactionalReadSet = true;
+      const issues = new Set([
+        'ATOMIC_READ_SET_NOT_HISTORICAL_PROOF',
+        'CROSS_SOURCE_ATOMIC_SNAPSHOT_UNPROVEN',
+      ]);
       const own = {};
       for (const name of names) {
         const identity = ['orders', 'payments'].includes(name) ? 'restaurantId' : 'businessId';
