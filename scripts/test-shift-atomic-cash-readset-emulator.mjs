@@ -175,9 +175,13 @@ try {
   assert.equal(injected, true, 'la escritura concurrente de prueba debe ejecutarse');
   assert.ok(attempts >= 1, 'debe haber al menos un intento de lectura');
   if (racing.capture.atomicReadSet) {
-    // Si el SDK reintentó, puede ver el nuevo pago (inconsistente con pedido).
-    // Si conservó el snapshot inicial, verá ambos datos anteriores.
-    // Ambos resultados siguen BLOQUEADOS y no equivalen a conciliación.
+    // En un único intento el snapshot debe conservar el pago anterior,
+    // aunque se haya actualizado después de leer los pedidos.
+    if (attempts === 1) {
+      assert.equal(racing.issues.includes('TABLE_PAYMENT_AMOUNT_MISMATCH'), false,
+        'una transacción sin reintento no debe mezclar versiones del pago');
+    }
+    // Si hubo reintento, puede ver la inconsistencia real posterior.
     assert.equal(racing.canActivate, false);
   } else {
     issue(racing, 'TRANSACTION_READ_FAILED');
