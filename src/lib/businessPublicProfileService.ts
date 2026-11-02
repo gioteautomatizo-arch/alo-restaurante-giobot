@@ -168,6 +168,20 @@ function assertPublicProfileIdentity(businessId: string, data: unknown): void {
       || typeof profile.published !== 'boolean') {
     throw new Error('La identidad de la página pública es inconsistente. Solicita revisión antes de publicarla.');
   }
+  // El directorio descarta fichas publicadas sin identidad visual mínima.
+  // El panel no debe presentarlas como publicadas ni sobrescribirlas en silencio.
+  // Una ficha histórica OCULTA sí puede carecer de branding y seguir siendo editable.
+  if (profile.published) {
+    const branding = profile.branding;
+    if (!branding || typeof branding !== 'object' || Array.isArray(branding)) {
+      throw new Error('La identidad de la página pública es inconsistente. Solicita revisión antes de publicarla.');
+    }
+    const identity = branding as Record<string, unknown>;
+    if (typeof identity.restaurantName !== 'string' || !identity.restaurantName.trim()
+        || typeof identity.publicSlug !== 'string' || !identity.publicSlug.trim()) {
+      throw new Error('La identidad de la página pública es inconsistente. Solicita revisión antes de publicarla.');
+    }
+  }
 }
 
 function sortedJson(value: unknown): string {
