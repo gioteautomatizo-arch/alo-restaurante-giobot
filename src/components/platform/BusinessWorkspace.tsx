@@ -75,6 +75,14 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
       .catch((err) => {
         if (cancelled) return;
         console.warn('No se pudo abrir el negocio:', err);
+        // Firestore puede rechazar la lectura por permisos, no por conectividad.
+        // Nunca ofrecer un reintento de red como si el rol se pudiera recuperar.
+        const code = (err as { code?: unknown } | null)?.code;
+        if (code === 'permission-denied' || code === 'unauthenticated') {
+          setAccessLoadFailed(false);
+          setError('No tienes permiso para acceder a este negocio. Comprueba tu cuenta y solicita acceso al propietario.');
+          return;
+        }
         setAccessLoadFailed(true);
         setError('No pudimos comprobar el acceso a este negocio. Reintenta la lectura.');
       })
