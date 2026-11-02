@@ -1,8 +1,8 @@
 import { syncPublicProfileIfNeeded } from '../../lib/businessPublicProfileService';
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ImagePlus, Save, Store, Upload } from 'lucide-react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { auth, db } from '../../lib/firebase';
+import { auth } from '../../lib/firebase';
+import { saveBusinessBranding } from '../../lib/businessBrandingService';
 import { uploadBusinessLogo, uploadBusinessMenuImage } from '../../lib/menuImagesService';
 import type { RestaurantTenant } from '../../lib/restaurantCore';
 
@@ -136,7 +136,7 @@ export const BusinessBrandingSettings: React.FC<{
       if (!isCurrent(businessId, uid)) {
         throw new Error('La sesión o el negocio cambió antes de guardar.');
       }
-      await updateDoc(doc(db, 'businesses', businessId), { branding: updated.branding });
+      await saveBusinessBranding(business, updated.branding);
       if (!isCurrent(businessId, uid)) return;
       onSaved(updated);
       let publicSynced = false;
@@ -153,7 +153,9 @@ export const BusinessBrandingSettings: React.FC<{
     } catch (err) {
       if (isCurrent(businessId, uid)) {
         console.error('[BusinessBrandingSettings] save failed:', err);
-        setError('No se pudo guardar. Verifica que tu usuario tenga rol de propietario o administrador y vuelve a intentarlo.');
+        setError(err instanceof Error && err.message.startsWith('CONFLICTO_IDENTIDAD:')
+          ? err.message.slice('CONFLICTO_IDENTIDAD:'.length).trim()
+          : 'No se pudo guardar. Verifica que tu usuario tenga rol de propietario y vuelve a intentarlo.');
       }
     } finally {
       if (isCurrent(businessId, uid)) {
