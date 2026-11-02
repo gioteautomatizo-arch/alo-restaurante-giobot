@@ -63,7 +63,12 @@ export function makePublicBusinessProfile(businessId: string, tenant: Restaurant
   };
 }
 
-export async function setBusinessPublication(businessId: string, tenant: RestaurantTenant, published: boolean): Promise<void> {
+// La sincronización automática puede exigir que siga vigente la ficha que leyó.
+// La publicación manual conserva su contrato de tres argumentos.
+async function setBusinessPublicationChecked(
+  businessId: string, tenant: RestaurantTenant, published: boolean,
+  expectedProfileState?: string
+): Promise<void> {
   // Defensa adicional: aun si una vista conserva estado viejo, nunca publicarlo bajo otro negocio.
   if (!businessId.trim() || tenant.restaurantId !== businessId) {
     throw new Error('La identidad del negocio no coincide. Vuelve a abrir tu espacio de trabajo.');
@@ -128,6 +133,12 @@ export async function setBusinessPublication(businessId: string, tenant: Restaur
     if (existingProfile.exists()) {
       assertPublicProfileIdentity(businessId, existingProfile.data());
     }
+    // Evitar que una sincronización automática vuelva a publicar una ficha
+    // ocultada, borrada o editada por otra sesión desde su lectura inicial.
+    if (expectedProfileState !== undefined && (!existingProfile.exists()
+        || publicProfileStateFingerprint(existingProfile.data()) !== expectedProfileState)) {
+      throw new Error('CONFLICTO_PUBLICACION: La página cambió durante la sincronización. Actualiza antes de reintentar.');
+    }
     if (attempt > 1) {
       throw new Error('CONFLICTO_PUBLICACION: La página cambió durante la operación. Recarga su estado antes de reintentar.');
     }
@@ -142,6 +153,10 @@ export async function setBusinessPublication(businessId: string, tenant: Restaur
   });
 }
 
+export async function setBusinessPublication(businessId: string, tenant: RestaurantTenant, published: boolean): Promise<void> {
+  return setBusinessPublicationChecked(businessId, tenant, published);
+}
+
 // Una ficha de otro negocio o una ficha histórica corrupta nunca debe
 // certificar el estado del tenant consultado ni ser sobrescrita en silencio.
 function assertPublicProfileIdentity(businessId: string, data: unknown): void {
@@ -153,6 +168,17 @@ function assertPublicProfileIdentity(businessId: string, data: unknown): void {
       || typeof profile.published !== 'boolean') {
     throw new Error('La identidad de la página pública es inconsistente. Solicita revisión antes de publicarla.');
   }
+}
+
+function sortedJson(value: unknown): string {
+  return JSON.stringify(value, (_key, part) => part && typeof part === 'object' && !Array.isArray(part)
+    ? Object.fromEntries(Object.entries(part).sort(([a], [b]) => a.localeCompare(b)))
+    : part) ?? '';
+}
+
+function publicProfileStateFingerprint(value: unknown): string {
+  const profile = value as Record<string, unknown>;
+  return sortedJson({ published: profile.published, updatedAt: profile.updatedAt, branding: profile.branding });
 }
 
 export async function getBusinessPublicationStatus(businessId: string): Promise<boolean> {
@@ -178,9 +204,12 @@ export async function syncPublicProfileIfNeeded(businessId: string, tenant: Rest
   const profile = snap.data();
   assertPublicProfileIdentity(businessId, profile);
   if (!profile.published) return false;
+  if (!profile.branding || typeof profile.branding !== 'object' || Array.isArray(profile.branding)
+      || typeof profile.updatedAt !== 'string' || !profile.updatedAt.trim()) {
+    throw new Error('La página pública contiene datos de sincronización inconsistentes. Solicita revisión.');
+  }
   const expected = makePublicBusinessProfile(businessId, tenant).branding;
-  const sortedJson = (value: unknown) => JSON.stringify(value, (_k, v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v));
   if (sortedJson(profile.branding) === sortedJson(expected)) return false;
-  await setBusinessPublication(businessId, tenant, true);
+  await setBusinessPublicationChecked(businessId, tenant, true, publicProfileStateFingerprint(profile));
   return true;
 }
