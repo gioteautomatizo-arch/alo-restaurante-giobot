@@ -487,7 +487,7 @@ try {
   const status = window.qa.publicationStatus('tenant-a');
   await waitFor(() => window.qa.pending.length === 1, 'Estado público remoto');
   assert.equal(window.qa.pending[0].source, 'server');
-  window.qa.pending[0].resolve({exists: () => true, data: () => ({businessId:'tenant-a',restaurantId:'tenant-a',published:true})});
+  window.qa.pending[0].resolve({exists: () => true, data: () => ({businessId:'tenant-a',restaurantId:'tenant-a',published:true,branding:tenant('tenant-a').branding})});
   assert.equal(await status, true);
 
   // Un perfil publicado con identidad de B bajo la ruta de A no puede
@@ -499,6 +499,13 @@ try {
     {restaurantId:'tenant-a',published:true},
     {businessId:'tenant-a',restaurantId:'tenant-a',published:'true'},
     {businessId:'tenant-b',restaurantId:'tenant-a',published:false},
+    // El directorio no muestra una ficha publicada sin identidad visual válida.
+    {businessId:'tenant-a',restaurantId:'tenant-a',published:true},
+    {businessId:'tenant-a',restaurantId:'tenant-a',published:true,branding:null},
+    {businessId:'tenant-a',restaurantId:'tenant-a',published:true,branding:[]},
+    {businessId:'tenant-a',restaurantId:'tenant-a',published:true,branding:{restaurantName:42,publicSlug:'tenant-a'}},
+    {businessId:'tenant-a',restaurantId:'tenant-a',published:true,branding:{restaurantName:' ',publicSlug:'tenant-a'}},
+    {businessId:'tenant-a',restaurantId:'tenant-a',published:true,branding:{restaurantName:'A',publicSlug:'  '}},
   ];
 
   // El botón directo de publicar/ocultar también debe rechazar un perfil
@@ -524,7 +531,7 @@ try {
     await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
     await resolveRead(1,businessRoot('tenant-a','owner-a'),'businesses/tenant-a');
     await resolveRead(2,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
-    await resolveRead(3,publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:!published}),
+    await resolveRead(3,publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:!published,...(!published ? {branding:tenant('tenant-a').branding} : {})}),
       'publicBusinessProfiles/tenant-a');
     await allowed;
     assert.equal(window.qa.writes.length,1,'Perfil propio puede cambiar de estado');
@@ -542,7 +549,7 @@ try {
   await resolveRead(2,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
   await resolveRead(3,publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:false}),
     'publicBusinessProfiles/tenant-a');
-  await resolveRead(4,publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:true}),
+  await resolveRead(4,publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:true,branding:tenant('tenant-a').branding}),
     'publicBusinessProfiles/tenant-a');
   await assert.rejects(conflicting,/CONFLICTO_PUBLICACION/);
   assert.equal(window.qa.transactionAttempts,2,'El mock ejercitó el reintento');
@@ -554,7 +561,7 @@ try {
   await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
   await resolveRead(1,businessRoot('tenant-a','owner-a'),'businesses/tenant-a');
   await resolveRead(2,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
-  await resolveRead(3,publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:true}),
+  await resolveRead(3,publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:true,branding:tenant('tenant-a').branding}),
     'publicBusinessProfiles/tenant-a');
   await resolveRead(4,publicSnap({businessId:'tenant-b',restaurantId:'tenant-a',published:true}),
     'publicBusinessProfiles/tenant-a');
@@ -579,7 +586,7 @@ try {
   await resolveRead(2,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
   await waitFor(()=>window.qa.pending.length===4,'Lectura de perfil con cambio de UID');
   window.qa.auth.currentUser={uid:'owner-b'};
-  window.qa.pending[3].resolve(publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:true}));
+  window.qa.pending[3].resolve(publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:true,branding:tenant('tenant-a').branding}));
   await assert.rejects(switchedDuringProfileRead,/La sesión cambió/);
   assert.equal(window.qa.writes.length,0,'Cambio de UID no puede ocultar negocio A');
   for (const profile of invalidProfiles) {
@@ -600,7 +607,7 @@ try {
   for (const [id,published] of [['tenant-a',true],['tenant-b',false]]) {
     reset();
     const state = window.qa.publicationStatus(id);
-    await resolveRead(0,publicSnap({businessId:id,restaurantId:id,published}), 'publicBusinessProfiles/'+id);
+    await resolveRead(0,publicSnap({businessId:id,restaurantId:id,published,...(published ? {branding:tenant(id).branding} : {})}), 'publicBusinessProfiles/'+id);
     assert.equal(await state,published);
   }
   reset();
