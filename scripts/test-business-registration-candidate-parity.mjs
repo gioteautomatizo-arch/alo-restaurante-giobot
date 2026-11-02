@@ -62,7 +62,7 @@ const normalizedCandidate = candidateFn
   .replace("  // Señal de contrato para distinguir altas nuevas de raíces legacy sin reserva.\n  // NO certifica la existencia de la reserva: exige revisión privilegiada antes del corte.\n  const registrationTenant = { ...tenant, registrationContractVersion: 3 };\n\n", '')
   .replace("  // La respuesta del commit exitoso debe reflejar exactamente el contrato 3-doc\n  // persistido; un reintento recuperado desde servidor conserva el mismo marcador.\n  let confirmedTenant: RestaurantTenant = registrationTenant;",
     '  let confirmedTenant = tenant;')
-  .replace('  batch.set(businessRef(businessId), registrationTenant);'
+  .replace('  batch.set(businessRef(businessId), registrationTenant);',
     '  batch.set(businessRef(businessId), tenant);')
   .replace('\n          || (existingTenant as RestaurantTenant & { registrationContractVersion?: number }).registrationContractVersion !== 3', '')
   .replace("  batch.set(doc(db, 'businessHandleReservations', businessId), { businessId, ownerUserId: userId });\n", '')
