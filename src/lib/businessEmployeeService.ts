@@ -1,6 +1,7 @@
 import { initializeApp, deleteApp, getApps } from 'firebase/app';
 import {
   createUserWithEmailAndPassword,
+  connectAuthEmulator,
   getAuth,
   GoogleAuthProvider,
   signInWithEmailAndPassword,
@@ -225,10 +226,23 @@ async function withSecondaryAuth<T>(
   businessId: string,
   action: (secondaryAuth: ReturnType<typeof getAuth>) => Promise<T>,
 ): Promise<T> {
-  const app = initializeApp(firebaseConfig, secondaryAuthName(businessId));
+  // Usar las mismas opciones del Auth primario. En un ensayo aislado evita
+  // que la app secundaria apunte a un proyecto distinto del emulador.
+  const app = initializeApp(auth.app?.options ?? firebaseConfig, secondaryAuthName(businessId));
   try {
     // getAuth también debe quedar dentro de try para limpiar si falla.
-    return await action(getAuth(app));
+    const secondaryAuth = getAuth(app);
+    // Solo seguir el emulador cuando la sesión principal YA está conectada.
+    // En producción, sin emulatorConfig, se conserva Firebase Auth normal.
+    const emulator = auth.emulatorConfig;
+    if (emulator) {
+      connectAuthEmulator(
+        secondaryAuth,
+        `${emulator.protocol}://${emulator.host}:${emulator.port}`,
+        { disableWarnings: true },
+      );
+    }
+    return await action(secondaryAuth);
   } finally {
     // Solo eliminar la app de ESTA operación; nunca la de otra pestaña.
     // La sesión principal de Firebase permanece intacta.
