@@ -181,6 +181,16 @@ try {
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.branding.restaurantName, 'Negocio A configurado en UI');
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
 
+  // La pestaña de alta conserva el branding original; una edición posterior
+  // del Workspace ya fue confirmada en la raíz. Publicar/ocultar desde esa
+  // pestaña obsoleta no debe restaurar el nombre anterior.
+  const freshTenantA = (await getBusinessForUser(uidA, idA))!;
+  const beforeStalePublication = (await getDoc(doc(db, 'publicBusinessProfiles', idA))).data();
+  await assert.rejects(setBusinessPublication(idA, a.tenant, false),
+    /CONFLICTO_PUBLICACION/, 'Vista con branding antiguo debe refrescar antes de ocultar');
+  assert.deepEqual((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data(),
+    beforeStalePublication, 'La ficha pública permanece intacta tras rechazo de vista obsoleta');
+
   // El directorio rechaza una ficha publicada sin nombre/slug válidos. El
   // Workspace y la transacción de publicación deben coincidir, sin corregir
   // silenciosamente datos corruptos (solo Admin SDK del emulador los inyecta).
@@ -199,7 +209,7 @@ try {
     try {
       await assert.rejects(getBusinessPublicationStatus(idA), /identidad de la página pública es inconsistente/,
         label + ': el panel no debe anunciar publicación inválida');
-      await assert.rejects(setBusinessPublication(idA, a.tenant, false),
+      await assert.rejects(setBusinessPublication(idA, freshTenantA, false),
         /identidad de la página pública es inconsistente/,
         label + ': la transacción no debe ocultar ni sobrescribir la ficha corrupta');
       assert.deepEqual((await profileRefA.get()).data(), corrupted,
@@ -212,9 +222,9 @@ try {
   // publicarse legítimamente por su OWNER, generando la identidad visual.
   await profileRefA.set({businessId: idA, restaurantId: idA, published: false, updatedAt: '2026-11-02T00:00:00.000Z'});
   assert.equal(await getBusinessPublicationStatus(idA), false);
-  await setBusinessPublication(idA, a.tenant, true);
+  await setBusinessPublication(idA, freshTenantA, true);
   assert.equal((await profileRefA.get()).data()?.published, true);
-  assert.equal((await profileRefA.get()).data()?.branding.restaurantName, a.tenant.branding.restaurantName);
+  assert.equal((await profileRefA.get()).data()?.branding.restaurantName, freshTenantA.branding.restaurantName);
   await profileRefA.set(originalPublicA);
   console.log('PASS: perfil publicado corrupto A/B bloqueado por estado y transacción; ficha histórica oculta recuperable (Auth+Firestore Emulator).');
 
