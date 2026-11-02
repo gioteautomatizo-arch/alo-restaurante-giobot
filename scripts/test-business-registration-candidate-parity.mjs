@@ -28,7 +28,7 @@ assert.equal((currentFn.match(/\bbatch\.set\s*\(/g) || []).length, 2,
   'El registro público no debe cambiar de contrato sin corte aprobado');
 assert.equal((candidateFn.match(/\bbatch\.set\s*\(/g) || []).length, 3,
   'El candidato requiere negocio, OWNER y reserva en un solo batch');
-for (const [name, fn, count] of [['cliente 2-doc', currentFn, 2], ['candidato 3-doc', candidateFn, 3]] {
+for (const [name, fn, count] of [['cliente 2-doc', currentFn, 2], ['candidato 3-doc', candidateFn, 3]]) {
   assert.equal((fn.match(/\bgetDocFromServer\s*\(/g) || []).length, count,
     name + ': la recuperación debe consultar OWNER y raíz; candidato también verifica reserva desde servidor');
   assert.doesNotMatch(fn, /\bgetDoc\s*\(/,
