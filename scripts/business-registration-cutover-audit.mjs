@@ -30,6 +30,55 @@ function matchRulesBlock(source, path) {
   return '';
 }
 
+// Una segunda ruta coincidente puede anular por OR el match exacto que
+// inspecciona la auditoría. Este detector es deliberadamente conservador:
+// si no puede interpretar un match, NO acredita el corte.
+function matchingRuleBlocks(source) {
+  const matcher = /\\bmatch\\s+(\\/(?:[^\\s{]|\\{[^}]*\\})+)\\s*\\{/g;
+  const blocks = [];
+  for (const found of source.matchAll(matcher)) {
+    const open = found.index + found[0].length - 1;
+    let depth = 0;
+    let close = -1;
+    for (let i = open; i < source.length; i++) {
+      if (source[i] === '{') depth++;
+      if (source[i] === '}' && --depth === 0) { close = i; break; }
+    }
+    if (close < 0) return null;
+    blocks.push({ path: found[1], section: source.slice(open + 1, close) });
+  }
+  return blocks.length === [...source.matchAll(/\\bmatch\\s+\\//g)].length ? blocks : null;
+}
+
+function rulePathOverlapsTenantRoot(pattern, collection) {
+  const parts = pattern.split('/').filter(Boolean);
+  const target = [collection, 'synthetic-tenant'];
+  const matches = (i, j) => {
+    if (i === parts.length) return j === target.length;
+    if (/^\\{[^}]+=\\*\\*\\}$/.test(parts[i])) {
+      return matches(i + 1, j) || (j < target.length && matches(i, j + 1));
+    }
+    if (j === target.length) return false;
+    return (parts[i] === target[j] || /^\\{[^}]+\\}$/.test(parts[i]))
+      && matches(i + 1, j + 1);
+  };
+  return matches(0, 0);
+}
+
+function hasNoOverlappingTenantGrants(source) {
+  const blocks = matchingRuleBlocks(source);
+  if (!blocks) return false;
+  const audited = new Set(['/businesses/{businessId}', '/businessHandleReservations/{businessId}']);
+  for (const block of blocks) {
+    if (audited.has(block.path)) continue; // Sus cláusulas se validan por separado.
+    if (!['businesses', 'businessHandleReservations']
+      .some(collection => rulePathOverlapsTenantRoot(block.path, collection))) continue;
+    const grants = [...block.section.matchAll(/\\ballow\\s+([^:;]+)\\s*:\\s*if\\s+([^;]*);/g)];
+    if (grants.some(([, , condition]) => condition.trim() !== 'false')) return false;
+  }
+  return true;
+}
+
 function createClause(section) {
   return section.match(/\ballow\s+create\s*:\s*if\s+([^;]*);/)?.[1] || '';
 }
@@ -143,14 +192,16 @@ export function auditRegistrationCutoverSources({ clientSource, stagedRules, pro
     && hasRule(reservationCreate, `getAfter(${rootPath}).data.ownerUserId == request.auth.uid`);
   const reservationImmutable = reservationRule && isImmutableReservation(reservationSection)
     && hasClosedReservationReads(reservationSection);
+  const overlappingGrantsClosed = hasNoOverlappingTenantGrants(cleanRules);
 
   if (!ownerAtomic) blockers.push('STAGED_OWNER_ATOMICITY_NOT_PROVEN');
   if (!ownerBinding) blockers.push('STAGED_OWNER_UID_ROLE_TENANT_BINDING_NOT_PROVEN');
   if (!reservationAtomic || !reservationRule) blockers.push('STAGED_PERMANENT_RESERVATION_NOT_PROVEN');
   if (!reservationBinding || !reservationCreateBinding) blockers.push('STAGED_RESERVATION_RECIPROCAL_BINDING_NOT_PROVEN');
   if (!reservationImmutable) blockers.push('STAGED_RESERVATION_IMMUTABILITY_NOT_PROVEN');
+  if (!overlappingGrantsClosed) blockers.push('STAGED_OVERLAPPING_GRANTS_NOT_PROVEN');
   if (![ownerAtomic, ownerBinding, reservationAtomic, reservationRule,
-    reservationBinding, reservationCreateBinding, reservationImmutable].every(Boolean)) {
+    reservationBinding, reservationCreateBinding, reservationImmutable, overlappingGrantsClosed].every(Boolean)) {
     blockers.push('DIRECT_ROLLBACK_TO_STAGED_UNSAFE');
   }
 
@@ -166,7 +217,7 @@ export function auditRegistrationCutoverSources({ clientSource, stagedRules, pro
     status: blockers.length ? 'BLOCKED' : 'READY_FOR_INDEPENDENT_REVIEW',
     safeToDeploy: false,
     clientContract,
-    observed: { ownerAtomic, ownerBinding, reservationAtomic, reservationBinding, reservationRule, reservationCreateBinding, reservationImmutable, hasCandidate, hasFreeze },
+    observed: { ownerAtomic, ownerBinding, reservationAtomic, reservationBinding, reservationRule, reservationCreateBinding, reservationImmutable, overlappingGrantsClosed, hasCandidate, hasFreeze },
     missingEvidence,
     blockers,
     caveat: 'La revisión automatizada no certifica reglas desplegadas, respaldos ni aprobaciones humanas.',
