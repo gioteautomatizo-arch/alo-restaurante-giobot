@@ -47,21 +47,38 @@ try {
   await assertFails(setDoc(doc(bob, 'businesses/overlap-orphan'),
     business('overlap-orphan', 'overlap-bob')));
 
-  // Cargar SOLO EN EMULADOR una segunda regla coincidente. Firestore usa OR.
-  await env.loadFirestoreRules({ firestore: { rules: intentionallyUnsafe } });
-  const leaked = await assertSucceeds(getDoc(doc(bob, 'businessHandleReservations/' + id)));
-  assert.equal(leaked.data()?.ownerUserId, 'overlap-alice',
-    'El match genérico permite leer la reserva de un tercero');
-  await assertSucceeds(setDoc(doc(bob, 'businesses/overlap-orphan'),
-    business('overlap-orphan', 'overlap-bob')));
-  await env.withSecurityRulesDisabled(async context => {
-    const admin = context.firestore();
-    assert.equal((await getDoc(doc(admin, 'businesses/overlap-orphan'))).exists(), true);
-    assert.equal((await getDoc(doc(admin, 'businessMemberships/overlap-orphan_overlap-bob'))).exists(), false,
-      'El match solapado permite crear una raíz sin OWNER');
-    assert.equal((await getDoc(doc(admin, 'businessHandleReservations/overlap-orphan'))).exists(), false,
-      'El match solapado permite crear una raíz sin reserva');
+  // No existe env.loadFirestoreRules en RulesTestEnvironment. Inicializar
+  // otro proyecto de emulador evita cambiar las reglas del proyecto seguro.
+  // Este ruleset intencionalmente inseguro JAMÁS se escribe ni despliega.
+  const unsafeEnv = await initializeTestEnvironment({
+    projectId: 'gioteautomatizo-registration-overlap-unsafe-test',
+    firestore: { rules: intentionallyUnsafe, host: '127.0.0.1', port: 8080 },
   });
+  try {
+    // Sembrar una reserva ajena solo con privilegios del emulador. El proyecto
+    // inseguro tiene datos ficticios independientes del proyecto candidato.
+    await unsafeEnv.withSecurityRulesDisabled(async context => {
+      await setDoc(doc(context.firestore(), 'businessHandleReservations/' + id), {
+        businessId: id, ownerUserId: 'overlap-alice',
+      });
+    });
+    const attacker = unsafeEnv.authenticatedContext('overlap-bob').firestore();
+    const leaked = await assertSucceeds(getDoc(doc(attacker, 'businessHandleReservations/' + id)));
+    assert.equal(leaked.data()?.ownerUserId, 'overlap-alice',
+      'El match genérico permite leer la reserva de un tercero');
+    await assertSucceeds(setDoc(doc(attacker, 'businesses/overlap-orphan'),
+      business('overlap-orphan', 'overlap-bob')));
+    await unsafeEnv.withSecurityRulesDisabled(async context => {
+      const admin = context.firestore();
+      assert.equal((await getDoc(doc(admin, 'businesses/overlap-orphan'))).exists(), true);
+      assert.equal((await getDoc(doc(admin, 'businessMemberships/overlap-orphan_overlap-bob'))).exists(), false,
+        'El match solapado permite crear una raíz sin OWNER');
+      assert.equal((await getDoc(doc(admin, 'businessHandleReservations/overlap-orphan'))).exists(), false,
+        'El match solapado permite crear una raíz sin reserva');
+    });
+  } finally {
+    await unsafeEnv.cleanup();
+  }
   console.log('PASS (diagnóstico aislado): reglas candidatas niegan el bypass; match solapado deliberadamente permisivo lo reproduce por OR.');
   console.warn('PENDIENTE: revisión independiente del corte; no se modificaron ni desplegaron reglas reales.');
 } finally {
