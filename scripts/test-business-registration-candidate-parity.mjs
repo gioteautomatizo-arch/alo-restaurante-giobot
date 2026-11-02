@@ -63,6 +63,8 @@ const normalizedCandidate = candidateFn
   .replace("  // La respuesta del commit exitoso debe reflejar exactamente el contrato 3-doc\n  // persistido; un reintento recuperado desde servidor conserva el mismo marcador.\n  let confirmedTenant: RestaurantTenant = registrationTenant;",
     '  let confirmedTenant = tenant;')
   .replace("      // Un marcador 3-doc en la raíz NO demuestra que exista una reserva.\n      // La propuesta aislada permite al OWNER activo consultar SOLO su reserva.\n      const reservationSnap = await getDocFromServer(doc(db, 'businessHandleReservations', businessId));\n      assertCurrentBusinessSession(userId);\n      if (!reservationSnap.exists()) throw commitError;\n      const reservation = reservationSnap.data();\n      if (reservation.businessId !== businessId || reservation.ownerUserId !== userId) {\n        throw commitError;\n      }\n", '')
+  .replace('    // perdido. Verificar en el SERVIDOR (nunca caché) raíz, OWNER y reserva; una colisión de',
+    '    // perdido. Verificar en el SERVIDOR (nunca caché) una alta propia con OWNER válido; una colisión de')
   .replace('  batch.set(businessRef(businessId), registrationTenant);',
     '  batch.set(businessRef(businessId), tenant);')
   .replace('\n          || (existingTenant as RestaurantTenant & { registrationContractVersion?: number }).registrationContractVersion !== 3', '')
