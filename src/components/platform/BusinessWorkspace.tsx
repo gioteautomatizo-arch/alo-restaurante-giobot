@@ -277,7 +277,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
 
     // Un único módulo reutilizable de membresías para cualquier negocio con VIP activo.
     if (view === 'memberships' && hasCap('VIP') && canManageVip) {
-      return <BusinessVipPanel businessId={businessId} business={business} isOwner={role === 'OWNER' || role === 'SUPER_ADMIN'} managerRole={role!} isPublished={published} onBusinessUpdated={setBusiness} />;
+      return <BusinessVipPanel key={`${businessId}:${authUser?.uid ?? ""}`} businessId={businessId} business={business} isOwner={role === 'OWNER' || role === 'SUPER_ADMIN'} managerRole={role!} isPublished={published} onBusinessUpdated={setBusiness} />;
     }
 
     if (view === 'reports') {
