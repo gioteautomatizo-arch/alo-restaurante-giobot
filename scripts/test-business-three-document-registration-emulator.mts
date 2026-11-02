@@ -456,6 +456,12 @@ try {
     bridge: managementBridge, name: 'Candidato A configurado',
   });
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
+  // La pestaña de alta candidata tampoco puede revertir una identidad reciente.
+  await assert.rejects(saveBusinessBranding(a.tenant, {
+    ...a.tenant.branding, restaurantName: 'Candidato A obsoleto',
+  }), /CONFLICTO_IDENTIDAD/);
+  assert.equal((await getDoc(doc(db, businessPath(idA))).data()?.branding.restaurantName,
+    'Candidato A configurado', 'CAS mantiene identidad de A');
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA)))
     .data()?.branding.restaurantName, 'Candidato A configurado');
   // El propietario puede guardar un borrador, pero publicar A solo hace
