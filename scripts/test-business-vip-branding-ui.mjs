@@ -89,7 +89,7 @@ try {
   await waitFor(()=>window.qa.writes.length===3,'Escritura A tardía');
   window.qa.user={uid:'owner-b'};
   window.qa.mount('tenant-b',true);
-  await waitFor(()=>document.body.textContent.includes('Sellos tenant-b') && !!saveButton(),'Formulario B');
+  await waitFor(()=>document.querySelector('input[placeholder^="Nombre del programa"]')?.value==='Sellos tenant-b' && !!saveButton(),'Formulario B');
   window.qa.writes[2].resolve();
   await flush();
   assert.equal(window.qa.saved.length,1,'A no debe confirmar en B');
@@ -116,7 +116,7 @@ try {
   // Panel inicialmente oculto: guardar VIP nunca debe publicar.
   window.qa.user={uid:'owner-a'};
   window.qa.mount('tenant-a',false);
-  await waitFor(()=>!!saveButton() && document.body.textContent.includes('Sellos tenant-a'),'Panel oculto');
+  await waitFor(()=>!!saveButton() && document.querySelector('input[placeholder^="Nombre del programa"]')?.value==='Sellos tenant-a','Panel oculto');
   saveButton().click();
   await waitFor(()=>window.qa.writes.length===6,'VIP oculto');
   window.qa.writes[5].resolve();
