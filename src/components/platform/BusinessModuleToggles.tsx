@@ -53,7 +53,8 @@ export const BusinessModuleToggles: React.FC<{
     } catch (e) {
       if (isCurrent()) {
         console.warn('[BusinessModuleToggles]', e);
-        setError(e && typeof e === 'object' && 'message' in e && typeof e.message === 'string'\n          ? e.message : 'No pudimos guardar los módulos. Reintenta.');
+        setError(e && typeof e === 'object' && 'message' in e && typeof e.message === 'string'
+          ? e.message : 'No pudimos guardar los módulos. Reintenta.');
       }
     } finally {
       if (isCurrent()) {
