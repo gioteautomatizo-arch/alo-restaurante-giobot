@@ -113,6 +113,16 @@ export async function setBusinessPublication(businessId: string, tenant: Restaur
     throw new Error('La sesión cambió antes de publicar el negocio. Vuelve a iniciar sesión.');
   }
   const ref = doc(db, 'publicBusinessProfiles', businessId);
+  // El botón directo de publicar/ocultar no debe saltarse el guard de identidad
+  // que ya usan la lectura de estado y la sincronización. Un perfil corrupto
+  // requiere revisión; no sobrescribirlo silenciosamente con datos de A o B.
+  const existingProfile = await getDocFromServer(ref);
+  if (existingProfile.exists()) {
+    assertPublicProfileIdentity(businessId, existingProfile.data());
+  }
+  if (auth.currentUser?.uid !== user.uid) {
+    throw new Error('La sesión cambió antes de publicar el negocio. Vuelve a iniciar sesión.');
+  }
   if (published) {
     await setDoc(ref, makePublicBusinessProfile(businessId, tenant));
   } else {
