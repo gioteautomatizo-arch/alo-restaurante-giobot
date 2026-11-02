@@ -145,3 +145,29 @@ export async function assertStaffCannotPublishThroughUI({businessId,user,bridge}
     assert.equal(window.qa.writes,0);
   });
 }
+
+// El reintento de Workspace usa el servicio real Auth/Firestore del emulador
+// después de un fallo de transporte inyectado una sola vez. No se alteran reglas.
+export async function assertWorkspaceRetryWithEmulatorThroughUI({businessId,user,bridge}) {
+  let attempts = 0;
+  const retryBridge = {
+    ...bridge,
+    getBusiness(uid,id) {
+      attempts++;
+      if (attempts === 1) {
+        return Promise.reject(Object.assign(new Error('Fallo temporal de red simulado'), {code:'unavailable'}));
+      }
+      return bridge.getBusiness(uid,id);
+    },
+  };
+  return withWorkspace({businessId,user,bridge:retryBridge},async(window,document)=>{
+    await waitFor(()=>!!button(document,'Reintentar acceso'), 'Error transitorio ofrece reintento');
+    assert(!button(document,'Publicar mi negocio'), 'Sin botones privados antes de validar acceso');
+    assert(!button(document,'Ocultar del directorio'), 'Sin botón de ocultar antes de validar acceso');
+    button(document,'Reintentar acceso').click();
+    await waitFor(()=>document.body.textContent.includes('| Panel'), 'Workspace recuperado desde Firebase Emulator');
+    assert.equal(attempts,2,'Solo una lectura inicial y un reintento de raíz');
+    assert(!button(document,'Reintentar acceso'),'Error anterior descartado tras recuperar acceso');
+    assert.equal(window.qa.writes,0,'Recuperar acceso no publica ni modifica datos');
+  });
+}
