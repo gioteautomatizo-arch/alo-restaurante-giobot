@@ -181,6 +181,43 @@ try {
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.branding.restaurantName, 'Negocio A configurado en UI');
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
 
+  // El directorio rechaza una ficha publicada sin nombre/slug válidos. El
+  // Workspace y la transacción de publicación deben coincidir, sin corregir
+  // silenciosamente datos corruptos (solo Admin SDK del emulador los inyecta).
+  const profileRefA = getAdminFirestore(adminApp).doc('publicBusinessProfiles/' + idA);
+  const originalPublicA = (await profileRefA.get()).data();
+  assert(originalPublicA?.published === true && originalPublicA.branding,
+    'Ficha A publicada válida antes de probar corrupción sintética');
+  const {branding: _ignoredBranding, ...withoutBranding} = originalPublicA;
+  for (const [label, corrupted] of [
+    ['sin branding', withoutBranding],
+    ['nombre vacío', {...originalPublicA, branding: {...originalPublicA.branding, restaurantName: ' '}}],
+    ['slug inválido', {...originalPublicA, branding: {...originalPublicA.branding, publicSlug: 42}}],
+    ['identidad cruzada', {...originalPublicA, businessId: idB, restaurantId: idB}],
+  ] as const) {
+    await profileRefA.set(corrupted);
+    try {
+      await assert.rejects(getBusinessPublicationStatus(idA), /identidad de la página pública es inconsistente/,
+        label + ': el panel no debe anunciar publicación inválida');
+      await assert.rejects(setBusinessPublication(idA, a.tenant, false),
+        /identidad de la página pública es inconsistente/,
+        label + ': la transacción no debe ocultar ni sobrescribir la ficha corrupta');
+      assert.deepEqual((await profileRefA.get()).data(), corrupted,
+        label + ': sin cambios tras lectura y mutación rechazadas');
+    } finally {
+      await profileRefA.set(originalPublicA);
+    }
+  }
+  // Compatibilidad histórica: una ficha OCULTA sin branding puede volver a
+  // publicarse legítimamente por su OWNER, generando la identidad visual.
+  await profileRefA.set({businessId: idA, restaurantId: idA, published: false, updatedAt: '2026-11-02T00:00:00.000Z'});
+  assert.equal(await getBusinessPublicationStatus(idA), false);
+  await setBusinessPublication(idA, a.tenant, true);
+  assert.equal((await profileRefA.get()).data()?.published, true);
+  assert.equal((await profileRefA.get()).data()?.branding.restaurantName, a.tenant.branding.restaurantName);
+  await profileRefA.set(originalPublicA);
+  console.log('PASS: perfil publicado corrupto A/B bloqueado por estado y transacción; ficha histórica oculta recuperable (Auth+Firestore Emulator).');
+
   await signOut(auth);
   const b = await registerThroughOnboardingUI({
     name: 'Prueba ' + idB, handle: idB, email: bEmail,
