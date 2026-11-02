@@ -12,7 +12,25 @@ const mocks = {
     'export function getDocFromServer(ref) {return new Promise((resolve, reject) => window.qa.pending.push({ref,resolve,reject,source:"server"}));}',
     'export async function setDoc(ref, data, options) {window.qa.writes.push({ref,data,options});}',
     'export function onSnapshot() {throw new Error("No subscriptions in this test");}',
-    'export async function runTransaction(_db, fn) { const transaction = {get: ref => getDoc(ref), set: (ref,data) => window.qa.writes.push({ref,data,transaction:true})}; return fn(transaction); }',
+    'export async function runTransaction(_db, fn) {',
+    '  const execute = async () => {',
+    '    window.qa.transactionAttempts++;',
+    '    const writes = [];',
+    '    const transaction = {',
+    '      get: ref => new Promise((resolve,reject) => window.qa.pending.push({ref,resolve,reject,source:"transaction"})),',
+    '      set: (ref,data,options) => writes.push({ref,data,options,transaction:true}),',
+    '    };',
+    '    const value = await fn(transaction);',
+    '    return {value,writes};',
+    '  };',
+    '  let outcome = await execute();',
+    '  if (window.qa.retryTransactionOnce) {',
+    '    window.qa.retryTransactionOnce = false;',
+    '    outcome = await execute();',
+    '  }',
+    '  window.qa.writes.push(...outcome.writes);',
+    '  return outcome.value;',
+    '}',
   ].join('\n'),
   './firebase': 'export const auth = {currentUser:null}; export const db = {}; window.qa.auth = auth;',
   './catalogOptions': 'export const cleanOptionGroups = groups => groups || []; export const assertUniqueOptionGroupIdentity = () => {}; export const assertValidOptionChoicesBeforeCleaning = () => {};',
@@ -40,9 +58,10 @@ const bundle = await build({
 });
 const dom = new JSDOM('', {url:'http://localhost/',runScripts:'outside-only'});
 const {window} = dom;
-window.qa = {pending:[],writes:[],admin:false};
+window.qa = {pending:[],writes:[],admin:false,retryTransactionOnce:false,transactionAttempts:0};
 const reset = (uid='owner-a') => {
   window.qa.pending = []; window.qa.writes = []; window.qa.admin = false;
+  window.qa.retryTransactionOnce = false; window.qa.transactionAttempts = 0;
   window.qa.auth.currentUser = {uid,email:uid+'@example.test'};
 };
 const waitFor = async (condition, label) => {
@@ -81,8 +100,8 @@ const passOwner = async (promise, id='tenant-a', uid='owner-a', legacy=false) =>
   await resolveRead(1,businessRoot(id,uid,legacy),'businesses/'+id);
   await resolveRead(2,membership(uid,'OWNER',id),'businessMemberships/'+id+'_'+uid);
   await resolveRead(3,{exists:()=>false},'publicBusinessProfiles/'+id);
-  assert.deepEqual(window.qa.pending.map(read => read.source), ['server','server','server','server'],
-    'Publicar/ocultar exige lecturas remotas de membresía/raíz/permisos/perfil público');
+  assert.deepEqual(window.qa.pending.map(read => read.source), ['server','server','server','transaction'],
+    'Publicar/ocultar exige preflight remoto y lectura transaccional del perfil público');
   await promise;
 };
 try {
@@ -341,6 +360,8 @@ try {
   assert.equal(window.qa.writes.length,1);
   assert.equal(window.qa.writes[0].ref.path,'publicBusinessProfiles/tenant-a');
   assert.equal(window.qa.writes[0].data.published,true);
+  assert.equal(window.qa.writes[0].transaction,true,'Publicación debe escribir dentro de la transacción');
+  assert.equal(window.qa.transactionAttempts,1,'Publicación sin conflicto no debe reintentarse');
 
   reset();
   const wrongTenantPublication = window.qa.publish('tenant-a',tenant('tenant-a'),true);
@@ -508,7 +529,37 @@ try {
     await allowed;
     assert.equal(window.qa.writes.length,1,'Perfil propio puede cambiar de estado');
     assert.equal(window.qa.writes[0].data.published,published);
+    assert.equal(window.qa.writes[0].transaction,true,'Cambio de estado debe ser atómico');
   }
+
+  // Simular el reintento que Firestore realiza cuando otro escritor modifica
+  // el perfil leído: nunca aplicar un snapshot viejo en el segundo intento.
+  reset();
+  window.qa.retryTransactionOnce = true;
+  const conflicting = window.qa.publish('tenant-a',tenant('tenant-a'),true);
+  await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+  await resolveRead(1,businessRoot('tenant-a','owner-a'),'businesses/tenant-a');
+  await resolveRead(2,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+  await resolveRead(3,publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:false}),
+    'publicBusinessProfiles/tenant-a');
+  await resolveRead(4,publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:true}),
+    'publicBusinessProfiles/tenant-a');
+  await assert.rejects(conflicting,/CONFLICTO_PUBLICACION/);
+  assert.equal(window.qa.transactionAttempts,2,'El mock ejercitó el reintento');
+  assert.equal(window.qa.writes.length,0,'Un conflicto concurrente no confirma escritura antigua');
+
+  reset();
+  window.qa.retryTransactionOnce = true;
+  const crossDuringRetry = window.qa.publish('tenant-a',tenant('tenant-a'),false);
+  await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+  await resolveRead(1,businessRoot('tenant-a','owner-a'),'businesses/tenant-a');
+  await resolveRead(2,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+  await resolveRead(3,publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:true}),
+    'publicBusinessProfiles/tenant-a');
+  await resolveRead(4,publicSnap({businessId:'tenant-b',restaurantId:'tenant-a',published:true}),
+    'publicBusinessProfiles/tenant-a');
+  await assert.rejects(crossDuringRetry,/identidad de la página pública es inconsistente/);
+  assert.equal(window.qa.writes.length,0,'El perfil B aparecido durante el retry no se sobrescribe');
 
   reset();
   const profileReadOffline = window.qa.publish('tenant-a',tenant('tenant-a'),true);
@@ -516,7 +567,7 @@ try {
   await resolveRead(1,businessRoot('tenant-a','owner-a'),'businesses/tenant-a');
   await resolveRead(2,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
   await waitFor(()=>window.qa.pending.length===4,'Lectura remota de perfil existente');
-  assert.equal(window.qa.pending[3].source,'server','No usar perfil de caché para publicar');
+  assert.equal(window.qa.pending[3].source,'transaction','El perfil se lee dentro de la transacción, sin caché offline');
   window.qa.pending[3].reject(new Error('unavailable-public-profile'));
   await assert.rejects(profileReadOffline,/unavailable-public-profile/);
   assert.equal(window.qa.writes.length,0,'Sin red no sobrescribir perfil desconocido');
@@ -582,7 +633,7 @@ try {
   await assert.rejects(syncOffline, /unavailable-sync/);
   assert.equal(window.qa.writes.length, 0, 'Sincronización offline no escribe perfil');
 
-  console.log('PASS: catálogo y publicación A/B validan OWNER, revocación, identidad de perfiles públicos, lectura/sync fallan cerrados y despublicación (Firebase simulado).');
+  console.log('PASS: catálogo y publicación A/B validan OWNER, revocación, escritura transaccional, conflicto/reintento, identidad de perfiles y despublicación (Firebase simulado).');
 } finally {
   window.close();
 }
