@@ -17,7 +17,17 @@ const mocks = {
     '    window.qa.transactionAttempts++;',
     '    const writes = [];',
     '    const transaction = {',
-    '      get: ref => new Promise((resolve,reject) => window.qa.pending.push({ref,resolve,reject,source:"transaction"})),',
+    '      get: ref => {',
+    '        if (/^businesses\\/[^/]+$/.test(ref.path)) {',
+    '          window.qa.transactionRootReads++;',
+    '          const id = ref.path.split("/")[1];',
+    '          const data = window.qa.transactionRootOverride === undefined',
+    '            ? {restaurantId:id,ownerUserId:window.qa.auth.currentUser?.uid,branding:{restaurantName:id,publicSlug:id}}',
+    '            : window.qa.transactionRootOverride;',
+    '          return Promise.resolve({exists:()=>data !== null,data:()=>data});',
+    '        }',
+    '        return new Promise((resolve,reject) => window.qa.pending.push({ref,resolve,reject,source:"transaction"}));',
+    '      },',
     '      set: (ref,data,options) => writes.push({ref,data,options,transaction:true}),',
     '    };',
     '    const value = await fn(transaction);',
@@ -58,10 +68,11 @@ const bundle = await build({
 });
 const dom = new JSDOM('', {url:'http://localhost/',runScripts:'outside-only'});
 const {window} = dom;
-window.qa = {pending:[],writes:[],admin:false,retryTransactionOnce:false,transactionAttempts:0};
+window.qa = {pending:[],writes:[],admin:false,retryTransactionOnce:false,transactionAttempts:0,transactionRootReads:0,transactionRootOverride:undefined};
 const reset = (uid='owner-a') => {
   window.qa.pending = []; window.qa.writes = []; window.qa.admin = false;
   window.qa.retryTransactionOnce = false; window.qa.transactionAttempts = 0;
+  window.qa.transactionRootReads = 0; window.qa.transactionRootOverride = undefined;
   window.qa.auth.currentUser = {uid,email:uid+'@example.test'};
 };
 const waitFor = async (condition, label) => {
@@ -362,6 +373,7 @@ try {
   assert.equal(window.qa.writes[0].data.published,true);
   assert.equal(window.qa.writes[0].transaction,true,'Publicación debe escribir dentro de la transacción');
   assert.equal(window.qa.transactionAttempts,1,'Publicación sin conflicto no debe reintentarse');
+  assert.equal(window.qa.transactionRootReads,1,'La raíz debe leerse dentro de la misma transacción que el perfil');
 
   // Una vista obsoleta no puede devolver el branding anterior al directorio.
   // La raíz se lee del servidor y debe coincidir con el tenant de la vista.
@@ -384,6 +396,29 @@ try {
     await assert.rejects(stale,expectedError,label);
     assert.equal(window.qa.writes.length,0,label+': no sobrescribir perfil');
     assert.equal(window.qa.transactionAttempts,0,label+': sin transacción sobre vista obsoleta');
+  }
+
+  // Carrera que el preflight aislado NO podía detectar: la raíz A cambia
+  // después de leerla del servidor, pero antes de confirmar la ficha pública.
+  // La segunda lectura es transaccional y bloquea cualquier sobrescritura.
+  for (const [label, currentRoot, error] of [
+    ['branding actualizado', {...tenant('tenant-a'),ownerUserId:'owner-a',
+      branding:{restaurantName:'Nombre de A actualizado',publicSlug:'tenant-a'}}, /CONFLICTO_PUBLICACION/],
+    ['tipo cambiado', {...tenant('tenant-a'),ownerUserId:'owner-a',businessType:'ghost-kitchen'}, /CONFLICTO_PUBLICACION/],
+    ['raíz eliminada', null, /identidad del negocio o propietario es inconsistente/],
+    ['raíz cruzada', {...tenant('tenant-b'),ownerUserId:'owner-a'}, /identidad del negocio o propietario es inconsistente/],
+    ['propietario cambiado', {...tenant('tenant-a'),ownerUserId:'owner-b'}, /identidad del negocio o propietario es inconsistente/],
+  ]) {
+    reset();
+    window.qa.transactionRootOverride = currentRoot;
+    const staleRoot = window.qa.publish('tenant-a',tenant('tenant-a'),true);
+    await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+    await resolveRead(1,businessRoot('tenant-a','owner-a'),'businesses/tenant-a');
+    await resolveRead(2,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+    await resolveRead(3,{exists:()=>false},'publicBusinessProfiles/tenant-a');
+    await assert.rejects(staleRoot,error,label);
+    assert.equal(window.qa.transactionRootReads,1,label+': comprobar raíz dentro de la transacción');
+    assert.equal(window.qa.writes.length,0,label+': nunca confirmar branding o identidad obsoletos');
   }
 
   reset();
