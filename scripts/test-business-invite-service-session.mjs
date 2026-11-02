@@ -43,7 +43,7 @@ const waitFor = async (predicate, label) => {
 };
 const actions = [
   { name: 'crear', call: () => lib.createBusinessInvite('tenant-a', 'Persona A', 'a@example.test', 'WAITER'),
-    data: { token: 'secreto-a', expiresAt: 2000000000000 } },
+    data: { token: 'a'.repeat(43), expiresAt: 2000000000000 } },
   { name: 'aceptar', call: () => lib.acceptBusinessInvite('invitacion-a'),
     data: { businessId: 'tenant-a' } },
   { name: 'revocar', call: () => lib.revokeBusinessInvite('tenant-a', 'invite-a'),
@@ -90,6 +90,54 @@ try {
     assert.deepEqual(result, action.name === 'listar' ? action.data.invites : action.data,
       action.name + ': contrato válido');
   }
+
+  // Contrato de respuesta HTTP 200: nunca pasar objetos corruptos a React
+  // ni afirmar creación, aceptación o revocación si faltan datos de confirmación.
+  const malformedActions = [
+    ['crear sin token', actions[0], { expiresAt: 2000000000000 }],
+    ['crear con token inválido', actions[0], { token: 'secreto', expiresAt: 2000000000000 }],
+    ['crear con vencimiento inválido', actions[0], { token: 'a'.repeat(43), expiresAt: 'mañana' }],
+    ['aceptar sin negocio', actions[1], {}],
+    ['aceptar con ruta de otro recurso', actions[1], { businessId: '../tenant-b' }],
+    ['revocar sin confirmación', actions[2], { revoked: false }],
+    ['vista previa con nombre objeto', { name: 'preview', call: () => lib.previewBusinessInvite('invite-a') },
+      { businessName: { private: 'tenant-b' }, role: 'WAITER', emailHint: 'a***@example.test', expiresAt: 2000000000000 }],
+    ['vista previa con rol incorrecto', { name: 'preview', call: () => lib.previewBusinessInvite('invite-a') },
+      { businessName: 'Negocio A', role: 'OWNER', emailHint: 'a***@example.test', expiresAt: 2000000000000 }],
+    ['vista previa con fecha inválida', { name: 'preview', call: () => lib.previewBusinessInvite('invite-a') },
+      { businessName: 'Negocio A', role: 'WAITER', emailHint: 'a***@example.test', expiresAt: 'mañana' }],
+  ];
+  for (const [label, action, payload] of malformedActions) {
+    reset(makeUser('owner-a'));
+    const pending = action.call();
+    await waitFor(() => qa.requests.length === 1, label);
+    qa.requests[0].resolve(response(payload));
+    await assert.rejects(pending, /datos inválidos/, label);
+  }
+
+  const validInvite = actions[3].data.invites[0];
+  const invalidRows = [
+    ['nombre objeto', { ...validInvite, name: { private: 'tenant-b' } }],
+    ['correo malformado', { ...validInvite, email: { private: 'tenant-b' } }],
+    ['rol OWNER', { ...validInvite, role: 'OWNER' }],
+    ['fecha textual', { ...validInvite, createdAt: 'ayer' }],
+    ['fecha infinita', { ...validInvite, expiresAt: Infinity }],
+    ['estado ajeno', { ...validInvite, status: 'ACCEPTED' }],
+    ['ID no válido', { ...validInvite, id: '../tenant-b' }],
+  ];
+  for (const [label, row] of invalidRows) {
+    reset(makeUser('owner-a'));
+    const pending = lib.listBusinessInvites('tenant-a');
+    await waitFor(() => qa.requests.length === 1, label);
+    qa.requests[0].resolve(response({ invites: [validInvite, row], nextCursor: null }));
+    await assert.rejects(pending, /datos inválidos/, label + ': rechazar lista completa');
+  }
+  reset(makeUser('owner-a'));
+  const oversized = lib.listBusinessInvites('tenant-a');
+  await waitFor(() => qa.requests.length === 1, 'página sobredimensionada');
+  qa.requests[0].resolve(response({ invites: Array.from({ length: 151 }, (_, i) =>
+    ({ ...validInvite, id: 'invite-' + i })), nextCursor: null }));
+  await assert.rejects(oversized, /página inválida/, 'No mostrar páginas mayores al máximo');
 
   // Cambiar de UID mientras se decodifica JSON tampoco expone la lista anterior.
   reset(makeUser('owner-a'));
@@ -163,7 +211,7 @@ try {
   await assert.rejects(lib.listBusinessInvites('tenant-a'), /Inicia sesión/);
   assert.equal(qa.requests.length, 1, 'Sin sesión no se envían peticiones privadas');
 
-  console.log('PASS: crear, aceptar, revocar y listar fail-closed ante cambio de UID antes/después de fetch; JSON diferido, respuesta malformada, recuperación y preview pública (Auth/API simulados).');
+  console.log('PASS: contratos de invitaciones, páginas y filas inválidas bloqueados; UID aislado, recuperación y preview pública (Auth/API simulados).');
 } finally {
   globalThis.fetch = originalFetch;
   delete globalThis.inviteSessionQa;
