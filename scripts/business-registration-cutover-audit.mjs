@@ -49,6 +49,15 @@ function hasSingleCreateClause(section) {
     && !/\bwrite\b/.test(grants[0][1]);
 }
 
+function hasClosedReservationReads(section) {
+  // Firestore combina todos los allow con OR: read:false no anula get/list.
+  const grants = [...section.matchAll(/\ballow\s+([^:;]+)\s*:\s*if\s+([^;]*);/g)]
+    .filter(([, verbs]) => /\b(?:read|get|list)\b/.test(verbs));
+  return grants.length > 0
+    && grants.some(([, verbs]) => /\bread\b/.test(verbs))
+    && grants.every(([, , condition]) => condition.trim() === 'false');
+}
+
 function isImmutableReservation(section) {
   const rules = [...section.matchAll(/\ballow\s+([^:;]+)\s*:\s*if\s+([^;]*);/g)];
   const mutations = rules.filter(([, verbs]) => /\b(?:update|delete|write)\b/.test(verbs));
@@ -133,7 +142,7 @@ export function auditRegistrationCutoverSources({ clientSource, stagedRules, pro
     && hasRule(reservationCreate, `getAfter(${rootPath}).data.restaurantId == businessId`)
     && hasRule(reservationCreate, `getAfter(${rootPath}).data.ownerUserId == request.auth.uid`);
   const reservationImmutable = reservationRule && isImmutableReservation(reservationSection)
-    && /\ballow\s+read\s*:\s*if\s+false\s*;/.test(reservationSection);
+    && hasClosedReservationReads(reservationSection);
 
   if (!ownerAtomic) blockers.push('STAGED_OWNER_ATOMICITY_NOT_PROVEN');
   if (!ownerBinding) blockers.push('STAGED_OWNER_UID_ROLE_TENANT_BINDING_NOT_PROVEN');
