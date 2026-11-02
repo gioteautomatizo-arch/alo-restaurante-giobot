@@ -153,8 +153,12 @@ export const BusinessBrandingSettings: React.FC<{
     } catch (err) {
       if (isCurrent(businessId, uid)) {
         console.error('[BusinessBrandingSettings] save failed:', err);
-        setError(err instanceof Error && err.message.startsWith('CONFLICTO_IDENTIDAD:')
-          ? err.message.slice('CONFLICTO_IDENTIDAD:'.length).trim()
+        // El error puede cruzar realms (SDK, iframe o pruebas React/jsdom).
+        // No depender de instanceof Error para reconocer el conflicto seguro.
+        const reason = err && typeof err === 'object' && 'message' in err
+          && typeof err.message === 'string' ? err.message : '';
+        setError(reason.startsWith('CONFLICTO_IDENTIDAD:')
+          ? reason.slice('CONFLICTO_IDENTIDAD:'.length).trim()
           : 'No se pudo guardar. Verifica que tu usuario tenga rol de propietario y vuelve a intentarlo.');
       }
     } finally {
