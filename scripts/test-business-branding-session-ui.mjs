@@ -93,6 +93,15 @@ try {
   window.qa.writes[3].resolve();
   await waitFor(()=>window.qa.saved.length===2,'Reintento B confirmado');
 
+  // Una pestaña antigua debe explicar el conflicto sin afirmar que guardó.
+  button('Guardar cambios').click();
+  await waitFor(()=>window.qa.writes.length===5,'Conflicto de identidad B');
+  window.qa.writes[4].reject(new Error('CONFLICTO_IDENTIDAD: El negocio cambió en otra sesión. Regresa al panel.'));
+  await waitFor(()=>document.querySelector('[role="alert"]')?.textContent.includes('Regresa al panel.'),
+    'El conflicto CAS debe mostrar una acción recuperable');
+  assert.equal(window.qa.saved.length,2,'Un conflicto no debe llamar onSaved');
+  assert.equal(window.qa.syncs.length,2,'Un conflicto no debe sincronizar la página pública');
+
   // Subida pendiente de B: nunca incorporar su URL al formulario de A.
   const logoInput=document.querySelector('input[type="file"]');
   assert(logoInput,'Campo de logo');
