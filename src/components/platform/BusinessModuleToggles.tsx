@@ -40,7 +40,7 @@ export const BusinessModuleToggles: React.FC<{
     const businessId = business.restaurantId;
     const isCurrent = () => mountedRef.current
       && tenantRef.current === businessId && auth.currentUser?.uid === uid;
-    const next = new Set(enabled);
+    const next = new Set<string>(enabled);
     if (next.has(capability)) next.delete(capability);
     else next.add(capability);
     busyRef.current = true;
