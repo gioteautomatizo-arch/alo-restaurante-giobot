@@ -100,6 +100,8 @@ jobs:
         run: npx firebase emulators:exec --only auth,firestore --project gioteautomatizo-registration-e2e-test --config firebase.invites-emulator.json "node --import tsx scripts/test-business-registration-emulator.mts"
       - name: Test full two-business flow with isolated atomic OWNER proposal (no rule deployment)
         run: npx firebase emulators:exec --only auth,firestore --project gioteautomatizo-registration-e2e-test --config firebase.invites-emulator.json "env TEST_ATOMIC_OWNER_PROPOSAL=1 node --import tsx scripts/test-business-registration-emulator.mts"
+      - name: Test concurrent employee creation with real Auth and Firestore emulators (no deployment)
+        run: npx firebase emulators:exec --only auth,firestore --project gioteautomatizo-employee-concurrency-test --config firebase.invites-emulator.json "node --import tsx scripts/test-business-employee-concurrency-emulator.mts"
       - name: Test invitation API with Auth and Firestore emulators
         run: npx firebase emulators:exec --only auth,firestore --project gioteautomatizo-invites-test --config firebase.invites-emulator.json "node --import tsx scripts/test-business-invites.mjs"
       - name: Test VIP backend with dummy profiles in Firestore emulator
