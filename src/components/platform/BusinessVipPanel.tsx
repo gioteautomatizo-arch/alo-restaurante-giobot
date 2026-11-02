@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db, getCurrentAuthUser } from '../../lib/firebase';
-import { setBusinessPublication } from '../../lib/businessPublicProfileService';
+import React, { useEffect, useRef, useState } from 'react';
+import { getCurrentAuthUser } from '../../lib/firebase';
+import { saveBusinessBranding } from '../../lib/businessBrandingService';
+import { syncPublicProfileIfNeeded } from '../../lib/businessPublicProfileService';
 import type { RestaurantTenant } from '../../lib/restaurantCore';
 import type { StaffUser } from '../../types';
 import type { BusinessRole } from '../../lib/restaurantCore';
@@ -26,6 +26,15 @@ export const BusinessVipPanel: React.FC<{
   const [reward, setReward] = useState(b.vipRewardDescription || '');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  // El guardado pertenece a un UID y tenant. No confirmar respuestas tardías.
+  const busyRef = useRef(false);
+  const mountedRef = useRef(true);
+  const contextRef = useRef(businessId);
+  contextRef.current = businessId;
+  useEffect(() => () => { mountedRef.current = false; }, []);
+  const isCurrent = (id: string, uid: string) =>
+    mountedRef.current && contextRef.current === id && getCurrentAuthUser()?.uid === uid;
 
   const user = getCurrentAuthUser();
   const staff: StaffUser = {
@@ -38,24 +47,68 @@ export const BusinessVipPanel: React.FC<{
   };
 
   const save = async () => {
+    if (!isOwner || busyRef.current) return;
+    const uid = getCurrentAuthUser()?.uid;
+    if (!uid) {
+      setError('Tu sesión expiró. Inicia sesión nuevamente.');
+      return;
+    }
     const count = Math.round(Number(stamps));
-    if (!Number.isFinite(count) || count < 1 || count > 20) return setMessage('Los sellos deben ser entre 1 y 20.');
+    if (!Number.isFinite(count) || count < 1 || count > 20) {
+      setError('Los sellos deben ser entre 1 y 20.');
+      return;
+    }
+    busyRef.current = true;
     setBusy(true);
     setMessage('');
+    setError('');
+    const updated: RestaurantTenant = {
+      ...business,
+      branding: { ...b, vipEnabled: enabled, loyaltyProgramName: programName.trim(), vipStampsRequired: count, vipRewardDescription: reward.trim() },
+    };
     try {
-      const updated: RestaurantTenant = {
-        ...business,
-        branding: { ...b, vipEnabled: enabled, loyaltyProgramName: programName.trim(), vipStampsRequired: count, vipRewardDescription: reward.trim() },
-      };
-      await updateDoc(doc(db, 'businesses', businessId), { branding: updated.branding });
-      if (isPublished) await setBusinessPublication(businessId, updated, true);
+      if (!isCurrent(businessId, uid)) throw new Error('La sesión cambió antes de guardar VIP.');
+      // La escritura privada comparte el CAS de branding: no borrar ediciones
+      // de identidad o VIP realizadas en otra pestaña ni cruzar tenants.
+      await saveBusinessBranding(business, updated.branding);
+      if (!isCurrent(businessId, uid)) return;
+      // El guardado privado YA se confirmó. Una falla de sincronización pública
+      // no debe ocultar este hecho ni dejar la vista con datos anteriores.
       onBusinessUpdated(updated);
-      setMessage(enabled ? 'Listo: tu tarjeta VIP ya aparece en tu página pública.' : 'Guardado. La tarjeta VIP no se muestra a tus clientes.');
+      if (!isPublished) {
+        setMessage('Tarjeta VIP guardada. La página pública está oculta.');
+        return;
+      }
+      try {
+        // A diferencia de publicar manualmente, la sincronización automática
+        // nunca debe re-publicar una página ocultada desde otra sesión.
+        if (!isCurrent(businessId, uid)) return;
+        const synced = await syncPublicProfileIfNeeded(businessId, updated);
+        if (isCurrent(businessId, uid)) {
+          setMessage(synced
+            ? 'Tarjeta VIP guardada y página pública actualizada.'
+            : 'Tarjeta VIP guardada. Comprueba si tu página pública sigue publicada.');
+        }
+      } catch (syncError) {
+        console.warn('[BusinessVipPanel] no se pudo sincronizar la página pública:', syncError);
+        if (isCurrent(businessId, uid)) {
+          setMessage('Tarjeta VIP guardada, pero no se confirmó la actualización pública. Revisa la publicación.');
+        }
+      }
     } catch (e) {
-      console.warn('[BusinessVipPanel]', e);
-      setMessage('No pudimos guardar. Solo el dueño puede cambiar la tarjeta VIP.');
+      console.warn('[BusinessVipPanel] guardado VIP rechazado:', e);
+      if (isCurrent(businessId, uid)) {
+        const reason = e && typeof e === 'object' && 'message' in e
+          && typeof e.message === 'string' ? e.message : '';
+        setError(reason.startsWith('CONFLICTO_IDENTIDAD:')
+          ? reason.slice('CONFLICTO_IDENTIDAD:'.length).trim()
+          : 'No se pudo guardar la tarjeta VIP. Revisa tus permisos o la conexión y reintenta.');
+      }
     } finally {
-      setBusy(false);
+      if (isCurrent(businessId, uid)) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   };
 
@@ -78,6 +131,7 @@ export const BusinessVipPanel: React.FC<{
         </div>
         <p className="text-[11px] text-[#B7B7B7]">Sellos necesarios para ganar el premio, y cuál es el premio.</p>
         {message && <p role="status" className="text-xs font-semibold text-[#E3BC6B]">{message}</p>}
+        {error && <p role="alert" className="text-xs font-semibold text-red-300">{error}</p>}
         {isOwner && <button type="button" disabled={busy} onClick={() => void save()} className="rounded-xl bg-[#D6A34A] px-5 py-3 text-sm font-black text-[#050505] disabled:opacity-50">{busy ? 'Guardando…' : 'Guardar tarjeta VIP'}</button>}
       </section>
 
