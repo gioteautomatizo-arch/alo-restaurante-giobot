@@ -83,7 +83,8 @@ const stripUndefined = value => {
 /**
  * Adaptador EXCLUSIVO para inyectar fallos antes/después del commit;
  * el resto del recorrido ejecuta el módulo candidato real de 3 documentos.
- * La reserva no puede leerse desde el SDK cliente, ni siquiera por OWNER.
+ * Solo el OWNER activo puede leer su reserva bajo las reglas de prueba en memoria;
+ * no se permite listar reservas ni consultar las de otros negocios.
  * No demuestra que registerBusiness público haya sido migrado.
  */
 async function registerCandidate(input, options: { simulatedCommitFailure?: 'before' | 'after' } = {}) {
@@ -127,7 +128,7 @@ async function registerCandidate(input, options: { simulatedCommitFailure?: 'bef
     }
   } catch (commitError) {
     // Recuperar solo tras lecturas REMOTAS de negocio y OWNER del mismo UID; no confiar en caché.
-    // No leer reservas: las reglas candidatas las mantienen privadas.
+    // Confirmar la reserva desde servidor: el marcador de raíz no basta.
     try {
       if (auth.currentUser?.uid !== uid) throw commitError;
       const member = await getDocFromServer(doc(db, memberPath(id, uid)));
@@ -140,6 +141,10 @@ async function registerCandidate(input, options: { simulatedCommitFailure?: 'bef
       if (!business.exists() || business.data().ownerUserId !== uid
         || business.data().restaurantId !== id
         || business.data().registrationContractVersion !== 3) throw commitError;
+      const reservation = await getDocFromServer(doc(db, reservePath(id)));
+      if (auth.currentUser?.uid !== uid) throw commitError;
+      if (!reservation.exists() || reservation.data().businessId !== id
+        || reservation.data().ownerUserId !== uid) throw commitError;
       confirmedTenant = business.data();
       confirmedMembership = member.data() as typeof membership;
     } catch {
@@ -431,7 +436,8 @@ try {
   assert.equal((await adminRead(reservePath(idA))).data()?.ownerUserId, uidA);
   assert((await getDoc(doc(db, businessPath(idA) + '/catalog/menu_catalog')))
     .data()?.items?.length > 0, 'La plantilla del negocio A fue sembrada');
-  await deny(getDoc(doc(db, reservePath(idA))), 'Reserva ilegible incluso para OWNER');
+  assert.equal((await getDocFromServer(doc(db, reservePath(idA)))).data()?.ownerUserId, uidA,
+    'OWNER A puede confirmar su reserva, pero no enumerar reservas');
   // La propuesta de tres documentos debe permitir gestionar un negocio real,
   // no solo completar su alta: catálogo, publicación y marca desde React.
   await addCatalogProductThroughUI({
@@ -473,6 +479,8 @@ try {
     'Alta B: el marcador debe viajar también en la respuesta del onboarding');
   assert.notEqual(uidA, uidB);
   assert.equal((await adminRead(reservePath(idB))).data()?.ownerUserId, uidB);
+  assert.equal((await getDocFromServer(doc(db, reservePath(idB)))).data()?.ownerUserId, uidB);
+  await deny(getDocFromServer(doc(db, reservePath(idA))), 'OWNER B no lee reserva de A');
   assert((await getDoc(doc(db, businessPath(idB) + '/catalog/menu_catalog')))
     .data()?.items?.length > 0, 'La plantilla del negocio B fue sembrada');
   await addCatalogProductThroughUI({
@@ -567,7 +575,31 @@ try {
     'La raíz histórica conserva al propietario');
   await deny(updateDoc(doc(db, businessPath(idA)), { registrationContractVersion: 2 }),
     'OWNER candidato no puede degradar marcador 3-doc');
-  console.log('PASS recuperación legacy fail-closed (solo emulador): raíz+OWNER sin reserva no se considera alta 3-doc confirmada.');
+  // Un histórico puede traer el marcador 3 desde una importación privilegiada:
+  // sin reserva NO se confirma la recuperación, aunque OWNER y raíz coincidan.
+  await env.withSecurityRulesDisabled(async context => {
+    await updateDoc(doc(context.firestore(), businessPath(legacyNoReservationId)), {
+      registrationContractVersion: 3,
+    });
+  });
+  await assert.rejects(registerBusinessThreeDocumentCandidate({
+    businessName: 'Marcador falso sin reserva', handle: legacyNoReservationId,
+    email: emailA, password, businessType: 'restaurant',
+  }), (error: any) => error?.code === 'permission-denied',
+  'Marcador 3-doc sin reserva no acredita recuperación');
+  assert.equal((await adminRead(reservePath(legacyNoReservationId))).exists(), false);
+  await env.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), reservePath(legacyNoReservationId)), {
+      businessId: legacyNoReservationId, ownerUserId: uidB,
+    });
+  });
+  await assert.rejects(registerBusinessThreeDocumentCandidate({
+    businessName: 'Reserva cruzada', handle: legacyNoReservationId,
+    email: emailA, password, businessType: 'restaurant',
+  }), (error: any) => error?.code === 'permission-denied',
+  'Reserva de B no confirma alta de A');
+  assert.equal((await adminRead(reservePath(legacyNoReservationId))).data()?.ownerUserId, uidB);
+  console.log('PASS recuperación legacy fail-closed: marcador 3 sin reserva y reserva ajena rechazados (solo emulador).');
 
   // El contrato de prueba exige la marca 3-doc incluso si el batch trae
   // raíz, OWNER y reserva con identidades válidas.
@@ -588,7 +620,7 @@ try {
   }
 
   // Respuesta perdida DESPUÉS del commit: recuperar los documentos del mismo
-  // propietario sin leer la reserva desde el SDK cliente ni repetir la siembra.
+  // propietario verificando la reserva desde servidor sin repetir la siembra.
   const lostId = 'beta-three-lost-ack';
   const recovered = await registerCandidate({
     businessName: 'Alta confirmada sin respuesta', handle: lostId,

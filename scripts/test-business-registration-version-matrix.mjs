@@ -200,7 +200,9 @@ try {
     registrationContractVersion: deleteField(),
   }));
   await assertFails(getDoc(doc(alice, root(proposedThreeId))));
-  await assertFails(getDoc(doc(bob, handle(proposedThreeId))));
+  await assertSucceeds(getDoc(doc(bob, handle(proposedThreeId))));
+  await assertFails(getDoc(doc(alice, handle(proposedThreeId))));
+  await assertFails(getDoc(doc(visitor, handle(proposedThreeId))));
   await assertSucceeds(setDoc(doc(bob, catalog(proposedThreeId)), {
     businessId: proposedThreeId, items: [{ id: 'candidate', price: 22 }],
   }));

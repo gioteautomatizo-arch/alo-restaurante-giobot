@@ -54,3 +54,10 @@ Si el corte falla, **mantener las altas congeladas** y restaurar únicamente ver
 - `scripts/test-business-registration-version-matrix.mjs`: requiere emulador y se ejecuta en Security CI; verifica contratos por fase, pero no el despliegue ni la migración real.
 
 **Criterio para continuar:** revisión humana independiente y pruebas manuales con dos negocios ficticios, sin tocar datos reales. Hasta entonces, paso 2 **ABIERTO**. Paso 3 pedido/recuperación y paso 4 Caja histórica/MIXTO **PENDIENTES**; los logs que imprimen `PENDIENTE` no prueban conciliación.
+
+
+## Reserva verificable al recuperar un alta 3-doc (2 de noviembre de 2026)
+
+El marcador `registrationContractVersion: 3` NO acredita por sí solo una reserva permanente: una raíz histórica o escritura privilegiada podría contenerlo sin `businessHandleReservations/{id}`. El candidato **inactivo** comprueba por servidor raíz, OWNER y reserva antes de considerar recuperado un commit fallido. La variante de reglas `buildThreeDocumentRecoveryMarkerProposalRules` permite únicamente `get` de la reserva al OWNER activo de una raíz con marcador 3 y UID/tenant concordantes; `list`, terceros y mutaciones permanecen denegados. Esta **ampliación sensible de lectura existe solo en memoria de emulador**, no en reglas staged ni producción.
+
+El ensayo A/B incorpora marcador histórico falso sin reserva, reserva de otro UID, acceso cruzado, reintento y ACK perdido. Falta revisión independiente de privacidad y presupuesto de accesos, compatibilidad de clientes, inventario histórico y validación Android/iPad; un resultado CI verde NO autoriza el corte ni demuestra reglas desplegadas. No habilitar el cliente 3-doc, no desplegar reglas y no operar sobre datos reales.

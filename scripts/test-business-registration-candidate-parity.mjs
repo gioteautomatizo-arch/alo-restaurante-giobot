@@ -28,9 +28,9 @@ assert.equal((currentFn.match(/\bbatch\.set\s*\(/g) || []).length, 2,
   'El registro público no debe cambiar de contrato sin corte aprobado');
 assert.equal((candidateFn.match(/\bbatch\.set\s*\(/g) || []).length, 3,
   'El candidato requiere negocio, OWNER y reserva en un solo batch');
-for (const [name, fn] of [['cliente 2-doc', currentFn], ['candidato 3-doc', candidateFn]]) {
-  assert.equal((fn.match(/\bgetDocFromServer\s*\(/g) || []).length, 2,
-    name + ': la recuperación debe consultar OWNER y raíz directamente al servidor');
+for (const [name, fn, count] of [['cliente 2-doc', currentFn, 2], ['candidato 3-doc', candidateFn, 3]] {
+  assert.equal((fn.match(/\bgetDocFromServer\s*\(/g) || []).length, count,
+    name + ': la recuperación debe consultar OWNER y raíz; candidato también verifica reserva desde servidor');
   assert.doesNotMatch(fn, /\bgetDoc\s*\(/,
     name + ': no recuperar altas fallidas con caché local');
 }
@@ -50,8 +50,8 @@ assert.match(candidateFn, /existingTenant as RestaurantTenant & \{ registrationC
 const emulatorAdapter = functionSection(emulator, 'async function registerCandidate(', '\n// withSecurityRulesDisabled');
 assert.match(emulatorAdapter, /let confirmedTenant = registrationTenant;/,
   'El adaptador de recuperación debe conservar el marcador del contrato');
-assert.equal((emulatorAdapter.match(/\bgetDocFromServer\s*\(/g) || []).length, 2,
-  'El adaptador de fallos del emulador también debe recuperar OWNER y raíz desde servidor');
+assert.equal((emulatorAdapter.match(/\bgetDocFromServer\s*\(/g) || []).length, 3,
+  'El adaptador de emulador debe recuperar OWNER, raíz y reserva desde servidor');
 assert.doesNotMatch(emulatorAdapter, /\bgetDoc\s*\(/,
   'No simular recuperación insegura mediante caché en la matriz de 3 documentos');
 
@@ -62,6 +62,7 @@ const normalizedCandidate = candidateFn
   .replace("  // Señal de contrato para distinguir altas nuevas de raíces legacy sin reserva.\n  // NO certifica la existencia de la reserva: exige revisión privilegiada antes del corte.\n  const registrationTenant = { ...tenant, registrationContractVersion: 3 };\n\n", '')
   .replace("  // La respuesta del commit exitoso debe reflejar exactamente el contrato 3-doc\n  // persistido; un reintento recuperado desde servidor conserva el mismo marcador.\n  let confirmedTenant: RestaurantTenant = registrationTenant;",
     '  let confirmedTenant = tenant;')
+  .replace("      // Un marcador 3-doc en la raíz NO demuestra que exista una reserva.\n      // La propuesta aislada permite al OWNER activo consultar SOLO su reserva.\n      const reservationSnap = await getDocFromServer(doc(db, 'businessHandleReservations', businessId));\n      assertCurrentBusinessSession(userId);\n      if (!reservationSnap.exists()) throw commitError;\n      const reservation = reservationSnap.data();\n      if (reservation.businessId !== businessId || reservation.ownerUserId !== userId) {\n        throw commitError;\n      }\n", '')
   .replace('  batch.set(businessRef(businessId), registrationTenant);',
     '  batch.set(businessRef(businessId), tenant);')
   .replace('\n          || (existingTenant as RestaurantTenant & { registrationContractVersion?: number }).registrationContractVersion !== 3', '')
@@ -92,6 +93,8 @@ assert.equal(rootRules.split("request.resource.data.get('registrationContractVer
 const presenceGuard = "request.resource.data.keys().hasAny(['registrationContractVersion']) == resource.data.keys().hasAny(['registrationContractVersion'])";
 assert.equal(rootRules.split(presenceGuard).length - 1, 2,
   'Ambas rutas candidate deben preservar la presencia del marcador (no añadir null)');
+assert.match(proposal, /allow get: if isSignedIn\(\)/);
+assert.match(proposal, /allow list: if false;/);
 assert.doesNotMatch(staged, /registrationContractVersion/,
   'La propuesta de emulador nunca debe modificar las reglas staged originales');
 const frozen = buildRegistrationFreezeProposalRules(staged);

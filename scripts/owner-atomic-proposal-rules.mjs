@@ -227,5 +227,28 @@ export function buildThreeDocumentRecoveryMarkerProposalRules(staged) {
       `      allow update: if request.resource.data.keys().hasAny(['registrationContractVersion']) == resource.data.keys().hasAny(['registrationContractVersion'])
         && request.resource.data.get('registrationContractVersion', null) == resource.data.get('registrationContractVersion', null)
         && isSignedIn()`);
-  return prefix + guardedRoot + suffix;
+  // SOLO emulador: lectura puntual para confirmar una recuperación 3-doc.
+  // Sin list, sin acceso de terceros y sin mutación; requiere revisión humana.
+  const reservationAnchor = '    match /businessHandleReservations/{businessId} {';
+  const reservationStart = prefix.indexOf(reservationAnchor);
+  assert(reservationStart >= 0, 'ALTO: falta reserva candidata.');
+  const reservationSection = prefix.slice(reservationStart);
+  const readAnchor = '      allow read: if false;';
+  assert.equal(reservationSection.split(readAnchor).length, 2,
+    'ALTO: cambió el permiso de lectura de reservas.');
+  const ownerOnlyGet = `      allow get: if isSignedIn()
+        && resource.data.businessId == businessId
+        && resource.data.ownerUserId == request.auth.uid
+        && exists(/databases/$(database)/documents/businesses/$(businessId))
+        && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUserId == request.auth.uid
+        && get(/databases/$(database)/documents/businesses/$(businessId)).data.registrationContractVersion == 3
+        && exists(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid))
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.restaurantId == businessId
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.userId == request.auth.uid
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.role == 'OWNER'
+        && get(/databases/$(database)/documents/businessMemberships/$(businessId + '_' + request.auth.uid)).data.active == true;
+      allow list: if false;`;
+  const guardedPrefix = prefix.slice(0, reservationStart)
+    + reservationSection.replace(readAnchor, ownerOnlyGet);
+  return guardedPrefix + guardedRoot + suffix;
 }

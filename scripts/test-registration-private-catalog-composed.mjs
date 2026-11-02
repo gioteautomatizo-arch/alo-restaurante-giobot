@@ -68,7 +68,9 @@ try {
       assert.equal((await getDoc(doc(admin, reservation(id)))).data()?.ownerUserId, uid);
     }
   });
-  await assertFails(getDoc(doc(alice, reservation(idA))));
+  await assertSucceeds(getDoc(doc(alice, reservation(idA))));
+  await assertFails(getDoc(doc(bob, reservation(idA))));
+  await assertFails(getDoc(doc(visitor, reservation(idA))));
   // Antes de la primera siembra el documento menu_catalog NO existe. La
   // lectura transaccional del propietario debe poder comprobar su ausencia;
   // un visitante no debe obtener acceso a esa ruta sin catálogo publicado.

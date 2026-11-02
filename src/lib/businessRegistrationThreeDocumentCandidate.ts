@@ -142,7 +142,7 @@ export async function registerBusinessThreeDocumentCandidate(input: RegisterBusi
     await batch.commit();
   } catch (commitError) {
     // El servidor puede haber confirmado el lote aunque la respuesta se haya
-    // perdido. Verificar en el SERVIDOR (nunca caché) una alta propia con OWNER válido; una colisión de
+    // perdido. Verificar en el SERVIDOR (nunca caché) raíz, OWNER y reserva; una colisión de
     // handle ajeno debe conservar el error original y nunca tomar ese negocio.
     try {
       assertCurrentBusinessSession(userId);
@@ -159,6 +159,15 @@ export async function registerBusinessThreeDocumentCandidate(input: RegisterBusi
       const existingTenant = existingTenantSnap.data() as RestaurantTenant;
       if (existingTenant.restaurantId !== businessId || existingTenant.ownerUserId !== userId
           || (existingTenant as RestaurantTenant & { registrationContractVersion?: number }).registrationContractVersion !== 3) {
+        throw commitError;
+      }
+      // Un marcador 3-doc en la raíz NO demuestra que exista una reserva.
+      // La propuesta aislada permite al OWNER activo consultar SOLO su reserva.
+      const reservationSnap = await getDocFromServer(doc(db, 'businessHandleReservations', businessId));
+      assertCurrentBusinessSession(userId);
+      if (!reservationSnap.exists()) throw commitError;
+      const reservation = reservationSnap.data();
+      if (reservation.businessId !== businessId || reservation.ownerUserId !== userId) {
         throw commitError;
       }
       confirmedTenant = existingTenant;
