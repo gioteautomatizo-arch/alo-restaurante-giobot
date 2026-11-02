@@ -80,7 +80,7 @@ function assertInvitePreview(value: unknown): InvitePreview {
 function assertInviteRow(value: unknown): PendingBusinessInvite {
   if (!isRecord(value) || !isValidInviteCursor(value.id) ||
       !isSafeText(value.name, 200) || !isSafeText(value.email, 254) ||
-      !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value.email) ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.email) ||
       !isInviteRole(value.role) || value.status !== 'PENDING' ||
       !isMillis(value.createdAt) || !isMillis(value.expiresAt) ||
       value.expiresAt <= value.createdAt) invalidResponse();
