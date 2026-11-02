@@ -80,8 +80,9 @@ const passOwner = async (promise, id='tenant-a', uid='owner-a', legacy=false) =>
   await resolveRead(0,membership(uid,'OWNER',id),'businessMemberships/'+id+'_'+uid);
   await resolveRead(1,businessRoot(id,uid,legacy),'businesses/'+id);
   await resolveRead(2,membership(uid,'OWNER',id),'businessMemberships/'+id+'_'+uid);
-  assert.deepEqual(window.qa.pending.map(read => read.source), ['server','server','server'],
-    'Publicar/ocultar exige tres lecturas remotas de membresía/raíz/permisos');
+  await resolveRead(3,{exists:()=>false},'publicBusinessProfiles/'+id);
+  assert.deepEqual(window.qa.pending.map(read => read.source), ['server','server','server','server'],
+    'Publicar/ocultar exige lecturas remotas de membresía/raíz/permisos/perfil público');
   await promise;
 };
 try {
@@ -432,6 +433,7 @@ try {
   const adminPublication=window.qa.publish('tenant-b',tenant('tenant-b'),true);
   await resolveRead(0,{exists:()=>false,data:()=>null},'businessMemberships/tenant-b_admin-user');
   await resolveRead(1,businessRoot('tenant-b','owner-b'),'businesses/tenant-b');
+  await resolveRead(2,{exists:()=>false},'publicBusinessProfiles/tenant-b');
   await adminPublication;
   assert.equal(window.qa.writes.length,1);
   assert.equal(window.qa.writes[0].ref.path,'publicBusinessProfiles/tenant-b');
@@ -477,6 +479,58 @@ try {
     {businessId:'tenant-a',restaurantId:'tenant-a',published:'true'},
     {businessId:'tenant-b',restaurantId:'tenant-a',published:false},
   ];
+
+  // El botón directo de publicar/ocultar también debe rechazar un perfil
+  // preexistente de B o malformado bajo la ruta de A, sin sobrescribirlo.
+  for (const published of [true,false]) {
+    for (const profile of [...invalidProfiles, null, ['unexpected']]) {
+      reset();
+      const blocked = window.qa.publish('tenant-a',tenant('tenant-a'),published);
+      await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+      await resolveRead(1,businessRoot('tenant-a','owner-a'),'businesses/tenant-a');
+      await resolveRead(2,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+      await resolveRead(3,publicSnap(profile),'publicBusinessProfiles/tenant-a');
+      await assert.rejects(blocked,/identidad de la página pública es inconsistente/);
+      assert.equal(window.qa.writes.length,0,'Perfil ajeno/corrupto no se sobrescribe al publicar u ocultar');
+    }
+  }
+
+  // Una ficha válida A sí puede cambiar de estado, y una ficha ausente ya
+  // se comprueba arriba; no convertir la protección en bloqueo universal.
+  for (const published of [true,false]) {
+    reset();
+    const allowed = window.qa.publish('tenant-a',tenant('tenant-a'),published);
+    await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+    await resolveRead(1,businessRoot('tenant-a','owner-a'),'businesses/tenant-a');
+    await resolveRead(2,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+    await resolveRead(3,publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:!published}),
+      'publicBusinessProfiles/tenant-a');
+    await allowed;
+    assert.equal(window.qa.writes.length,1,'Perfil propio puede cambiar de estado');
+    assert.equal(window.qa.writes[0].data.published,published);
+  }
+
+  reset();
+  const profileReadOffline = window.qa.publish('tenant-a',tenant('tenant-a'),true);
+  await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+  await resolveRead(1,businessRoot('tenant-a','owner-a'),'businesses/tenant-a');
+  await resolveRead(2,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+  await waitFor(()=>window.qa.pending.length===4,'Lectura remota de perfil existente');
+  assert.equal(window.qa.pending[3].source,'server','No usar perfil de caché para publicar');
+  window.qa.pending[3].reject(new Error('unavailable-public-profile'));
+  await assert.rejects(profileReadOffline,/unavailable-public-profile/);
+  assert.equal(window.qa.writes.length,0,'Sin red no sobrescribir perfil desconocido');
+
+  reset();
+  const switchedDuringProfileRead = window.qa.publish('tenant-a',tenant('tenant-a'),false);
+  await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+  await resolveRead(1,businessRoot('tenant-a','owner-a'),'businesses/tenant-a');
+  await resolveRead(2,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+  await waitFor(()=>window.qa.pending.length===4,'Lectura de perfil con cambio de UID');
+  window.qa.auth.currentUser={uid:'owner-b'};
+  window.qa.pending[3].resolve(publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:true}));
+  await assert.rejects(switchedDuringProfileRead,/La sesión cambió/);
+  assert.equal(window.qa.writes.length,0,'Cambio de UID no puede ocultar negocio A');
   for (const profile of invalidProfiles) {
     reset();
     const blockedStatus = window.qa.publicationStatus('tenant-a');
