@@ -111,6 +111,27 @@ try {
   // Puerta fail-closed antes de cambiar el contrato: nadie puede registrar
   // con dos ni tres documentos, pero el OWNER existente sigue operando.
   await assertSucceeds(getDoc(doc(alice, root(legacyId))));
+  // Compatibilidad de escritores de raíz durante freeze: OWNER puede guardar
+  // módulos y un MANAGER únicamente el índice de empleados. No se reabre el alta.
+  await assertSucceeds(updateDoc(doc(alice, root(legacyId)), { capabilities: [] }));
+  assert.deepEqual((await getDoc(doc(alice, root(legacyId)))).data()?.capabilities, [],
+    'freeze-before conserva la desactivación explícita de todos los módulos');
+  await assertFails(updateDoc(doc(bob, root(legacyId)), { capabilities: ['orders'] }));
+  await assertFails(updateDoc(doc(staff, root(legacyId)), { capabilities: ['orders'] }));
+  await assertSucceeds(setDoc(doc(alice, owner(legacyId, 'matrix-manager')), {
+    restaurantId: legacyId, userId: 'matrix-manager', role: 'MANAGER', active: true,
+  }));
+  const manager = signed('matrix-manager');
+  await assertSucceeds(updateDoc(doc(manager, root(legacyId)), {
+    employeeUserIds: ['matrix-staff', 'matrix-manager'],
+  }));
+  await assertFails(updateDoc(doc(manager, root(legacyId)), { capabilities: ['orders'] }));
+  await assertFails(updateDoc(doc(manager, root(legacyId)), {
+    'branding.restaurantName': 'Edición indebida por MANAGER',
+  }));
+  await assertFails(updateDoc(doc(staff, root(legacyId)), {
+    employeeUserIds: ['matrix-staff'],
+  }));
   await assertSucceeds(updateDoc(doc(alice, root(legacyId)), {
     'branding.restaurantName': 'Legado activo durante congelación',
   }));
@@ -239,6 +260,26 @@ try {
   await assertSucceeds(getDoc(doc(alice, root(legacyId))));
   await assertSucceeds(getDoc(doc(bob, root(proposedThreeId))));
   await assertFails(getDoc(doc(alice, root(proposedThreeId))));
+  // Freeze posterior: el candidato conserva módulos y roster editables sin
+  // permitir que A, empleados no gestores o responsables de A escriban en B.
+  await assertSucceeds(updateDoc(doc(bob, root(proposedThreeId)), { capabilities: [] }));
+  await assertSucceeds(updateDoc(doc(bob, root(proposedThreeId)), {
+    employeeUserIds: ['matrix-staff'],
+  }));
+  assert.deepEqual((await getDoc(doc(bob, root(proposedThreeId)))).data()?.capabilities, [],
+    'freeze-after conserva [] en el negocio de tres documentos');
+  await assertFails(updateDoc(doc(alice, root(proposedThreeId)), {
+    employeeUserIds: ['matrix-alice'],
+  }));
+  await assertFails(updateDoc(doc(staff, root(proposedThreeId)), {
+    employeeUserIds: ['matrix-staff', 'matrix-alice'],
+  }));
+  await assertFails(updateDoc(doc(signed('matrix-manager'), root(proposedThreeId)), {
+    employeeUserIds: ['matrix-manager'],
+  }));
+  await assertSucceeds(updateDoc(doc(signed('matrix-manager'), root(legacyId)), {
+    employeeUserIds: ['matrix-staff'],
+  }));
   await assertSucceeds(updateDoc(doc(bob, root(proposedThreeId)), {
     'branding.restaurantName': 'Candidato activo durante reversión',
   }));
