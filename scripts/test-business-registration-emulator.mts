@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import { buildAtomicOwnerProposalRules } from './owner-atomic-proposal-rules.mjs';
 import { registerThroughOnboardingUI } from './business-onboarding-emulator-ui.mjs';
-import { saveBrandingThroughUI, addCatalogProductThroughUI, saveVipThroughUI } from './business-management-emulator-ui.mjs';
+import { saveBrandingThroughUI, addCatalogProductThroughUI, saveVipThroughUI, saveModulesThroughUI } from './business-management-emulator-ui.mjs';
 import { publishBusinessThroughUI, publishAndHideBusinessThroughUI, assertForeignWorkspaceDeniedThroughUI, assertStaffCannotPublishThroughUI } from './business-publication-emulator-ui.mjs';
 import {
   acceptInviteThroughUI, createInviteThroughEmployeesUI, deactivateEmployeeThroughUI, inspectEmployeesUI,
@@ -50,6 +50,7 @@ connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
 connectFirestoreEmulator(db, '127.0.0.1', 8080);
 const { registerBusiness, getBusinessesForUser, getBusinessForUser, getBusinessMembership } = await import('../src/lib/businessAuthService.ts');
 const { saveBusinessBranding } = await import('../src/lib/businessBrandingService.ts');
+const { saveBusinessCapabilities } = await import('../src/lib/businessCapabilitiesService.ts');
 const { setBusinessPublication, syncPublicProfileIfNeeded, getBusinessPublicationStatus } = await import('../src/lib/businessPublicProfileService.ts');
 const { saveBusinessCatalog, seedBusinessCatalogIfMissing, subscribeToBusinessCatalog } = await import('../src/lib/businessCatalogService.ts');
 const { listBusinessEmployees, updateBusinessEmployee, removeBusinessEmployee } = await import('../src/lib/businessEmployeeService.ts');
@@ -83,6 +84,8 @@ try {
     // Convertir el payload de prueba a objetos nativos antes de llamar al SDK real.
     updateBranding: (tenant: any, branding: any) => saveBusinessBranding(
       JSON.parse(JSON.stringify(tenant)), JSON.parse(JSON.stringify(branding))),
+    updateCapabilities: (tenant: any, caps: any) => saveBusinessCapabilities(
+      JSON.parse(JSON.stringify(tenant)), JSON.parse(JSON.stringify(caps))),
     syncPublic: (id: string, tenant: any) => syncPublicProfileIfNeeded(id, JSON.parse(JSON.stringify(tenant))),
     getBusiness: (uid: string, id: string) => getBusinessForUser(uid, id),
     subscribeCatalog: (id: string, callback: any, onError: any) => subscribeToBusinessCatalog(id, callback, onError),
@@ -248,6 +251,15 @@ try {
     ...freshTenantA.branding, vipRewardDescription: 'Pestaña VIP obsoleta',
   }), /CONFLICTO_IDENTIDAD/, 'Una pestaña VIP antigua no puede revertir el guardado nuevo');
 
+  // Módulos React usa CAS real: dos pestañas no pueden restaurar capacidades.
+  const modulesBeforeA = (await getBusinessForUser(uidA, idA))!;
+  const modulesA = await saveModulesThroughUI({
+    tenant: modulesBeforeA, user: auth.currentUser!, bridge: managementBridge,
+  });
+  assert.deepEqual((await getDoc(doc(db, 'businesses', idA))).data()?.capabilities, modulesA);
+  await assert.rejects(saveBusinessCapabilities(modulesBeforeA, ['VIP']), /CONFLICTO_MODULOS/,
+    'Pestaña A antigua no puede restaurar módulos');
+
 
   await signOut(auth);
   const b = await registerThroughOnboardingUI({
@@ -304,6 +316,22 @@ try {
   });
   assert.equal((await getDoc(doc(db, 'businesses', idB))).data()?.branding.restaurantName, 'Negocio B configurado en UI');
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idB))).data()?.published, false);
+
+  const modulesBeforeB = (await getBusinessForUser(uidB, idB))!;
+  const modulesB = await saveModulesThroughUI({
+    tenant: modulesBeforeB, user: auth.currentUser!, bridge: managementBridge,
+  });
+  assert.deepEqual((await getDoc(doc(db, 'businesses', idB))).data()?.capabilities, modulesB);
+  // [] es un estado explícito, no ausencia: no reactivar módulos por plantilla.
+  const modulesFreshB = (await getBusinessForUser(uidB, idB))!;
+  await saveBusinessCapabilities(modulesFreshB, []);
+  assert.deepEqual((await getDoc(doc(db, 'businesses', idB))).data()?.capabilities, []);
+  await assert.rejects(saveBusinessCapabilities(modulesFreshB, ['VIP']), /CONFLICTO_MODULOS/,
+    'Pestaña B antigua no puede reactivar capacidades tras []');
+  assert.deepEqual((await getDoc(doc(db, 'businesses', idA))).data()?.capabilities, modulesA,
+    'Editar B no modifica módulos A');
+  await deny(saveBusinessCapabilities(modulesBeforeA, ['VIP']), 'B no modifica capacidades A');
+  console.log('PASS: módulos React A/B con CAS real, pestaña obsoleta, [] y permisos (Auth+Firestore Emulator).');
 
   // Un handle ocupado no debe sobrescribir al propietario anterior ni crear
   // una membresía cruzada. El segundo dueño conserva su sesión y negocio.
