@@ -57,6 +57,7 @@ const { getBusinessCatalogTemplate } = await import('../src/data/businessCatalog
 const { seedBusinessCatalogIfMissing, createCatalogItemId, saveBusinessCatalog, subscribeToBusinessCatalog } = await import('../src/lib/businessCatalogService.ts');
 const { getBusinessForUser, getBusinessMembership } = await import('../src/lib/businessAuthService.ts');
 const { registerBusinessThreeDocumentCandidate } = await import('../src/lib/businessRegistrationThreeDocumentCandidate.ts');
+const { saveBusinessBranding } = await import('../src/lib/businessBrandingService.ts');
 const { setBusinessPublication, getBusinessPublicationStatus, syncPublicProfileIfNeeded } = await import('../src/lib/businessPublicProfileService.ts');
 
 const password = 'EmulatorOnlyPass123!';
@@ -179,7 +180,8 @@ const adminRead = async path => {
 // Las vistas son React reales; los módulos de SDK viven en este proceso.
 const managementBridge = {
   getBusiness: (uid: string, id: string) => getBusinessForUser(uid, id),
-  updateBranding: (id: string, patch: any) => updateDoc(doc(db, businessPath(id)), JSON.parse(JSON.stringify(patch))),
+  updateBranding: (tenant: any, branding: any) => saveBusinessBranding(
+      JSON.parse(JSON.stringify(tenant)), JSON.parse(JSON.stringify(branding))),
   syncPublic: (id: string, tenant: any) => syncPublicProfileIfNeeded(id, JSON.parse(JSON.stringify(tenant))),
   subscribeCatalog: (id: string, callback: any, onError: any) =>
     subscribeToBusinessCatalog(id, callback, onError),
