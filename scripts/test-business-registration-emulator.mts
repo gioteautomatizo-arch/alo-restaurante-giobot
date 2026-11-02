@@ -180,6 +180,12 @@ try {
     bridge: managementBridge, name: 'Negocio A configurado en UI',
   });
   assert.equal((await getDoc(doc(db, 'businesses', idA))).data()?.branding.restaurantName, 'Negocio A configurado en UI');
+  // La pestaña de alta conserva el branding antiguo: NO debe restaurarlo.
+  await assert.rejects(saveBusinessBranding(a.tenant, {
+    ...a.tenant.branding, restaurantName: 'A obsoleta',
+  }), /CONFLICTO_IDENTIDAD/);
+  assert.equal((await getDoc(doc(db, 'businesses', idA))).data()?.branding.restaurantName,
+    'Negocio A configurado en UI', 'La transacción CAS conserva el guardado de A');
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.branding.restaurantName, 'Negocio A configurado en UI');
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.published, true);
 
