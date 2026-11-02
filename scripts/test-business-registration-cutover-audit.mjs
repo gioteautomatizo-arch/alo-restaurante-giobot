@@ -157,6 +157,45 @@ const readOrResult = inspect({
 assert.equal(readOrResult.status, 'BLOCKED', 'read OR bypass');
 assert(readOrResult.blockers.includes('STAGED_RESERVATION_IMMUTABILITY_NOT_PROVEN'));
 
+// Firestore combina permisos de rutas match superpuestas por OR. Una raíz
+// perfecta NO protege un alta ni la privacidad de reservas si otra ruta
+// coincidente concede create/get/list. El preflight debe fallar cerrado.
+const catchAllAnchor = '    match /{document=**} {';
+assert(strongerRules.includes(catchAllAnchor), 'Cambió el catch-all staged: revisar mutaciones');
+const withOverlap = (rule) => strongerRules.replace(catchAllAnchor, rule + '\n' + catchAllAnchor);
+for (const [name, rule] of [
+  ['recursive wildcard read', '    match /{anything=**} { allow get: if true; }'],
+  ['recursive wildcard write', '    match /{anything=**} { allow create: if true; }'],
+  ['generic two-level match', '    match /{collection}/{id} { allow create, get: if true; }'],
+  ['reservation variable alias', '    match /businessHandleReservations/{reservationId} { allow list: if true; }'],
+  ['business variable alias', '    match /businesses/{id} { allow create: if true; }'],
+  ['nested recursive wildcard', '    match /businesses/{id}/{rest=**} { allow create: if true; }'],
+]) {
+  const result = inspect({
+    clientSource: threeDocClient,
+    stagedRules: withOverlap(rule),
+    evidence: allEvidence,
+  });
+  assert.equal(result.status, 'BLOCKED', name);
+  assert(result.blockers.includes('STAGED_OVERLAPPING_GRANTS_NOT_PROVEN'), name);
+  assert(result.blockers.includes('DIRECT_ROLLBACK_TO_STAGED_UNSAFE'), name);
+}
+const closedOverlap = inspect({
+  clientSource: threeDocClient,
+  stagedRules: withOverlap('    match /{collection}/{id} { allow read, write: if false; }'),
+  evidence: allEvidence,
+});
+assert.equal(closedOverlap.status, 'READY_FOR_INDEPENDENT_REVIEW',
+  'Un solapamiento cerrado no debe fingir una concesión');
+assert.equal(closedOverlap.safeToDeploy, false);
+const malformedMatch = inspect({
+  clientSource: threeDocClient,
+  stagedRules: strongerRules.replace(catchAllAnchor, '    match /{broken\n' + catchAllAnchor),
+  evidence: allEvidence,
+});
+assert(malformedMatch.blockers.includes('STAGED_OVERLAPPING_GRANTS_NOT_PROVEN'),
+  'Un match no reconocible debe bloquear el diagnóstico');
+
 const fakeCommentRules = stagedRules.replace(rootAnchor,
   `&& !exists(${rootPath}); // existsAfter(${ownerPath})`);
 assert(inspect({ clientSource: threeDocClient, stagedRules: fakeCommentRules, evidence: allEvidence })
