@@ -333,7 +333,10 @@ try {
   assert.deepEqual((await getDoc(doc(db, 'businesses', idB))).data()?.capabilities, []);
   await assert.rejects(saveBusinessCapabilities(modulesFreshB, ['VIP']), /CONFLICTO_MODULOS/,
     'Pestaña B antigua no puede reactivar capacidades tras []');
-  assert.deepEqual((await getDoc(doc(db, 'businesses', idA))).data()?.capabilities, modulesA,
+  // La cuenta B NO tiene permiso para leer la raíz privada A. Solo el Admin SDK
+  // del emulador inspecciona el resultado de aislamiento sin abrir permisos.
+  const rootAAdmin = await getAdminFirestore(adminApp).collection('businesses').doc(idA).get();
+  assert.deepEqual(rootAAdmin.data()?.capabilities, modulesA,
     'Editar B no modifica módulos A');
   await deny(saveBusinessCapabilities(modulesBeforeA, ['VIP']), 'B no modifica capacidades A');
   console.log('PASS: módulos React A/B con CAS real, pestaña obsoleta, [] y permisos (Auth+Firestore Emulator).');
