@@ -117,7 +117,7 @@ qa.user={uid:'owner-b'};
 const beforeA=clone(qa.records['tenant-a']);
 await qa.save(clone(b),rename(b,'B actualizada'));
 assert.equal(qa.records['tenant-b'].branding.restaurantName,'B actualizada');
-assert.deepEqual(qa.records['tenant-a'],beforeA);
+assert.deepEqual(clone(qa.records['tenant-a']),beforeA, 'B no debe modificar A (normalizar realms VM)');
 assert.equal(qa.writes.at(-1).ref.id,'tenant-b');
 
 // Un error de Firestore se propaga sin informar éxito.
