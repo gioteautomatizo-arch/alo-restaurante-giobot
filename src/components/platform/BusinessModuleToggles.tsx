@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import React, { useEffect, useRef, useState } from 'react';
+import { auth } from '../../lib/firebase';
+import { saveBusinessCapabilities } from '../../lib/businessCapabilitiesService';
+import type { RestaurantTenant } from '../../lib/restaurantCore';
 
 interface ToggleItem { capability: string; title: string; description: string; ready: boolean }
 
@@ -16,30 +17,49 @@ const ITEMS: ToggleItem[] = [
 
 /** El dueño enciende o apaga módulos de su negocio. Un negocio que solo quiere ticket los deja apagados. */
 export const BusinessModuleToggles: React.FC<{
-  businessId: string;
+  business: RestaurantTenant;
   enabled: Set<string>;
   isOwner: boolean;
   onChanged: (capabilities: string[]) => void;
-}> = ({ businessId, enabled, isOwner, onChanged }) => {
-  const [busy, setBusy] = useState('');
+}> = ({ business, enabled, isOwner, onChanged }) => {
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const busyRef = useRef(false);
+  const mountedRef = useRef(true);
+  const tenantRef = useRef(business.restaurantId);
+  tenantRef.current = business.restaurantId;
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   const toggle = async (capability: string) => {
-    if (!isOwner) return;
+    if (!isOwner || busyRef.current) return;
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      setError('Tu sesión expiró. Vuelve a entrar al negocio.');
+      return;
+    }
+    const businessId = business.restaurantId;
+    const isCurrent = () => mountedRef.current
+      && tenantRef.current === businessId && auth.currentUser?.uid === uid;
     const next = new Set(enabled);
     if (next.has(capability)) next.delete(capability);
     else next.add(capability);
-    setBusy(capability);
+    busyRef.current = true;
+    setBusy(true);
     setError('');
     try {
       const list = Array.from(next);
-      await updateDoc(doc(db, 'businesses', businessId), { capabilities: list });
-      onChanged(list);
+      await saveBusinessCapabilities(business, list);
+      if (isCurrent()) onChanged(list);
     } catch (e) {
-      console.warn('[BusinessModuleToggles]', e);
-      setError('No pudimos guardar el cambio. Solo el dueño puede activar módulos.');
+      if (isCurrent()) {
+        console.warn('[BusinessModuleToggles]', e);
+        setError(e instanceof Error ? e.message : 'No pudimos guardar los módulos. Reintenta.');
+      }
     } finally {
-      setBusy('');
+      if (isCurrent()) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   };
 
@@ -62,7 +82,7 @@ export const BusinessModuleToggles: React.FC<{
                 role="switch"
                 aria-checked={on}
                 aria-label={item.title}
-                disabled={!isOwner || busy === item.capability}
+                disabled={!isOwner || busy}
                 onClick={() => void toggle(item.capability)}
                 className={`relative h-7 w-12 shrink-0 rounded-full transition disabled:opacity-50 ${on ? 'bg-[#D6A34A]' : 'bg-[#3A3022]'}`}
               >
