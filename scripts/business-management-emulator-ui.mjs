@@ -7,10 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = fileURLToPath(new URL('../', import.meta.url));
 const mocks = {
-  'firebase/firestore': [
-    'export const doc = (_db, collection, id) => ({collection,id});',
-    'export const updateDoc = (ref, patch) => window.qa.bridge.updateBranding(ref.id, patch);',
-  ].join('\n'),
+  '../../lib/businessBrandingService': 'export function saveBusinessBranding(tenant, branding) {return window.qa.bridge.updateBranding(tenant, branding);}',
   '../../lib/firebase': [
     'export const db = {};',
     'export const auth = {get currentUser() {return window.qa.user;}};',
