@@ -132,6 +132,7 @@ export async function assertForeignWorkspaceDeniedThroughUI({businessId,user,bri
       'Acceso privado ajeno denegado en UI');
     assert(!button(document,'Publicar mi negocio'));
     assert(!button(document,'Ocultar del directorio'));
+    assert(!button(document,'Reintentar acceso'), 'Una denegación Firestore no ofrece reintento de red');
     assert.equal(window.qa.writes,0);
   });
 }
