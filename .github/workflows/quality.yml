@@ -134,6 +134,8 @@ jobs:
         run: node scripts/test-business-workspace-publication-ui.mjs
       - name: Test branding saves and uploads on tenant/account changes (React/jsdom, mocked backend)
         run: node scripts/test-business-branding-session-ui.mjs
+      - name: Test branding CAS prevents stale tabs and VIP clobber across tenants (mocked Firestore)
+        run: node scripts/test-business-branding-cas.mjs
       - name: Test shift cash reconciliation (synthetic data, no Firebase writes)
         run: node --import tsx scripts/test-shift-sales.mts
       - name: Test A/B table payment-order reconciliation preflight (synthetic, no Firebase writes)
