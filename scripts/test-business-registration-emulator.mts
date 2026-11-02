@@ -252,10 +252,13 @@ try {
   }), /CONFLICTO_IDENTIDAD/, 'Una pestaña VIP antigua no puede revertir el guardado nuevo');
 
   // Módulos React usa CAS real: dos pestañas no pueden restaurar capacidades.
+  console.log('CHECKPOINT módulos A: antes de leer raíz');
   const modulesBeforeA = (await getBusinessForUser(uidA, idA))!;
+  console.log('CHECKPOINT módulos A: raíz leída');
   const modulesA = await saveModulesThroughUI({
     tenant: modulesBeforeA, user: auth.currentUser!, bridge: managementBridge,
   });
+  console.log('CHECKPOINT módulos A: guardado React confirmado');
   assert.deepEqual((await getDoc(doc(db, 'businesses', idA))).data()?.capabilities, modulesA);
   await assert.rejects(saveBusinessCapabilities(modulesBeforeA, ['VIP']), /CONFLICTO_MODULOS/,
     'Pestaña A antigua no puede restaurar módulos');
@@ -317,10 +320,12 @@ try {
   assert.equal((await getDoc(doc(db, 'businesses', idB))).data()?.branding.restaurantName, 'Negocio B configurado en UI');
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idB))).data()?.published, false);
 
+  console.log('CHECKPOINT módulos B: antes de leer raíz');
   const modulesBeforeB = (await getBusinessForUser(uidB, idB))!;
   const modulesB = await saveModulesThroughUI({
     tenant: modulesBeforeB, user: auth.currentUser!, bridge: managementBridge,
   });
+  console.log('CHECKPOINT módulos B: guardado React confirmado');
   assert.deepEqual((await getDoc(doc(db, 'businesses', idB))).data()?.capabilities, modulesB);
   // [] es un estado explícito, no ausencia: no reactivar módulos por plantilla.
   const modulesFreshB = (await getBusinessForUser(uidB, idB))!;
