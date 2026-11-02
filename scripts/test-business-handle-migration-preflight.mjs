@@ -22,13 +22,32 @@ const coverageScope = path => {
     return 'businessSubcollections';
   return parts.length === 2 && coverageScopes.includes(parts[0]) ? parts[0] : null;
 };
-const inventory = (records, complete = true) => ({
-  scope: 'business-identifier-inventory', complete, records,
-  coverage: Object.fromEntries(coverageScopes.map(scope => [scope, {
-    complete: true, pagesRead: 1,
-    documentCount: records.filter(record => coverageScope(record.path) === scope).length,
-  }])),
-});
+const SOURCE = 'a'.repeat(64);
+const SNAPSHOT = 'b'.repeat(64);
+const PAGE_SIZE = 100;
+const pageCounts = count => {
+  const pages = [];
+  while (count >= PAGE_SIZE) { pages.push(PAGE_SIZE); count -= PAGE_SIZE; }
+  pages.push(count); // página terminal corta o vacía, incluso colección vacía
+  return pages;
+};
+const inventory = (records, complete = true) => {
+  const coverage = Object.fromEntries(coverageScopes.map(scope => {
+    const count = records.filter(record => coverageScope(record.path) === scope).length;
+    return [scope, { complete: true, pagesRead: pageCounts(count).length, documentCount: count }];
+  }));
+  return {
+    scope: 'business-identifier-inventory', complete, records, coverage,
+    capture: {
+      sourceFingerprint: SOURCE, snapshotFingerprint: SNAPSHOT,
+      startedAt: 1800000000000, finishedAt: 1800000000500,
+      collections: Object.fromEntries(coverageScopes.map(scope => [scope, {
+        sourceFingerprint: SOURCE, snapshotFingerprint: SNAPSHOT,
+        pageSize: PAGE_SIZE, pageCounts: pageCounts(coverage[scope].documentCount),
+      }])),
+    },
+  };
+};
 const single = records => auditHistoricalHandles(inventory(records)).businesses[0];
 const hasReason = (result, reason) => assert(result.reasons.includes(reason), reason);
 
@@ -424,5 +443,63 @@ assert(auditHistoricalHandles(emptyButDeclared).globalBlockers
   .includes('EMPTY_INVENTORY_NOT_PROOF_OF_UNUSED_IDS'));
 assert.deepEqual(auditHistoricalHandles(coverageBase).globalBlockers, []);
 assert.equal(auditHistoricalHandles(coverageBase).counts.manualCandidates, 1);
-console.log('PASS: 17 escenarios originales, OWNER atómico y cobertura/paginación declaradas; solo inventario local, ninguna escritura ni Firebase.');
+
+// Evidencia de captura: una cobertura con pagesRead>0 no demuestra consulta
+// terminal ni mismo origen/snapshot. Cualquier contradicción bloquea A y B.
+const noCapture = structuredClone(coverageBase);
+delete noCapture.capture;
+coverageBlock(noCapture, 'MISSING_CAPTURE_MANIFEST');
+for (const scope of coverageScopes) {
+  const missingCaptureScope = structuredClone(coverageBase);
+  delete missingCaptureScope.capture.collections[scope];
+  coverageBlock(missingCaptureScope, 'MISSING_CAPTURE_COLLECTION');
+  const sourceDrift = structuredClone(coverageBase);
+  sourceDrift.capture.collections[scope].sourceFingerprint = 'c'.repeat(64);
+  coverageBlock(sourceDrift, 'CROSS_COLLECTION_CAPTURE_MISMATCH');
+  const snapshotDrift = structuredClone(coverageBase);
+  snapshotDrift.capture.collections[scope].snapshotFingerprint = 'd'.repeat(64);
+  coverageBlock(snapshotDrift, 'CROSS_COLLECTION_CAPTURE_MISMATCH');
+  const invalidPageSize = structuredClone(coverageBase);
+  invalidPageSize.capture.collections[scope].pageSize = 0;
+  coverageBlock(invalidPageSize, 'INVALID_CAPTURE_PAGE_SIZE');
+  const wrongPages = structuredClone(coverageBase);
+  wrongPages.capture.collections[scope].pageCounts = [999];
+  coverageBlock(wrongPages, 'INVALID_CAPTURE_PAGE_COUNTS');
+}
+const invalidCaptureTime = structuredClone(coverageBase);
+invalidCaptureTime.capture.finishedAt = invalidCaptureTime.capture.startedAt - 1;
+coverageBlock(invalidCaptureTime, 'INVALID_CAPTURE_TIME_RANGE');
+const invalidCaptureSource = structuredClone(coverageBase);
+invalidCaptureSource.capture.sourceFingerprint = 'not-a-fingerprint';
+coverageBlock(invalidCaptureSource, 'INVALID_CAPTURE_SOURCE_FINGERPRINT');
+const unknownCapture = structuredClone(coverageBase);
+unknownCapture.capture.collections.unreviewedCollection = { pageSize: 100, pageCounts: [0] };
+coverageBlock(unknownCapture, 'UNKNOWN_CAPTURE_COLLECTION');
+const wrongPageTotal = structuredClone(coverageBase);
+wrongPageTotal.capture.collections.businesses.pageCounts = [3];
+coverageBlock(wrongPageTotal, 'CAPTURE_COUNT_MISMATCH');
+const pageDrift = structuredClone(coverageBase);
+pageDrift.coverage.businesses.pagesRead = 2;
+coverageBlock(pageDrift, 'CAPTURE_COVERAGE_MISMATCH');
+const earlyShortPage = structuredClone(coverageBase);
+earlyShortPage.capture.collections.businesses.pageCounts = [1, 1];
+earlyShortPage.coverage.businesses.pagesRead = 2;
+coverageBlock(earlyShortPage, 'NONTERMINAL_PAGE_INCOMPLETE');
+const hundredNested = inventory([
+  root('alpha', 'alice'), member('alpha', 'alice'),
+  ...Array.from({ length: 100 }, (_, i) => ({
+    path: 'businesses/alpha/catalog/item-' + i, data: { items: [] },
+  })),
+]);
+assert.deepEqual(hundredNested.capture.collections.businessSubcollections.pageCounts, [100, 0]);
+assert.deepEqual(auditHistoricalHandles(hundredNested).globalBlockers, []);
+const missingTerminal = structuredClone(hundredNested);
+missingTerminal.capture.collections.businessSubcollections.pageCounts = [100];
+missingTerminal.coverage.businessSubcollections.pagesRead = 1;
+coverageBlock(missingTerminal, 'MISSING_TERMINAL_PAGE');
+const captureReport = auditHistoricalHandles(coverageBase);
+assert(!JSON.stringify(captureReport).includes(SOURCE));
+assert(!JSON.stringify(captureReport).includes(SNAPSHOT));
+
+console.log('PASS: OWNER atómico, cinco superficies, páginas terminales y fuente/snapshot declarados; offline sin Firebase.');
 console.warn('PENDIENTE: inventario real completo, respaldo, validación de propietarios y backfill autorizado; ningún candidato es aprobación automática.');

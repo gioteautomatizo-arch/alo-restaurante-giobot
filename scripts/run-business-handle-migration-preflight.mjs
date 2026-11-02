@@ -12,6 +12,7 @@ if (process.argv.includes('--help') || !input || process.argv.length !== 3) {
   console.log('Uso: node scripts/run-business-handle-migration-preflight.mjs inventario-local.json');
   console.log('Entrada: { "scope":"business-identifier-inventory", "complete":true, "coverage":{...}, "records":[...] }');
   console.log('coverage exige businesses, businessMemberships, businessHandleReservations, publicBusinessProfiles y businessSubcollections; cada una con complete:true, pagesRead>=1 y documentCount exacto.');
+  console.log('capture obligatorio: sourceFingerprint y snapshotFingerprint (64 hex), startedAt/finishedAt (ms), collections[cinco superficies] con sourceFingerprint, snapshotFingerprint, pageSize (1..500) y pageCounts incluyendo página terminal corta o vacía.');
   console.log('No conecta a Firebase ni genera escrituras. La cobertura declarada requiere certificación externa.');
   process.exit(input ? 0 : 2);
 }

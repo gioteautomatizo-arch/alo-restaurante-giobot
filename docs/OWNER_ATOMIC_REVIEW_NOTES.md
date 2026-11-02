@@ -108,3 +108,33 @@ La prueba también comprueba que un rechazo de batch no deja documentos parciale
 El preflight offline de handles ahora **bloquea** un manifiesto que solo declare `complete: true`. Requiere `coverage` con las cinco superficies `businesses`, `businessMemberships`, `businessHandleReservations`, `publicBusinessProfiles` y `businessSubcollections`. Cada entrada necesita `complete: true`, `pagesRead` entero positivo y `documentCount` entero no negativo, que debe coincidir con los registros incluidos. Ausencia de colección (incluso vacía), conteos discordantes, paginación inválida y ámbitos desconocidos bloquean **todo** el inventario. El CLI imprime estados sin UIDs ni datos personales.
 
 Esto detecta manifiestos inconsistentes, **pero no certifica** que la extracción cubriera todas las páginas reales, que se haya congelado la creación de negocios ni que las lecturas fueran consistentes en el tiempo. Sigue prohibido el backfill automático. Requiere extracción real autorizada, revisión independiente, respaldo/restauración y autorización de reglas; las pruebas solo usan datos sintéticos y no tocan Firebase.
+
+
+## Puerta de evidencia paginada para handles históricos (2 de noviembre de 2026)
+
+El preflight de identificadores exige ahora `capture` **además** de `coverage`. Cada una de las cinco superficies (`businesses`, `businessMemberships`, `businessHandleReservations`, `publicBusinessProfiles`, `businessSubcollections`) debe declarar `sourceFingerprint` y `snapshotFingerprint` iguales a los globales (64 caracteres hexadecimales minúsculos), `pageSize` entre 1 y 500 y `pageCounts` con la última página **menor** que el tamaño. Para un múltiplo exacto del tamaño debe aparecer una consulta terminal vacía: `[100, 0]` para 100 registros con `pageSize:100`; una colección vacía usa `[0]`. Todas las páginas anteriores deben estar llenas. El número de páginas y su suma deben coincidir con `coverage.pagesRead`, `coverage.documentCount` y `records`. Las cinco superficies son obligatorias incluso vacías; una sola falla bloquea **todo** el inventario.
+
+Ejemplo de estructura ficticia mínima (la misma forma se repite en las cinco superficies):
+
+```json
+{
+  "capture": {
+    "sourceFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "snapshotFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "startedAt": 1800000000000,
+    "finishedAt": 1800000000500,
+    "collections": {
+      "businesses": {
+        "sourceFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "snapshotFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "pageSize": 100,
+        "pageCounts": [2]
+      }
+    }
+  }
+}
+```
+
+El ejemplo muestra **solo una** superficie para ilustrar la forma; no es un inventario válido hasta incluir las otras cuatro, `coverage` y `records`. El CLI `node scripts/run-business-handle-migration-preflight.mjs inventario-local.json` continúa siendo **solo lectura**, sin Firebase ni backfill. Los códigos del reporte no imprimen UID, rutas, huellas ni datos personales. La prueba sintética se ejecuta con `node scripts/test-business-handle-migration-preflight.mjs` en Quality.
+
+**Limitación esencial:** fingerprints, tiempos, conteos y páginas son declaraciones del capturista; no son firmas ni pruebas criptográficas del contenido. No certifican la identidad del proyecto, un snapshot consistente, la exhaustividad de consultas reales o un freeze. Se requiere evidencia externa de exportación autorizada e inmutable, respaldo/restauración, revisión humana de propietarios, compatibilidad 2→3 y permisos antes de cualquier decisión. La herramienta nunca autoriza backfill automático, cambios de reglas ni publicación. Reversión: revertir el commit de preflight/fixtures/CLI y esta nota; no hay datos que restaurar.

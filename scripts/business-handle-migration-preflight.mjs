@@ -1,3 +1,5 @@
+import { auditHandleCaptureManifest } from './business-handle-capture-manifest-preflight.mjs';
+
 /**
  * Auditoría conservadora de inventario histórico (SIN Firebase ni escrituras).
  * Un candidato NO autoriza backfill: exige inventario exhaustivo, respaldo,
@@ -177,6 +179,8 @@ export function auditHistoricalHandles(inventory) {
   // complete:true no demuestra páginas ni colecciones omitidas.
   // La cobertura declarada requiere comprobación externa.
   validateCoverage(inventory, globalProblems);
+  // Cobertura sin páginas terminales/fuente coherente no acredita el inventario.
+  globalProblems.push(...auditHandleCaptureManifest(inventory));
   // Una misma ruta no puede representar dos documentos de Firestore. La
   // duplicación entre tenants puede ocultarse si cada registro declara un
   // restaurantId distinto (p. ej. IDs/UIDs con guiones bajos). Bloquear TODO
