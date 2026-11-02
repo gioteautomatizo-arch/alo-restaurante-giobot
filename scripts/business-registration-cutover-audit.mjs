@@ -34,7 +34,7 @@ function matchRulesBlock(source, path) {
 // inspecciona la auditoría. Este detector es deliberadamente conservador:
 // si no puede interpretar un match, NO acredita el corte.
 function matchingRuleBlocks(source) {
-  const matcher = /\\bmatch\\s+(\\/(?:[^\\s{]|\\{[^}]*\\})+)\\s*\\{/g;
+  const matcher = /\bmatch\s+(\/(?:[^\s{]|\{[^}]*\})+)\s*\{/g;
   const blocks = [];
   for (const found of source.matchAll(matcher)) {
     const open = found.index + found[0].length - 1;
@@ -47,7 +47,7 @@ function matchingRuleBlocks(source) {
     if (close < 0) return null;
     blocks.push({ path: found[1], section: source.slice(open + 1, close) });
   }
-  return blocks.length === [...source.matchAll(/\\bmatch\\s+\\//g)].length ? blocks : null;
+  return blocks.length === [...source.matchAll(/\bmatch\s+\//g)].length ? blocks : null;
 }
 
 function rulePathOverlapsTenantRoot(pattern, collection) {
@@ -55,11 +55,11 @@ function rulePathOverlapsTenantRoot(pattern, collection) {
   const target = [collection, 'synthetic-tenant'];
   const matches = (i, j) => {
     if (i === parts.length) return j === target.length;
-    if (/^\\{[^}]+=\\*\\*\\}$/.test(parts[i])) {
+    if (/^\{[^}]+=\*\*\}$/.test(parts[i])) {
       return matches(i + 1, j) || (j < target.length && matches(i, j + 1));
     }
     if (j === target.length) return false;
-    return (parts[i] === target[j] || /^\\{[^}]+\\}$/.test(parts[i]))
+    return (parts[i] === target[j] || /^\{[^}]+\}$/.test(parts[i]))
       && matches(i + 1, j + 1);
   };
   return matches(0, 0);
@@ -73,7 +73,7 @@ function hasNoOverlappingTenantGrants(source) {
     if (audited.has(block.path)) continue; // Sus cláusulas se validan por separado.
     if (!['businesses', 'businessHandleReservations']
       .some(collection => rulePathOverlapsTenantRoot(block.path, collection))) continue;
-    const grants = [...block.section.matchAll(/\\ballow\\s+([^:;]+)\\s*:\\s*if\\s+([^;]*);/g)];
+    const grants = [...block.section.matchAll(/\ballow\s+([^:;]+)\s*:\s*if\s+([^;]*);/g)];
     if (grants.some(([, , condition]) => condition.trim() !== 'false')) return false;
   }
   return true;
