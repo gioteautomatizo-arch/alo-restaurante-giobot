@@ -10,8 +10,9 @@ import { auditHistoricalHandles } from './business-handle-migration-preflight.mj
 const input = process.argv[2];
 if (process.argv.includes('--help') || !input || process.argv.length !== 3) {
   console.log('Uso: node scripts/run-business-handle-migration-preflight.mjs inventario-local.json');
-  console.log('Entrada: { "scope": "business-identifier-inventory", "complete": true, "records": [{"path":"businesses/id","data":{...}}, ...] }');
-  console.log('No conecta a Firebase ni genera escrituras. El indicador complete debe verificarse externamente.');
+  console.log('Entrada: { "scope":"business-identifier-inventory", "complete":true, "coverage":{...}, "records":[...] }');
+  console.log('coverage exige businesses, businessMemberships, businessHandleReservations, publicBusinessProfiles y businessSubcollections; cada una con complete:true, pagesRead>=1 y documentCount exacto.');
+  console.log('No conecta a Firebase ni genera escrituras. La cobertura declarada requiere certificación externa.');
   process.exit(input ? 0 : 2);
 }
 try {

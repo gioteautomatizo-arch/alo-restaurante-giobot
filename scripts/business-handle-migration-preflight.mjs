@@ -4,6 +4,51 @@
  * revisión humana independiente y un proceso privilegiado auditado.
  */
 const SCOPE = 'business-identifier-inventory';
+const COVERAGE_SCOPES = Object.freeze([
+  'businesses', 'businessMemberships', 'businessHandleReservations',
+  'publicBusinessProfiles', 'businessSubcollections',
+]);
+
+function coverageScopeForPath(path) {
+  if (typeof path !== 'string') return null;
+  const parts = path.split('/');
+  if (parts[0] === 'businesses' && parts.length === 2) return 'businesses';
+  if (parts[0] === 'businesses' && parts.length >= 4 && parts.length % 2 === 0)
+    return 'businessSubcollections';
+  if (parts.length !== 2) return null;
+  return COVERAGE_SCOPES.includes(parts[0]) ? parts[0] : null;
+}
+
+function validateCoverage(inventory, problems) {
+  const coverage = inventory.coverage;
+  if (!coverage || typeof coverage !== 'object' || Array.isArray(coverage)) {
+    problems.push('MISSING_COLLECTION_COVERAGE');
+    return;
+  }
+  if (Object.keys(coverage).some(key => !COVERAGE_SCOPES.includes(key)))
+    problems.push('UNKNOWN_COLLECTION_COVERAGE');
+  const counts = Object.fromEntries(COVERAGE_SCOPES.map(key => [key, 0]));
+  for (const record of inventory.records) {
+    const scope = coverageScopeForPath(record?.path);
+    if (scope) counts[scope]++;
+  }
+  for (const scope of COVERAGE_SCOPES) {
+    const entry = coverage[scope];
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      problems.push('MISSING_COLLECTION_COVERAGE');
+      continue;
+    }
+    if (entry.complete !== true) problems.push('INCOMPLETE_COLLECTION_SCAN');
+    if (!Number.isSafeInteger(entry.pagesRead) || entry.pagesRead < 1
+        || !Number.isSafeInteger(entry.documentCount) || entry.documentCount < 0) {
+      problems.push('INVALID_COLLECTION_COVERAGE');
+      continue;
+    }
+    if (entry.documentCount !== counts[scope])
+      problems.push('DECLARED_COLLECTION_COUNT_MISMATCH');
+  }
+}
+
 
 const validId = id => typeof id === 'string'
   && id.length > 0 && id.length <= 200
@@ -121,7 +166,7 @@ function inspectEntry(entry, globallyBlocked) {
     hasReservation: Boolean(reserve), hasResidualData: entry.residual.length > 0 };
 }
 
-/** @param {{scope:string, complete:boolean, records:Array<{path:string,data:object}>}} inventory */
+/** @param {{scope:string, complete:boolean, coverage:Record<string,{complete:boolean,documentCount:number,pagesRead:number}>, records:Array<{path:string,data:object}>}} inventory */
 export function auditHistoricalHandles(inventory) {
   if (!inventory || !Array.isArray(inventory.records))
     throw new TypeError('Se requiere inventario con records[]; no se consultan servicios externos.');
@@ -129,6 +174,9 @@ export function auditHistoricalHandles(inventory) {
   const globalProblems = [];
   if (inventory.scope !== SCOPE || inventory.complete !== true)
     globalProblems.push('INVENTORY_NOT_CERTIFIED_COMPLETE');
+  // complete:true no demuestra páginas ni colecciones omitidas.
+  // La cobertura declarada requiere comprobación externa.
+  validateCoverage(inventory, globalProblems);
   // Una misma ruta no puede representar dos documentos de Firestore. La
   // duplicación entre tenants puede ocultarse si cada registro declara un
   // restaurantId distinto (p. ej. IDs/UIDs con guiones bajos). Bloquear TODO

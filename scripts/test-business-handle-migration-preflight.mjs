@@ -11,8 +11,23 @@ const reservation = (id, uid) => ({ path: 'businessHandleReservations/' + id,
   data: { businessId: id, ownerUserId: uid } });
 const catalog = id => ({ path: 'businesses/' + id + '/catalog/menu_catalog',
   data: { items: [{ id: 'old-secret' }] } });
+const coverageScopes = [
+  'businesses', 'businessMemberships', 'businessHandleReservations',
+  'publicBusinessProfiles', 'businessSubcollections',
+];
+const coverageScope = path => {
+  const parts = path.split('/');
+  if (parts[0] === 'businesses' && parts.length === 2) return 'businesses';
+  if (parts[0] === 'businesses' && parts.length >= 4 && parts.length % 2 === 0)
+    return 'businessSubcollections';
+  return parts.length === 2 && coverageScopes.includes(parts[0]) ? parts[0] : null;
+};
 const inventory = (records, complete = true) => ({
   scope: 'business-identifier-inventory', complete, records,
+  coverage: Object.fromEntries(coverageScopes.map(scope => [scope, {
+    complete: true, pagesRead: 1,
+    documentCount: records.filter(record => coverageScope(record.path) === scope).length,
+  }])),
 });
 const single = records => auditHistoricalHandles(inventory(records)).businesses[0];
 const hasReason = (result, reason) => assert(result.reasons.includes(reason), reason);
@@ -368,5 +383,46 @@ assert.deepEqual(legacyMissingOwner.globalBlockers, []);
 assert.equal(legacyMissingOwner.businesses[0].status, 'HOLD_MANUAL_REVIEW');
 assert.equal(legacyMissingOwner.businesses[1].status, 'CANDIDATE_FOR_MANUAL_BACKFILL_REVIEW');
 
-console.log('PASS: 17 escenarios originales, variantes y OWNER atómico del contrato 3-doc de perfil/residuales entre tenants; solo inventario local, ninguna escritura ni Firebase.');
+// Un manifiesto completo sin evidencia por colección no permite backfill.
+const coverageBase = inventory([
+  root('alpha', 'alice'), member('alpha', 'alice'),
+  root('beta', 'bob'), member('beta', 'bob'),
+  reservation('beta', 'bob'), profile('alpha', 'alpha', 'alpha'),
+  { path: 'businesses/alpha/catalog/menu_catalog', data: { items: [] } },
+]);
+const coverageBlock = (fixture, reason) => {
+  const result = auditHistoricalHandles(fixture);
+  assert(result.globalBlockers.includes(reason), reason + ': ' + result.globalBlockers.join(','));
+  assert.equal(result.counts.manualCandidates, 0, reason);
+  assert(result.businesses.every(entry => entry.status === 'BLOCKED_INCOMPLETE_INVENTORY'));
+  assert.equal(result.safeToApplyAutomatically, false);
+};
+const noCoverage = { ...coverageBase };
+delete noCoverage.coverage;
+coverageBlock(noCoverage, 'MISSING_COLLECTION_COVERAGE');
+for (const scope of coverageScopes) {
+  const missing = structuredClone(coverageBase);
+  delete missing.coverage[scope];
+  coverageBlock(missing, 'MISSING_COLLECTION_COVERAGE');
+  const incomplete = structuredClone(coverageBase);
+  incomplete.coverage[scope].complete = false;
+  coverageBlock(incomplete, 'INCOMPLETE_COLLECTION_SCAN');
+  const wrongCount = structuredClone(coverageBase);
+  wrongCount.coverage[scope].documentCount++;
+  coverageBlock(wrongCount, 'DECLARED_COLLECTION_COUNT_MISMATCH');
+  for (const invalid of [0, -1, 1.5, '1']) {
+    const badPages = structuredClone(coverageBase);
+    badPages.coverage[scope].pagesRead = invalid;
+    coverageBlock(badPages, 'INVALID_COLLECTION_COVERAGE');
+  }
+}
+const extraCoverage = structuredClone(coverageBase);
+extraCoverage.coverage.unreviewedCollection = { complete: true, documentCount: 0, pagesRead: 1 };
+coverageBlock(extraCoverage, 'UNKNOWN_COLLECTION_COVERAGE');
+const emptyButDeclared = inventory([]);
+assert(auditHistoricalHandles(emptyButDeclared).globalBlockers
+  .includes('EMPTY_INVENTORY_NOT_PROOF_OF_UNUSED_IDS'));
+assert.deepEqual(auditHistoricalHandles(coverageBase).globalBlockers, []);
+assert.equal(auditHistoricalHandles(coverageBase).counts.manualCandidates, 1);
+console.log('PASS: 17 escenarios originales, OWNER atómico y cobertura/paginación declaradas; solo inventario local, ninguna escritura ni Firebase.');
 console.warn('PENDIENTE: inventario real completo, respaldo, validación de propietarios y backfill autorizado; ningún candidato es aprobación automática.');

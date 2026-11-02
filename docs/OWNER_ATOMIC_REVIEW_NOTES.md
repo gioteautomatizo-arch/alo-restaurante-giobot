@@ -101,3 +101,10 @@ La prueba también comprueba que un rechazo de batch no deja documentos parciale
 **Puertas para cualquier futura decisión humana:** inventario completo y respaldos verificables de IDs históricos, backfill autorizado y auditable, revisión independiente de reglas y de permisos operativos, mecanismo probado para bloquear altas de pestañas/clientes antiguos, comunicación a usuarios durante la ventana de altas suspendidas, observabilidad y reversión que mantenga el bloqueo hasta restaurar un contrato seguro. No borrar ni reciclar reservas. Si se pierde la capacidad de dar de alta, mantener la puerta cerrada y reparar en entorno aislado; no abrir staged por conveniencia. No ejecutar ninguna de estas acciones en datos reales sin autorización.
 
 **Límite del ensayo:** no valida transporte real, despliegue, versiones móviles instaladas, lectura de reglas realmente activas, ni recorrido visual Android/iPad. El paso 2 continúa ABIERTO; la conciliación histórica de Caja/MIXTO continúa PENDIENTE.
+
+
+## Puerta adicional de cobertura de inventario histórico (2 de noviembre de 2026)
+
+El preflight offline de handles ahora **bloquea** un manifiesto que solo declare `complete: true`. Requiere `coverage` con las cinco superficies `businesses`, `businessMemberships`, `businessHandleReservations`, `publicBusinessProfiles` y `businessSubcollections`. Cada entrada necesita `complete: true`, `pagesRead` entero positivo y `documentCount` entero no negativo, que debe coincidir con los registros incluidos. Ausencia de colección (incluso vacía), conteos discordantes, paginación inválida y ámbitos desconocidos bloquean **todo** el inventario. El CLI imprime estados sin UIDs ni datos personales.
+
+Esto detecta manifiestos inconsistentes, **pero no certifica** que la extracción cubriera todas las páginas reales, que se haya congelado la creación de negocios ni que las lecturas fueran consistentes en el tiempo. Sigue prohibido el backfill automático. Requiere extracción real autorizada, revisión independiente, respaldo/restauración y autorización de reglas; las pruebas solo usan datos sintéticos y no tocan Firebase.
