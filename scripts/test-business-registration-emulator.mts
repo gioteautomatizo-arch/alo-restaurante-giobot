@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import { buildAtomicOwnerProposalRules } from './owner-atomic-proposal-rules.mjs';
 import { registerThroughOnboardingUI } from './business-onboarding-emulator-ui.mjs';
-import { saveBrandingThroughUI, addCatalogProductThroughUI } from './business-management-emulator-ui.mjs';
+import { saveBrandingThroughUI, addCatalogProductThroughUI, saveVipThroughUI } from './business-management-emulator-ui.mjs';
 import { publishBusinessThroughUI, publishAndHideBusinessThroughUI, assertForeignWorkspaceDeniedThroughUI, assertStaffCannotPublishThroughUI } from './business-publication-emulator-ui.mjs';
 import {
   acceptInviteThroughUI, createInviteThroughEmployeesUI, deactivateEmployeeThroughUI, inspectEmployeesUI,
@@ -235,6 +235,19 @@ try {
   assert.equal((await profileRefA.get()).data()?.branding.restaurantName, freshTenantA.branding.restaurantName);
   await profileRefA.set(originalPublicA);
   console.log('PASS: perfil publicado corrupto A/B bloqueado por estado y transacción; ficha histórica oculta recuperable (Auth+Firestore Emulator).');
+  // VIP usa el mismo CAS transaccional que identidad; no puede sobrescribir
+  // una edición concurrente ni saltarse el estado real de publicación.
+  const vipA = await saveVipThroughUI({
+    tenant: (await getBusinessForUser(uidA, idA))!, user: auth.currentUser!,
+    bridge: managementBridge, isPublished: true,
+  });
+  assert.equal((await getDoc(doc(db, 'businesses', idA))).data()?.branding.vipEnabled, true);
+  assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.branding.vipEnabled, true);
+  assert.equal(vipA.branding.restaurantName, 'Negocio A configurado en UI');
+  await assert.rejects(saveBusinessBranding(freshTenantA, {
+    ...freshTenantA.branding, vipRewardDescription: 'Pestaña VIP obsoleta',
+  }), /CONFLICTO_IDENTIDAD/, 'Una pestaña VIP antigua no puede revertir el guardado nuevo');
+
 
   await signOut(auth);
   const b = await registerThroughOnboardingUI({
@@ -275,6 +288,16 @@ try {
   await assertForeignWorkspaceDeniedThroughUI({businessId:idA,user:auth.currentUser!,bridge:publicationBridge});
   await publishAndHideBusinessThroughUI({businessId:idB,user:auth.currentUser!,bridge:publicationBridge});
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idB))).data()?.published, false);
+  await saveVipThroughUI({
+    tenant: (await getBusinessForUser(uidB, idB))!, user: auth.currentUser!,
+    bridge: managementBridge, isPublished: false,
+  });
+  assert.equal((await getDoc(doc(db, 'businesses', idB))).data()?.branding.vipEnabled, true);
+  assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idB))).data()?.published, false,
+    'Guardar VIP B nunca vuelve a publicar una ficha oculta');
+  assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA))).data()?.branding.vipEnabled, true,
+    'VIP de B no afecta la ficha A');
+
   await saveBrandingThroughUI({
     tenant: (await getBusinessForUser(uidB, idB))!, user: auth.currentUser!,
     bridge: managementBridge, name: 'Negocio B configurado en UI',
