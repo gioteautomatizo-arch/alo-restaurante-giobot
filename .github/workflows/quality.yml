@@ -64,6 +64,8 @@ jobs:
         run: node scripts/test-business-shift-session-ui.mjs
       - name: Test workspace tenant and account isolation (no Firebase writes)
         run: node --import tsx scripts/test-business-workspace-isolation.mts
+      - name: Test Workspace access retry and A/B session isolation (React/jsdom, mocked backend)
+        run: node scripts/test-business-workspace-access-retry-ui.mjs
       - name: Test business portal account switch and retry (mocked Auth/Firestore, no Firebase writes)
         run: node scripts/test-business-portal-isolation-ui.mjs
       - name: Test business account list fail-closed on partial reads (mocked Firestore, no writes)
