@@ -138,6 +138,10 @@ jobs:
         run: node scripts/test-business-branding-cas.mjs
       - name: Test VIP editor CAS, account isolation and hidden-publication safety (React/jsdom, mocked backend)
         run: node scripts/test-business-vip-branding-ui.mjs
+      - name: Test tenant module capabilities CAS and empty list (mocked Firestore, no writes)
+        run: node scripts/test-business-capabilities-cas.mjs
+      - name: Test module toggles account isolation and double clicks (React/jsdom, mocked backend)
+        run: node scripts/test-business-capabilities-ui.mjs
       - name: Test shift cash reconciliation (synthetic data, no Firebase writes)
         run: node --import tsx scripts/test-shift-sales.mts
       - name: Test A/B table payment-order reconciliation preflight (synthetic, no Firebase writes)
