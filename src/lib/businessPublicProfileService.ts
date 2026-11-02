@@ -1,4 +1,4 @@
-import { doc, getDocFromServer, setDoc } from 'firebase/firestore';
+import { doc, getDocFromServer, runTransaction } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { isPlatformAdmin } from './businessAuthService';
 import type { RestaurantTenant } from './restaurantCore';
@@ -113,21 +113,33 @@ export async function setBusinessPublication(businessId: string, tenant: Restaur
     throw new Error('La sesión cambió antes de publicar el negocio. Vuelve a iniciar sesión.');
   }
   const ref = doc(db, 'publicBusinessProfiles', businessId);
-  // El botón directo de publicar/ocultar no debe saltarse el guard de identidad
-  // que ya usan la lectura de estado y la sincronización. Un perfil corrupto
-  // requiere revisión; no sobrescribirlo silenciosamente con datos de A o B.
-  const existingProfile = await getDocFromServer(ref);
-  if (existingProfile.exists()) {
-    assertPublicProfileIdentity(businessId, existingProfile.data());
-  }
-  if (auth.currentUser?.uid !== user.uid) {
-    throw new Error('La sesión cambió antes de publicar el negocio. Vuelve a iniciar sesión.');
-  }
-  if (published) {
-    await setDoc(ref, makePublicBusinessProfile(businessId, tenant));
-  } else {
-    await setDoc(ref, { businessId, restaurantId: businessId, published: false, updatedAt: new Date().toISOString() }, { merge: true });
-  }
+  // La lectura del perfil y su escritura deben ser UNA operación atómica.
+  // Un getDocFromServer seguido de setDoc permite que otra sesión modifique
+  // el perfil entre ambas operaciones y se sobrescriba una identidad ajena.
+  // Firestore reintenta transacciones si el documento leído cambia; no aceptar
+  // un reintento automático como autorización para sobrescribir otro estado.
+  let attempts = 0;
+  await runTransaction(db, async (transaction) => {
+    const attempt = ++attempts;
+    if (auth.currentUser?.uid !== user.uid) {
+      throw new Error('La sesión cambió antes de publicar el negocio. Vuelve a iniciar sesión.');
+    }
+    const existingProfile = await transaction.get(ref);
+    if (existingProfile.exists()) {
+      assertPublicProfileIdentity(businessId, existingProfile.data());
+    }
+    if (attempt > 1) {
+      throw new Error('CONFLICTO_PUBLICACION: La página cambió durante la operación. Recarga su estado antes de reintentar.');
+    }
+    if (auth.currentUser?.uid !== user.uid) {
+      throw new Error('La sesión cambió antes de publicar el negocio. Vuelve a iniciar sesión.');
+    }
+    if (published) {
+      transaction.set(ref, makePublicBusinessProfile(businessId, tenant));
+    } else {
+      transaction.set(ref, { businessId, restaurantId: businessId, published: false, updatedAt: new Date().toISOString() }, { merge: true });
+    }
+  });
 }
 
 // Una ficha de otro negocio o una ficha histórica corrupta nunca debe
