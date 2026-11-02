@@ -217,7 +217,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const canPos = !!business.features.pos && canUsePos;
   const canManageVip = canAdministerBusinessVip(role);
 
-  const enabledCapabilities = new Set<string>(business.capabilities && business.capabilities.length > 0 ? business.capabilities : template.capabilities);
+  const enabledCapabilities = new Set<string>(Array.isArray(business.capabilities) ? business.capabilities : template.capabilities);
   const hasCap = (capability: string) => enabledCapabilities.has(capability);
 
   const tabs: Array<{ id: typeof view; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; allowed: boolean }> = [
@@ -308,7 +308,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     return (
       <div className="space-y-5">
         <BusinessSummaryTab businessId={businessId} business={business} isPublished={published} onGo={(t) => setView(t)} />
-        <BusinessModuleToggles businessId={businessId} enabled={enabledCapabilities} isOwner={role === 'OWNER' || role === 'SUPER_ADMIN'} onChanged={(caps) => setBusiness({ ...business, capabilities: caps })} />
+        <BusinessModuleToggles key={`${businessId}:${authUser?.uid ?? ""}`} business={business} enabled={enabledCapabilities} isOwner={role === 'OWNER' || role === 'SUPER_ADMIN'} onChanged={(caps) => setBusiness(current => current?.restaurantId === businessId ? { ...current, capabilities: caps } : current)} />
         <section className="rounded-2xl border border-[#3A3022] bg-[#111111] p-4">
           <p className="text-[10px] font-black uppercase tracking-wide text-[#E3BC6B]">Enlace para tus clientes</p>
           <div className="mt-3"><BusinessQrPanel businessId={businessId} businessName={business.branding.restaurantName} /></div>
