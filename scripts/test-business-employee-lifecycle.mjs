@@ -7,13 +7,28 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const mocks = {
   'firebase/app': [
-    'export const initializeApp = (_config,name) => ({name});',
-    'export const deleteApp = async () => {};',
-    'export const getApps = () => [];',
+    'const apps = new Map();',
+    'export const initializeApp = (_config,name) => {',
+    '  if (apps.has(name)) throw new Error("SECONDARY_APP_NAME_COLLISION");',
+    '  const app = {name}; apps.set(name,app); window.qa.secondaryCreated.push(name); return app;',
+    '};',
+    'export const deleteApp = async app => {',
+    '  if (!apps.delete(app.name)) throw new Error("SECONDARY_APP_DOUBLE_DELETE");',
+    '  window.qa.secondaryDeleted.push(app.name);',
+    '};',
+    'export const getApps = () => [...apps.values()];',
   ].join('\n'),
   'firebase/auth': [
-    'export const getAuth = app => app ? {currentUser:null} : window.qa.auth;',
-    'export const createUserWithEmailAndPassword = async () => {window.qa.created++; window.qa.onCreated?.(); return {user:{uid:"employee-new"}};};',
+    'export const getAuth = app => {if(app && window.qa.failSecondaryGetAuth) throw new Error("SECONDARY_GET_AUTH_FAILED"); return app ? {currentUser:null,app} : window.qa.auth;};',
+    'export const createUserWithEmailAndPassword = async (_auth,email) => {',
+    '  window.qa.created++; window.qa.onCreated?.();',
+    '  if(window.qa.concurrentSecondaryAuth) {',
+    '    window.qa.secondaryAuthUsed.push(_auth.app.name);',
+    '    await new Promise(resolve => window.qa.secondaryHolds.push(resolve));',
+    '    return {user:{uid:email.startsWith("alpha") ? "employee-alpha" : "employee-beta"}};',
+    '  }',
+    '  return {user:{uid:"employee-new"}};',
+    '};',
     'export const signInWithEmailAndPassword = async () => ({user:{uid:"employee-existing"}});',
     'export const signInWithPopup = async () => ({user:{uid:"employee-existing",email:"employee@example.test"}});',
     'export const GoogleAuthProvider = class {};',
@@ -139,7 +154,7 @@ const bundle = await build({
 });
 const dom=new JSDOM('',{url:'https://example.test/',runScripts:'outside-only'});
 const {window}=dom;
-window.qa={reads:[],writes:[],created:0,docs:{},serverReads:0,serverError:null,remoteDocs:null,batchMode:null,corruptAfterCommit:null,transactions:0,conflicts:0};
+window.qa={reads:[],writes:[],created:0,docs:{},serverReads:0,serverError:null,remoteDocs:null,batchMode:null,corruptAfterCommit:null,transactions:0,conflicts:0,secondaryCreated:[],secondaryDeleted:[],secondaryHolds:[],secondaryAuthUsed:[],concurrentSecondaryAuth:false,failSecondaryGetAuth:false};
 const user=uid=>({uid,email:uid+'@example.test'});
 const member=(tenant,uid,role='OWNER',active=true)=>({
   restaurantId:tenant,userId:uid,role,active,name:uid,email:uid+'@example.test',
@@ -153,6 +168,8 @@ const reset=(role='OWNER')=>{
   window.qa.onRead=null;window.qa.onCreated=null;window.qa.batchError=null;window.qa.serverError=null;
   window.qa.onTransactionRead=null;window.qa.onBeforeTransactionCommit=null;window.qa.transactions=0;window.qa.conflicts=0;
   window.qa.remoteDocs=null;window.qa.batchMode=null;window.qa.corruptAfterCommit=null;
+  window.qa.secondaryCreated=[];window.qa.secondaryDeleted=[];window.qa.secondaryHolds=[];
+  window.qa.secondaryAuthUsed=[];window.qa.concurrentSecondaryAuth=false;window.qa.failSecondaryGetAuth=false;
   window.qa.docs={
     'businessMemberships/tenant-a_owner-a':member('tenant-a','owner-a',role),
     'businesses/tenant-a':{restaurantId:'tenant-a',ownerUserId:'owner-a'},
@@ -544,6 +561,47 @@ try {
   prepareRoster();
   window.qa.serverError = new Error('offline');
   await assert.rejects(window.qa.list('tenant-a'), /offline/, 'No usar caché offline para autorizar roster');
+
+  // Dos altas simultáneas del mismo negocio deben usar apps Auth distintas.
+  // Eliminar la primera NO puede cerrar la sesión secundaria de la segunda.
+  reset();
+  window.qa.concurrentSecondaryAuth = true;
+  const alpha = window.qa.create({...input(),email:'alpha@example.test'});
+  const beta = window.qa.create({...input(),email:'beta@example.test'});
+  for(let attempt=0; attempt<300 && window.qa.secondaryHolds.length!==2; attempt++) {
+    await new Promise(resolve=>setTimeout(resolve,5));
+  }
+  assert.equal(window.qa.secondaryHolds.length,2,'Ambas operaciones Auth deben solaparse');
+  assert.equal(window.qa.secondaryCreated.length,2,'Dos apps secundarias creadas');
+  assert.equal(new Set(window.qa.secondaryCreated).size,2,'No reutilizar la misma app entre altas');
+  assert.deepEqual(window.qa.secondaryAuthUsed,window.qa.secondaryCreated,
+    'Cada operación utiliza su instancia propia');
+  assert.equal(window.qa.secondaryDeleted.length,0,'Ninguna app se borra mientras Auth está pendiente');
+  const [releaseAlpha,releaseBeta]=window.qa.secondaryHolds;
+  releaseAlpha();
+  const first = await alpha;
+  assert.equal(first.userId,'employee-alpha');
+  assert.equal(window.qa.secondaryDeleted.length,1,'Solo se libera la primera app');
+  assert.equal(window.qa.secondaryDeleted[0],window.qa.secondaryAuthUsed[0]);
+  releaseBeta();
+  const second = await beta;
+  assert.equal(second.userId,'employee-beta');
+  assert.equal(window.qa.secondaryDeleted.length,2,'Ambas apps se liberan una sola vez');
+  assert.deepEqual([...window.qa.secondaryDeleted].sort(),[...window.qa.secondaryCreated].sort());
+  assert.equal(window.qa.auth.currentUser.uid,'owner-a','La sesión primaria no cambia');
+  assert.equal(window.qa.writes.filter(w=>w.op==='set').length,2,'Ambas membresías independientes');
+  assert(window.qa.writes.some(w=>w.path==='businessMemberships/tenant-a_employee-alpha'));
+  assert(window.qa.writes.some(w=>w.path==='businessMemberships/tenant-a_employee-beta'));
+
+  // Una excepción al inicializar Auth también debe limpiar la app temporal.
+  reset();
+  window.qa.failSecondaryGetAuth=true;
+  await assert.rejects(window.qa.create(input()),/SECONDARY_GET_AUTH_FAILED/);
+  assert.equal(window.qa.secondaryCreated.length,1);
+  assert.deepEqual(window.qa.secondaryDeleted,window.qa.secondaryCreated);
+  assert.equal(window.qa.auth.currentUser.uid,'owner-a');
+  assert.equal(window.qa.writes.length,0);
+  console.log('PASS: Auth secundaria aislada en dos altas simultáneas, cierre independiente y limpieza ante error de inicialización (simulado).');
 
   console.log('PASS: roster A/B revalida raíz, propietario, índice y permisos; cambios en vuelo, sesión ajena y offline fallan cerrados (simulado).');
   console.log('PASS: alta transaccional A/B revalida responsable, raíz e índice; colisión indexada y conflictos se rechazan sin escrituras (simulado).');
