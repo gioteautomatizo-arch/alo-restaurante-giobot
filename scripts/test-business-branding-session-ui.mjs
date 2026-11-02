@@ -9,7 +9,7 @@ const rootDir = fileURLToPath(new URL('../', import.meta.url));
 const mocks = {
   '../../lib/businessBrandingService': [
     'export const saveBusinessBranding = (business, branding) => new Promise((resolve,reject) => window.qa.writes.push({ref:{id:business.restaurantId},data:{branding},resolve,reject}));',
-  ].join('\\n'),
+  ].join('\n'),
   '../../lib/firebase': 'export const db = {}; export const auth = {get currentUser() {return window.qa.user;}};',
   '../../lib/menuImagesService': [
     'export const uploadBusinessLogo = (id,file) => new Promise((resolve,reject) => window.qa.uploads.push({id,file,resolve,reject}));',
