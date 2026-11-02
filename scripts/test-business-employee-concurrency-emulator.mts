@@ -42,6 +42,10 @@ const membershipPath = (tenant: string, uid: string) => 'businessMemberships/' +
 const appNames = () => getApps().map(app => app.name).sort();
 const assertNoSecondaryApps = (baseline: string[]) =>
   assert.deepEqual(appNames(), baseline, 'Cada operación libera su Auth secundaria sin cerrar la principal');
+// El emulador puede denegar la lectura de la membresía antes de que el servicio
+// alcance su mensaje propio de preflight. Ambas rutas deben fallar cerradas.
+const isPreflightDenied = (error: any) =>
+  error?.code === 'permission-denied' || /No tienes permiso/.test(String(error));
 const assertAuthNotCreated = async (email: string) => {
   await assert.rejects(adminAuth.getUserByEmail(email),
     (error: any) => error?.code === 'auth/user-not-found',
@@ -105,13 +109,13 @@ try {
   // El propietario A no puede leer B ni crear allí empleados, incluso si B existe.
   await assert.rejects(getDocFromServer(doc(db, 'businesses', businessB)),
     (error: any) => error?.code === 'permission-denied');
-  await assert.rejects(createBusinessEmployee(employeeInput('cross', businessB)), /No tienes permiso/);
+  await assert.rejects(createBusinessEmployee(employeeInput('cross', businessB)), isPreflightDenied);
   await assertAuthNotCreated(employeeEmail('cross'));
   assertNoSecondaryApps(baseline);
 
   // Revocación previa: el preflight falla cerrado antes de crear una cuenta Auth.
   await adminDb.doc(membershipPath(businessA, ownerA.uid)).update({ active: false });
-  await assert.rejects(createBusinessEmployee(employeeInput('revoked')), /No tienes permiso/);
+  await assert.rejects(createBusinessEmployee(employeeInput('revoked')), isPreflightDenied);
   await assertAuthNotCreated(employeeEmail('revoked'));
   assertNoSecondaryApps(baseline);
 
