@@ -20,6 +20,8 @@ function functionSection(source, signature, nextExport) {
 
 const currentFn = functionSection(current,
   'export async function registerBusiness(', 'export async function loginBusinessOwner');
+assert.doesNotMatch(candidate, /'SUPER_ADMIN', 'OWNER'/,
+  'SUPER_ADMIN es un permiso global, no una membresía válida de tenant');
 const candidateFn = functionSection(candidate,
   'export async function registerBusinessThreeDocumentCandidate(');
 assert.equal((currentFn.match(/\bbatch\.set\s*\(/g) || []).length, 2,
@@ -36,6 +38,8 @@ assert.doesNotMatch(currentFn, /registrationContractVersion/,
   'El registro público no debe simular el contrato 3-doc');
 assert.match(candidateFn, /const registrationTenant = \{ \.\.\.tenant, registrationContractVersion: 3 \};/,
   'El candidato debe marcar nuevas altas 3-doc');
+assert.match(candidateFn, /let confirmedTenant: RestaurantTenant = registrationTenant;/,
+  'La respuesta del alta exitosa debe incluir el marcador persistido');
 assert.match(candidateFn, /batch\.set\(businessRef\(businessId\), registrationTenant\)/,
   'El marcador debe persistirse en la raíz del negocio');
 assert.match(candidateFn, /existingTenant as RestaurantTenant & \{ registrationContractVersion\?: number \}\)\.registrationContractVersion !== 3/,
@@ -44,6 +48,8 @@ assert.match(candidateFn, /existingTenant as RestaurantTenant & \{ registrationC
 
 
 const emulatorAdapter = functionSection(emulator, 'async function registerCandidate(', '\n// withSecurityRulesDisabled');
+assert.match(emulatorAdapter, /let confirmedTenant = registrationTenant;/,
+  'El adaptador de recuperación debe conservar el marcador del contrato');
 assert.equal((emulatorAdapter.match(/\bgetDocFromServer\s*\(/g) || []).length, 2,
   'El adaptador de fallos del emulador también debe recuperar OWNER y raíz desde servidor');
 assert.doesNotMatch(emulatorAdapter, /\bgetDoc\s*\(/,
@@ -54,7 +60,9 @@ const normalizedCandidate = candidateFn
     'export async function registerBusiness(')
   // El marcador del contrato solo existe en el candidato; NO prueba la reserva.
   .replace("  // Señal de contrato para distinguir altas nuevas de raíces legacy sin reserva.\n  // NO certifica la existencia de la reserva: exige revisión privilegiada antes del corte.\n  const registrationTenant = { ...tenant, registrationContractVersion: 3 };\n\n", '')
-  .replace('  batch.set(businessRef(businessId), registrationTenant);',
+  .replace("  // La respuesta del commit exitoso debe reflejar exactamente el contrato 3-doc\n  // persistido; un reintento recuperado desde servidor conserva el mismo marcador.\n  let confirmedTenant: RestaurantTenant = registrationTenant;",
+    '  let confirmedTenant = tenant;')
+  .replace('  batch.set(businessRef(businessId), registrationTenant);'
     '  batch.set(businessRef(businessId), tenant);')
   .replace('\n          || (existingTenant as RestaurantTenant & { registrationContractVersion?: number }).registrationContractVersion !== 3', '')
   .replace("  batch.set(doc(db, 'businessHandleReservations', businessId), { businessId, ownerUserId: userId });\n", '')
