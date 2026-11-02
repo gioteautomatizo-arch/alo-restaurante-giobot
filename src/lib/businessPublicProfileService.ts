@@ -94,31 +94,31 @@ async function setBusinessPublicationChecked(
 
   // El documento pasado por la vista puede estar obsoleto o pertenecer a otra
   // raíz. No basta con una membresía OWNER si el propietario explícito difiere.
-  const businessSnap = await getDocFromServer(doc(db, 'businesses', businessId));
-  const business = businessSnap.exists() ? businessSnap.data() : null;
-  if (!business || business.restaurantId !== businessId
-      || (ownerAccess && business.ownerUserId !== undefined && business.ownerUserId !== user.uid)) {
-    throw new Error('La identidad del negocio o propietario es inconsistente.');
-  }
-  // La ficha pública se construye con el tenant recibido de la vista.
-  // Si la raíz cambió en otra pestaña, ese objeto puede contener branding viejo
-  // aunque su restaurantId y OWNER sean correctos. Rechazarlo antes de escribir.
-  // Esta comprobación es un preflight; la transacción posterior protege el
-  // perfil público, pero NO hace atómica la lectura de la raíz.
-  const rootBranding = business.branding;
-  if (!rootBranding || typeof rootBranding !== 'object' || Array.isArray(rootBranding)
-      || typeof rootBranding.restaurantName !== 'string'
-      || !rootBranding.restaurantName.trim()
-      || typeof rootBranding.publicSlug !== 'string'
-      || !rootBranding.publicSlug.trim()) {
-    throw new Error('La configuración pública de la raíz es inconsistente. Solicita revisión.');
-  }
-  const serverProfile = makePublicBusinessProfile(businessId, business as RestaurantTenant);
-  const viewProfile = makePublicBusinessProfile(businessId, tenant);
-  if (sortedJson(serverProfile.branding) !== sortedJson(viewProfile.branding)
-      || (business.businessType ?? null) !== (tenant.businessType ?? null)) {
-    throw new Error('CONFLICTO_PUBLICACION: La configuración del negocio cambió. Actualiza antes de publicar u ocultar.');
-  }
+  const businessRef = doc(db, 'businesses', businessId);
+  // Validar dos veces: preflight para informar pronto y lectura transaccional
+  // para impedir que una edición concurrente de la raíz publique branding viejo.
+  const assertRootMatchesView = (business: Record<string, unknown> | null): void => {
+    if (!business || business.restaurantId !== businessId
+        || (ownerAccess && business.ownerUserId !== undefined && business.ownerUserId !== user.uid)) {
+      throw new Error('La identidad del negocio o propietario es inconsistente.');
+    }
+    const rootBranding = business.branding as Record<string, unknown> | null;
+    if (!rootBranding || typeof rootBranding !== 'object' || Array.isArray(rootBranding)
+        || typeof rootBranding.restaurantName !== 'string'
+        || !rootBranding.restaurantName.trim()
+        || typeof rootBranding.publicSlug !== 'string'
+        || !rootBranding.publicSlug.trim()) {
+      throw new Error('La configuración pública de la raíz es inconsistente. Solicita revisión.');
+    }
+    const serverProfile = makePublicBusinessProfile(businessId, business as unknown as RestaurantTenant);
+    const viewProfile = makePublicBusinessProfile(businessId, tenant);
+    if (sortedJson(serverProfile.branding) !== sortedJson(viewProfile.branding)
+        || (business.businessType ?? null) !== (tenant.businessType ?? null)) {
+      throw new Error('CONFLICTO_PUBLICACION: La configuración del negocio cambió. Actualiza antes de publicar u ocultar.');
+    }
+  };
+  const businessSnap = await getDocFromServer(businessRef);
+  assertRootMatchesView(businessSnap.exists() ? businessSnap.data() : null);
   if (auth.currentUser?.uid !== user.uid) {
     throw new Error('La sesión cambió antes de publicar el negocio. Vuelve a iniciar sesión.');
   }
@@ -149,6 +149,11 @@ async function setBusinessPublicationChecked(
       throw new Error('La sesión cambió antes de publicar el negocio. Vuelve a iniciar sesión.');
     }
     const existingProfile = await transaction.get(ref);
+    // La raíz participa en el mismo conjunto de lecturas que la ficha pública.
+    // Si cambia durante la transacción, Firestore reintenta y la puerta de
+    // attempts > 1 impide aceptar una publicación basada en una vista antigua.
+    const currentRootSnap = await transaction.get(businessRef);
+    assertRootMatchesView(currentRootSnap.exists() ? currentRootSnap.data() : null);
     if (existingProfile.exists()) {
       assertPublicProfileIdentity(businessId, existingProfile.data());
     }
