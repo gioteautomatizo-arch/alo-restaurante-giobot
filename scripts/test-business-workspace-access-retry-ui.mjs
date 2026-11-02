@@ -114,8 +114,29 @@ try {
   read('membership','owner-b2','tenant-b',1).resolve(member('owner-b2','tenant-b'));
   await waitFor(()=>summary()==='Negocio tenant-b','B2 recupera Workspace');
   assert.equal(summary(),'Negocio tenant-b');
+
+  // Un rechazo real de Firestore por permisos no es una desconexión.
+  // No ofrecer reintentos indefinidos ni conservar el resumen anterior.
+  window.qa.authListener({uid:'owner-denied',email:'denied@example.test'});
+  await waitFor(()=>!!read('root','owner-denied','tenant-b'),'Lectura denegada de raíz');
+  read('root','owner-denied','tenant-b').reject(Object.assign(new Error('Missing permissions'),{code:'permission-denied'}));
+  read('membership','owner-denied','tenant-b').resolve(member('owner-denied','tenant-b'));
+  await waitFor(()=>document.body.textContent.includes('No tienes permiso para acceder a este negocio'),
+    'Firestore permission-denied no se presenta como fallo de red');
+  assert.equal(button('Reintentar acceso'),undefined,'Denegación de Firestore sin reintento de red');
+  assert.equal(summary(),undefined,'Sin resumen privado tras permiso denegado');
+
+  window.qa.authListener({uid:'owner-unauth',email:'unauth@example.test'});
+  await waitFor(()=>!!read('membership','owner-unauth','tenant-b'),'Lectura sin autenticación');
+  read('root','owner-unauth','tenant-b').resolve(tenant('tenant-b'));
+  read('membership','owner-unauth','tenant-b').reject(Object.assign(new Error('Expired token'),{code:'unauthenticated'}));
+  await waitFor(()=>document.body.textContent.includes('No tienes permiso para acceder a este negocio'),
+    'Auth caducada no se presenta como fallo de red');
+  assert.equal(button('Reintentar acceso'),undefined,'Sin reintento de red con Auth caducada');
+  assert.equal(summary(),undefined,'Sin resumen tras Auth caducada');
+
   assert.deepEqual(errors,[],'Sin errores React');
-  console.log('PASS: Workspace reintenta fallos de negocio/membresía, deniega sin rol y aísla respuestas A/B/UID (React/jsdom; backend simulado).');
+  console.log('PASS: Workspace distingue permiso/Auth denegados de fallos transitorios, reintenta red y aísla respuestas A/B/UID (React/jsdom; backend simulado).');
 } finally {
   window.qa.unmount?.();
   window.close();
