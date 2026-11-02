@@ -39,7 +39,8 @@ export async function createBusinessInvite(businessId: string, name: string, ema
   if (!isRecord(value) || typeof value.token !== 'string' ||
       !/^[A-Za-z0-9_-]{43}$/.test(value.token) ||
       !isMillis(value.expiresAt) || value.expiresAt <= Date.now()) invalidResponse();
-  return { token: value.token as string, expiresAt: value.expiresAt as number };
+  const confirmed = value as { token: string; expiresAt: number };
+  return { token: confirmed.token, expiresAt: confirmed.expiresAt };
 }
 export async function previewBusinessInvite(token: string) {
   const value: unknown = await request<unknown>('/api/business-invites/preview', 'POST', { token });
@@ -49,7 +50,7 @@ export async function acceptBusinessInvite(token: string) {
   const value: unknown = await request<unknown>('/api/business-invites/accept', 'POST', { token }, true);
   if (!isRecord(value) || typeof value.businessId !== 'string' ||
       !/^[a-z0-9][a-z0-9-]{1,63}$/.test(value.businessId)) invalidResponse();
-  return { businessId: value.businessId as string };
+  return { businessId: (value as { businessId: string }).businessId };
 }
 
 export interface PendingBusinessInvite {
