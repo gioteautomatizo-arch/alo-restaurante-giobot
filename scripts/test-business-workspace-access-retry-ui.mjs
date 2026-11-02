@@ -51,7 +51,7 @@ const bundle = await build({
       if(args.importer.endsWith('/BusinessWorkspace.tsx') && Object.hasOwn(mocks,args.path))
         return {path:args.path,namespace:'mock'};
     });
-    builder.onLoad({filter:/.*/,namespace:'mock'},args=>({contents:mocks[args.path],loader:'jsx'}));
+    builder.onLoad({filter:/.*/,namespace:'mock'},args=>({contents:mocks[args.path],loader:'jsx',resolveDir:rootDir}));
   }}],
 });
 const dom = new JSDOM('<div id="root"></div>', {
