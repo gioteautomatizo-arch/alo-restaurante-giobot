@@ -7,7 +7,7 @@ import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import { buildAtomicOwnerProposalRules } from './owner-atomic-proposal-rules.mjs';
 import { registerThroughOnboardingUI } from './business-onboarding-emulator-ui.mjs';
 import { saveBrandingThroughUI, addCatalogProductThroughUI, saveVipThroughUI, saveModulesThroughUI } from './business-management-emulator-ui.mjs';
-import { publishBusinessThroughUI, publishAndHideBusinessThroughUI, assertForeignWorkspaceDeniedThroughUI, assertStaffCannotPublishThroughUI } from './business-publication-emulator-ui.mjs';
+import { publishBusinessThroughUI, publishAndHideBusinessThroughUI, assertForeignWorkspaceDeniedThroughUI, assertStaffCannotPublishThroughUI, assertWorkspaceRetryWithEmulatorThroughUI } from './business-publication-emulator-ui.mjs';
 import {
   acceptInviteThroughUI, createInviteThroughEmployeesUI, deactivateEmployeeThroughUI, inspectEmployeesUI,
 } from './business-invites-emulator-ui.mjs';
@@ -105,6 +105,7 @@ try {
   const catalogA = await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'));
   assert(catalogA.exists() && catalogA.data().items.length > 0, 'Catálogo A sembrado');
   assert.deepEqual((await getBusinessesForUser(uidA)).map(x => x.restaurantId), [idA]);
+  await assertWorkspaceRetryWithEmulatorThroughUI({businessId:idA,user:auth.currentUser!,bridge:publicationBridge});
 
   // Recuperación: una alta ya confirmada puede reintentarse sin reclamar un
   // identificador ajeno. Si faltó sembrar catálogo, el reintento lo restaura.
@@ -287,6 +288,7 @@ try {
   assert(!(await getDoc(doc(db, 'businesses', idB, 'catalog', 'menu_catalog'))).data()?.items.some(item => item.id === 'extra-a'));
   assert(!(await getDoc(doc(db, 'businesses', idA, 'catalog', 'menu_catalog'))).data()?.items.some(item => item.id === 'extra-b'));
   assert.deepEqual((await getBusinessesForUser(uidB)).map(x => x.restaurantId), [idB]);
+  await assertWorkspaceRetryWithEmulatorThroughUI({businessId:idB,user:auth.currentUser!,bridge:publicationBridge});
   await assert.rejects(saveBusinessCatalog(idA, updatedA.items, 'B no puede editar A', updatedA.revision), /acceso|permission-denied/i);
   await deny(getDoc(doc(db, 'businesses', idA)), 'B no lee configuración privada de A');
   await deny(getDoc(doc(db, 'businessMemberships', idA + '_' + uidA)), 'B no lee OWNER de A');
