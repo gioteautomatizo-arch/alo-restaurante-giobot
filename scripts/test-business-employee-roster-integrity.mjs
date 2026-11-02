@@ -13,6 +13,7 @@ const mocks = {
   ].join('\n'),
   'firebase/auth': [
     'export const getAuth = () => window.qa.auth;',
+    'export const connectAuthEmulator = () => {};',
     'export const createUserWithEmailAndPassword = async () => ({});',
     'export const signInWithEmailAndPassword = async () => ({});',
     'export const signInWithPopup = async () => ({});',
