@@ -21,7 +21,7 @@ const MEMBERSHIPS_COLLECTION = 'businessMemberships';
 // Las membresías son documentos externos: validar también su contenido y su
 // clave, no solo la ruta que se consultó o el tipo TypeScript.
 const BUSINESS_ROLES = new Set<BusinessRole>([
-  'SUPER_ADMIN', 'OWNER', 'ADMIN', 'MANAGER', 'CASHIER',
+  'OWNER', 'ADMIN', 'MANAGER', 'CASHIER',
   'WAITER', 'KITCHEN', 'EMPLOYEE', 'CLIENT',
 ]);
 
@@ -134,7 +134,9 @@ export async function registerBusinessThreeDocumentCandidate(input: RegisterBusi
   batch.set(businessRef(businessId), registrationTenant);
   batch.set(membershipRef(businessId, userId), membership);
   batch.set(doc(db, 'businessHandleReservations', businessId), { businessId, ownerUserId: userId });
-  let confirmedTenant = tenant;
+  // La respuesta del commit exitoso debe reflejar exactamente el contrato 3-doc
+  // persistido; un reintento recuperado desde servidor conserva el mismo marcador.
+  let confirmedTenant: RestaurantTenant = registrationTenant;
   let confirmedMembership = membership;
   try {
     await batch.commit();
