@@ -134,6 +134,29 @@ for (const [name, rules, blocker] of [
   assert(result.blockers.includes(blocker), name);
   assert(result.blockers.includes('DIRECT_ROLLBACK_TO_STAGED_UNSAFE'), name);
 }
+// Un read:false no anula otro get/list/read: las concesiones se combinan
+// con OR en Firestore. La auditoría debe retener TODA reserva legible.
+for (const [name, extraGrant] of [
+  ['public get', 'allow get: if true;'],
+  ['public list', 'allow list: if true;'],
+  ['second read', 'allow read: if true;'],
+  ['combined read/get', 'allow read, get: if true;'],
+]) {
+  const rules = strongerRules.replace('allow update, delete: if false;',
+    extraGrant + '\n      allow update, delete: if false;');
+  const result = inspect({ clientSource: threeDocClient, stagedRules: rules, evidence: allEvidence });
+  assert.equal(result.status, 'BLOCKED', name);
+  assert(result.blockers.includes('STAGED_RESERVATION_IMMUTABILITY_NOT_PROVEN'), name);
+  assert(result.blockers.includes('DIRECT_ROLLBACK_TO_STAGED_UNSAFE'), name);
+}
+const permissiveReadOr = strongerRules.replace('allow read: if false;',
+  'allow read: if false || true;');
+const readOrResult = inspect({
+  clientSource: threeDocClient, stagedRules: permissiveReadOr, evidence: allEvidence,
+});
+assert.equal(readOrResult.status, 'BLOCKED', 'read OR bypass');
+assert(readOrResult.blockers.includes('STAGED_RESERVATION_IMMUTABILITY_NOT_PROVEN'));
+
 const fakeCommentRules = stagedRules.replace(rootAnchor,
   `&& !exists(${rootPath}); // existsAfter(${ownerPath})`);
 assert(inspect({ clientSource: threeDocClient, stagedRules: fakeCommentRules, evidence: allEvidence })
