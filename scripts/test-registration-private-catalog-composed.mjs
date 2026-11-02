@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { buildThreeDocumentRecoveryMarkerProposalRules } from './owner-atomic-proposal-rules.mjs';
 import { buildPrivateCatalogReadProposalRules } from './catalog-private-read-proposal-rules.mjs';
 import { buildMembershipIdentityProposalRules } from './membership-identity-proposal-rules.mjs';
@@ -71,6 +71,18 @@ try {
   await assertSucceeds(getDoc(doc(alice, reservation(idA))));
   await assertFails(getDoc(doc(bob, reservation(idA))));
   await assertFails(getDoc(doc(visitor, reservation(idA))));
+  await assertFails(getDocs(collection(alice, 'businessHandleReservations')),
+    'Ni el OWNER puede enumerar reservas');
+  await env.withSecurityRulesDisabled(async context => {
+    await updateDoc(doc(context.firestore(), ownerPath(idA, 'combined-alice')), { active: false });
+  });
+  await assertFails(getDoc(doc(alice, reservation(idA))),
+    'OWNER revocado no puede leer su antigua reserva');
+  await env.withSecurityRulesDisabled(async context => {
+    await updateDoc(doc(context.firestore(), ownerPath(idA, 'combined-alice')), { active: true });
+  });
+  await assertSucceeds(getDoc(doc(alice, reservation(idA))),
+    'Restaurar OWNER válido recupera la lectura puntual');
   // Antes de la primera siembra el documento menu_catalog NO existe. La
   // lectura transaccional del propietario debe poder comprobar su ausencia;
   // un visitante no debe obtener acceso a esa ruta sin catálogo publicado.
