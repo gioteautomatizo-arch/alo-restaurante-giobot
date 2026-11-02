@@ -210,24 +210,28 @@ async function mutateEmployeeAtomically(
   });
 }
 
+// Cada operación necesita su propia instancia Auth: dos pestañas/solicitudes
+// simultáneas no deben compartir usuario secundario ni eliminarse la app entre sí.
+let secondaryAuthSequence = 0;
 function secondaryAuthName(businessId: string) {
-  return `employee-creator-${businessId}`;
+  let name: string;
+  do {
+    name = `employee-creator-${businessId}-${++secondaryAuthSequence}`;
+  } while (getApps().some((app) => app.name === name));
+  return name;
 }
 
 async function withSecondaryAuth<T>(
   businessId: string,
   action: (secondaryAuth: ReturnType<typeof getAuth>) => Promise<T>,
 ): Promise<T> {
-  const name = secondaryAuthName(businessId);
-  const existing = getApps().find((app) => app.name === name);
-  const app = existing || initializeApp(firebaseConfig, name);
-  const secondaryAuth = getAuth(app);
-
+  const app = initializeApp(firebaseConfig, secondaryAuthName(businessId));
   try {
-    return await action(secondaryAuth);
+    // getAuth también debe quedar dentro de try para limpiar si falla.
+    return await action(getAuth(app));
   } finally {
-    // Keep the primary app/auth session intact. The secondary app exists only
-    // long enough to create or authenticate the employee account.
+    // Solo eliminar la app de ESTA operación; nunca la de otra pestaña.
+    // La sesión principal de Firebase permanece intacta.
     await deleteApp(app);
   }
 }
