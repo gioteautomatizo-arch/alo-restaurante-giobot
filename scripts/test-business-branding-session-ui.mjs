@@ -7,10 +7,9 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = fileURLToPath(new URL('../', import.meta.url));
 const mocks = {
-  'firebase/firestore': [
-    'export const doc = (_db, collection, id) => ({collection,id});',
-    'export const updateDoc = (ref, data) => new Promise((resolve,reject) => window.qa.writes.push({ref,data,resolve,reject}));',
-  ].join('\n'),
+  '../../lib/businessBrandingService': [
+    'export const saveBusinessBranding = (business, branding) => new Promise((resolve,reject) => window.qa.writes.push({ref:{id:business.restaurantId},data:{branding},resolve,reject}));',
+  ].join('\\n'),
   '../../lib/firebase': 'export const db = {}; export const auth = {get currentUser() {return window.qa.user;}};',
   '../../lib/menuImagesService': [
     'export const uploadBusinessLogo = (id,file) => new Promise((resolve,reject) => window.qa.uploads.push({id,file,resolve,reject}));',
