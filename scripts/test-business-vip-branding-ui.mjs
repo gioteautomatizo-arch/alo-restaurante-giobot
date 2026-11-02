@@ -69,7 +69,7 @@ try {
   await waitFor(()=>window.qa.writes.length===1,'Una escritura pese a doble clic');
   assert.equal(window.qa.writes[0].observed.restaurantId,'tenant-a');
   assert.equal(window.qa.writes[0].branding.vipStampsRequired,5);
-  assert(saveButton().disabled,'Bloqueo de botón mientras guarda');
+  await waitFor(()=>[...document.querySelectorAll('button')].some(el=>el.textContent.trim()==='Guardando…' && el.disabled), 'Bloqueo de botón mientras guarda');
   window.qa.writes[0].resolve();
   await waitFor(()=>window.qa.saved.length===1 && window.qa.syncs.length===1,'Privado confirmado antes de sync');
   assert.equal(window.qa.syncs[0].id,'tenant-a');
