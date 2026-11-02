@@ -49,6 +49,7 @@ const { auth, db } = await import('../src/lib/firebase.ts');
 connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
 connectFirestoreEmulator(db, '127.0.0.1', 8080);
 const { registerBusiness, getBusinessesForUser, getBusinessForUser, getBusinessMembership } = await import('../src/lib/businessAuthService.ts');
+const { saveBusinessBranding } = await import('../src/lib/businessBrandingService.ts');
 const { setBusinessPublication, syncPublicProfileIfNeeded, getBusinessPublicationStatus } = await import('../src/lib/businessPublicProfileService.ts');
 const { saveBusinessCatalog, seedBusinessCatalogIfMissing, subscribeToBusinessCatalog } = await import('../src/lib/businessCatalogService.ts');
 const { listBusinessEmployees, updateBusinessEmployee, removeBusinessEmployee } = await import('../src/lib/businessEmployeeService.ts');
@@ -80,7 +81,8 @@ try {
   const managementBridge = {
     // React/jsdom vive en otro realm: Firestore rechaza arrays/objetos personalizados.
     // Convertir el payload de prueba a objetos nativos antes de llamar al SDK real.
-    updateBranding: (id: string, patch: unknown) => updateDoc(doc(db, 'businesses', id), JSON.parse(JSON.stringify(patch))),
+    updateBranding: (tenant: any, branding: any) => saveBusinessBranding(
+      JSON.parse(JSON.stringify(tenant)), JSON.parse(JSON.stringify(branding))),
     syncPublic: (id: string, tenant: any) => syncPublicProfileIfNeeded(id, JSON.parse(JSON.stringify(tenant))),
     getBusiness: (uid: string, id: string) => getBusinessForUser(uid, id),
     subscribeCatalog: (id: string, callback: any, onError: any) => subscribeToBusinessCatalog(id, callback, onError),
