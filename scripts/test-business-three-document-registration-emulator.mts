@@ -113,7 +113,7 @@ async function registerCandidate(input, options: { simulatedCommitFailure?: 'bef
   batch.set(doc(db, businessPath(id)), registrationTenant);
   batch.set(doc(db, memberPath(id, uid)), membership);
   batch.set(doc(db, reservePath(id)), { businessId: id, ownerUserId: uid });
-  let confirmedTenant = tenant;
+  let confirmedTenant = registrationTenant;
   let confirmedMembership = membership;
   try {
     // Inyección exclusivamente de prueba: distinguir rechazo anterior al commit
@@ -423,6 +423,8 @@ try {
     businessType: 'restaurant', onRegister: registerBusinessThreeDocumentCandidate,
   });
   const uidA = a.membership.userId;
+  assert.equal((a.tenant as { registrationContractVersion?: number }).registrationContractVersion, 3,
+    'Alta A: la respuesta debe reflejar el marcador 3-doc persistido');
   assert.equal(auth.currentUser?.uid, uidA);
   assert.equal((await getDoc(doc(db, businessPath(idA)))).data()?.ownerUserId, uidA);
   assert.equal((await getDoc(doc(db, memberPath(idA, uidA)))).data()?.role, 'OWNER');
@@ -467,6 +469,8 @@ try {
     businessType: 'ghost-kitchen', onRegister: registerBusinessThreeDocumentCandidate,
   });
   const uidB = b.membership.userId;
+  assert.equal((b.tenant as { registrationContractVersion?: number }).registrationContractVersion, 3,
+    'Alta B: el marcador debe viajar también en la respuesta del onboarding');
   assert.notEqual(uidA, uidB);
   assert.equal((await adminRead(reservePath(idB))).data()?.ownerUserId, uidB);
   assert((await getDoc(doc(db, businessPath(idB) + '/catalog/menu_catalog')))
@@ -518,6 +522,8 @@ try {
     password, businessType: 'ghost-kitchen',
   });
   assert.equal(retry.membership.userId, uidA, 'Reintento legítimo recupera OWNER');
+  assert.equal((retry.tenant as { registrationContractVersion?: number }).registrationContractVersion, 3,
+    'El reintento recuperado debe mantener el marcador 3-doc');
   assert.equal(retry.tenant.branding.restaurantName, 'Candidato A configurado',
     'Reintento conserva la identidad editada, sin sobrescribirla con el formulario');
   assert.equal((await adminRead(reservePath(idA))).data()?.ownerUserId, uidA);
@@ -589,6 +595,8 @@ try {
     email: emailA, password, businessType: 'restaurant',
   }, { simulatedCommitFailure: 'after' });
   assert.equal(recovered.membership.userId, uidA);
+  assert.equal(recovered.tenant.registrationContractVersion, 3,
+    'La recuperación simulada de ACK perdido devuelve la raíz con marcador');
   assert.equal(recovered.tenant.branding.restaurantName, 'Alta confirmada sin respuesta');
   assert.equal((await adminRead(reservePath(lostId))).data()?.ownerUserId, uidA);
   assert((await getDoc(doc(db, businessPath(lostId) + '/catalog/menu_catalog')))
