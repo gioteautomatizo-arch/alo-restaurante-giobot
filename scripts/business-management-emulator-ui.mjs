@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 const rootDir = fileURLToPath(new URL('../', import.meta.url));
 const mocks = {
   '../../lib/businessBrandingService': 'export function saveBusinessBranding(tenant, branding) {return window.qa.bridge.updateBranding(tenant, branding);}',
+  '../../lib/businessCapabilitiesService': 'export function saveBusinessCapabilities(tenant, capabilities) {return window.qa.bridge.updateCapabilities(tenant, capabilities);}',
   '../../lib/firebase': [
     'export const db = {};',
     'export const auth = {get currentUser() {return window.qa.user;}};',
@@ -44,11 +45,13 @@ function getBundle() {
       "import {createRoot} from 'react-dom/client';",
       "import {BusinessBrandingSettings} from './src/components/platform/BusinessBrandingSettings';",
       "import {BusinessVipPanel} from './src/components/platform/BusinessVipPanel';",
+      "import {BusinessModuleToggles} from './src/components/platform/BusinessModuleToggles';",
       "import {BusinessCatalogEditor} from './src/components/platform/BusinessCatalogEditor';",
       "const root = createRoot(document.getElementById('root'));",
       "window.qa.mountBranding = tenant => root.render(<BusinessBrandingSettings key={tenant.restaurantId + ':' + window.qa.user.uid} business={tenant} onBack={() => {}} onSaved={saved => window.qa.saved.push(saved)} />);",
       "window.qa.mountCatalog = (id,name) => root.render(<BusinessCatalogEditor key={id + ':' + window.qa.user.uid} businessId={id} businessName={name} onBack={() => {}} />);",
       "window.qa.mountVip = (tenant,published) => root.render(<BusinessVipPanel key={tenant.restaurantId + ':' + window.qa.user.uid} businessId={tenant.restaurantId} business={tenant} isOwner={true} managerRole='OWNER' isPublished={published} onBusinessUpdated={saved=>window.qa.saved.push(saved)} />);",
+      "window.qa.mountModules = tenant => root.render(<BusinessModuleToggles key={tenant.restaurantId + ':' + window.qa.user.uid} business={tenant} enabled={new Set(tenant.capabilities || [])} isOwner={true} onChanged={caps=>window.qa.changed.push(caps)} />);",
       "window.qa.unmount = () => root.unmount();",
     ].join('\n')},
     plugins: [{name:'emulator-management-bridge',setup(plugin) {
@@ -56,7 +59,8 @@ function getBundle() {
         const source = args.importer;
         if ((source.endsWith('/BusinessBrandingSettings.tsx')
           || source.endsWith('/BusinessCatalogEditor.tsx')
-          || source.endsWith('/BusinessVipPanel.tsx'))
+          || source.endsWith('/BusinessVipPanel.tsx')
+          || source.endsWith('/BusinessModuleToggles.tsx'))
           && Object.hasOwn(mocks,args.path)) {
           return {path:args.path,namespace:'qa-bridge'};
         }
@@ -93,7 +97,7 @@ async function withView({bridge,user},callback) {
   const {window}=dom;
   const errors=[];
   window.addEventListener('error',event=>errors.push(event.error));
-  window.qa={bridge,user,saved:[],catalogWrites:0};
+  window.qa={bridge,user,saved:[],changed:[],catalogWrites:0};
   try {
     window.eval(bundle.outputFiles[0].text);
     const result=await callback(window,window.document);
@@ -179,5 +183,23 @@ export async function saveVipThroughUI({tenant,user,bridge,isPublished}) {
     await waitFor(()=>document.querySelector('[role="status"]')?.textContent.includes('Tarjeta VIP guardada'),
       'Confirmación de guardado VIP');
     return window.qa.saved[0];
+  });
+}
+
+/** React real y servicio CAS real con Auth/Firestore Emulator, sin datos productivos. */
+export async function saveModulesThroughUI({tenant,user,bridge,capability='VIP'}) {
+  return withView({bridge,user},async(window,document)=>{
+    window.qa.mountModules(tenant);
+    const labels={VIP:'Tarjeta VIP',SHIFTS:'Turnos y cortes'};
+    const label=labels[capability];
+    assert(label,'Capacidad conocida en el panel');
+    await waitFor(()=>!!document.querySelector('[role="switch"][aria-label="'+label+'"]'),'Módulos React');
+    const toggle=document.querySelector('[role="switch"][aria-label="'+label+'"]');
+    toggle.click();toggle.click();
+    await waitFor(()=>window.qa.changed.length===1,'Guardar módulos con CAS real');
+    const expected=new Set(tenant.capabilities || []);
+    if(expected.has(capability)) expected.delete(capability); else expected.add(capability);
+    assert.deepEqual(Array.from(window.qa.changed[0]),Array.from(expected));
+    return Array.from(window.qa.changed[0]);
   });
 }
