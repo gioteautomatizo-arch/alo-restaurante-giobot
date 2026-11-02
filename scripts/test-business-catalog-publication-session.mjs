@@ -78,7 +78,7 @@ const item = {id:'product-a',name:'Producto A',description:'',category:'General'
 const tenant = id => ({restaurantId:id,branding:{restaurantName:id,publicSlug:id}});
 const businessRoot = (id, ownerId, legacy=false) => ({
   exists: () => true,
-  data: () => legacy ? {restaurantId:id} : {restaurantId:id,ownerUserId:ownerId},
+  data: () => ({...tenant(id), ...(legacy ? {} : {ownerUserId:ownerId})}),
 });
 const resolveRead = async (index, snapshot, expectedPath) => {
   await waitFor(() => window.qa.pending.length > index, 'Falta lectura '+index+' '+expectedPath);
@@ -362,6 +362,29 @@ try {
   assert.equal(window.qa.writes[0].data.published,true);
   assert.equal(window.qa.writes[0].transaction,true,'Publicación debe escribir dentro de la transacción');
   assert.equal(window.qa.transactionAttempts,1,'Publicación sin conflicto no debe reintentarse');
+
+  // Una vista obsoleta no puede devolver el branding anterior al directorio.
+  // La raíz se lee del servidor y debe coincidir con el tenant de la vista.
+  for (const [label, rootData, expectedError] of [
+    ['nombre editado en otra pestaña',
+      {...tenant('tenant-a'),ownerUserId:'owner-a',
+        branding:{...tenant('tenant-a').branding,restaurantName:'Nombre nuevo'}},
+      /CONFLICTO_PUBLICACION/],
+    ['tipo de negocio actualizado',
+      {...tenant('tenant-a'),ownerUserId:'owner-a',businessType:'ghost-kitchen'},
+      /CONFLICTO_PUBLICACION/],
+    ['branding ausente en la raíz',
+      {restaurantId:'tenant-a',ownerUserId:'owner-a'},
+      /configuración pública de la raíz es inconsistente/],
+  ]) {
+    reset();
+    const stale = window.qa.publish('tenant-a',tenant('tenant-a'),true);
+    await resolveRead(0,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+    await resolveRead(1,{exists:()=>true,data:()=>rootData},'businesses/tenant-a');
+    await assert.rejects(stale,expectedError,label);
+    assert.equal(window.qa.writes.length,0,label+': no sobrescribir perfil');
+    assert.equal(window.qa.transactionAttempts,0,label+': sin transacción sobre vista obsoleta');
+  }
 
   reset();
   const wrongTenantPublication = window.qa.publish('tenant-a',tenant('tenant-a'),true);
