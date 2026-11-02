@@ -100,6 +100,25 @@ async function setBusinessPublicationChecked(
       || (ownerAccess && business.ownerUserId !== undefined && business.ownerUserId !== user.uid)) {
     throw new Error('La identidad del negocio o propietario es inconsistente.');
   }
+  // La ficha pública se construye con el tenant recibido de la vista.
+  // Si la raíz cambió en otra pestaña, ese objeto puede contener branding viejo
+  // aunque su restaurantId y OWNER sean correctos. Rechazarlo antes de escribir.
+  // Esta comprobación es un preflight; la transacción posterior protege el
+  // perfil público, pero NO hace atómica la lectura de la raíz.
+  const rootBranding = business.branding;
+  if (!rootBranding || typeof rootBranding !== 'object' || Array.isArray(rootBranding)
+      || typeof rootBranding.restaurantName !== 'string'
+      || !rootBranding.restaurantName.trim()
+      || typeof rootBranding.publicSlug !== 'string'
+      || !rootBranding.publicSlug.trim()) {
+    throw new Error('La configuración pública de la raíz es inconsistente. Solicita revisión.');
+  }
+  const serverProfile = makePublicBusinessProfile(businessId, business as RestaurantTenant);
+  const viewProfile = makePublicBusinessProfile(businessId, tenant);
+  if (sortedJson(serverProfile.branding) !== sortedJson(viewProfile.branding)
+      || (business.businessType ?? null) !== (tenant.businessType ?? null)) {
+    throw new Error('CONFLICTO_PUBLICACION: La configuración del negocio cambió. Actualiza antes de publicar u ocultar.');
+  }
   if (auth.currentUser?.uid !== user.uid) {
     throw new Error('La sesión cambió antes de publicar el negocio. Vuelve a iniciar sesión.');
   }
