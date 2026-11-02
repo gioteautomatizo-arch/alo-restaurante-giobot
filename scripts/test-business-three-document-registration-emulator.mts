@@ -460,7 +460,7 @@ try {
   await assert.rejects(saveBusinessBranding(a.tenant, {
     ...a.tenant.branding, restaurantName: 'Candidato A obsoleto',
   }), /CONFLICTO_IDENTIDAD/);
-  assert.equal((await getDoc(doc(db, businessPath(idA))).data()?.branding.restaurantName,
+  assert.equal((await getDoc(doc(db, businessPath(idA)))).data()?.branding.restaurantName,
     'Candidato A configurado', 'CAS mantiene identidad de A');
   assert.equal((await getDoc(doc(db, 'publicBusinessProfiles', idA)))
     .data()?.branding.restaurantName, 'Candidato A configurado');
