@@ -10,7 +10,7 @@ const mocks = {
     'const apps = new Map();',
     'export const initializeApp = (_config,name) => {',
     '  if (apps.has(name)) throw new Error("SECONDARY_APP_NAME_COLLISION");',
-    '  const app = {name}; apps.set(name,app); window.qa.secondaryCreated.push(name); return app;',
+    '  const app = {name,options:_config}; apps.set(name,app); window.qa.secondaryCreated.push(name); window.qa.secondaryConfigProjects.push(_config.projectId); return app;',
     '};',
     'export const deleteApp = async app => {',
     '  if (!apps.delete(app.name)) throw new Error("SECONDARY_APP_DOUBLE_DELETE");',
@@ -19,6 +19,7 @@ const mocks = {
     'export const getApps = () => [...apps.values()];',
   ].join('\n'),
   'firebase/auth': [
+    'export const connectAuthEmulator = (_auth,url) => {window.qa.secondaryEmulatorUrls.push(url);};',
     'export const getAuth = app => {if(app && window.qa.failSecondaryGetAuth) throw new Error("SECONDARY_GET_AUTH_FAILED"); return app ? {currentUser:null,app} : window.qa.auth;};',
     'export const createUserWithEmailAndPassword = async (_auth,email) => {',
     '  window.qa.created++; window.qa.onCreated?.();',
@@ -154,7 +155,7 @@ const bundle = await build({
 });
 const dom=new JSDOM('',{url:'https://example.test/',runScripts:'outside-only'});
 const {window}=dom;
-window.qa={reads:[],writes:[],created:0,docs:{},serverReads:0,serverError:null,remoteDocs:null,batchMode:null,corruptAfterCommit:null,transactions:0,conflicts:0,secondaryCreated:[],secondaryDeleted:[],secondaryHolds:[],secondaryAuthUsed:[],concurrentSecondaryAuth:false,failSecondaryGetAuth:false};
+window.qa={reads:[],writes:[],created:0,docs:{},serverReads:0,serverError:null,remoteDocs:null,batchMode:null,corruptAfterCommit:null,transactions:0,conflicts:0,secondaryCreated:[],secondaryDeleted:[],secondaryConfigProjects:[],secondaryEmulatorUrls:[],secondaryHolds:[],secondaryAuthUsed:[],concurrentSecondaryAuth:false,failSecondaryGetAuth:false};
 const user=uid=>({uid,email:uid+'@example.test'});
 const member=(tenant,uid,role='OWNER',active=true)=>({
   restaurantId:tenant,userId:uid,role,active,name:uid,email:uid+'@example.test',
@@ -164,11 +165,12 @@ const input=(tenant='tenant-a',role='WAITER',accountMode='new')=>({
 });
 const reset=(role='OWNER')=>{
   window.qa.auth.currentUser=user('owner-a');
+  window.qa.auth.app=undefined; window.qa.auth.emulatorConfig=null;
   window.qa.reads=[];window.qa.writes=[];window.qa.created=0;
   window.qa.onRead=null;window.qa.onCreated=null;window.qa.batchError=null;window.qa.serverError=null;
   window.qa.onTransactionRead=null;window.qa.onBeforeTransactionCommit=null;window.qa.transactions=0;window.qa.conflicts=0;
   window.qa.remoteDocs=null;window.qa.batchMode=null;window.qa.corruptAfterCommit=null;
-  window.qa.secondaryCreated=[];window.qa.secondaryDeleted=[];window.qa.secondaryHolds=[];
+  window.qa.secondaryCreated=[];window.qa.secondaryDeleted=[];window.qa.secondaryConfigProjects=[];window.qa.secondaryEmulatorUrls=[];window.qa.secondaryHolds=[];
   window.qa.secondaryAuthUsed=[];window.qa.concurrentSecondaryAuth=false;window.qa.failSecondaryGetAuth=false;
   window.qa.docs={
     'businessMemberships/tenant-a_owner-a':member('tenant-a','owner-a',role),
@@ -601,7 +603,20 @@ try {
   assert.deepEqual(window.qa.secondaryDeleted,window.qa.secondaryCreated);
   assert.equal(window.qa.auth.currentUser.uid,'owner-a');
   assert.equal(window.qa.writes.length,0);
-  console.log('PASS: Auth secundaria aislada en dos altas simultáneas, cierre independiente y limpieza ante error de inicialización (simulado).');
+  // Cuando el Auth primario usa emulador, la instancia secundaria debe
+  // heredar proyecto y endpoint; jamás intentar el proyecto de producción.
+  reset();
+  window.qa.auth.app={options:{projectId:'demo-secondary-auth-test'}};
+  window.qa.auth.emulatorConfig={protocol:'http',host:'127.0.0.1',port:9099};
+  await window.qa.create(input());
+  assert.deepEqual(window.qa.secondaryConfigProjects,['demo-secondary-auth-test']);
+  assert.deepEqual(window.qa.secondaryEmulatorUrls,['http://127.0.0.1:9099']);
+  assert.deepEqual(window.qa.secondaryDeleted,window.qa.secondaryCreated);
+  reset();
+  await window.qa.create(input());
+  assert.deepEqual(window.qa.secondaryEmulatorUrls,[],
+    'Sin emulador primario no se debe conectar el secundario a uno');
+  console.log('PASS: Auth secundaria aislada, proyecto/emulador heredados solo cuando corresponda y limpieza ante error (simulado).');
 
   console.log('PASS: roster A/B revalida raíz, propietario, índice y permisos; cambios en vuelo, sesión ajena y offline fallan cerrados (simulado).');
   console.log('PASS: alta transaccional A/B revalida responsable, raíz e índice; colisión indexada y conflictos se rechazan sin escrituras (simulado).');
