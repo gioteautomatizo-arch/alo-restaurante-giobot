@@ -614,9 +614,47 @@ try {
   assert.equal(window.qa.writes.length,0,'No publicar automáticamente una página oculta');
   reset();
   const unchangedSync = window.qa.syncPublication('tenant-a',tenant('tenant-a'));
-  await resolveRead(0,publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:true,branding:tenant('tenant-a').branding}), 'publicBusinessProfiles/tenant-a');
+  await resolveRead(0,publicSnap({businessId:'tenant-a',restaurantId:'tenant-a',published:true,updatedAt:'2026-11-01T00:00:00.000Z',branding:tenant('tenant-a').branding}), 'publicBusinessProfiles/tenant-a');
   assert.equal(await unchangedSync,false);
   assert.equal(window.qa.writes.length,0,'Perfil vigente no se reescribe');
+
+  // Sincronización automática: una ficha inicialmente publicada puede ser
+  // ocultada, editada o borrada mientras se consultan OWNER y raíz. La
+  // transacción debe comparar el estado observado y nunca republicarla.
+  const observedProfile = {
+    businessId:'tenant-a',restaurantId:'tenant-a',published:true,
+    updatedAt:'2026-11-01T00:00:00.000Z',
+    branding:{restaurantName:'Nombre anterior',publicSlug:'tenant-a'},
+  };
+  for (const scenario of [
+    {name:'sin cambios',current:observedProfile,allowed:true},
+    {name:'ocultado',current:{...observedProfile,published:false,updatedAt:'2026-11-01T00:00:01.000Z'}},
+    {name:'branding editado',current:{...observedProfile,branding:{restaurantName:'Nuevo nombre',publicSlug:'tenant-a'}}},
+    {name:'versión modificada',current:{...observedProfile,updatedAt:'2026-11-01T00:00:02.000Z'}},
+    {name:'eliminado',current:null},
+  ]) {
+    reset();
+    const syncing = window.qa.syncPublication('tenant-a',tenant('tenant-a'));
+    await resolveRead(0,publicSnap(observedProfile),'publicBusinessProfiles/tenant-a');
+    await resolveRead(1,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+    await resolveRead(2,businessRoot('tenant-a','owner-a'),'businesses/tenant-a');
+    await resolveRead(3,membership('owner-a'),'businessMemberships/tenant-a_owner-a');
+    await resolveRead(4,scenario.current ? publicSnap(scenario.current) : {exists:()=>false},'publicBusinessProfiles/tenant-a');
+    if (scenario.allowed) {
+      assert.equal(await syncing,true,'Sincronización estable debe terminar: '+scenario.name);
+      assert.equal(window.qa.writes.length,1);
+      assert.equal(window.qa.writes[0].transaction,true);
+    } else {
+      await assert.rejects(syncing,/CONFLICTO_PUBLICACION/,'Bloquear sincronización obsoleta: '+scenario.name);
+      assert.equal(window.qa.writes.length,0,'No sobrescribir perfil '+scenario.name);
+    }
+  }
+
+  reset();
+  const malformedSync = window.qa.syncPublication('tenant-a',tenant('tenant-a'));
+  await resolveRead(0,publicSnap({...observedProfile,updatedAt:undefined}),'publicBusinessProfiles/tenant-a');
+  await assert.rejects(malformedSync,/datos de sincronización inconsistentes/);
+  assert.equal(window.qa.writes.length,0,'Sin versión verificable no sincronizar');
 
   reset();
   const statusOffline = window.qa.publicationStatus('tenant-a');
@@ -633,7 +671,7 @@ try {
   await assert.rejects(syncOffline, /unavailable-sync/);
   assert.equal(window.qa.writes.length, 0, 'Sincronización offline no escribe perfil');
 
-  console.log('PASS: catálogo y publicación A/B validan OWNER, revocación, escritura transaccional, conflicto/reintento, identidad de perfiles y despublicación (Firebase simulado).');
+  console.log('PASS: catálogo y publicación A/B validan OWNER, revocación, transacciones, sincronización obsoleta, identidad de perfiles y despublicación (Firebase simulado).');
 } finally {
   window.close();
 }
