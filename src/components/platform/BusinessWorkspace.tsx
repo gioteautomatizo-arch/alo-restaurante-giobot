@@ -35,6 +35,8 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const [role, setRole] = useState<BusinessRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [accessLoadFailed, setAccessLoadFailed] = useState(false);
+  const [accessRetry, setAccessRetry] = useState(0);
   const [resolvedFor, setResolvedFor] = useState<{ businessId: string; userId: string } | null>(null);
   const [view, setView] = useState<'workspace' | 'catalog' | 'employees' | 'memberships' | 'shifts' | 'expenses' | 'vault' | 'receivables' | 'payables' | 'audit' | 'operations' | 'menuImport' | 'modules' | 'branding' | 'reports'>('workspace');
 
@@ -48,6 +50,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     setResolvedFor(null);
     setView('workspace');
     setError(null);
+    setAccessLoadFailed(false);
     setLoading(true);
     if (!authReady) return;
     if (!authUser) {
@@ -72,7 +75,8 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
       .catch((err) => {
         if (cancelled) return;
         console.warn('No se pudo abrir el negocio:', err);
-        setError('No pudimos abrir este negocio. Intenta nuevamente.');
+        setAccessLoadFailed(true);
+        setError('No pudimos comprobar el acceso a este negocio. Reintenta la lectura.');
       })
       .finally(() => {
         if (!cancelled) {
@@ -81,7 +85,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
         }
       });
     return () => { cancelled = true; };
-  }, [authReady, authUser, businessId]);
+  }, [authReady, authUser, businessId, accessRetry]);
 
   // En el primer render tras cambiar de ruta, el estado antiguo aún puede existir.
   const accessLoaded = isWorkspaceAccessLoaded(businessId, authReady, authUser?.uid ?? null, resolvedFor);
@@ -206,7 +210,8 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
         <div className="w-full max-w-md rounded-[2rem] border border-black/10 bg-white p-7 text-center shadow-sm">
           <h1 className="font-serif text-2xl font-black">No pudimos abrir este negocio</h1>
           <p className="mt-2 text-sm text-[#6B4028]">{error || 'El negocio no está disponible.'}</p>
-          <button type="button" onClick={back} className="mt-6 rounded-2xl bg-black px-5 py-3 text-sm font-black text-white">Volver a mis negocios</button>
+          {accessLoadFailed && <button type="button" onClick={() => setAccessRetry(count => count + 1)} className="mt-6 mr-2 rounded-2xl bg-black px-5 py-3 text-sm font-black text-white">Reintentar acceso</button>}
+          <button type="button" onClick={back} className={`${accessLoadFailed ? 'mt-3' : 'mt-6'} rounded-2xl bg-black px-5 py-3 text-sm font-black text-white`}>Volver a mis negocios</button>
         </div>
       </div>
     );
