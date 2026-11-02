@@ -149,10 +149,16 @@ async function setBusinessPublicationChecked(
       throw new Error('La sesión cambió antes de publicar el negocio. Vuelve a iniciar sesión.');
     }
     const existingProfile = await transaction.get(ref);
+    if (auth.currentUser?.uid !== user.uid) {
+      throw new Error('La sesión cambió antes de publicar el negocio. Vuelve a iniciar sesión.');
+    }
     // La raíz participa en el mismo conjunto de lecturas que la ficha pública.
     // Si cambia durante la transacción, Firestore reintenta y la puerta de
     // attempts > 1 impide aceptar una publicación basada en una vista antigua.
     const currentRootSnap = await transaction.get(businessRef);
+    if (auth.currentUser?.uid !== user.uid) {
+      throw new Error('La sesión cambió antes de publicar el negocio. Vuelve a iniciar sesión.');
+    }
     assertRootMatchesView(currentRootSnap.exists() ? currentRootSnap.data() : null);
     if (existingProfile.exists()) {
       assertPublicProfileIdentity(businessId, existingProfile.data());
