@@ -132,9 +132,13 @@ export async function setBusinessPublication(businessId: string, tenant: Restaur
 
 // Una ficha de otro negocio o una ficha histórica corrupta nunca debe
 // certificar el estado del tenant consultado ni ser sobrescrita en silencio.
-function assertPublicProfileIdentity(businessId: string, data: Record<string, unknown>): void {
-  if (data.businessId !== businessId || data.restaurantId !== businessId
-      || typeof data.published !== 'boolean') {
+function assertPublicProfileIdentity(businessId: string, data: unknown): void {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('La identidad de la página pública es inconsistente. Solicita revisión antes de publicarla.');
+  }
+  const profile = data as Record<string, unknown>;
+  if (profile.businessId !== businessId || profile.restaurantId !== businessId
+      || typeof profile.published !== 'boolean') {
     throw new Error('La identidad de la página pública es inconsistente. Solicita revisión antes de publicarla.');
   }
 }
