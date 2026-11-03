@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import { doc, setDoc, getDoc, collection, getDocs, type Firestore } from 'firebase/firestore';
+import { businessTableNumbers, saveBusinessTableCount } from '../src/lib/businessTables.ts';
 import { chargeBusinessTable } from '../src/lib/businessTableCheckout.ts';
 import type { RestaurantOrder } from '../src/types';
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080');
@@ -47,5 +48,18 @@ try {
   assert.equal((await getDoc(doc(db, 'restaurant_orders', 'fresh'))).data()!.billingStatus, 'PENDIENTE');
   const card = await charge([fresh], { method: 'TARJETA', cashReceived: 0 }); assert.equal(card.total, 25); assert.equal(card.changeDue, 0);
   await env.withSecurityRulesDisabled(async ctx => { assert.equal((await getDocs(collection(ctx.firestore(), 'table_payments'))).size, 2); });
+  await saveBusinessTableCount(db, 'tenant-a', 12, null);
+  assert.equal((await getDoc(doc(db, 'businesses', 'tenant-a'))).data()!.tableCount, 12);
+  await assert.rejects(saveBusinessTableCount(db, 'tenant-a', 5, null), /cambió/);
+  assert.deepEqual(businessTableNumbers(2, [{...order('keep'), tableNumber:12}], 'tenant-a'), [1,2,12]);
+  assert.deepEqual(businessTableNumbers(0, [order('foreign','tenant-b')], 'tenant-a'), []);
+  for (const tableNumber of [3, 12, 60]) {
+    const extra = {...order(`table-${tableNumber}`), tableNumber}; await seed(extra);
+    await charge([extra], {tableNumber});
+    await setDoc(doc(db, 'public_table_orders', extra.id!), {...extra, orderId:extra.id});
+  }
+  await assert.rejects(charge([fresh], {tableNumber:61}));
+  for (const tableNumber of [0, 1.5, 61]) await assert.rejects(setDoc(doc(db, 'public_table_orders', 'invalid'), {...fresh, orderId:'invalid', tableNumber}));
+  await assert.rejects(saveBusinessTableCount(env.authenticatedContext('intruder').firestore() as unknown as Firestore, 'tenant-a', 5, 12));
   console.log('PASS: cobro atómico, concurrencia, tenant ajeno, sesión, importe, cancelación, mesa, permisos y tarjeta.');
 } finally { await env.cleanup(); }

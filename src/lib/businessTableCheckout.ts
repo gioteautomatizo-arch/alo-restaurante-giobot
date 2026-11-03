@@ -2,7 +2,7 @@ import { collection, doc, runTransaction, type Firestore } from 'firebase/firest
 import type { RestaurantOrder } from '../types';
 import { isValidOrderPaymentAmount } from './shiftSales';
 
-export const BUSINESS_TABLE_NUMBERS = [1, 2, 4, 5, 6, 7, 8, 9];
+import { validBusinessTable } from './businessTables';
 export type BusinessTableCharge = {
   businessId: string; tableNumber: number; orders: RestaurantOrder[];
   method: 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA'; cashReceived: number;
@@ -18,7 +18,7 @@ export async function chargeBusinessTable(
 ): Promise<{ paymentId: string; total: number; changeDue: number }> {
   const { businessId, tableNumber, orders, method, user } = input;
   if (!businessId || businessId.includes('/') || businessId.trim() !== businessId
-      || !BUSINESS_TABLE_NUMBERS.includes(tableNumber) || !user.id || user.id.includes('/')
+      || !validBusinessTable(tableNumber) || !user.id || user.id.includes('/')
       || !user.name.trim() || !['EFECTIVO', 'TARJETA', 'TRANSFERENCIA'].includes(method)
       || orders.length === 0 || orders.length > 100
       || orders.some(o => !o.id || o.id.includes('/'))

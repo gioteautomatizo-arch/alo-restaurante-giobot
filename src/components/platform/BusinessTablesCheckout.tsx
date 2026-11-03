@@ -1,15 +1,44 @@
+import { businessTableNumbers, legacyTableCount, subscribeBusinessTableCount, saveBusinessTableCount } from '../../lib/businessTables';
+import { businessTableUrl } from '../../lib/siteUrl';
+import { QrLinkCard } from './QrLinkCard';
+import { SiteUrlSetting } from './SiteUrlSetting';
+import { printQrSheet } from '../../lib/qrSheet';
 import React, { useEffect, useRef, useState } from 'react';
 import type { RestaurantOrder } from '../../types';
 import { db, getCurrentAuthUser } from '../../lib/firebase';
-import { BUSINESS_TABLE_NUMBERS, chargeBusinessTable, type BusinessTableCharge } from '../../lib/businessTableCheckout';
+import { chargeBusinessTable, type BusinessTableCharge } from '../../lib/businessTableCheckout';
 
 const money = (n: number) => n.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
 const buttonStyle = 'rounded-xl bg-[#3A2418] px-5 py-3 text-sm font-bold text-white disabled:opacity-40';
-type Props = { businessId: string; orders: RestaurantOrder[]; ready: boolean };
+type Props = { businessId: string; businessName?: string; orders: RestaurantOrder[]; ready: boolean };
 export function BusinessTablesCheckout(props: Props) {
   return <TablesSession key={`${props.businessId}:${getCurrentAuthUser()?.uid || ''}`} {...props} />;
 }
-const TablesSession: React.FC<Props> = ({ businessId, orders, ready }) => {
+const TablesSession: React.FC<Props> = ({ businessId, businessName = businessId, orders, ready }) => {
+  const [count, setCount] = useState(() => legacyTableCount(businessId));
+  const [savedCount, setSavedCount] = useState<number | null>(null);
+  const [configReady, setConfigReady] = useState(false);
+  const [configBusy, setConfigBusy] = useState(false);
+  const [configError, setConfigError] = useState('');
+  const [version, setVersion] = useState(0);
+  const configLock = useRef(false);
+  useEffect(() => {
+    let active = true;
+    const stop = subscribeBusinessTableCount(db, businessId, value => {
+      if (!active) return;
+      setSavedCount(value); setCount(value ?? legacyTableCount(businessId)); setConfigReady(true); setConfigError('');
+    }, error => { if (active) { setConfigReady(false); setConfigError(error.message); } });
+    return () => { active = false; stop(); };
+  }, [businessId]);
+  const saveConfig = async () => {
+    if (!configReady || configLock.current) return;
+    configLock.current = true; setConfigBusy(true); setConfigError('');
+    try {
+      await saveBusinessTableCount(db, businessId, count, savedCount);
+      if (mounted.current) { setSavedCount(count); try { localStorage.setItem(`gio_table_count_${businessId}`, String(count)); } catch {} }
+    } catch (error) { if (mounted.current) setConfigError(error instanceof Error ? error.message : 'No se pudo guardar la configuración. Revisa tus permisos.'); }
+    finally { configLock.current = false; if (mounted.current) setConfigBusy(false); }
+  };
   const [selected, setSelected] = useState<{ table: number; orders: RestaurantOrder[] } | null>(null);
   const [method, setMethod] = useState<BusinessTableCharge['method']>('EFECTIVO');
   const [cash, setCash] = useState('');
@@ -19,7 +48,7 @@ const TablesSession: React.FC<Props> = ({ businessId, orders, ready }) => {
   const mounted = useRef(true);
   const uid = useRef(getCurrentAuthUser()?.uid);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const total = selected?.orders.reduce((sum, o) => sum + Math.round(o.total * 100), 0)! / 100 || 0;
+  const total = (selected?.orders.reduce((sum, o) => sum + Math.round(o.total * 100), 0) ?? 0) / 100;
   const validCash = /^\d+(?:\.\d{1,2})?$/.test(cash) && Number(cash) >= total;
   const confirm = async () => {
     if (lock.current || !ready || !selected) return;
@@ -41,12 +70,22 @@ const TablesSession: React.FC<Props> = ({ businessId, orders, ready }) => {
       if (mounted.current) setSaving(false);
     }
   };
+  const tables = businessTableNumbers(savedCount ?? count, orders, businessId);
   return <section className="mt-6">
-    <h2 className="text-xl font-bold">Mesas y cobros</h2>
+    <h2 className="text-xl font-bold">Mesas y QR</h2>
+    <details className="my-4 rounded-xl border p-4"><summary className="cursor-pointer font-bold">Configurar mesas y enlace público</summary>
+      <div className="mt-3"><SiteUrlSetting onChanged={() => setVersion(v => v + 1)} /></div>
+      <label className="mt-4 block">Número de mesas <input aria-label="Número de mesas" type="number" min={0} max={60} value={count} disabled={!configReady || configBusy} onChange={e => setCount(Number(e.target.value))} className="w-20 rounded border p-2 text-black" /></label>
+      <button disabled={!configReady || configBusy} onClick={saveConfig} className={buttonStyle + ' mt-3'}>{configBusy ? 'Guardando…' : 'Guardar mesas'}</button>
+      {savedCount === null && configReady && <p className="mt-2 text-sm">Se recuperó la configuración de este dispositivo. Guárdala para usarla en los demás dispositivos del negocio.</p>}
+      {configError && <p role="alert">{configError}</p>}
+    </details>
+    {tables.length > 0 && <button className={buttonStyle} onClick={() => printQrSheet(businessName, tables.map(table => ({ label: `Mesa ${table}`, url: businessTableUrl(businessId, table) })))}>Imprimir QR de las mesas</button>}
+    {tables.length === 0 && <p className="mt-3">Configura tus mesas para crear sus QR. Aquí aparecerán también los pedidos pendientes que recibas.</p>}
     <p className="mt-2 text-sm">Revisa las comandas pendientes de cada mesa antes de registrar el pago.</p>
     {message && <p role="status" className="my-4 rounded-xl bg-amber-50 p-4 text-amber-950">{message}</p>}
     {!ready ? <p role="alert">Esperando la consulta de pedidos. El cobro estará disponible cuando termine.</p> : <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {BUSINESS_TABLE_NUMBERS.map(table => {
+      {tables.map(table => {
         const pending = orders.filter(o => o.restaurantId === businessId && o.orderType === 'dine_in' && o.tableNumber === table && o.status !== 'CANCELADO' && o.billingStatus === 'PENDIENTE');
         const amount = pending.reduce((sum, o) => sum + Number(o.total || 0), 0);
         return <article key={table} className="rounded-2xl border border-[#DEC8AE] bg-white p-5 text-[#2B1B13]">
@@ -54,6 +93,7 @@ const TablesSession: React.FC<Props> = ({ businessId, orders, ready }) => {
           <p className="mt-3 text-xs">CONSUMO PENDIENTE</p><strong className="text-2xl">{money(amount)}</strong>
           <p className="mb-4 text-sm">{pending.length} comanda(s) · {pending.length ? 'Por cobrar' : 'Sin pedidos pendientes'}</p>
           <button className={buttonStyle} disabled={!pending.length || saving} onClick={() => { setSelected({ table, orders: pending }); setMethod('EFECTIVO'); setCash(''); setMessage(''); }}>Cobrar mesa {table}</button>
+          <details className="mt-3"><summary className="cursor-pointer font-bold">Ver QR de mesa {table}</summary><div className="mt-2"><QrLinkCard key={version} title={`Mesa ${table}`} url={businessTableUrl(businessId, table)} fileName={`qr-${businessId}-mesa-${table}`} /></div></details>
         </article>;
       })}
     </div>}

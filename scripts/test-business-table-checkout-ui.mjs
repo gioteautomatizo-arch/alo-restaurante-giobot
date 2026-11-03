@@ -4,9 +4,11 @@ import { JSDOM } from 'jsdom';
 const bundle = await build({ bundle: true, write: false, format: 'iife', platform: 'browser',
   stdin: { resolveDir: process.cwd(), loader: 'jsx', contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {BusinessTablesCheckout} from './src/components/platform/BusinessTablesCheckout'; const root=createRoot(document.getElementById('root')); window.render=p=>root.render(<BusinessTablesCheckout {...p}/>);` },
   plugins: [{ name: 'data', setup(b) {
+    b.onResolve({filter: /lib\/businessTables$/}, () => ({path:'tables',namespace:'mock'}));
+    b.onResolve({filter: /\/QrLinkCard$/}, () => ({path:'qr',namespace:'mock'}));
     b.onResolve({filter: /lib\/firebase$/}, () => ({path:'firebase',namespace:'mock'}));
     b.onResolve({filter: /lib\/businessTableCheckout$/}, () => ({path:'checkout',namespace:'mock'}));
-    b.onLoad({filter: /.*/,namespace:'mock'}, ({path}) => ({loader:'js',contents: path==='firebase' ? 'export const db={}; export const getCurrentAuthUser=()=>window.user;' : `export const BUSINESS_TABLE_NUMBERS=[1,2,4,5,6,7,8,9]; export const chargeBusinessTable=(db,input)=>new Promise((resolve,reject)=>window.calls.push({input,resolve,reject}));`}));
+    b.onLoad({filter: /.*/,namespace:'mock'}, ({path}) => ({loader:'js',contents: path==='qr' ? 'export const QrLinkCard=()=>null;' : path==='tables' ? `export const legacyTableCount=id=>id==='a'?2:0; export const businessTableNumbers=(count,orders,id)=>[...new Set([...Array.from({length:count},(_,i)=>i+1),...orders.filter(o=>o.restaurantId===id&&o.billingStatus==='PENDIENTE').map(o=>o.tableNumber)])]; export const subscribeBusinessTableCount=(db,id,next)=>{next(id==='a'?2:0);return()=>{}}; export const saveBusinessTableCount=async()=>{};` : path==='firebase' ? 'export const db={}; export const getCurrentAuthUser=()=>window.user;' : `export const BUSINESS_TABLE_NUMBERS=[1,2,4,5,6,7,8,9]; export const chargeBusinessTable=(db,input)=>new Promise((resolve,reject)=>window.calls.push({input,resolve,reject}));`}));
   }}],
 });
 const dom=new JSDOM('<div id="root"></div>',{runScripts:'outside-only',url:'https://example.test'});
@@ -19,10 +21,10 @@ try {
  w.render({businessId:'a',orders:[o],ready:false});await wait(()=>d.body.textContent.includes('Esperando'));assert.equal(button('Cobrar mesa 2'),undefined);
  w.render({businessId:'a',orders:[o],ready:true});await wait(()=>button('Cobrar mesa 2'));assert.equal(button('Cobrar mesa 1').disabled,true);
  button('Cobrar mesa 2').click();await wait(()=>button('Confirmar pago recibido'));assert.equal(button('Confirmar pago recibido').disabled,true);
- const input=d.querySelector('input'); Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype,'value').set.call(input,'50');input.dispatchEvent(new w.Event('input',{bubbles:true}));await wait(()=>!button('Confirmar pago recibido').disabled);
+ const input=d.querySelector('[aria-label="Efectivo recibido"]'); Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype,'value').set.call(input,'50');input.dispatchEvent(new w.Event('input',{bubbles:true}));await wait(()=>!button('Confirmar pago recibido').disabled);
  button('Confirmar pago recibido').click();button('Confirmar pago recibido')?.click();await wait(()=>w.calls.length===1); assert.equal(w.calls[0].input.businessId,'a');
  w.calls[0].reject(new w.Error('Permiso denegado'));await wait(()=>d.body.textContent.includes('Permiso denegado'));assert.ok(d.querySelector('[role="dialog"]'));
  button('Confirmar pago recibido').click();await wait(()=>w.calls.length===2);w.calls[1].resolve({total:25,changeDue:25,paymentId:'pay'});await wait(()=>!d.querySelector('[role="dialog"]'));assert.ok(d.body.textContent.includes('Cobro registrado'));
- w.render({businessId:'b',orders:[],ready:true});await wait(()=>!d.body.textContent.includes('Cobro registrado')); assert.equal(button('Cobrar mesa 2').disabled,true);
+ w.render({businessId:'b',orders:[],ready:true});await wait(()=>!d.body.textContent.includes('Cobro registrado')); assert.equal(button('Cobrar mesa 2'),undefined);
  console.log('PASS: mesas, carga incompleta, efectivo, doble clic, error recuperable, confirmación y cambio de negocio.');
 } finally {dom.window.close();}

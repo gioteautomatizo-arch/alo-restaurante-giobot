@@ -1,6 +1,9 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function hasValidBusinessTable(data) {
+      return data.tableNumber is int && data.tableNumber >= 1 && data.tableNumber <= 60;
+    }
     function isSignedIn() {
       return request.auth != null;
     }
@@ -576,7 +579,7 @@ service cloud.firestore {
 
       allow create: if (
         isKnownRestaurant(request.resource.data)
-        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && hasValidBusinessTable(request.resource.data)
         && request.resource.data.orderId == orderId
         && request.resource.data.code is string
         && request.resource.data.items is list
@@ -679,7 +682,7 @@ service cloud.firestore {
     match /table_payments/{paymentId} {
       allow read: if canReadRestaurantDoc(resource.data);
       allow create: if isAuthorizedRestaurant(request.resource.data)
-        && request.resource.data.tableNumber in [1, 2, 4, 5, 6, 7, 8, 9]
+        && hasValidBusinessTable(request.resource.data)
         && request.resource.data.orderIds is list
         && request.resource.data.orderIds.size() > 0
         && request.resource.data.subtotal is number

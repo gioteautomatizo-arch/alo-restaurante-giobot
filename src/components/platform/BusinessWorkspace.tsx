@@ -38,6 +38,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
   const [accessLoadFailed, setAccessLoadFailed] = useState(false);
   const [accessRetry, setAccessRetry] = useState(0);
   const [resolvedFor, setResolvedFor] = useState<{ businessId: string; userId: string } | null>(null);
+  const [operationsStart, setOperationsStart] = useState<'pos' | 'tables'>('pos');
   const [view, setView] = useState<'workspace' | 'catalog' | 'employees' | 'memberships' | 'shifts' | 'expenses' | 'vault' | 'receivables' | 'payables' | 'audit' | 'operations' | 'menuImport' | 'modules' | 'branding' | 'reports'>('workspace');
 
   useEffect(() => subscribeToAuth((user) => { setAuthUser(user); setAuthReady(true); }), []);
@@ -49,6 +50,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     setRole(null);
     setResolvedFor(null);
     setView('workspace');
+    setOperationsStart('pos');
     setError(null);
     setAccessLoadFailed(false);
     setLoading(true);
@@ -306,7 +308,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
     }
 
     if (view === 'operations') {
-      return <BusinessOperationsView businessId={businessId} businessName={business.branding.restaurantName} onBack={() => goHome()} />;
+      return <BusinessOperationsView initialTab={operationsStart} businessId={businessId} businessName={business.branding.restaurantName} onBack={() => goHome()} />;
     }
 
     if (view === 'catalog') {
@@ -324,7 +326,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
         <BusinessModuleToggles key={`${businessId}:${authUser?.uid ?? ""}`} business={business} enabled={enabledCapabilities} isOwner={role === 'OWNER' || role === 'SUPER_ADMIN'} onChanged={(caps) => setBusiness(current => current?.restaurantId === businessId ? { ...current, capabilities: caps } : current)} />
         <section className="rounded-2xl border border-[#3A3022] bg-[#111111] p-4">
           <p className="text-[10px] font-black uppercase tracking-wide text-[#E3BC6B]">Enlace para tus clientes</p>
-          <div className="mt-3"><BusinessQrPanel businessId={businessId} businessName={business.branding.restaurantName} /></div>
+          <div className="mt-3"><BusinessQrPanel businessId={businessId} businessName={business.branding.restaurantName} onOpenTables={canPos ? () => { setOperationsStart('tables'); setView('operations'); } : undefined} /></div>
           {role === 'OWNER' && (
             <div className="mt-4 border-t border-[#3A3022] pt-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -390,7 +392,7 @@ export const BusinessWorkspace: React.FC<{ businessId: string }> = ({ businessId
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setView(tab.id)}
+                  onClick={() => { setOperationsStart('pos'); setView(tab.id); }}
                   className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition-all sm:text-sm"
                   style={active ? { background: bizPrimary, color: bizBg } : { color: bizText, opacity: 0.8 }}
                 >
