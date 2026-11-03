@@ -296,10 +296,10 @@ try {
   assert.equal(externalCreated.orderType, 'pickup');
   assert.equal((await read(ownerA, externalId)).orderOrigin, 'QR_EXTERNO');
   assert.equal((await sdk.getDoc(sdk.doc(anonymous, 'public_table_orders', externalId))).exists(), false);
-  // Las reglas STAGED limitan los números de mesa: nunca confirmar un pedido
-  // sin espejo si el QR señala una mesa no permitida por dichas reglas.
+  // Las reglas STAGED permiten mesas 1–60. Fuera de ese rango,
+  // el pedido no debe confirmarse si el espejo de mesa sería inválido.
   const invalidPublicId = 'web_' + '2'.repeat(32);
-  await expectDenied(() => createOrder('business-a', {...publicTableInput, tableNumber: 3}, invalidPublicId));
+  await expectDenied(() => createOrder('business-a', {...publicTableInput, tableNumber: 61}, invalidPublicId));
   await env.withSecurityRulesDisabled(async ctx => {
     const db = ctx.firestore();
     assert.equal((await sdk.getDoc(ref(db, invalidPublicId))).exists(), false);
@@ -308,7 +308,7 @@ try {
   // Mesa inválida: la regla del espejo falla y revierte también el pedido.
   as(ownerA);
   const invalidId = 'web_' + 'f'.repeat(32);
-  await expectDenied(() => createOrder('business-a', tableInput('CAJA', {tableNumber: 3}), invalidId));
+  await expectDenied(() => createOrder('business-a', tableInput('CAJA', {tableNumber: 61}), invalidId));
   await env.withSecurityRulesDisabled(async ctx => {
     const db = ctx.firestore();
     assert.equal((await sdk.getDoc(ref(db, invalidId))).exists(), false,
