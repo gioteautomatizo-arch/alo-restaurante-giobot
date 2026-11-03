@@ -12,7 +12,7 @@ import { registerBusinessInviteApi } from '../businessInviteApi.ts';
 
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
-import { initializeApp, deleteApp } from 'firebase/app';
+import { initializeApp, deleteApp, getApps } from 'firebase/app';
 import {
   connectAuthEmulator, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   signOut,
@@ -530,6 +530,69 @@ try {
     'La colisión no crea membresía cruzada');
 
   await verifyCandidateInvitations(uidA, uidB);
+
+  // Integración adicional: la propuesta 3-doc COMPUESTA debe conservar la
+  // concurrencia del servicio real de empleados. Esta prueba comparte las
+  // reglas candidatas de alta/identidad/catálogo, nunca las despliega.
+  assert.equal(auth.currentUser?.uid, uidA, 'Invitaciones devuelve la sesión OWNER A');
+  const { createBusinessEmployee } = await import('../src/lib/businessEmployeeService.ts');
+  const initialApps = getApps().map(app => app.name).sort();
+  const initialRosterA = (await adminRead(businessPath(idA))).data()?.employeeUserIds ?? [];
+  const initialRosterB = (await adminRead(businessPath(idB))).data()?.employeeUserIds ?? [];
+  assert(Array.isArray(initialRosterA) && Array.isArray(initialRosterB),
+    'Ambos índices de empleados deben tener formato válido');
+  const employeeInput = (label: string, businessId = idA) => ({
+    businessId, name: 'Empleado candidato ' + label,
+    email: 'three-doc-concurrent-' + label + '@beta.example.test',
+    password, role: 'WAITER' as const, accountMode: 'new' as const,
+  });
+  const [employeeOne, employeeTwo] = await Promise.all([
+    createBusinessEmployee(employeeInput('one')),
+    createBusinessEmployee(employeeInput('two')),
+  ]);
+  assert.notEqual(employeeOne.userId, employeeTwo.userId,
+    'Las dos altas no deben compartir identidad Auth secundaria');
+  for (const employee of [employeeOne, employeeTwo]) {
+    const saved = (await adminRead(memberPath(idA, employee.userId))).data();
+    assert.equal(saved?.restaurantId, idA);
+    assert.equal(saved?.userId, employee.userId);
+    assert.equal(saved?.role, 'WAITER');
+    assert.equal(saved?.active, true);
+    assert.equal((await adminRead(memberPath(idB, employee.userId))).exists(), false,
+      'Alta de A no crea membresía cruzada en B');
+  }
+  const afterRosterA = (await adminRead(businessPath(idA))).data()?.employeeUserIds;
+  assert(Array.isArray(afterRosterA));
+  assert.deepEqual([...afterRosterA].sort(),
+    [...new Set([...initialRosterA, employeeOne.userId, employeeTwo.userId])].sort(),
+    'Dos transacciones concurrentes conservan el roster anterior y ambos UID');
+  assert.deepEqual((await adminRead(businessPath(idB))).data()?.employeeUserIds ?? [], initialRosterB,
+    'La concurrencia en A no modifica el índice de B');
+  assert.equal((await adminRead(reservePath(idA))).data()?.ownerUserId, uidA,
+    'La reserva permanente A permanece intacta tras las altas');
+  assert.equal((await adminRead(reservePath(idB))).data()?.ownerUserId, uidB,
+    'La reserva permanente B permanece intacta');
+  assert.equal(auth.currentUser?.uid, uidA, 'El OWNER principal sigue conectado');
+  assert.deepEqual(getApps().map(app => app.name).sort(), initialApps,
+    'Auth secundaria se libera al terminar las altas candidatas');
+
+  // La denegación debe ocurrir ANTES de crear una cuenta Auth para B.
+  const foreignInput = employeeInput('foreign', idB);
+  await assert.rejects(createBusinessEmployee(foreignInput), (error: any) =>
+    error?.code === 'permission-denied' || /No tienes permiso/.test(String(error)),
+    'OWNER A no puede crear personal en B con las reglas candidatas');
+  const probeApp = initializeAdminApp({ projectId }, 'candidate-employee-auth-probe');
+  try {
+    await assert.rejects(getAdminAuth(probeApp).getUserByEmail(foreignInput.email),
+      (error: any) => error?.code === 'auth/user-not-found',
+      'El rechazo cruzado no debe dejar una cuenta Auth huérfana');
+  } finally {
+    await deleteAdminApp(probeApp);
+  }
+  assert.deepEqual(getApps().map(app => app.name).sort(), initialApps,
+    'La denegación tampoco deja apps secundarias');
+  assert.equal(auth.currentUser?.uid, uidA);
+  console.log('PASS 3-doc compuesto: dos empleados simultáneos A, índice íntegro, reservas A/B intactas, sesión OWNER y denegación cruzada antes de Auth (solo emulador).');
 
   await signOut(auth);
   await signInWithEmailAndPassword(auth, emailA, password);
