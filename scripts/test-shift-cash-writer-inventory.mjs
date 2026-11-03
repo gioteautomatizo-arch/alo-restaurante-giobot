@@ -27,7 +27,7 @@ assert.deepEqual(baseline.issues, [
   'SHARED_EPOCH_NOT_ENFORCED',
   'WRITER_DISCOVERY_NOT_EXHAUSTIVE',
 ]);
-assert.equal(Object.keys(baseline.observed).length, 10);
+assert.equal(Object.keys(baseline.observed).length, 11);
 
 const orderPath = 'src/lib/ordersService.ts';
 const removedWrite = {

@@ -5,6 +5,7 @@
  * Este módulo NO lee Firestore ni autoriza cierres.
  */
 export const CASH_WRITER_SITE_COUNTS = Object.freeze({
+  'src/lib/businessTableCheckout.ts': Object.freeze({ runTransaction: 1, 'tx.set': 1, 'tx.update': 1 }),
   'src/lib/ordersService.ts': Object.freeze({
     addDoc: 2, setDoc: 3, updateDoc: 4, writeBatch: 1,
     runTransaction: 3, 'transaction.update': 4, 'batch.set': 2,

@@ -1,3 +1,4 @@
+import { BusinessTablesCheckout } from './BusinessTablesCheckout';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, ClipboardList, Minus, PackagePlus, Plus, ShoppingCart, XCircle } from 'lucide-react';
 import type { BusinessCatalogItem } from '../../lib/businessCatalogService';
@@ -36,7 +37,7 @@ export const BusinessOperationsView: React.FC<{
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
-  const [activeTab, setActiveTab] = useState<'pos' | 'orders' | 'comandas' | 'unpaid'>('pos');
+  const [activeTab, setActiveTab] = useState<'pos' | 'orders' | 'comandas' | 'unpaid' | 'tables'>('pos');
   const [commandFilter, setCommandFilter] = useState<'TODAS' | RestaurantOrderStatus>('TODAS');
   const submitInFlight = useRef(false);
 
@@ -253,6 +254,7 @@ export const BusinessOperationsView: React.FC<{
 
         <nav aria-label="Secciones de pedidos y caja" className="mt-6 flex max-w-full gap-2 overflow-x-auto rounded-2xl border border-[#DEC8AE] bg-white p-2">
           <button onClick={() => setActiveTab('pos')} className={activeTab === 'pos' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Capturar pedido</button>
+          <button onClick={() => setActiveTab('tables')} className={activeTab === 'tables' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Mesas y cobros</button>
           <button onClick={() => setActiveTab('orders')} className={activeTab === 'orders' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Pedidos activos</button>
           <button onClick={() => setActiveTab('unpaid')} className={activeTab === 'unpaid' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Por cobrar ({ordersLoadState === 'ready' ? unpaidOrders.length : '…'})</button>
           <button onClick={() => setActiveTab('comandas')} className={activeTab === 'comandas' ? 'rounded-xl px-4 py-2 text-xs font-black bg-[#3A2418] text-white' : 'rounded-xl px-4 py-2 text-xs font-black text-[#6B4028]'}>Comandas</button>
@@ -260,7 +262,7 @@ export const BusinessOperationsView: React.FC<{
 
         {message && <div role="status" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-900">{message}</div>}
 
-        {activeTab === 'pos' ? (
+        {activeTab === 'tables' ? <BusinessTablesCheckout businessId={businessId} orders={orders} ready={ordersReady} /> : activeTab === 'pos' ? (
           <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_360px]">
             <section className="rounded-[2rem] border border-[#D9C5AC] bg-white p-5 sm:p-6">
               <div className="flex flex-col sm:flex-row gap-3">
@@ -319,7 +321,7 @@ export const BusinessOperationsView: React.FC<{
         ) : activeTab === 'unpaid' ? (
           <section className="mt-6 rounded-[2rem] border border-[#D9C5AC] bg-white p-5">
             <h2 className="font-serif text-xl font-black text-[#2B1B13]">Pedidos por cobrar</h2>
-            <p className="mt-2 text-sm text-[#6B4028]">Los pedidos web pueden llegar aunque el turno esté cerrado. No se cuentan como ingresos hasta registrar un cobro autorizado. El cobro universal está pendiente de validación de permisos; no registres el pago dos veces ni cambies el estado manualmente.</p>
+            <p className="mt-2 text-sm text-[#6B4028]">Los pedidos web pueden llegar aunque el turno esté cerrado. No se cuentan como ingresos hasta registrar un cobro autorizado. Para pedidos de mesa, abre Mesas y cobros. Revisa pagos externos antes de confirmar; el cobro de mostrador y domicilio sigue pendiente de integración.</p>
             {ordersLoadState !== 'ready' ? <p role="alert" className="mt-4 text-sm font-bold text-red-700">No se pudo confirmar el listado completo de pedidos. Revisa la conexión y permisos.</p> : <>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-xl bg-amber-50 p-3 text-amber-950"><strong className="text-xl">{snapshot.unpaidTotalCount}</strong><p className="text-xs">Pedidos sin cobro registrado</p><strong>{money(snapshot.unpaidTotalAmount)}</strong></div>

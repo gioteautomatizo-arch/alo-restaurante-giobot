@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const expected = new Map([
+  ['src/lib/businessTableCheckout.ts', 1], // cobro: membresía individual dentro de la transacción
   ['businessDirectoryApi.ts', 3], // Admin SDK: listado privado opt-in y OWNER ajeno por documento
   ['businessInviteApi.ts', 9], // Admin SDK: invitaciones y revalidación final de actor/raíz/emisores
   ['menuImportApi.ts', 1], // REST: membresía individual para importar menú

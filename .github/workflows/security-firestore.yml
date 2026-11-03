@@ -24,6 +24,8 @@ jobs:
         run: node scripts/verify-vip-staged.mjs && node scripts/verify-launch-rules.mjs
       - name: Verify emulator rules resolve (fail closed)
         run: node scripts/verify-emulator-rule-paths.mjs
+      - name: Test business table checkout atomicity
+        run: npx firebase emulators:exec --only firestore --project demo-business-table-checkout --config firebase.launch-security-emulator.json "node --import tsx scripts/test-business-table-checkout.mts"
       - name: Test tenant isolation with Firestore Emulator
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-security-test --config firebase.security-emulator.json "node scripts/test-firestore-vip.mjs"
       - name: Test tenant-scoped table payment listener and A/B permissions (Firestore Emulator only)
