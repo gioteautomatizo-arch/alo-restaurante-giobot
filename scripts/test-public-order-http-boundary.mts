@@ -87,18 +87,25 @@ try {
   assert.equal(created.status, 201);
   assert.equal(created.cache, 'no-store');
   assert.equal(created.body.total, 70);
+  assert.deepEqual(created.body.items, [{ productId: 'taco', name: 'Taco',
+    quantity: 2, totalPrice: 70 }]);
   assert.equal(created.body.created, true);
   assert.equal((await db.doc('restaurant_orders/' + created.body.orderId).get()).data()?.total, 70);
   const duplicate = await send(draft(1), 'good.jwt.token');
   assert.equal(duplicate.status, 200);
   assert.equal(duplicate.body.created, false);
   assert.equal(duplicate.body.orderId, created.body.orderId);
+  assert.deepEqual(duplicate.body.items, created.body.items);
   assert.equal((await send(draft(1, { customerName: 'Diferente' }), 'good.jwt.token')).status, 409);
 
   assert.equal((await send(draft(2, { orderType: 'dine_in', tableNumber: 61 }), 'good.jwt.token')).status, 400);
-  const atLimit = await send(draft(3, { orderType: 'dine_in', tableNumber: 60 }), 'good.jwt.token');
+  const atLimit = await send(draft(3, {
+    orderType: 'dine_in', tableNumber: 60, guestCount: 4, notes: 'Sin picante',
+  }), 'good.jwt.token');
   assert.equal(atLimit.status, 201);
   assert.equal((await db.doc('public_table_orders/' + atLimit.body.orderId).get()).data()?.tableNumber, 60);
+  assert.equal((await db.doc('restaurant_orders/' + atLimit.body.orderId).get()).data()?.notes,
+    'Mesa 60 · 4 personas · Sin picante');
 
   assert.equal((await send(draft(4, { businessId: 'tenant-b' }), 'good.jwt.token')).status, 400);
   assert.equal((await db.doc('restaurant_orders/' + deriveTrustedOrderId('tenant-b', attempt(4))).get()).exists, false);
