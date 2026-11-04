@@ -99,13 +99,24 @@ export async function platformBusinessMetrics(db: Firestore, businessIds: string
       !businessIds.every(id => typeof id === 'string' && ENGAGEMENT_BUSINESS_ID.test(id)))
     throw new Error('METRICAS_INVALIDAS');
   const pairs = await Promise.all(businessIds.map(async id => {
-    const [visits, ratings] = await Promise.all([
-      db.doc('businessVisitSummaries/' + id).get(), publicBusinessRating(db, id),
+    // El propietario de la plataforma también necesita ver sus demos y
+    // negocios aún no publicados. Esta lectura solo se llama tras Auth/Admin.
+    const [business, visits, ratings] = await Promise.all([
+      db.doc('businesses/' + id).get(),
+      db.doc('businessVisitSummaries/' + id).get(),
+      db.doc('businessRatingSummaries/' + id).get(),
     ]);
+    if (!business.exists || business.data()?.restaurantId !== id)
+      throw new Error('NEGOCIO_INCONSISTENTE');
     const visitsTotal = visits.exists ? visits.data()?.visitsTotal : null;
-    if (visitsTotal !== null && (!Number.isSafeInteger(visitsTotal) || visitsTotal < 0))
+    const ratingCount = ratings.exists ? ratings.data()?.count : 0;
+    const sum = ratings.exists ? ratings.data()?.sum : 0;
+    if ((visitsTotal !== null && (!Number.isSafeInteger(visitsTotal) || visitsTotal < 0)) ||
+        !Number.isSafeInteger(ratingCount) || ratingCount < 0 ||
+        !Number.isSafeInteger(sum) || sum < ratingCount || sum > 5 * ratingCount)
       throw new Error('METRICAS_CORRUPTAS');
-    return [id, { visitsTotal, ratingCount: ratings.count, average: ratings.average }] as const;
+    const average = ratingCount ? Math.round(10 * sum / ratingCount) / 10 : null;
+    return [id, { visitsTotal, ratingCount, average }] as const;
   }));
   return Object.fromEntries(pairs);
 }
