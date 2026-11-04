@@ -1,6 +1,6 @@
 /**
  * Prueba de frontera HTTP solo en Firestore Emulator, con App Check simulado.
- * No demuestra un token de App Check real, límite distribuido ni producción.
+ * App Check simulado; prueba cuota centralizada en Emulator, no infraestructura real ni producción.
  */
 import assert from 'node:assert/strict';
 import express from 'express';
@@ -10,6 +10,7 @@ import { initializeApp, deleteApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { registerPublicOrderApi } from '../publicOrderApi';
 import { deriveTrustedOrderId } from '../publicOrderAuthorityTransaction';
+import { publicOrderQuotaKeys, PUBLIC_ORDER_QUOTA_CLIENT_LIMIT } from '../publicOrderQuota';
 
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080',
   'ALTO: HTTP solo contra Firebase Emulator.');
@@ -112,10 +113,27 @@ try {
   await db.doc('businesses/tenant-a').update({ active: false });
   assert.equal((await send(draft(5), 'good.jwt.token')).status, 400);
   assert.equal((await db.doc('restaurant_orders/' + deriveTrustedOrderId('tenant-a', attempt(5))).get()).exists, false);
+  // Límite compartido: una segunda instancia usaría exactamente este documento.
+  await db.doc('businesses/tenant-a').update({ active: true });
+  const key = publicOrderQuotaKeys('tenant-a', 'demo-web-app', '127.0.0.1');
+  // Express req.ip en loopback es 127.0.0.1.
+  await db.collection('public_order_rate_limits').doc(key.client).set({
+    count: PUBLIC_ORDER_QUOTA_CLIENT_LIMIT, resetAt: Date.now() + 55_000,
+  });
+  const limited = await send(draft(6), 'good.jwt.token');
+  assert.equal(limited.status, 429, 'No se puede pasar el límite centralizado');
+  assert.equal((await db.doc('restaurant_orders/' + deriveTrustedOrderId('tenant-a', attempt(6))).get()).exists, false);
+  // Un registro corrupto de cuota tampoco puede abrir un pedido nuevo.
+  await db.collection('public_order_rate_limits').doc(key.client).set({
+    count: 'invalid', resetAt: Date.now() + 55_000,
+  });
+  assert.equal((await send(draft(7), 'good.jwt.token')).status, 503,
+    'Un error de cuota centralizada debe fallar cerrado');
+  assert.equal((await db.doc('restaurant_orders/' + deriveTrustedOrderId('tenant-a', attempt(7))).get()).exists, false);
   process.env.ENABLE_SECURE_PUBLIC_ORDER_API = 'false';
-  assert.equal((await send(draft(6), 'good.jwt.token')).status, 404);
+  assert.equal((await send(draft(8), 'good.jwt.token')).status, 404);
   console.log('PASS: API cerrada; App Check/allowlist simulados; cliente sin precios; pedido fiable, reintento, mesa 60 y tenant A/B en Emulator.');
-  console.log('PENDIENTE CRÍTICO: App Check real, cuota distribuida, integración cliente y reglas para cerrar bypass directo; NO ACTIVAR.');
+  console.log('PENDIENTE CRÍTICO: App Check real, mitigación DDoS y cuotas de infraestructura, integración cliente y cierre del bypass directo; NO ACTIVAR.');
 } finally {
   if (initialFlag === undefined) delete process.env.ENABLE_SECURE_PUBLIC_ORDER_API;
   else process.env.ENABLE_SECURE_PUBLIC_ORDER_API = initialFlag;

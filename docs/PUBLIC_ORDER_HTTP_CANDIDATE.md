@@ -30,3 +30,10 @@
 - **No activar solo el frontend**. Existen versiones antiguas y otros clientes capaces de escribir directamente en `restaurant_orders`. La API por sí sola no cierra esa vía; cerrar reglas antes de migrar el checkout puede interrumpir las ventas.
 - Antes de cualquier corte: App Check real, límites distribuidos de abuso, compatibilidad de clientes abiertos, revisión independiente de permisos y montos, respaldo/restauración y rollback probado. La privacidad VIP también sigue pendiente.
 - **No usar para cobros reales ni beta pública todavía**. Sin cambios a `firestore.rules`, reglas STAGED, `firebase.json` ni Firebase remoto.
+
+## Límite compartido por negocio en Firestore (solo candidato)
+
+- `publicOrderQuota.ts` guarda contadores atómicos en `public_order_rate_limits` usando Admin SDK. Se verifican después de App Check y antes de crear el pedido. 25 solicitudes por IP/app/negocio y 120 en total por negocio, cada ventana de 60 segundos. Los IDs son hashes; **no se almacena la IP en claro**. Las solicitudes inválidas también consumen cuota para limitar abuso.
+- Requiere configurar limpieza TTL en el campo `expiresAt` si algún día se activa; ninguna limpieza automática fue configurada en producción. El backend responde 429 con `Retry-After` al agotar cupo. Un fallo de base de datos o documento de cuota corrupto devuelve 503 **sin crear un pedido**.
+- Las pruebas `scripts/test-public-order-quota.mts` ejercitan aislamiento A/B, expiración, exceso, integridad y concurrencia entre solicitudes. `scripts/test-public-order-http-boundary.mts` verifica 429 y fallo cerrado por 503 del endpoint. Todas usan Firestore Emulator y datos ficticios.
+- **No constituye protección final DDoS**: faltan WAF/cuotas de infraestructura, App Check real, presupuesto, observabilidad, ensayos con múltiples instancias y corte coordinado de reglas/cliente. No habilitar la ruta pública.

@@ -11,6 +11,7 @@ import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin
 import { getAppCheck } from 'firebase-admin/app-check';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { commitTrustedPublicOrder } from './publicOrderAuthorityTransaction';
+import { consumePublicOrderQuota } from './publicOrderQuota';
 
 type VerifiedApp = { appId: string };
 export interface PublicOrderApiDependencies {
@@ -84,7 +85,19 @@ export function registerPublicOrderApi(app: Express, deps: PublicOrderApiDepende
     }
 
     try {
-      const result = await commitTrustedPublicOrder((deps.firestore || (() => services().db))(), req.body);
+      const db = (deps.firestore || (() => services().db))();
+      // La cuota atómica se comparte entre instancias. Un fallo de lectura/escritura
+      // NO puede habilitar la ruta de creación del pedido.
+      const quota = await consumePublicOrderQuota(db, {
+        businessId: req.body.businessId,
+        appId: verified.appId,
+        remoteAddress: req.ip || req.socket.remoteAddress || 'unknown',
+      });
+      if (!quota.allowed) {
+        res.setHeader('Retry-After', String(quota.retryAfterSeconds));
+        return fail(res, 429, 'Demasiados intentos. Prueba más tarde.');
+      }
+      const result = await commitTrustedPublicOrder(db, req.body);
       // No devolver customerName, catálogo, credenciales ni documentos internos.
       return res.status(result.created ? 201 : 200).json({
         orderId: result.orderId, code: result.code,
