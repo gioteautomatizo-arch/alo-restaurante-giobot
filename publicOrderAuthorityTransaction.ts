@@ -14,6 +14,8 @@ export interface TrustedPublicOrderDraft {
   attemptId: string;
   orderType: 'pickup' | 'dine_in';
   tableNumber?: number;
+  guestCount?: number;
+  notes?: string;
   paymentMethod: 'efectivo' | 'transferencia' | 'tarjeta';
   customerName: string;
   lines: unknown;
@@ -24,6 +26,7 @@ export interface TrustedPublicOrderResult {
   code: string;
   total: number;
   created: boolean;
+  items: Array<{ productId: string; name: string; quantity: number; totalPrice: number; customizationSummary?: string }>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -44,7 +47,7 @@ function canonicalJson(value: unknown): string {
 
 function validateDraft(raw: unknown): TrustedPublicOrderDraft {
   if (!isRecord(raw) || Object.keys(raw).some(key =>
-    !['businessId', 'attemptId', 'orderType', 'tableNumber', 'paymentMethod', 'customerName', 'lines'].includes(key))) {
+    !['businessId', 'attemptId', 'orderType', 'tableNumber', 'guestCount', 'notes', 'paymentMethod', 'customerName', 'lines'].includes(key))) {
     throw new Error('PEDIDO_NO_VALIDO: campos no autorizados.');
   }
   if (typeof raw.businessId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(raw.businessId) ||
@@ -62,8 +65,16 @@ function validateDraft(raw: unknown): TrustedPublicOrderDraft {
         (raw.tableNumber as number) > 60) {
       throw new Error('PEDIDO_NO_VALIDO: mesa inválida.');
     }
-  } else if (raw.tableNumber !== undefined) {
-    throw new Error('PEDIDO_NO_VALIDO: pickup no admite mesa.');
+  } else if (raw.tableNumber !== undefined || raw.guestCount !== undefined) {
+    throw new Error('PEDIDO_NO_VALIDO: pickup no admite mesa ni personas.');
+  }
+  if (raw.orderType === 'dine_in' && raw.guestCount !== undefined &&
+      (!Number.isInteger(raw.guestCount) || (raw.guestCount as number) < 1 || (raw.guestCount as number) > 10)) {
+    throw new Error('PEDIDO_NO_VALIDO: número de personas inválido.');
+  }
+  if (raw.notes !== undefined &&
+      (typeof raw.notes !== 'string' || raw.notes.length > 300)) {
+    throw new Error('PEDIDO_NO_VALIDO: notas inválidas.');
   }
   if (!['efectivo', 'transferencia', 'tarjeta'].includes(raw.paymentMethod as string)) {
     throw new Error('PEDIDO_NO_VALIDO: método de pago inválido.');
@@ -73,6 +84,28 @@ function validateDraft(raw: unknown): TrustedPublicOrderDraft {
     throw new Error('PEDIDO_NO_VALIDO: nombre inválido.');
   }
   return raw as unknown as TrustedPublicOrderDraft;
+}
+
+function receiptItems(raw: unknown): TrustedPublicOrderResult['items'] {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 50) {
+    throw new Error('INTEGRIDAD_PEDIDO: partidas guardadas inválidas.');
+  }
+  return raw.map(line => {
+    if (!isRecord(line) || typeof line.productId !== 'string' || !line.productId ||
+        typeof line.name !== 'string' || !line.name || !Number.isInteger(line.quantity) ||
+        (line.quantity as number) < 1 || typeof line.totalPrice !== 'number' ||
+        !Number.isFinite(line.totalPrice) || line.totalPrice < 0 ||
+        (line.customizationSummary !== undefined && typeof line.customizationSummary !== 'string')) {
+      throw new Error('INTEGRIDAD_PEDIDO: partida guardada inválida.');
+    }
+    return {
+      productId: line.productId,
+      name: line.name,
+      quantity: line.quantity as number,
+      totalPrice: line.totalPrice,
+      ...(line.customizationSummary !== undefined ? { customizationSummary: line.customizationSummary } : {}),
+    };
+  });
 }
 
 /** El ID es distinto por tenant incluso si dos clientes reutilizan una misma clave. */
@@ -132,7 +165,8 @@ export async function commitTrustedPublicOrder(
       } else if (mirror.exists) {
         throw new Error('INTEGRIDAD_PEDIDO: pickup no puede tener espejo de mesa.');
       }
-      return { orderId, code: prior.code as string, total: prior.total as number, created: false };
+      return { orderId, code: prior.code as string, total: prior.total as number,
+        items: receiptItems(savedOrder.data()?.items), created: false };
     }
 
     const business = await tx.get(businessRef);
@@ -163,6 +197,11 @@ export async function commitTrustedPublicOrder(
       customerName: draft.customerName.trim(),
       paymentMethod: draft.paymentMethod,
       bringOwnContainer: false,
+      ...(draft.notes?.trim() || draft.guestCount
+        ? { notes: [draft.orderType === 'dine_in' ? `Mesa ${draft.tableNumber}` : '',
+            draft.guestCount ? `${draft.guestCount} ${draft.guestCount === 1 ? 'persona' : 'personas'}` : '',
+            draft.notes?.trim() || ''].filter(Boolean).join(' · ') }
+        : {}),
       items: quote.items,
       subtotal: quote.subtotal,
       discountAmount: 0,
@@ -186,6 +225,6 @@ export async function commitTrustedPublicOrder(
       businessId, orderId, code, fingerprint, total: quote.total,
       catalogRevision: quote.catalogRevision, createdAt: now,
     });
-    return { orderId, code, total: quote.total, created: true };
+    return { orderId, code, total: quote.total, items: receiptItems(quote.items), created: true };
   });
 }
