@@ -23,7 +23,9 @@ export const PreviewInterfaceNavigator: React.FC = () => {
   if (!allowedUid || auth.currentUser?.uid !== allowedUid) return null;
 
   const routes = [
+    { label: 'Mis interfaces privadas · acceso guardable', hash: '#mis-interfaces' },
     { label: 'Mi panel de plataforma', hash: '#platform-admin' },
+    { label: 'Calientito · administrar (usuario y PIN)', hash: '#admin' },
     { label: 'Calientito · página pública', hash: '#negocio/alo-restaurante' },
     { label: 'Directorio · publicados', hash: '#explorar' },
     { label: 'Acceso para negocios', hash: '#business' },
