@@ -98,21 +98,27 @@ export function buildWhatsappOrderUrl(input: {
   notes?: string;
   tableNumber?: number;
   orderCode?: string;
+  /** Importes devueltos por el servidor confiable; nunca desde el formulario. */
+  confirmedTotal?: number;
+  confirmedItems?: Array<{ name: string; quantity: number; totalPrice: number; customizationSummary?: string }>;
 }): string {
   const phone = normalizeWhatsapp(input.whatsapp);
   if (!phone || input.lines.length === 0) return '';
 
-  const rows = input.lines.map((line) => {
-    const detail = selectionSummary(line.item, line.selection || {});
-    return `• ${line.quantity} x ${line.item.name}${detail ? ` (${detail})` : ''} — ${formatMoney(lineUnitPrice(line) * line.quantity)}`;
-  });
+  const rows = input.confirmedItems
+    ? input.confirmedItems.map(line =>
+      `• ${line.quantity} x ${line.name}${line.customizationSummary ? ` (${line.customizationSummary})` : ''} — ${formatMoney(line.totalPrice)}`)
+    : input.lines.map((line) => {
+      const detail = selectionSummary(line.item, line.selection || {});
+      return `• ${line.quantity} x ${line.item.name}${detail ? ` (${detail})` : ''} — ${formatMoney(lineUnitPrice(line) * line.quantity)}`;
+    });
   const message = [
     `Hola, quiero hacer un pedido en ${input.businessName}:`,
     input.orderCode ? `Pedido ${input.orderCode}` : '',
     '',
     ...rows,
     '',
-    `Total: ${formatMoney(cartTotal(input.lines))}`,
+    `Total: ${formatMoney(input.confirmedTotal ?? cartTotal(input.lines))}`,
     input.tableNumber ? `Mesa: ${input.tableNumber}` : '',
     input.customerName?.trim() ? `Nombre: ${input.customerName.trim()}` : '',
     input.notes?.trim() ? `Notas: ${input.notes.trim()}` : '',
