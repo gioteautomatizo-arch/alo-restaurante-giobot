@@ -12,6 +12,7 @@ import { BusinessDirectory } from './components/platform/BusinessDirectory';
 import { PreviewInterfaceNavigator } from './components/platform/PreviewInterfaceNavigator';
 import { BusinessOnboardingDemo } from './components/platform/BusinessOnboardingDemo';
 import { PlatformAdminPanel } from './components/platform/PlatformAdminPanel';
+import { PrivateInterfaceAccess } from './components/platform/PrivateInterfaceAccess';
 import './components/platform/platformTheme.css';
 import './index.css';
 import { RESERVED_PATHS } from './lib/siteUrl';
@@ -61,6 +62,11 @@ function RootRouter() {
 
   if (hash === '#platform-admin') {
     return <div className="giote-platform-theme"><PlatformAdminPanel /></div>;
+  }
+
+  // Acceso privado guardable en favoritos; jamás aparece como menú público.
+  if (hash === '#mis-interfaces') {
+    return <div className="giote-platform-theme"><PrivateInterfaceAccess /></div>;
   }
 
   const inviteMatch = hash.match(/^#invite\/([A-Za-z0-9_-]{43})$/);
