@@ -128,6 +128,7 @@ try {
   button('Agregar').click();
   await waitFor(() => button('Ver mi pedido (1)'), 'Carrito mesa');
   button('Ver mi pedido (1)').click();
+  await waitFor(() => button('Enviar pedido (se registra y abre WhatsApp)'), 'Checkout de mesa listo');
   button('Enviar pedido (se registra y abre WhatsApp)').click();
   await waitFor(() => window.qa.secureCalls.length === 3, 'Envio de mesa por API');
   assert.equal(window.qa.secureCalls[2].businessId, 'secure-table');
