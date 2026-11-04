@@ -46,6 +46,16 @@ async function allowAttempt(businessId: string, phone: string) {
 }
 
 export function registerVipRecoveryApi(app: Express): void {
+  // El frontend VIP seguro y el backend se activan durante un corte
+  // controlado; registrar rutas no debe exponer altas/recuperación por omisión.
+  // No leer perfiles ni iniciar Firebase Admin mientras siga apagado.
+  app.use('/api/vip', (_req, res, next) => {
+    res.setHeader('Cache-Control', NO_STORE);
+    if (process.env.ENABLE_SECURE_VIP_API !== 'true') {
+      return res.status(404).json({ error: 'Membresías VIP seguras aún no activadas.' });
+    }
+    next();
+  });
   // No se confía en los sellos, recompensas ni identificadores enviados por el cliente.
   app.post('/api/vip/register', async (req, res) => {
     res.setHeader('Cache-Control', NO_STORE);

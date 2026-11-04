@@ -10,6 +10,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { registerVipRecoveryApi } from '../vipRecoveryApi.ts';
 import { computeVipDocId, computePinHash } from '../src/lib/vipCrypto.ts';
 
+const previousApiFlag = process.env.ENABLE_SECURE_VIP_API;
 const projectId = 'gioteautomatizo-vip-api-test';
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080',
   'PROHIBIDO ejecutar contra Firebase real; iniciar Firestore Emulator.');
@@ -63,6 +64,14 @@ async function profile(businessId, token) {
     { method: 'GET', token });
 }
 try {
+  // OFF por defecto: ni un teléfono válido ni una sesión existente deben
+  // desencadenar lecturas o escrituras mientras VIP segura esté apagada.
+  delete process.env.ENABLE_SECURE_VIP_API;
+  assert.equal((await register(businessA)).status, 404, 'Alta VIP cerrada por omisión');
+  assert.equal((await recover(businessA)).status, 404, 'Recuperación VIP cerrada por omisión');
+  assert.equal((await profile(businessA, null)).status, 404, 'Perfil VIP cerrado por omisión');
+  assert.equal((await db.collection('vip_profiles').get()).size, 0, 'Flag OFF no creó tarjetas');
+  process.env.ENABLE_SECURE_VIP_API = 'true';
   const inactive = await register(unpublished);
   assert.equal(inactive.status, 404, 'VIP de negocio sin publicar denegado');
 
@@ -235,6 +244,8 @@ try {
   console.log('PASS VIP: alta, registros duplicados, PIN incorrecto, bloqueo, perfiles por negocio,');
   console.log('sesiones, caducidad, protección de sellos, legado Calientito y privacidad de hash.');
 } finally {
+  if (previousApiFlag === undefined) delete process.env.ENABLE_SECURE_VIP_API;
+  else process.env.ENABLE_SECURE_VIP_API = previousApiFlag;
   await new Promise(resolve => server.close(resolve));
   await Promise.all(getApps().map(firebaseApp => deleteApp(firebaseApp)));
 }

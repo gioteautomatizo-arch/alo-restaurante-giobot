@@ -84,3 +84,10 @@ El archivo `docs/firestore.vip-secure.STAGED.rules` solo es una **propuesta**; G
 - **Auditoría offline:** `node scripts/vip-migration-preflight.mjs --input /ruta/privada/manifiesto.json`; detecta registros sin negocio, contadores inválidos, conflictos de propietario y membresías administrativas. `approvalToDeploy` es siempre `false`.
 - **Ensayo automático:** `node scripts/test-vip-migration-preflight.mjs`, integrado en el workflow de seguridad. Solo usa datos ficticios.
 - [ ] Pendiente revisar el inventario real con el dueño, confirmar costes de respaldo y restaurarlo en un proyecto de prueba. **No se han modificado datos de producción.**
+
+## Guard de despliegue del backend VIP (candidato, 3 noviembre 2026)
+
+- El servidor registra rutas `/api/vip/*` pero responde **404 sin consultar Firebase** mientras `ENABLE_SECURE_VIP_API` no sea exactamente `true`. La ruta solo puede activarse en un despliegue coordinado después de migrar lectores/administradores y revisar reglas, tokens y cuotas.
+- El frontend `VITE_SECURE_VIP_API` también permanece apagado por defecto. **Nunca** activar reglas restrictivas, solo el frontend o solo el servidor por separado sin el plan de corte.
+- `scripts/test-vip-recovery-api.mjs` prueba el 404 inicial y que no se crean perfiles con la API cerrada, luego habilita **solo dentro de Firebase Emulator** el backend para comprobar recuperación, edición, límite de PIN y cuentas A/B.
+- Esto **no elimina** la lectura pública actual de `vip_profiles`; requiere despliegue de reglas seguras, migración de perfiles y permisos con respaldo y prueba de reversión. No publicar la beta hasta completarlo.
