@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, setDoc, getDoc, collection, getDocs, type Firestore } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, getDoc, collection, getDocs, type Firestore } from 'firebase/firestore';
 import { businessTableNumbers, saveBusinessTableCount } from '../src/lib/businessTables.ts';
 import { chargeBusinessTable } from '../src/lib/businessTableCheckout.ts';
 import type { RestaurantOrder } from '../src/types';
@@ -27,6 +27,32 @@ try {
     await setDoc(doc(ctx.firestore(), 'businessMemberships', 'tenant-a_owner-a'), { restaurantId: 'tenant-a', userId: 'owner-a', role: 'OWNER', active: true });
   });
   const a = order('a'), b = order('b'); await seed(a); await seed(b);
+  if (process.env.CHECKOUT_RULES_FILE?.includes('SECURITY-CANDIDATE')) {
+    // Antes de cobrar: un cliente no debe poder marcar pagado un pedido por
+    // updateDoc aislado, sin crear el pago enlazado en el mismo lote.
+    await assert.rejects(
+      updateDoc(doc(db, 'restaurant_orders', 'a'), { billingStatus: 'PAGADO' }),
+      (error: { code?: string }) => error.code === 'permission-denied',
+      'Cobro sin pago atómico debe estar prohibido',
+    );
+    await env.withSecurityRulesDisabled(async ctx => {
+      await setDoc(doc(ctx.firestore(), 'businessMemberships', 'tenant-a_waiter-a'), {
+        restaurantId: 'tenant-a', userId: 'waiter-a', role: 'WAITER', active: true,
+      });
+    });
+    const waiter = env.authenticatedContext('waiter-a').firestore();
+    await assert.rejects(
+      setDoc(doc(waiter, 'table_payments', 'forged-waiter'), {
+        id: 'forged-waiter', restaurantId: 'tenant-a', tableNumber: 2,
+        orderIds: ['a'], subtotal: 25, discountAmount: 0, tipAmount: 0,
+        total: 25, paymentMethod: 'EFECTIVO', status: 'PAGADO',
+        createdAt: '2026-11-03T12:00:00Z',
+        chargedById: 'waiter-a', chargedByName: 'Ficticio',
+      }),
+      (error: { code?: string }) => error.code === 'permission-denied',
+      'Una membresía de mesero no debe poder registrar pagos directamente',
+    );
+  }
   const results = await Promise.allSettled([charge([a, b]), charge([a, b])]);
   assert.equal(results.filter(r => r.status === 'fulfilled').length, 1, 'una sola confirmación concurrente');
   const paidA = (await getDoc(doc(db, 'restaurant_orders', 'a'))).data()!;
