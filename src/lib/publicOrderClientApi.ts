@@ -83,7 +83,7 @@ function safeOrderResponse(raw: unknown): ConfirmedPublicOrder {
     }
     return {
       productId: i.productId, name: i.name, quantity: i.quantity, totalPrice: i.totalPrice,
-      ...(i.customizationSummary !== undefined ? { customizationSummary: i.customizationSummary } : {}),
+      ...(i.customizationSummary !== undefined ? { customizationSummary: i.customizationSummary as string } : {}),
     };
   });
   const amountCents = items.reduce((sum, item) => sum + Math.round(item.totalPrice * 100), 0);
