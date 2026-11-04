@@ -19,3 +19,14 @@
 5. Las tarjetas VIP antiguas siguen requiriendo su migración de privacidad antes de una beta abierta.
 
 **Siguiente paso:** ensayo del cliente contra API privada y Firebase Emulator, luego revisión independiente del corte de reglas y plan de reversión. En la consola Firebase del negocio no se debe pegar este candidato.
+
+## Adaptador opt-in de cliente — 3 de noviembre de 2026 (APAGADO)
+
+- `src/lib/publicOrderClientApi.ts` construye solicitudes desde el carrito sin enviar precios, totales o descuentos. Solo lleva IDs de producto, cantidades, selecciones, nombre, notas (máx. 300), mesa 1–60 y comensales 1–10.
+- `BusinessPublicPage.tsx` usa la nueva API solo con `VITE_SECURE_PUBLIC_ORDER_API=true`, indicador de compilación no activado. El camino heredado permanece igual por defecto. **Si la API falla no se hace fallback a Firestore directo**.
+- El comprobante y WhatsApp utilizan los artículos y el total confirmados por el servidor, incluso si hubo cambio de catálogo entre el preflight y la transacción.
+- El navegador requiere `VITE_FIREBASE_APPCHECK_SITE_KEY` válida para generar un token. El servidor necesita `ENABLE_SECURE_PUBLIC_ORDER_API=true`, `PUBLIC_ORDER_ALLOWED_APP_IDS` y Firebase Admin bien configurado. Ninguna de esas opciones fue activada.
+- Pruebas: `scripts/test-public-order-client-draft.mts` (borrador puro), `scripts/test-public-checkout-ui-secure.mjs` (React/jsdom, API simulada y sin fallback), `scripts/test-public-order-http-boundary.mts` (App Check simulado + Firestore Emulator) y `scripts/test-public-order-authority-transaction.mts` (concurrencia e idempotencia).
+- **No activar solo el frontend**. Existen versiones antiguas y otros clientes capaces de escribir directamente en `restaurant_orders`. La API por sí sola no cierra esa vía; cerrar reglas antes de migrar el checkout puede interrumpir las ventas.
+- Antes de cualquier corte: App Check real, límites distribuidos de abuso, compatibilidad de clientes abiertos, revisión independiente de permisos y montos, respaldo/restauración y rollback probado. La privacidad VIP también sigue pendiente.
+- **No usar para cobros reales ni beta pública todavía**. Sin cambios a `firestore.rules`, reglas STAGED, `firebase.json` ni Firebase remoto.
