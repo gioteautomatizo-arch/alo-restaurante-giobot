@@ -34,6 +34,8 @@ jobs:
         run: npm install --no-package-lock --no-audit --no-fund
       - name: Test business table checkout UI
         run: node scripts/test-business-table-checkout-ui.mjs
+      - name: Test public order API draft (no client supplied prices)
+        run: node --import tsx scripts/test-public-order-client-draft.mts
       - name: Test secure public checkout opt-in (React/jsdom; no Firebase writes)
         run: node scripts/test-public-checkout-ui-secure.mjs
       - name: TypeScript validation
