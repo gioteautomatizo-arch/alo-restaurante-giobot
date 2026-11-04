@@ -132,9 +132,9 @@ export const PlatformAdminPanel: React.FC = () => {
 
   const stats = [
     { label: 'Negocios registrados', value: businesses.length, icon: Building2 },
-    { label: 'Negocios activos', value: businesses.length, icon: Store },
+    { label: 'Visitas a negocios', value: 'Sin medición aún', icon: Store },
     { label: 'Usuarios de plataforma', value: '—', icon: Users },
-    { label: 'Actividad', value: 'Próximamente', icon: Activity },
+    { label: 'Calificaciones', value: 'Sin habilitar aún', icon: Activity },
   ];
 
   return (
@@ -196,7 +196,7 @@ export const PlatformAdminPanel: React.FC = () => {
           <div className="flex items-center justify-between gap-3 mb-4">
             <div>
               <h3 className="font-serif text-2xl font-black">Negocios registrados</h3>
-              <p className="text-xs text-[#6B4028] mt-1">Cada negocio mantiene su propio tenant y configuración.</p>
+              <p className="text-xs text-[#6B4028] mt-1">Conteo de negocios multinegocio; Calientito, el negocio histórico, se administra por separado.</p>
             </div>
             <span className="rounded-full bg-[#FFF7EA] px-3 py-1 text-[10px] font-black text-[#A86B3D]">
               {businesses.length} registrados

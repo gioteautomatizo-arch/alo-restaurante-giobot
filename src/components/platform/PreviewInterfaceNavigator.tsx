@@ -1,16 +1,29 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ChevronDown, Compass, ExternalLink, X } from 'lucide-react';
 
-/**
- * Navegación EXCLUSIVA del entorno de desarrollo / AI Studio Preview.
- * No aparece en la app publicada ni concede permisos a negocios privados.
- * Ayuda a probar las rutas desde navegadores con teclado limitado (Xbox/iPad).
- */
+import { auth, subscribeToAuth } from '../../lib/firebase';
+import { isPlatformAdmin } from '../../lib/businessAuthService';
+
+/** Accesos exclusivos de administradores verificados de la plataforma. */
 export const PreviewInterfaceNavigator: React.FC = () => {
   const [open, setOpen] = useState(false);
-  if (!import.meta.env.DEV) return null;
+  const [allowedUid, setAllowedUid] = useState<string | null>(null);
+  useEffect(() => {
+    let generation = 0;
+    const unsubscribe = subscribeToAuth((user) => {
+      const current = ++generation;
+      setAllowedUid(null);
+      setOpen(false);
+      if (user) void isPlatformAdmin(user.uid).then((allowed) => {
+        if (current === generation && auth.currentUser?.uid === user.uid && allowed) setAllowedUid(user.uid);
+      }).catch(() => {});
+    });
+    return () => { generation++; unsubscribe(); };
+  }, []);
+  if (!allowedUid || auth.currentUser?.uid !== allowedUid) return null;
 
   const routes = [
+    { label: 'Mi panel de plataforma', hash: '#platform-admin' },
     { label: 'Calientito · página pública', hash: '#negocio/alo-restaurante' },
     { label: 'Directorio · publicados', hash: '#explorar' },
     { label: 'Acceso para negocios', hash: '#business' },

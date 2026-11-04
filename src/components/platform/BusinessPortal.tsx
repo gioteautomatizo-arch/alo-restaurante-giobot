@@ -262,11 +262,8 @@ export const BusinessPortal: React.FC = () => {
                 <Plus className="w-4 h-4 text-[#A86B3D]" /> Registrar un negocio nuevo
               </button>
 
-              <button type="button" onClick={openPublicCalientito} className="mt-3 w-full rounded-2xl border border-[#3A3022] bg-transparent px-4 py-3 text-sm font-bold text-[#E3BC6B]">
-                Ir a la app de Restaurante Calientito
-              </button>
+              <p className="mt-5 text-xs text-[#8A6A55]">Administra únicamente los negocios vinculados a tu cuenta.</p>
 
-              <p className="mt-5 text-[10px] leading-relaxed text-[#8A6A55]">Tu acceso se guarda con Firebase Auth. Restaurante Calientito conserva su propio acceso de personal.</p>
             </div>
           </section>
         </div>
@@ -319,7 +316,7 @@ export const BusinessPortal: React.FC = () => {
           </div>
         )}
 
-        <section className="mt-7 grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
+        {showSuperAdmin && <section className="mt-7 grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
           <article className="rounded-[2rem] border border-[#D9C5AC] bg-white overflow-hidden shadow-sm">
             <div className="grid md:grid-cols-[180px_1fr]">
               <div className="bg-[#FFF7EA] p-6 flex items-center justify-center"><img src="/logo-calientito.png" alt="Restaurante Calientito" className="w-32 h-32 object-contain rounded-3xl bg-white shadow-sm" /></div>
@@ -347,7 +344,7 @@ export const BusinessPortal: React.FC = () => {
             <p className="mt-2 text-sm leading-relaxed text-slate-300">Todo negocio nuevo comienza con Giobot. Después puede cambiar nombre, personalidad, colores y avatar, o contratar una experiencia Premium.</p>
             <div className="mt-5 space-y-2 text-xs text-slate-200"><div className="rounded-xl bg-white/5 p-3">✓ Giobot Base incluido</div><div className="rounded-xl bg-white/5 p-3">✓ Avatar propio opcional</div><div className="rounded-xl bg-white/5 p-3">✓ Giobot Premium como mejora</div></div>
           </aside>
-        </section>
+        </section>}
 
         {showingBusinessLoad && (
           <p className="mt-8 text-sm text-[#6B4028]">Cargando tus negocios…</p>
@@ -355,7 +352,7 @@ export const BusinessPortal: React.FC = () => {
 
         {!showingBusinessLoad && visibleBusinesses.length > 0 && (
           <section className="mt-8">
-            <h3 className="font-serif text-xl font-black text-[#2B1B13] mb-4">Tus otros negocios</h3>
+            <h3 className="font-serif text-xl font-black text-[#2B1B13] mb-4">Tus negocios</h3>
             <div className="grid gap-4 sm:grid-cols-2">
               {visibleBusinesses.map((tenant) => (
                 <article key={tenant.restaurantId} className="rounded-[2rem] border border-[#D9C5AC] bg-white p-6 shadow-sm">

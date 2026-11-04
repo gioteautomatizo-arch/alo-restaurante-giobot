@@ -77,6 +77,7 @@ const visible = name => document.body.textContent.includes(name);
 try {
   window.eval(bundle.outputFiles[0].text);
   await waitFor(() => !!window.qa.authListener, 'Auth subscription missing');
+  assert.equal(visible('Ir a la app de Restaurante Calientito'), false);
   emit('owner-a');
   await waitFor(() => !!pending('owner-a') && !!adminPending('owner-a'), 'A reads missing');
 
@@ -93,6 +94,8 @@ try {
   await waitFor(() => visible('Negocio B de prueba'), 'B business not displayed');
   assert.equal(visible('Negocio A de prueba'), false);
   assert.equal(button('Super Admin'), undefined);
+
+  assert.equal(visible('Calientito'), false, 'Un propietario común no recibe accesos de Calientito');
 
   // El cierre de sesión oculta inmediatamente el tenant anterior.
   emit(null);

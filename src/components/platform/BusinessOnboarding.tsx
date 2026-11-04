@@ -167,6 +167,7 @@ export const BusinessOnboarding: React.FC<BusinessOnboardingProps> = ({ onCancel
                 <img src="/brand/gioteautomatizo-oficial.jpg" alt="Gioteautomatizo · Tu negocio más conectado" className="h-full w-full object-contain" />
               </div>
               <p className="mt-7 text-xs font-black uppercase tracking-[0.2em] text-amber-300">Gioteautomatizo Business</p>
+              <button type="button" onClick={onCancel} disabled={isFinishing} className="mt-4 min-h-11 rounded-xl border border-white/20 px-4 py-2 text-sm text-white">Ya tengo cuenta · Iniciar sesión</button>
               <h1 className="mt-3 text-4xl sm:text-5xl font-black leading-tight">Crea el espacio digital de tu negocio.</h1>
               <p className="mt-5 text-base leading-relaxed text-slate-300">Configura tu perfil, POS, catálogo y asistente IA en pocos pasos. Después podrás editar todo cuando quieras.</p>
               <div className="mt-8 grid grid-cols-3 gap-2 text-xs text-slate-300">

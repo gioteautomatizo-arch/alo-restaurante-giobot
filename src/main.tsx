@@ -15,7 +15,7 @@ import { PlatformAdminPanel } from './components/platform/PlatformAdminPanel';
 import './components/platform/platformTheme.css';
 import './index.css';
 import { RESERVED_PATHS } from './lib/siteUrl';
-import { shouldShowPublicDirectory } from './lib/platformHomeRouting';
+import { shouldShowPublicDirectory, shouldShowRegistration } from './lib/platformHomeRouting';
 
 /** Enlaces limpios: /negocio/<nombre> equivale a #negocio/<nombre> (los enlaces con # siguen funcionando). */
 const LEGACY_ALIASES: Record<string, string> = { calientito: 'alo-restaurante', 'restaurante-calientito': 'alo-restaurante' };
@@ -28,6 +28,11 @@ function currentRouteHash(): string {
   const short = window.location.pathname.match(/^\/([^/.]+)\/?$/);
   if (short && !RESERVED_PATHS.includes(short[1].toLowerCase())) return `#negocio/${short[1]}`;
   return '';
+}
+
+function RegistrationEntry() {
+  useEffect(() => { window.location.replace('#business-new'); }, []);
+  return <div className="giote-platform-theme p-6">Abriendo registro…</div>;
 }
 
 function RootRouter() {
@@ -47,6 +52,8 @@ function RootRouter() {
     if (!qrParams.has(key)) qrParams.set(key, value);
   });
   const hasTableQr = qrParams.has('table') || qrParams.has('qr') || qrParams.get('staffOrder') === '1';
+
+  if (shouldShowRegistration(hash, hasTableQr)) return <RegistrationEntry />;
 
   if (shouldShowPublicDirectory(hash, hasTableQr)) {
     return <div className="giote-platform-theme"><BusinessDirectory /></div>;

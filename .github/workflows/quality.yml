@@ -76,6 +76,8 @@ jobs:
         run: node scripts/test-business-workspace-access-retry-ui.mjs
       - name: Test business portal account switch and retry (mocked Auth/Firestore, no Firebase writes)
         run: node scripts/test-business-portal-isolation-ui.mjs
+      - name: Verify platform interface access
+        run: node scripts/test-preview-interface-access-ui.mjs
       - name: Test business account list fail-closed on partial reads (mocked Firestore, no writes)
         run: node scripts/test-business-account-list.mjs
       - name: Test employee lifecycle preflight and role isolation (mocked Auth/Firestore, no writes)
