@@ -103,7 +103,7 @@ function receiptItems(raw: unknown): TrustedPublicOrderResult['items'] {
       name: line.name,
       quantity: line.quantity as number,
       totalPrice: line.totalPrice,
-      ...(line.customizationSummary !== undefined ? { customizationSummary: line.customizationSummary } : {}),
+      ...(line.customizationSummary !== undefined ? { customizationSummary: line.customizationSummary as string } : {}),
     };
   });
 }
