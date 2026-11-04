@@ -7,6 +7,7 @@ import { registerVipRecoveryApi } from './vipRecoveryApi';
 import { registerBusinessInviteApi } from './businessInviteApi';
 import { registerBusinessDirectoryApi } from './businessDirectoryApi';
 import { registerPublicOrderApi } from './publicOrderApi';
+import { registerBusinessEngagementApi } from './businessEngagementApi';
 
 const app = express();
 app.use(express.json());
@@ -31,6 +32,7 @@ registerVipRecoveryApi(app);
 registerBusinessInviteApi(app);
 registerBusinessDirectoryApi(app);
 registerPublicOrderApi(app); // 404 por defecto; corte seguro todavía pendiente.
+registerBusinessEngagementApi(app); // OFF por defecto: visitas y estrellas requieren App Check/operación segura.
 
 const GIOBOT_SYSTEM_INSTRUCTION = `
 Eres Tita, la anfitriona virtual de Restaurante Calientito.
