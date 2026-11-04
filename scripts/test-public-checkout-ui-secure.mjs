@@ -80,6 +80,7 @@ const waitFor = async (condition, reason) => {
     if (condition()) return;
     await new Promise(resolve => setTimeout(resolve, 10));
   }
+  console.error('DIAGNOSTICO UI:', reason, doc.body.textContent.slice(0, 1800), 'ERRORS', errors.map(String));
   assert.fail(reason);
 };
 try {
