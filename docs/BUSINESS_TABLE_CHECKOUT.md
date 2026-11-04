@@ -46,3 +46,18 @@ QR → tarjeta mesa → pago recibido → pedidos pagados y referencia del pago.
 - **Resultado:** validado manualmente un flujo feliz de pedido, notificación y cobro de mesa. No se verificaron desde esta prueba la doble confirmación en dos dispositivos, la integridad de un cierre de turno, los permisos de otra cuenta, el dominio final publicado ni los importes del recibo con datos históricos. No repetir esta misma demostración como si estuviera pendiente.
 - **Reglas actuales:** la versión copiada desde la consola para la prueba solo amplió el rango de `public_table_orders` y `table_payments`; conserva reglas directas antiguas de `vip_profiles`, alta y modificación de pedidos. No equivale a reglas STAGED ni a un corte seguro.
 - Para la transición futura, `docs/firestore.table-checkout.SECURITY-CANDIDATE-NO-PUBLICAR.rules` ensaya la transacción de mesa con roles más estrictos; no está desplegado y no permite todavía publicar beta abierta. Ver `docs/TABLE_CHECKOUT_SECURITY_CANDIDATE_REVIEW.md`.
+
+## Revisión de pagos desde Turno (4 de noviembre de 2026)
+
+El turno abierto ofrece **Revisar cobros de mesas**. Reutiliza el coordinador
+existente de pagos y comandas: solo consulta al abrir la revisión, cancela las
+suscripciones al ocultarla o cambiar negocio/turno, y permite reintentar errores.
+Muestra importes por método únicamente cuando las referencias e importes
+consultados coinciden. Las diferencias incluyen IDs de pago/comanda para
+localizarlas; si se detectan datos ajenos se ocultan todas las referencias.
+
+Esta revisión no escribe, no suma otra vez a ventas y no habilita el cierre.
+El cierre de mesas sigue pendiente de consistencia final con los demás movimientos.
+Validado con React/jsdom: carga, totales, anomalías, error/reintento, privacidad,
+callbacks obsoletos, cambio de negocio/turno y cancelación de suscripciones.
+También pasan las pruebas existentes de sesión de Caja y conciliación de pagos.

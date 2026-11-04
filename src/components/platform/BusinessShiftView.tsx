@@ -1,3 +1,4 @@
+import { BusinessTableReconciliation } from './BusinessTableReconciliation';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock, History, Lock, Play } from 'lucide-react';
 import type { RestaurantOrder } from '../../types';
@@ -285,6 +286,7 @@ const BusinessShiftSession: React.FC<{ businessId: string }> = ({ businessId }) 
                 Caja sin conciliación de mesa: {unverifiedTable.inWindow} pedido(s) pagado(s) durante el turno y {unverifiedTable.undated} sin fecha de cobro verificable. No se suman al total provisional ni se permite cerrar hasta comprobar pagos de mesa, referencias y permisos. No se alteró ningún cobro.
               </div>
             )}
+            <BusinessTableReconciliation businessId={businessId} shiftStart={active.openedAt} />
             {!closing ? (
               <button type="button" disabled={missingPaymentDates > 0 || unclassifiedPaid.count > 0 || tableCloseBlocked} onClick={() => setClosing(true)} className="mt-4 flex items-center gap-2 rounded-xl border border-[#D6A34A] px-5 py-3 text-sm font-black text-[#E3BC6B] disabled:cursor-not-allowed disabled:opacity-50">
                 <Lock className="h-4 w-4" /> Cerrar turno

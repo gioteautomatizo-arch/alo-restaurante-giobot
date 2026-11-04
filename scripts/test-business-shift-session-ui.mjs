@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = fileURLToPath(new URL('../', import.meta.url));
 const mocks = {
+  './BusinessTableReconciliation': 'export const BusinessTableReconciliation = () => null;',
   '../../lib/firebase': 'export const getCurrentAuthUser = () => window.qa.user;',
   '../../lib/ordersService': `export const subscribeToBusinessRestaurantOrders = (id, next, error) => window.qa.subscribe(id, 'orders', next, error);`,
   '../../lib/tenantModules': `
