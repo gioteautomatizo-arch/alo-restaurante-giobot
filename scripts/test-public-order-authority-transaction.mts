@@ -149,6 +149,20 @@ try {
   assert.equal((await attemptRef('business-a', id(14)).get()).exists, false);
   await db.doc('businesses/business-a').update({ restaurantId: 'business-a' });
 
+  // La API pública y los QR admiten mesas 1–60, nunca 61–99.
+  await assert.rejects(commitTrustedPublicOrder(db, draft(16, {
+    orderType: 'dine_in', tableNumber: 61,
+  })), /mesa inválida/);
+  const table60 = await commitTrustedPublicOrder(db, draft(17, {
+    orderType: 'dine_in', tableNumber: 60,
+  }));
+  assert.equal((await mirrorRef('business-a', id(17)).get()).data()?.tableNumber, 60);
+  assert.equal(table60.created, true);
+  await db.doc('businesses/business-a').update({ active: false });
+  await assert.rejects(commitTrustedPublicOrder(db, draft(18)), /negocio o catálogo no disponible o discordante/);
+  assert.equal((await orderRef('business-a', id(18)).get()).exists, false);
+  await db.doc('businesses/business-a').update({ active: true });
+
   await db.doc('businesses/business-b').delete();
   await assert.rejects(commitTrustedPublicOrder(db, draft(15, {
     businessId: 'business-b', lines: [{ productId: 'b-exclusive', quantity: 1 }],

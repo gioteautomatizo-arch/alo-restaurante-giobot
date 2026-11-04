@@ -70,6 +70,8 @@ jobs:
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-public-order-gate-proposal --config firebase.launch-security-emulator.json "node scripts/test-public-order-write-gate-proposal.mjs"
       - name: Test isolated trusted public order transaction (Admin SDK, emulator only, no endpoint)
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-public-order-transaction-test --config firebase.launch-security-emulator.json "node --import tsx scripts/test-public-order-authority-transaction.mts"
+      - name: Test public order HTTP candidate (App Check simulated, Firestore Emulator, OFF by default)
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-public-order-http-test --config firebase.launch-security-emulator.json "node --import tsx scripts/test-public-order-http-boundary.mts"
       - name: Test real tenant order status transactions with Firestore Emulator
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-order-status-emulator-test --config firebase.launch-security-emulator.json "node scripts/test-business-order-status-emulator.mjs"
       - name: Diagnose cross-tenant update reassignment and test isolated invariant proposal

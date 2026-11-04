@@ -59,7 +59,7 @@ function validateDraft(raw: unknown): TrustedPublicOrderDraft {
   }
   if (raw.orderType === 'dine_in') {
     if (!Number.isInteger(raw.tableNumber) || (raw.tableNumber as number) < 1 ||
-        (raw.tableNumber as number) > 99) {
+        (raw.tableNumber as number) > 60) {
       throw new Error('PEDIDO_NO_VALIDO: mesa inválida.');
     }
   } else if (raw.tableNumber !== undefined) {
@@ -140,7 +140,7 @@ export async function commitTrustedPublicOrder(
     const catalog = await tx.get(catalogRef);
     const existingOrder = await tx.get(orderRef);
     const existingMirror = await tx.get(mirrorRef);
-    if (!business.exists || business.data()?.restaurantId !== businessId ||
+    if (!business.exists || business.data()?.active === false || business.data()?.restaurantId !== businessId ||
         !profile.exists || !catalog.exists) {
       throw new Error('PEDIDO_NO_VALIDO: negocio o catálogo no disponible o discordante.');
     }
