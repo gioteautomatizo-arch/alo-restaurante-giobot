@@ -35,6 +35,9 @@ registerBusinessEngagementApi(app, {
 });
 const server = createServer(app);
 try {
+  for (const id of ['tenant-a', 'tenant-b', 'tenant-hidden']) {
+    await db.doc('businesses/' + id).set({ restaurantId: id, active: true });
+  }
   await db.doc('publicBusinessProfiles/tenant-a').set({ businessId: 'tenant-a', published: true });
   await db.doc('publicBusinessProfiles/tenant-b').set({ businessId: 'tenant-b', published: true });
   await db.doc('publicBusinessProfiles/tenant-hidden').set({ businessId: 'tenant-hidden', published: false });
@@ -128,6 +131,13 @@ try {
   assert.equal(metrics.body.trackingSince, '2026-11-04');
   assert.deepEqual(metrics.body.metrics['tenant-a'], { visitsTotal: 2, ratingCount: 2, average: 3 });
   assert.deepEqual(metrics.body.metrics['tenant-b'], { visitsTotal: 1, ratingCount: 1, average: 2 });
+  const hiddenMetrics = await send('POST', '/api/engagement/platform/metrics',
+    { businessIds: ['tenant-hidden'] }, { idToken: owner });
+  assert.equal(hiddenMetrics.status, 200, 'Panel privado debe admitir negocios sin publicar');
+  assert.deepEqual(hiddenMetrics.body.metrics['tenant-hidden'],
+    { visitsTotal: null, ratingCount: 0, average: null });
+  assert.equal((await send('GET', '/api/engagement/tenant-hidden/rating')).status, 404,
+    'El público no ve calificaciones de demos sin publicar');
   await db.doc('platformAdmins/owner-gio').update({ active: false });
   assert.equal((await send('POST', '/api/engagement/platform/metrics',
     { businessIds: ['tenant-a'] }, { idToken: owner })).status, 403);
