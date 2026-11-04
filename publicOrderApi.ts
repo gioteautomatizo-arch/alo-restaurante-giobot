@@ -88,7 +88,7 @@ export function registerPublicOrderApi(app: Express, deps: PublicOrderApiDepende
       // No devolver customerName, catálogo, credenciales ni documentos internos.
       return res.status(result.created ? 201 : 200).json({
         orderId: result.orderId, code: result.code,
-        total: result.total, created: result.created,
+        total: result.total, created: result.created, items: result.items,
       });
     } catch (error) {
       const reason = error instanceof Error ? error.message : '';
