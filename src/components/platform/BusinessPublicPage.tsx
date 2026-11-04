@@ -1,4 +1,6 @@
 import { createBusinessRestaurantOrder } from '../../lib/ordersService';
+import { isSecurePublicCheckoutEnabled, submitTrustedPublicOrder } from '../../lib/publicOrderClientApi';
+import type { ConfirmedPublicOrder } from '../../lib/publicOrderClientApi';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Award, Clock, Facebook, Instagram, MapPin, MessageCircle, Minus, Plus, Search, ShoppingBag, Sparkles, Store, Utensils, X } from 'lucide-react';
 import { doc, getDoc, getDocFromServer } from 'firebase/firestore';
@@ -235,6 +237,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
     let popup: Window | null = null;
     let code: string | undefined;
     let attemptedWrite = false;
+    let confirmedForWhatsapp: ConfirmedPublicOrder | null = null;
     try {
       // Abrir con el gesto del usuario, ANTES de esperar el Web Lock.
       // Nunca navegar con WhatsApp si Firestore no devuelve un folio.
@@ -254,9 +257,16 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
         businessId, tableNumber, publicCartAttemptFingerprint(cart, guestCount),
       );
       attemptedWrite = true;
-      const saved = await createBusinessRestaurantOrder(businessId, {
-        // Un QR de mesa es una comanda de mesa: activa la creación atómica
-        // del pedido y su resumen público; el enlace externo sigue siendo pickup.
+      // Opt-in de despliegue coordinado: no hay fallback Firestore si la API
+      // protegida falla, pues eso reabriría el bypass de importes.
+      const useTrustedApi = isSecurePublicCheckoutEnabled();
+      confirmedForWhatsapp = useTrustedApi ? await submitTrustedPublicOrder({
+        businessId, attemptId, tableNumber,
+        ...(tableNumber ? { guestCount: guestCount! } : {}),
+        customerName, notes, cart,
+      }) : null;
+      const saved = confirmedForWhatsapp || await createBusinessRestaurantOrder(businessId, {
+        // Ruta heredada: sigue intacta mientras el servicio confiable esté apagado.
         orderType: tableNumber ? 'dine_in' : 'pickup',
         orderSource: 'CLIENTE_QR',
         ...publicOrderOrigin(tableNumber),
@@ -271,14 +281,18 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
         notes: [tableNumber ? `Mesa ${tableNumber}` : '', orderNotes].filter(Boolean).join(' · ') || undefined,
       }, attemptId);
       code = saved.code;
+      const confirmedLines = confirmedForWhatsapp?.items
+        ?? cartToOrderItems(cart).map(({ productId, name, quantity, totalPrice, customizationSummary }) =>
+          ({ productId, name, quantity, totalPrice, ...(customizationSummary ? { customizationSummary } : {}) }));
       setSentReceipts((current) => addPublicReceipt(current, {
         id: saved.id || saved.code,
         businessId,
         ...(tableNumber ? { tableNumber, guestCount: guestCount! } : {}),
         code: saved.code,
         sentAt: new Date().toISOString(),
-        total,
-        items: cartToOrderItems(cart).map(({ name, quantity, totalPrice, customizationSummary }) => ({ name, quantity, totalPrice, ...(customizationSummary ? { customizationSummary } : {}) })),
+        total: confirmedForWhatsapp?.total ?? total,
+        items: confirmedLines.map(({ name, quantity, totalPrice, customizationSummary }) =>
+          ({ name, quantity, totalPrice, ...(customizationSummary ? { customizationSummary } : {}) })),
       }));
       setSentCode(saved.code);
       setCart([]);
@@ -303,7 +317,14 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
       setSending(false);
     }
     if (whatsappNumber && code) {
-      const url = buildWhatsappOrderUrl({ whatsapp: b.whatsapp || '', businessName: b.restaurantName, lines: cart, customerName, notes: orderNotes, tableNumber, orderCode: code });
+      const url = buildWhatsappOrderUrl({
+        whatsapp: b.whatsapp || '', businessName: b.restaurantName, lines: cart,
+        customerName, notes: orderNotes, tableNumber, orderCode: code,
+        ...(confirmedForWhatsapp ? {
+          confirmedTotal: confirmedForWhatsapp.total,
+          confirmedItems: confirmedForWhatsapp.items,
+        } : {}),
+      });
       if (popup) popup.location.href = url;
       else window.open(url, '_blank');
     } else if (popup) popup.close();
