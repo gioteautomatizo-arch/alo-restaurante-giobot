@@ -14,6 +14,9 @@ import { getAllBusinesses, isPlatformAdmin } from '../../lib/businessAuthService
 import { auth, subscribeToAuth } from '../../lib/firebase';
 import type { RestaurantTenant } from '../../lib/restaurantCore';
 import type { User as FirebaseUser } from 'firebase/auth';
+import type { PlatformMetrics } from '../../lib/businessEngagementClient';
+
+const ENGAGEMENT_ENABLED = import.meta.env?.VITE_BUSINESS_ENGAGEMENT_API === 'true';
 
 export const PlatformAdminPanel: React.FC = () => {
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
@@ -23,6 +26,35 @@ export const PlatformAdminPanel: React.FC = () => {
   const [businesses, setBusinesses] = useState<RestaurantTenant[]>([]);
   const [reloadVersion, setReloadVersion] = useState(0);
   const generationRef = useRef(0);
+  // Ningún dato de una cuenta anterior puede sobrevivir a un cambio de UID.
+  const [measured, setMeasured] = useState<{ uid: string; tenantKey: string; data: PlatformMetrics } | null>(null);
+  const [metricsFailed, setMetricsFailed] = useState(false);
+  const tenantKey = businesses.map(b => b.restaurantId).sort().join('|');
+
+  useEffect(() => {
+    const uid = authUser?.uid;
+    if (!ENGAGEMENT_ENABLED || !uid || access !== 'allowed' || resolvedFor !== uid || !tenantKey) {
+      setMeasured(null);
+      setMetricsFailed(false);
+      return;
+    }
+    let cancelled = false;
+    setMeasured(null);
+    setMetricsFailed(false);
+    void import('../../lib/businessEngagementClient')
+      .then(({ fetchPlatformBusinessMetrics }) => fetchPlatformBusinessMetrics(
+        businesses.map(b => b.restaurantId), authUser,
+      ))
+      .then(data => {
+        if (!cancelled && auth.currentUser?.uid === uid)
+          setMeasured({ uid, tenantKey, data });
+      })
+      .catch(() => {
+        if (!cancelled) setMetricsFailed(true);
+      });
+    return () => { cancelled = true; };
+  }, [authUser?.uid, access, resolvedFor, tenantKey]);
+
 
   useEffect(() => subscribeToAuth((user) => {
     setAuthUser(user);
@@ -130,11 +162,16 @@ export const PlatformAdminPanel: React.FC = () => {
     );
   }
 
+  const currentMetrics = measured?.uid === currentUid && measured.tenantKey === tenantKey
+    ? measured.data : null;
+  const observed = currentMetrics ? Object.values(currentMetrics.metrics) : [];
+  const totalVisits = observed.reduce((sum, item) => sum + (item.visitsTotal || 0), 0);
+  const votes = observed.reduce((sum, item) => sum + item.ratingCount, 0);
   const stats = [
     { label: 'Negocios registrados', value: businesses.length, icon: Building2 },
-    { label: 'Visitas a negocios', value: 'Sin medición aún', icon: Store },
+    { label: 'Visitas a negocios', value: currentMetrics ? totalVisits : metricsFailed ? 'No disponible' : 'Sin medición aún', icon: Store },
     { label: 'Usuarios de plataforma', value: '—', icon: Users },
-    { label: 'Calificaciones', value: 'Sin habilitar aún', icon: Activity },
+    { label: 'Calificaciones recibidas', value: currentMetrics ? votes : metricsFailed ? 'No disponible' : 'Sin habilitar aún', icon: Activity },
   ];
 
   return (
@@ -192,6 +229,12 @@ export const PlatformAdminPanel: React.FC = () => {
           ))}
         </section>
 
+        {currentMetrics && (
+          <p className="mt-3 text-xs text-[#6B4028]">
+            Visitas de sesiones medidas desde {currentMetrics.trackingSince}; no equivalen a personas únicas.
+            Los negocios sin registros anteriores aparecen como «Sin medición».
+          </p>
+        )}
         <section className="mt-8">
           <div className="flex items-center justify-between gap-3 mb-4">
             <div>
@@ -229,6 +272,27 @@ export const PlatformAdminPanel: React.FC = () => {
                   </div>
                   <div className="mt-4 rounded-2xl bg-[#FFFDF9] border border-[#E8D8C4] p-3 text-xs text-[#6B4028]">
                     <strong>Tenant:</strong> {tenant.restaurantId}
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-xl bg-[#FFF7EA] p-3">
+                      <span className="block text-[10px] font-semibold text-[#8A6A55]">Visitas</span>
+                      <strong className="mt-1 block text-base">
+                        {currentMetrics
+                          ? (currentMetrics.metrics[tenant.restaurantId]?.visitsTotal ?? 'Sin medición')
+                          : metricsFailed ? 'No disponible' : 'Sin medición'}
+                      </strong>
+                    </div>
+                    <div className="rounded-xl bg-[#FFF7EA] p-3">
+                      <span className="block text-[10px] font-semibold text-[#8A6A55]">Estrellas</span>
+                      <strong className="mt-1 block text-base">
+                        {currentMetrics
+                          ? (currentMetrics.metrics[tenant.restaurantId]?.ratingCount
+                              ? String(currentMetrics.metrics[tenant.restaurantId].average) + ' / 5 (' +
+                                String(currentMetrics.metrics[tenant.restaurantId].ratingCount) + ')'
+                              : 'Sin votos')
+                          : metricsFailed ? 'No disponible' : 'Sin habilitar'}
+                      </strong>
+                    </div>
                   </div>
                   <button
                     type="button"
