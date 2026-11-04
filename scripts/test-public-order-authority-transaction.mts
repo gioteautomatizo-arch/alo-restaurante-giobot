@@ -47,6 +47,8 @@ try {
 
   const first = await commitTrustedPublicOrder(db, draft(1));
   assert.equal(first.total, 160, '2 x ($75 + $5) desde catálogo autoritativo');
+  assert.deepEqual(first.items, [{ productId: 'a-regular', name: 'Platillo A', quantity: 2,
+    totalPrice: 160, customizationSummary: 'Guiso: Res' }]);
   assert.equal(first.created, true);
   const firstSnap = await orderRef('business-a', id(1)).get();
   assert.equal(firstSnap.data()?.total, 160);
@@ -63,6 +65,7 @@ try {
   assert.equal(reorderedRetry.created, false);
   assert.equal(reorderedRetry.orderId, first.orderId);
   assert.equal(reorderedRetry.total, 160);
+  assert.deepEqual(reorderedRetry.items, first.items);
 
   // Un reintento no reescribe estados ni importes aunque el catálogo cambie.
   await orderRef('business-a', id(1)).update({ status: 'PREPARANDO' });
@@ -154,10 +157,18 @@ try {
     orderType: 'dine_in', tableNumber: 61,
   })), /mesa inválida/);
   const table60 = await commitTrustedPublicOrder(db, draft(17, {
-    orderType: 'dine_in', tableNumber: 60,
+    orderType: 'dine_in', tableNumber: 60, guestCount: 4, notes: 'Sin picante',
   }));
+  assert.equal((await orderRef('business-a', id(17)).get()).data()?.notes,
+    'Mesa 60 · 4 personas · Sin picante');
   assert.equal((await mirrorRef('business-a', id(17)).get()).data()?.tableNumber, 60);
   assert.equal(table60.created, true);
+  await assert.rejects(commitTrustedPublicOrder(db, draft(19, {
+    orderType: 'dine_in', tableNumber: 2, guestCount: 11,
+  })), /número de personas/);
+  await assert.rejects(commitTrustedPublicOrder(db, draft(20, {
+    notes: 'x'.repeat(301),
+  })), /notas inválidas/);
   await db.doc('businesses/business-a').update({ active: false });
   await assert.rejects(commitTrustedPublicOrder(db, draft(18)), /negocio o catálogo no disponible o discordante/);
   assert.equal((await orderRef('business-a', id(18)).get()).exists, false);
