@@ -33,7 +33,7 @@ export function isSecurePublicCheckoutEnabled(): boolean {
   return import.meta.env?.VITE_SECURE_PUBLIC_ORDER_API === 'true';
 }
 
-async function appCheckToken(): Promise<string> {
+export async function getGioteAppCheckToken(): Promise<string> {
   const siteKey = import.meta.env?.VITE_FIREBASE_APPCHECK_SITE_KEY;
   if (typeof siteKey !== 'string' || !siteKey.trim()) {
     throw new Error('La verificación de pedidos no está configurada. Conservamos tu carrito; consulta al negocio.');
@@ -139,7 +139,7 @@ export async function submitTrustedPublicOrder(input: PublicOrderSubmission): Pr
   const draft = buildTrustedPublicOrderDraft(input);
   // Obtener token antes de cualquier llamada al servidor. Nunca usar el
   // mismo intento para alternar sin control entre la API y Firestore directo.
-  const token = await appCheckToken();
+  const token = await getGioteAppCheckToken();
   let response: Response;
   try {
     response = await fetch('/api/public-orders', {
