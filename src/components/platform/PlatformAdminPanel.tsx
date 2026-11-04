@@ -14,7 +14,7 @@ import { getAllBusinesses, isPlatformAdmin } from '../../lib/businessAuthService
 import { auth, subscribeToAuth } from '../../lib/firebase';
 import type { RestaurantTenant } from '../../lib/restaurantCore';
 import type { User as FirebaseUser } from 'firebase/auth';
-import type { PlatformMetrics } from '../../lib/businessEngagementClient';
+import type { PlatformMetrics, BusinessMetric } from '../../lib/businessEngagementClient';
 
 const ENGAGEMENT_ENABLED = import.meta.env?.VITE_BUSINESS_ENGAGEMENT_API === 'true';
 
@@ -164,7 +164,7 @@ export const PlatformAdminPanel: React.FC = () => {
 
   const currentMetrics = measured?.uid === currentUid && measured.tenantKey === tenantKey
     ? measured.data : null;
-  const observed = currentMetrics ? Object.values(currentMetrics.metrics) : [];
+  const observed: BusinessMetric[] = currentMetrics ? Object.values(currentMetrics.metrics) as BusinessMetric[] : [];
   const totalVisits = observed.reduce((sum, item) => sum + (item.visitsTotal || 0), 0);
   const votes = observed.reduce((sum, item) => sum + item.ratingCount, 0);
   const stats = [
