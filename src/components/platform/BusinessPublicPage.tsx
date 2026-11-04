@@ -36,6 +36,13 @@ import { VipCardModal } from '../VipCardModal';
 import { getVipProfile, VIP_DATA_EVENT } from '../../lib/vipStorage';
 import type { VipProfile } from '../../types';
 
+/** Solo se carga la experiencia de estrellas cuando el backend fue activado en staging. */
+const SHOW_BUSINESS_RATINGS = import.meta.env?.VITE_BUSINESS_ENGAGEMENT_API === 'true';
+const BusinessRatingWidget = React.lazy(async () => {
+  const module = await import('./BusinessRatingWidget');
+  return { default: module.BusinessRatingWidget };
+});
+
 /** Fallos previos a la escritura: nunca se deben describir como un pedido incierto. */
 class PublicCheckoutPreflightError extends Error {}
 
@@ -439,6 +446,12 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
           {b.description && <p className="mx-auto max-w-2xl text-sm opacity-85 sm:text-base">{b.description}</p>}
         </div>
       </section>
+
+      {SHOW_BUSINESS_RATINGS && (
+        <React.Suspense fallback={null}>
+          <BusinessRatingWidget businessId={businessId} />
+        </React.Suspense>
+      )}
 
       {b.vipEnabled && (
         <section className="mx-auto max-w-5xl px-4 pt-6">
