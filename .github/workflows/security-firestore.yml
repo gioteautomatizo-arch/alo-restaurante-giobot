@@ -114,6 +114,8 @@ jobs:
         run: npx firebase emulators:exec --only auth,firestore --project gioteautomatizo-employee-concurrency-test --config firebase.invites-emulator.json "node --import tsx scripts/test-business-employee-concurrency-emulator.mts"
       - name: Test invitation API with Auth and Firestore emulators
         run: npx firebase emulators:exec --only auth,firestore --project gioteautomatizo-invites-test --config firebase.invites-emulator.json "node --import tsx scripts/test-business-invites.mjs"
+      - name: Test business visits and authenticated stars (Firebase Emulator, OFF by default)
+        run: npx firebase emulators:exec --only firestore --project gioteautomatizo-business-engagement-test --config firebase.launch-security-emulator.json "node --import tsx scripts/test-business-engagement-emulator.mts"
       - name: Test VIP backend with dummy profiles in Firestore emulator
         run: npx firebase emulators:exec --only firestore --project gioteautomatizo-vip-api-test --config firebase.launch-security-emulator.json "node --import tsx scripts/test-vip-recovery-api.mjs"
       - name: Test legacy Calientito VIP admin compatibility in staged rules
