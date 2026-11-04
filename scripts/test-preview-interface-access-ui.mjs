@@ -92,6 +92,10 @@ try {
   await waitFor(() => !!button('Probar interfaces'), 'Verified admin needs navigation');
   button('Probar interfaces').click();
   await waitFor(() => visible('Mi panel de plataforma'), 'Admin dashboard shortcut missing');
+  assert.equal(visible('Calientito · administrar (usuario y PIN)'), true,
+    'Admin must retain Calientito POS shortcut');
+  assert.equal(visible('Mis interfaces privadas · acceso guardable'), true,
+    'Admin must be able to bookmark the private recovery link');
   emit(null);
   await waitFor(() => !visible('Probar interfaces') && !visible('Mi panel de plataforma'), 'Logout must hide navigation');
   assert.deepEqual(errors, []);
