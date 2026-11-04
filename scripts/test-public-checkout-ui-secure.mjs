@@ -74,13 +74,13 @@ window.open = (url) => {
 const errors = [];
 window.addEventListener('error', event => errors.push(event.error));
 const doc = window.document;
-const button = label => [...doc.querySelectorAll('button')].find(el => el.textContent.trim() === label);
+const button = label => [...doc.querySelectorAll('button')].find(el =>
+  el.textContent.trim() === label || (label.startsWith('Ver mi pedido') && el.textContent.trim().startsWith(label)));
 const waitFor = async (condition, reason) => {
   for (let i = 0; i < 250; i++) {
     if (condition()) return;
     await new Promise(resolve => setTimeout(resolve, 10));
   }
-  console.error('DIAGNOSTICO UI:', reason, doc.body.textContent.slice(0, 1800), 'ERRORS', errors.map(String));
   assert.fail(reason);
 };
 try {
