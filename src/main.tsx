@@ -88,7 +88,7 @@ function RootRouter() {
   }
 
   if (publicMatch && publicId === 'alo-restaurante') {
-    return <App />;
+    return <App publicBusinessPage />;
   }
 
   const businessMatch = routeHash.match(/^#business\/([^/]+)$/);
