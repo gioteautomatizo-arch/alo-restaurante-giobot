@@ -11,6 +11,7 @@ const portal = read('src/components/platform/BusinessPortal.tsx');
 assert.ok(router.includes("publicId === 'alo-restaurante'") && router.includes('<App publicBusinessPage />'), 'Calientito debe recibir contexto público');
 assert.ok(app.includes('<Footer onOpenAdmin={publicBusinessPage ? undefined : handleOpenAdminClick} />'), 'El pie público de Calientito no debe ofrecer administración');
 assert.ok(footer.includes('{onOpenAdmin && ('), 'El botón del pie debe ser condicional');
+assert.ok(app.includes('{!publicBusinessPage && adminUser && !isAdminViewActive && ('), 'El botón flotante Panel Caja no debe aparecer en la página pública aunque exista sesión local');
 assert.ok(!publicPage.includes('Acceso del negocio'), 'La página pública multinegocio no debe ofrecer acceso administrativo');
 assert.ok(portal.includes('adminResolvedFor === authUser.uid && isSuperAdmin'), 'El acceso heredado debe depender de la autorización Super Admin de la sesión');
 assert.ok(portal.includes('{showSuperAdmin && <section'), 'La tarjeta de Calientito debe conservar su control de visibilidad');
