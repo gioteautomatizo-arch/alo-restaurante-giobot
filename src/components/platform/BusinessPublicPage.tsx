@@ -527,7 +527,7 @@ const BusinessPublicPageContent: React.FC<{ businessId: string; tableParam: stri
 
         <footer className="mt-12 flex items-center justify-between border-t pt-4 text-[11px] opacity-70" style={{ borderColor: border }}>
           <span>Hecho con Gioteautomatizo</span>
-          <a href="#business" className="underline">Acceso del negocio</a>
+
         </footer>
       </main>
 
