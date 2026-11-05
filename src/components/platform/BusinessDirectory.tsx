@@ -29,6 +29,7 @@ const calientitoCard = (): DirectoryBusiness => ({
               publicSlug: 'calientito',
               tagline: 'Comida rica, como en casa',
               description: 'Consulta el menú de Restaurante Calientito y prepara tu pedido.',
+              logoUrl: '/logo-calientito.png',
             },
             assistant: { name: 'Giobot', plan: 'GIOBOT_BASE', personality: 'AMABLE', enabled: true },
             features: {
