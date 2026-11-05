@@ -141,7 +141,7 @@ const matchesMenuSearch = (item: MenuItem, searchTerm: string): boolean => {
   return queryTokens.every((token) => searchTokenMatches(token, words));
 };
 
-export default function App() {
+export default function App({ publicBusinessPage = false }: { publicBusinessPage?: boolean }) {
   const [activeCategory, setActiveCategory] = useState<CategoryId>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [showAllCatalog, setShowAllCatalog] = useState<boolean>(false);
@@ -943,7 +943,7 @@ export default function App() {
         onLoginSuccess={handleLoginSuccess}
       />
 
-      <Footer onOpenAdmin={window.location.hash.startsWith('#negocio/') ? undefined : handleOpenAdminClick} />
+      <Footer onOpenAdmin={publicBusinessPage ? undefined : handleOpenAdminClick} />
     </div>
   );
 }
