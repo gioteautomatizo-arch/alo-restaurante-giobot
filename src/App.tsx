@@ -926,7 +926,7 @@ export default function App({ publicBusinessPage = false }: { publicBusinessPage
         </div>
       )}
 
-      {adminUser && !isAdminViewActive && (
+      {!publicBusinessPage && adminUser && !isAdminViewActive && (
         <button
           onClick={() => setIsAdminViewActive(true)}
           className="fixed top-20 right-4 z-40 bg-[#3A2418] text-[#FFF7EA] px-3.5 py-1.5 rounded-full border border-[#C9974D] shadow-lg flex items-center gap-1.5 text-xs font-serif font-bold hover:bg-[#6B4028] transition-all cursor-pointer"
