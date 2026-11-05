@@ -943,7 +943,7 @@ export default function App() {
         onLoginSuccess={handleLoginSuccess}
       />
 
-      <Footer onOpenAdmin={handleOpenAdminClick} />
+      <Footer onOpenAdmin={window.location.hash.startsWith('#negocio/') ? undefined : handleOpenAdminClick} />
     </div>
   );
 }
